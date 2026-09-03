@@ -104,6 +104,12 @@ export class PropostaErpService {
         ? { condicaoPagamento: this.prazoEmDias(proposta.condicaoPagamento)! }
         : {}),
       observacao: [
+        // Marcador NO INÍCIO e entre colchetes: o pedido gerado a partir deste
+        // orçamento herda a observação, e é por ela que o app descobre de qual
+        // proposta o pedido nasceu. Frase solta no meio do texto é achável por
+        // gente, não por código — e o campo de "ordem de compra", que seria o
+        // lugar próprio, não existe no orçamento do Tiny.
+        `[${proposta.numero}]`,
         `Proposta ${proposta.numero} (Betinna)`,
         proposta.modalidade === 'LOCACAO' ? 'LOCAÇÃO MENSAL (valor por mês)' : 'VENDA',
         proposta.observacoes ?? '',

@@ -828,6 +828,14 @@ model Pedido {
 
   /// Número do pedido NO SITE (ex.: SB1234). É por ele que o app avisa o site
   /// quando a situação ou o rastreio mudam — o site é dono da tela do cliente.
+  /// De qual PROPOSTA este pedido nasceu.
+  ///
+  /// O pedido que o ERP gera a partir de um orçamento não tem campo de origem —
+  /// o que ele herda é a observação, onde o app grava `[PROP-0001]` no começo.
+  /// Guardar aqui evita reprocessar texto toda vez que alguém quiser saber, e
+  /// deixa a resposta visível na tela do pedido.
+  propostaNumero String?
+
   numeroSite String?
 
   /// Rastreio do ERP (Tiny → `transportador.codigoRastreamento` / `urlRastreamento`).
@@ -876,6 +884,7 @@ model Pedido {
   // Seed demo
   @@index([empresaId, isDemo])
   @@index([empresaId, numeroSite])
+  @@index([empresaId, propostaNumero])
 }
 
 model PedidoItem {

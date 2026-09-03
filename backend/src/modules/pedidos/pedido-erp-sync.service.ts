@@ -457,6 +457,7 @@ export class PedidoErpSyncService {
         comissao: total.mul(comissaoPct).div(100),
         rastreioCodigo,
         rastreioUrl,
+        propostaNumero: this.propostaDaObservacao(d),
         observacoes: d.observacoes?.slice(0, 2000) || null,
         // Data do ERP, não a de agora: comissão e relatório fecham por período, e
         // importar tudo com a data de hoje jogaria venda de outro mês pra cá.
@@ -741,6 +742,19 @@ export class PedidoErpSyncService {
   }
 
   // ─── Utilidades ─────────────────────────────────────────────────────────
+
+  /**
+   * De qual proposta o pedido nasceu.
+   *
+   * O pedido que o ERP gera a partir de um orçamento **não tem campo de
+   * origem** — o único rastro é a observação, que ele herda do orçamento. Por
+   * isso o app grava `[PROP-0001]` no COMEÇO dela: assim dá pra achar por
+   * código, e não só lendo.
+   */
+  private propostaDaObservacao(d: PedidoTinyDetalhe): string | null {
+    const texto = `${d.observacoesInternas ?? ''} ${d.observacoes ?? ''}`;
+    return /\[(PROP-\d+)\]/.exec(texto)?.[1] ?? null;
+  }
 
   private statusDe(situacao: number | undefined): string | null {
     if (situacao == null) return null;

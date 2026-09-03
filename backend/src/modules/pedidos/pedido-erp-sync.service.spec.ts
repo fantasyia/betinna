@@ -539,4 +539,28 @@ describe('pedidos que vêm do ERP', () => {
       expect(linkPublicoRastreio(null, { nome: 'Olist Envios' })).toBeNull();
     });
   });
+
+  describe('de qual proposta o pedido nasceu', () => {
+    // O pedido que o ERP gera a partir de um orçamento não tem campo de origem —
+    // o único rastro é a observação herdada. Sem extrair isso, ninguém consegue
+    // ligar a venda à proposta que a originou.
+    const extrair = (svc: unknown, d: unknown) =>
+      (svc as { propostaDaObservacao: (x: unknown) => string | null }).propostaDaObservacao(d);
+
+    it('acha o número no marcador da observação interna', () => {
+      const { svc } = build();
+
+      expect(
+        extrair(svc, {
+          observacoesInternas: '[PROP-0042] Proposta PROP-0042 (Betinna) — LOCAÇÃO MENSAL',
+        }),
+      ).toBe('PROP-0042');
+    });
+
+    it('pedido sem marcador não inventa proposta', () => {
+      const { svc } = build();
+
+      expect(extrair(svc, { observacoes: 'pedido lançado direto no painel' })).toBeNull();
+    });
+  });
 });

@@ -80,6 +80,8 @@ export interface PedidoTinyDetalhe extends PedidoTinyResumo {
   valorDesconto?: number;
   valorFrete?: number;
   observacoes?: string;
+  /** É AQUI que a observação do orçamento chega no pedido gerado. */
+  observacoesInternas?: string;
   cliente?: {
     id?: number;
     nome?: string;
