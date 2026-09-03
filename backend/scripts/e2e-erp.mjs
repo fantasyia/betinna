@@ -184,9 +184,17 @@ async function principal() {
       cnpj: '19.131.243/0001-97',
       email: 'e2e@example.com',
       telefone: '11999990000',
+      segmento: 'INDUSTRIA',
+      cep: '01310-100',
+      endereco: 'Avenida Paulista',
+      numero: '1000',
+      bairro: 'Bela Vista',
       cidade: 'São Paulo',
       uf: 'SP',
     });
+    if (!criadoCliente.corpo?.id) {
+      registrar('cliente de teste (indústria)', false, JSON.stringify(criadoCliente.erro ?? criadoCliente.corpo).slice(0, 200));
+    }
     cliente = { id: criadoCliente.corpo?.id, nome: NOME_TESTE };
   }
   const mb01 = await prisma.produto.findFirst({ where: { sku: 'MB-01' }, select: { id: true } });
