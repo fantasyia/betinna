@@ -49,6 +49,15 @@ export const createPropostaSchema = z.object({
   prazoMeses: z.number().int().min(1).max(120).optional(),
   diaVencimento: z.number().int().min(1).max(28).optional(),
   carenciaDias: z.number().int().min(0).max(180).optional(),
+  /**
+   * QUEM assina o contrato pelo cliente — pessoa, não empresa.
+   *
+   * A assinatura eletrônica recusa razão social como nome de signatário, e o
+   * cadastro de Cliente só guarda a empresa. Sem uma pessoa aqui o contrato
+   * não sai da proposta aceita.
+   */
+  signatarioNome: z.string().trim().min(3).max(120).optional(),
+  signatarioEmail: z.string().trim().email().max(160).optional(),
 });
 export type CreatePropostaDto = z.infer<typeof createPropostaSchema>;
 
