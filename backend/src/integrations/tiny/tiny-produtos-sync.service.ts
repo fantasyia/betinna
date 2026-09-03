@@ -310,9 +310,10 @@ export class TinyProdutosSyncService {
       // A ÚLTIMA, não a primeira: a API do Tiny não deleta anexo (só o painel,
       // na mão), então trocar a imagem de um produto é EMPILHAR uma nova. Pegar
       // a primeira prenderia o app na imagem mais velha pra sempre.
-      const url = [...lista].reverse().find((a) => a.url)?.url;
-      // Produto sem anexo nenhum é produto normal, não falha.
-      if (!url) return true;
+      const url = [...lista].reverse().find((a) => a.url)?.url ?? null;
+      // Sem anexo o produto fica SEM imagem — inclusive apagando a que estava
+      // lá. Manter a antiga deixaria o app mostrando uma URL que o ERP já não
+      // tem, e ninguém teria como remover imagem pelo ERP.
       await this.prisma.produto.updateMany({
         where: { empresaId, codigoErp: String(p.id) },
         data: { imagem: url },

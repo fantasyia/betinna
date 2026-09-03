@@ -304,4 +304,24 @@ describe('TinyProdutosSyncService — listas de locacao', () => {
     expect(r.erros).toBe(0);
     expect(r.imagensFalharam).toBe(1);
   });
+
+  it('produto que perdeu o anexo no ERP fica SEM imagem no app', async () => {
+    // Sem isso, apagar a imagem no ERP não tinha efeito nenhum no app.
+    const { svc, prisma, client } = build([MB]);
+    client.get.mockImplementation((_e: string, caminho: string) => {
+      if (caminho.startsWith('/estoque/')) return Promise.resolve({ disponivel: 7 });
+      if (caminho.includes('/anexos')) return Promise.resolve([]);
+      return Promise.resolve({ itens: [MB], paginacao: { total: 1 } });
+    });
+
+    await svc.sync('emp-1');
+
+    const chamada = prisma.produto.updateMany.mock.calls.find((c) =>
+      Object.prototype.hasOwnProperty.call(
+        (c[0] as { data: Record<string, unknown> }).data,
+        'imagem',
+      ),
+    );
+    expect((chamada?.[0] as { data: { imagem: null } }).data.imagem).toBeNull();
+  });
 });
