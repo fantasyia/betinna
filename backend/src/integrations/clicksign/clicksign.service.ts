@@ -55,10 +55,17 @@ export class ClickSignService {
   }
 
   /**
-   * Lê a variável tolerando os dois erros de paste que já aconteceram neste
-   * projeto: o NOME da variável colado junto do valor
-   * (`CORS_ORIGINS=http://...`) e aspas em volta. Um token com lixo invisível
-   * vira 401 — e 401 aqui não quebra nada visível, só faz o contrato não sair.
+   * Lê a variável tolerando os erros de paste que já aconteceram neste projeto:
+   *
+   * - o NOME da variável colado junto do valor (`CORS_ORIGINS=http://...`);
+   * - aspas em volta;
+   * - **os sinais `<>` do exemplo**, quando alguém cola o valor DENTRO do
+   *   `<coloque-aqui>` da instrução em vez de no lugar dele. Foi o que
+   *   aconteceu em 03/09: o token ficou com 38 caracteres em vez de 36 e a
+   *   ClickSign devolveu 401.
+   *
+   * Um token com lixo invisível não quebra nada visível — só faz o contrato não
+   * sair, que é a falha mais cara de diagnosticar.
    */
   private ler(chave: string): string {
     const bruto = this.env.get(chave as never) as string | undefined;
@@ -66,7 +73,7 @@ export class ClickSignService {
     return bruto
       .trim()
       .replace(/^[A-Z0-9_]+=/, '')
-      .replace(/^['"]|['"]$/g, '')
+      .replace(/^['"<]+|['">]+$/g, '')
       .trim();
   }
 
