@@ -147,13 +147,17 @@ describe('embalagem e produto fabricado', () => {
     expect(corpo.dimensoes.embalagem).toEqual({ tipo: 2, id: 77 });
   });
 
-  it('com componentes, a estrutura é gravada DEPOIS de o produto existir', async () => {
-    // O Tiny recusa criar tipo F direto ("deve conter informações de produção"),
-    // então o caminho é nascer Simples e receber a estrutura em seguida.
+  it('produto FABRICADO nasce com a producao no MESMO POST', async () => {
+    // Medido contra o Tiny em 02/09 — o caminho de dois passos NAO existe:
+    //   POST tipo F sem `producao`       -> 400 "deve conter informacoes de producao"
+    //   POST sem tipo, depois /fabricado -> 404 "produto nao e do tipo Fabricado"
+    //   POST tipo F COM `producao`       -> 201, nasce F com a estrutura
+    // O PUT de produto responde 204 e IGNORA `tipo`/`producao` em silencio, que
+    // e o que fazia o antigo "nasce S e converte depois" parecer funcionar.
     const client = {
       get: vi
         .fn()
-        .mockResolvedValueOnce({ itens: [] }) // MB-04 ainda não existe
+        .mockResolvedValueOnce({ itens: [] }) // MB-04 ainda nao existe
         .mockResolvedValue({ itens: [{ id: 500, sku: 'MP-TESTE' }] }), // o componente existe
       post: vi.fn().mockResolvedValue({ id: 999 }),
       put: vi.fn().mockResolvedValue({}),
@@ -164,15 +168,23 @@ describe('embalagem e produto fabricado', () => {
       { ...MB04, componentes: [{ sku: 'MP-TESTE', quantidade: 1 }], etapas: ['Montagem'] },
     ]);
 
-    expect(client.put).toHaveBeenCalledWith('emp-1', '/produtos/999/fabricado', {
+    const corpo = client.post.mock.calls[0][2] as Record<string, unknown>;
+    expect(corpo.tipo).toBe('F');
+    expect(corpo.producao).toEqual({
       produtos: [{ produto: { id: 500 }, quantidade: 1 }],
       etapas: ['Montagem'],
     });
     expect(r.itens[0].estrutura).toBe('definida');
+    // Nada de PUT /fabricado na criacao — era ele que dava 404.
+    expect(client.put).not.toHaveBeenCalled();
   });
 
-  it('componente inexistente derruba a estrutura inteira, não grava pela metade', async () => {
-    // Ficha técnica incompleta produz peça errada — pior que ficha nenhuma.
+  it('componente inexistente NAO cria o produto — fabricado sem estrutura o Tiny recusa', async () => {
+    // Antes o produto entrava como Simples e so a estrutura falhava. Isso nao e
+    // mais possivel: o que foi PEDIDO era um fabricado, e fabricado sem
+    // estrutura o Tiny nao aceita. Criar um Simples no lugar seria entregar
+    // outra coisa calado — a peca apareceria no catalogo sem virar ordem de
+    // producao, e ninguem veria motivo.
     const client = {
       get: vi.fn().mockResolvedValue({ itens: [] }),
       post: vi.fn().mockResolvedValue({ id: 999 }),
@@ -184,12 +196,30 @@ describe('embalagem e produto fabricado', () => {
       { ...MB04, componentes: [{ sku: 'NAO-EXISTE', quantidade: 1 }] },
     ]);
 
-    // O produto entrou (é útil), mas a estrutura falhou e isso aparece.
+    expect(r.itens[0].acao).toBe('erro');
+    // O relatorio diz POR QUE: "erro" sozinho manda quem le cacar no log.
+    expect(r.itens[0].erro).toContain('NAO-EXISTE');
+    expect(client.post).not.toHaveBeenCalled();
+  });
+
+  it('produto EXCLUIDO (situacao E) nao conta como existente — o SKU volta a ficar livre', async () => {
+    // O DELETE do Tiny e logico: marca E, o registro continua na busca e o SKU
+    // fica livre. Sem descartar o cadaver, a importacao faria UPDATE nele.
+    const client = {
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({ itens: [{ id: 111, sku: 'MB-04', situacao: 'E' }] })
+        .mockResolvedValue({ itens: [{ id: 500, sku: 'MP-TESTE' }] }),
+      post: vi.fn().mockResolvedValue({ id: 999 }),
+      put: vi.fn().mockResolvedValue({}),
+    };
+    const svc = new TinyProdutosService(client as never);
+
+    const r = await svc.importar('emp-1', [
+      { ...MB04, componentes: [{ sku: 'MP-TESTE', quantidade: 1 }] },
+    ]);
+
     expect(r.itens[0].acao).toBe('criado');
-    expect(r.itens[0].estrutura).toBe('falhou');
-    // E o relatório diz POR QUÊ: "falhou" sozinho manda quem lê caçar no log.
-    expect(r.itens[0].estruturaErro).toContain('NAO-EXISTE');
-    expect(client.put).not.toHaveBeenCalled();
   });
 
   it('sem componentes, nenhuma chamada de estrutura acontece', async () => {
