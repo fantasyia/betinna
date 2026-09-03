@@ -22,7 +22,7 @@ export interface ContratoParaAssinar {
 export interface EnvelopeCriado {
   envelopeId: string;
   documentoId: string;
-  signatarios: Array<{ id: string; email: string }>;
+  signatarios: Array<{ id: string; email: string; automatico: boolean }>;
 }
 
 /**
@@ -131,8 +131,11 @@ export class ClickSignService {
     );
 
     // Ordem importa: o cliente assina primeiro, a casa confirma depois.
-    const paraAssinar = [dados.cliente, ...(this.somatec ? [this.somatec] : [])];
-    const signatarios: Array<{ id: string; email: string }> = [];
+    const paraAssinar: Array<SignatarioContrato & { automatico: boolean }> = [
+      { ...dados.cliente, automatico: false },
+      ...(this.somatec ? [{ ...this.somatec, automatico: true }] : []),
+    ];
+    const signatarios: Array<{ id: string; email: string; automatico: boolean }> = [];
     for (const s of paraAssinar) {
       const criado = await this.chamar<{ data: { id: string } }>(
         'POST',
@@ -140,20 +143,42 @@ export class ClickSignService {
         {
           data: {
             type: 'signers',
-            attributes: { name: s.nome, email: s.email, has_documentation: false, refusable: true },
+            attributes: {
+              name: s.nome,
+              email: s.email,
+              // `has_documentation` faz a ClickSign PEDIR o CPF na hora de
+              // assinar. Não precisamos ter o dado: quem preenche é o
+              // signatário, e é isso que dá identificação de verdade — com
+              // `false`, assinar era só clicar num link de e-mail.
+              has_documentation: !s.automatico,
+              refusable: !s.automatico,
+            },
           },
         },
       );
-      signatarios.push({ id: criado.data.id, email: s.email });
+      signatarios.push({ id: criado.data.id, email: s.email, automatico: s.automatico });
     }
 
-    // Dois requisitos por signatário: como ele se autentica (e-mail) e o ato de
-    // concordar. Sem os dois, o envelope não sai do rascunho.
+    // Requisitos por signatário: como ele se autentica e o ato de concordar.
+    // Sem os dois, o envelope não sai do rascunho.
+    //
+    // A casa assina em AUTOMÁTICO (`auto_signature`): o Leandro é signatário de
+    // verdade — tem log próprio, com data e autenticação — mas não precisa
+    // clicar em nada. ⚠️ Exige o **Termo de Assinatura Automática** assinado uma
+    // vez entre o administrador da conta e ele; sem o termo, a ClickSign recusa.
+    // E `auto_signature` tem que ser a ÚNICA autenticação do signatário: a API
+    // recusa qualquer outra junto.
     for (const s of signatarios) {
-      for (const attributes of [
-        { action: 'provide_evidence', auth: 'email' },
-        { action: 'agree', role: 'sign' },
-      ]) {
+      const requisitos = s.automatico
+        ? [
+            { action: 'provide_evidence', auth: 'auto_signature' },
+            { action: 'agree', role: 'sign' },
+          ]
+        : [
+            { action: 'provide_evidence', auth: 'email' },
+            { action: 'agree', role: 'sign' },
+          ];
+      for (const attributes of requisitos) {
         await this.chamar('POST', `/envelopes/${envelopeId}/requirements`, {
           data: {
             type: 'requirements',
