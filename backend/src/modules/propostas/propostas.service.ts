@@ -784,10 +784,21 @@ export class PropostasService {
         'Cliente não tem e-mail cadastrado. Adicione um e-mail no cadastro do cliente pra enviar a proposta.',
       );
     }
-    const pdf = await this.exportSvc.gerarPdf(data);
+    // O e-mail leva o LINK DE ACEITE, não o PDF.
+    //
+    // Decisão do Léo (03/09): é o MESMO link que o rep manda no WhatsApp. PDF
+    // em anexo o cliente lê e responde "ok" por e-mail — e isso não é aceite:
+    // não tem data, não tem IP, não fecha nada. O link fecha, e ainda serve nos
+    // dois canais sem o rep ter que fazer duas coisas diferentes.
+    //
+    // Sem link não há e-mail: mandar aviso de proposta sem forma de aceitar é
+    // pior que não mandar, porque queima o toque com o cliente.
+    const alvo = await this.findById(user, id);
+    const aceite = await this.aceiteSvc.gerarLink(alvo.id, alvo.empresaId, alvo.status);
+
     const html =
       `<p>Olá, ${data.cliente.nome}!</p>` +
-      `<p>Segue em anexo a proposta comercial <strong>${data.numero}</strong> da ${data.empresa.nome}.</p>` +
+      `<p>Segue a proposta comercial <strong>${data.numero}</strong> da ${data.empresa.nome}.</p>` +
       `<p>Valor total: <strong>${new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'BRL',
@@ -795,15 +806,18 @@ export class PropostasService {
       (data.validoAte
         ? `<p>Válida até ${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(data.validoAte)}.</p>`
         : '') +
+      `<p style="margin:24px 0"><a href="${aceite.url}" ` +
+      'style="background:#008CC8;color:#fff;padding:12px 22px;border-radius:8px;' +
+      'text-decoration:none;font-weight:bold;display:inline-block">Ver e aceitar a proposta</a></p>' +
+      `<p style="font-size:12px;color:#666">Se o botão não abrir, use este endereço:<br>${aceite.url}</p>` +
       `<p>Qualquer dúvida, estamos à disposição.</p>`;
 
-    const enviado = await this.emailSvc.enviarComAnexo({
+    const enviado = await this.emailSvc.enviarHtmlLivre({
       para: data.cliente.email,
       assunto: `Proposta ${data.numero} — ${data.empresa.nome}`,
       html,
-      attachments: [{ filename: `proposta-${data.numero}.pdf`, content: pdf.toString('base64') }],
-      // #20: sem chave, um timeout na volta do Resend fazia o retry mandar o
-      // MESMO PDF de novo e o cliente ligava perguntando qual proposta valia.
+      // Sem chave, um timeout na volta do Resend fazia o retry mandar o mesmo
+      // e-mail de novo e o cliente recebia a proposta duplicada.
       idempotencyKey: `proposta-email:${id}:${data.cliente.email}`,
     });
     if (!enviado.ok) {
