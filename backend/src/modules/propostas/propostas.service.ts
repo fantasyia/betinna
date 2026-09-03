@@ -312,6 +312,29 @@ export class PropostasService {
     return alvo.id;
   }
 
+  /**
+   * Apaga uma proposta DEFINITIVAMENTE.
+   *
+   * Existe porque proposta de teste não tem como sair da tela: sem exclusão, a
+   * saída era marcá-la RECUSADA, e aí ela aparece no funil como negócio perdido
+   * — número errado no lugar mais visível que existe.
+   *
+   * Só apaga o que não virou dinheiro: proposta **convertida em pedido** ou
+   * **ACEITA** fica, porque é histórico de uma venda. O resto (rascunho,
+   * enviada, em negociação, recusada, expirada) some.
+   */
+  async remove(user: AuthenticatedUser, id: string): Promise<{ id: string; numero: string }> {
+    const proposta = await this.findById(user, id);
+    if (proposta.pedidoId || proposta.status === 'ACEITA') {
+      throw new BusinessRuleException(
+        'Proposta aceita ou já convertida em pedido não pode ser apagada — é histórico de venda.',
+      );
+    }
+    await this.prisma.proposta.delete({ where: { id: proposta.id } });
+    this.logger.log(`Proposta ${proposta.numero} apagada por ${user.id}`);
+    return { id: proposta.id, numero: proposta.numero };
+  }
+
   async converterEmPedido(
     user: AuthenticatedUser,
     id: string,

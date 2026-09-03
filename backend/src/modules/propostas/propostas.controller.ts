@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Ip, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Ip, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -6,6 +6,7 @@ import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Public } from '@shared/decorators/public.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -156,6 +157,18 @@ export class PropostasController {
   })
   enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.erp.enviar(id, user.empresaIdAtiva!);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN', 'DIRECTOR')
+  @RequirePermissions({ module: 'propostas', action: 'delete' })
+  @Audit({ action: 'delete', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Apaga a proposta. Recusa proposta ACEITA ou já convertida em pedido — isso é histórico de venda.',
+  })
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.propostas.remove(user, id);
   }
 
   @Post(':id/converter-em-pedido')
