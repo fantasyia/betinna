@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { ClickSignService } from '@integrations/clicksign/clicksign.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
@@ -73,6 +74,7 @@ export class PropostaAceiteService {
     private readonly sequence: SequenceService,
     private readonly notificacoes: NotificacoesService,
     private readonly pedidoPricing: PedidoPricingService,
+    private readonly clicksign: ClickSignService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -398,7 +400,115 @@ export class PropostaAceiteService {
     this.logger.log(
       `Proposta ${proposta.numero} ACEITA pelo cliente (ip ${ip ?? '?'}) → pedido ${numeroPedido}`,
     );
+
+    // O contrato sai AGORA, e não antes: mandar documento pra assinar antes de
+    // a pessoa aceitar a proposta inverte a conversa comercial.
+    await this.enviarContratoParaAssinatura(propostaId, empresaId);
+
     return { status: 'ACEITA', pedidoNumero: numeroPedido };
+  }
+
+  /**
+   * Aceitou → o contrato vai pra assinatura eletrônica.
+   *
+   * Só LOCAÇÃO: venda avulsa não gera contrato recorrente.
+   *
+   * **Best-effort de propósito.** O aceite do cliente já está gravado e é o que
+   * vale; se a assinatura eletrônica estiver fora do ar, perder o aceite por
+   * causa disso seria trocar um problema pequeno por um grande. A falha vira
+   * log de erro e aviso pro responsável — o contrato é reenviado depois.
+   */
+  private async enviarContratoParaAssinatura(propostaId: string, empresaId: string): Promise<void> {
+    if (!this.clicksign.configurado) return;
+    try {
+      const p = await this.prisma.proposta.findFirst({
+        where: { id: propostaId, empresaId },
+        select: {
+          id: true,
+          numero: true,
+          valor: true,
+          modalidade: true,
+          prazoMeses: true,
+          diaVencimento: true,
+          signatarioNome: true,
+          signatarioEmail: true,
+          clienteId: true,
+          representanteId: true,
+          cliente: { select: { nome: true, email: true, cnpj: true } },
+        },
+      });
+      if (!p || p.modalidade !== 'LOCACAO') return;
+
+      // Signatário é PESSOA. A assinatura eletrônica recusa razão social como
+      // nome ("formato inválido"), e o cadastro de Cliente só guarda a empresa —
+      // por isso o nome vem da proposta, preenchido por quem montou o negócio.
+      const nome = p.signatarioNome?.trim();
+      const email = p.signatarioEmail?.trim() || p.cliente.email?.trim();
+      if (!nome || !email) {
+        this.logger.warn(
+          `Proposta ${p.numero} aceita, mas sem signatário (nome/e-mail) — contrato não enviado.`,
+        );
+        await this.avisarFalhaContrato(
+          empresaId,
+          p.representanteId,
+          p.numero,
+          'sem signatário definido',
+        );
+        return;
+      }
+
+      const envelope = await this.clicksign.enviarParaAssinatura({
+        titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
+        cliente: { nome, email },
+        variaveis: {
+          razao_social: p.cliente.nome,
+          numero_proposta: p.numero,
+          data_extenso: dataPorExtenso(new Date()),
+        },
+      });
+
+      await this.prisma.contrato.create({
+        data: {
+          empresaId,
+          propostaId: p.id,
+          clienteId: p.clienteId,
+          representanteId: p.representanteId,
+          status: 'AGUARDANDO_ASSINATURA',
+          valorMensal: p.valor,
+          prazoMeses: p.prazoMeses ?? 36,
+          diaVencimento: p.diaVencimento ?? 5,
+          assinaturaId: envelope.envelopeId,
+        },
+      });
+      this.logger.log(
+        `Contrato da proposta ${p.numero} enviado pra assinatura (${envelope.envelopeId})`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Falha enviando contrato da proposta ${propostaId}: ${msg}`);
+    }
+  }
+
+  private async avisarFalhaContrato(
+    empresaId: string,
+    usuarioId: string | null,
+    numero: string,
+    motivo: string,
+  ): Promise<void> {
+    if (!usuarioId) return;
+    await this.notificacoes
+      .criarParaUsuario({
+        empresaId,
+        usuarioId,
+        tipo: 'GENERICO',
+        prioridade: 'ALTA',
+        titulo: `Contrato da ${numero} não foi enviado`,
+        mensagem:
+          `O cliente aceitou a proposta ${numero}, mas o contrato não seguiu pra assinatura: ${motivo}. ` +
+          'O aceite está registrado — falta só o contrato.',
+        link: '/propostas',
+      })
+      .catch(() => null);
   }
 
   private async notificarRep(
@@ -447,4 +557,23 @@ export class PropostaAceiteService {
       );
     }
   }
+}
+
+/** "3 de setembro de 2026" — como o contrato escreve a data. */
+function dataPorExtenso(d: Date): string {
+  const meses = [
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
+  ];
+  return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
 }

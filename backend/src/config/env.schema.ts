@@ -19,6 +19,16 @@ export const envSchema = z
      */
     FRONTEND_URL: z.string().url().optional(),
 
+    // Assinatura eletrônica do contrato (ClickSign). O TEXTO do contrato não
+    // mora aqui: é um Modelo dentro do ClickSign, e a chave dele é o que o app
+    // precisa saber. Trocar o contrato vira edição no painel, sem deploy.
+    CLICKSIGN_API_URL: z.string().url().optional(),
+    CLICKSIGN_ACCESS_TOKEN: z.string().optional(),
+    CLICKSIGN_TEMPLATE_KEY: z.string().optional(),
+    /// Quem assina pela casa — signatário de verdade, com log próprio.
+    CLICKSIGN_SIGNATARIO_NOME: z.string().optional(),
+    CLICKSIGN_SIGNATARIO_EMAIL: z.string().email().optional(),
+
     // Database
     DATABASE_URL: z.string().url(),
     DIRECT_URL: z.string().url(),

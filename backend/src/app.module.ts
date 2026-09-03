@@ -17,6 +17,7 @@ import { GoogleModule } from '@integrations/google/google.module';
 import { MLModule } from '@integrations/mercadolivre/ml.module';
 import { MetaModule } from '@integrations/meta/meta.module';
 import { TinyModule } from '@integrations/tiny/tiny.module';
+import { ClickSignModule } from '@integrations/clicksign/clicksign.module';
 import { ResendModule } from '@integrations/resend/resend.module';
 import { ShopeeModule } from '@integrations/shopee/shopee.module';
 import { TikTokModule } from '@integrations/tiktok/tiktok.module';
@@ -259,6 +260,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     IntegracoesModule,
     TinyModule,
     ResendModule,
+    ClickSignModule,
     EmailModule,
     GoogleModule,
     WhatsAppModule,

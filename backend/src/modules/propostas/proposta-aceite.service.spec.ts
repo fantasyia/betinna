@@ -77,15 +77,19 @@ function makeService(txProverbCount: number, recusaCount = 1) {
       maxDescontoPercentual: 0,
     }),
   };
+  // ClickSign desligado nos testes de aceite: o envio do contrato é best-effort
+  // e tem teste próprio. `configurado: false` mantém o caminho antigo intacto.
+  const clicksign = { configurado: false, enviarParaAssinatura: vi.fn() };
   const svc = new PropostaAceiteService(
     prisma as never,
     makeEnv() as never,
     makeSequence() as never,
     notificacoes as never,
     pedidoPricing as never,
+    clicksign as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
-  return { svc, prisma, tx, notificacoes, pedidoPricing };
+  return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign };
 }
 
 describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () => {

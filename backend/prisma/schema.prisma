@@ -968,6 +968,16 @@ model Proposta {
   /// Dias de carência antes da 1ª cobrança (o período grátis).
   carenciaDias      Int?
 
+  /// QUEM assina o contrato pelo cliente — pessoa, não empresa.
+  ///
+  /// Fica na PROPOSTA e não no Cliente porque quem tem poder de assinar é
+  /// decisão deste negócio: pode ser o dono numa venda e o gerente industrial
+  /// na seguinte. E é obrigatório na prática — a assinatura eletrônica recusa
+  /// razão social como nome de signatário ("name não está em um formato
+  /// válido"), então sem uma pessoa aqui o contrato não sai.
+  signatarioNome  String?
+  signatarioEmail String?
+
   // #17 — dinheiro em Decimal (precisão de centavos). descontoGeral (%) segue Float.
   subtotal         Decimal @default(0) @db.Decimal(14, 2)
   descontoGeral    Float   @default(0) // %
