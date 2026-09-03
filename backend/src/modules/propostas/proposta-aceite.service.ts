@@ -4,6 +4,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { ClickSignService } from '@integrations/clicksign/clicksign.service';
+import { variaveisDoContrato } from './contrato-variaveis.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
@@ -427,6 +428,8 @@ export class PropostaAceiteService {
           id: true,
           numero: true,
           valor: true,
+          criadoEm: true,
+          validoAte: true,
           modalidade: true,
           prazoMeses: true,
           diaVencimento: true,
@@ -435,6 +438,15 @@ export class PropostaAceiteService {
           clienteId: true,
           representanteId: true,
           cliente: { select: { nome: true, email: true, cnpj: true } },
+          itens: {
+            select: {
+              produtoId: true,
+              produtoNome: true,
+              quantidade: true,
+              precoUnitario: true,
+              total: true,
+            },
+          },
         },
       });
       if (!p || p.modalidade !== 'LOCACAO') return;
@@ -457,14 +469,30 @@ export class PropostaAceiteService {
         return;
       }
 
+      // SKU por item: é ele que vai pro contrato (MB-05), não o nome longo.
+      const produtos = await this.prisma.produto.findMany({
+        where: { id: { in: p.itens.map((i) => i.produtoId) } },
+        select: { id: true, sku: true },
+      });
+      const skuDe = new Map(produtos.map((x) => [x.id, x.sku]));
+
       const envelope = await this.clicksign.enviarParaAssinatura({
         titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
         cliente: { nome, email },
-        variaveis: {
-          razao_social: p.cliente.nome,
-          numero_proposta: p.numero,
-          data_extenso: dataPorExtenso(new Date()),
-        },
+        variaveis: variaveisDoContrato({
+          numero: p.numero,
+          valor: p.valor,
+          criadoEm: p.criadoEm,
+          validoAte: p.validoAte,
+          clienteNome: p.cliente.nome,
+          itens: p.itens.map((i) => ({
+            sku: skuDe.get(i.produtoId) ?? '',
+            produtoNome: i.produtoNome,
+            quantidade: i.quantidade,
+            precoUnitario: i.precoUnitario,
+            total: i.total,
+          })),
+        }),
       });
 
       await this.prisma.contrato.create({
@@ -557,23 +585,4 @@ export class PropostaAceiteService {
       );
     }
   }
-}
-
-/** "3 de setembro de 2026" — como o contrato escreve a data. */
-function dataPorExtenso(d: Date): string {
-  const meses = [
-    'janeiro',
-    'fevereiro',
-    'março',
-    'abril',
-    'maio',
-    'junho',
-    'julho',
-    'agosto',
-    'setembro',
-    'outubro',
-    'novembro',
-    'dezembro',
-  ];
-  return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
 }
