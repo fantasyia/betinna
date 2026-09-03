@@ -54,6 +54,8 @@ export interface ResultadoImportacao {
 interface ProdutoTiny {
   id: number;
   sku?: string;
+  /** A = ativo · I = inativo · E = EXCLUÍDO (o DELETE do Tiny é lógico). */
+  situacao?: string;
 }
 
 /**
@@ -104,6 +106,17 @@ export class TinyProdutosService {
       try {
         const existente = await this.acharPorSku(empresaId, p.sku);
         const corpo = this.montarCorpo(p);
+        // FABRICADO só nasce se a produção vier NO MESMO POST. Medido em 02/09:
+        //   POST tipo F sem `producao`      → 400 "deve conter informações de produção"
+        //   POST sem tipo, depois /fabricado → 404 "produto não é do tipo Fabricado"
+        //   POST tipo F COM `producao`      → 201, e nasce F com a estrutura
+        // O caminho antigo (nascer S e converter depois) NÃO existe: o PUT de
+        // produto aceita 204 e IGNORA `tipo` e `producao` em silêncio.
+        const producao = existente ? null : await this.montarProducao(empresaId, p);
+        if (producao) {
+          corpo.tipo = 'F';
+          corpo.producao = producao;
+        }
         let idTiny: number | undefined;
         let acao: 'criado' | 'atualizado';
         if (existente) {
@@ -125,7 +138,10 @@ export class TinyProdutosService {
         // receber a estrutura em seguida — é ela que o converte em Fabricado.
         let estrutura: 'definida' | 'falhou' | undefined;
         let estruturaErro: string | undefined;
-        if (idTiny && p.componentes?.length) {
+        // Na CRIAÇÃO a estrutura já foi no POST (ver acima). Aqui é só o caso
+        // do produto que já existia e está recebendo/atualizando a estrutura.
+        if (producao) estrutura = 'definida';
+        else if (idTiny && p.componentes?.length) {
           estrutura = await this.definirEstrutura(empresaId, idTiny, p).catch((err: unknown) => {
             // Produto dentro e estrutura falha é um estado ÚTIL (ele já vende);
             // por isso não vira erro do item, vira aviso visível no relatório —
@@ -166,6 +182,29 @@ export class TinyProdutosService {
    * que não existe no Tiny faz a estrutura inteira falhar — de propósito, uma
    * ficha técnica pela metade produziria peça errada.
    */
+  /**
+   * Monta o bloco `producao` que o POST de produto FABRICADO exige.
+   *
+   * Devolve `null` quando não há componentes — produto sem estrutura nasce
+   * Simples, que vende, estoca e fatura igual.
+   */
+  private async montarProducao(
+    empresaId: string,
+    p: ProdutoParaImportar,
+  ): Promise<{
+    produtos: Array<{ produto: { id: number }; quantidade: number }>;
+    etapas?: string[];
+  } | null> {
+    if (!p.componentes?.length) return null;
+    const produtos: Array<{ produto: { id: number }; quantidade: number }> = [];
+    for (const c of p.componentes) {
+      const achado = await this.acharPorSku(empresaId, c.sku);
+      if (!achado) throw new Error(`componente ${c.sku} não existe no Tiny`);
+      produtos.push({ produto: { id: achado.id }, quantidade: c.quantidade });
+    }
+    return { produtos, ...(p.etapas?.length ? { etapas: p.etapas } : {}) };
+  }
+
   private async definirEstrutura(
     empresaId: string,
     idProduto: number,
@@ -288,7 +327,12 @@ export class TinyProdutosService {
     });
     // O filtro `codigo` é busca, não igualdade — MB-01 casaria MB-010 se
     // existisse. A conferência exata é aqui.
-    return (r.itens ?? []).find((i) => (i.sku ?? '').trim() === sku) ?? null;
+    //
+    // `situacao E` = EXCLUÍDO. O Tiny não apaga produto de verdade: o DELETE
+    // marca E, o registro continua aparecendo na busca, e o SKU fica livre pra
+    // um produto novo. Sem descartar o excluído, a importação seguinte acharia
+    // o cadáver e faria UPDATE nele em vez de criar o produto vivo.
+    return (r.itens ?? []).find((i) => (i.sku ?? '').trim() === sku && i.situacao !== 'E') ?? null;
   }
 
   private montarCorpo(p: ProdutoParaImportar): Record<string, unknown> {
