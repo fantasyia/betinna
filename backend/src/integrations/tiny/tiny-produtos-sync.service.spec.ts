@@ -246,4 +246,24 @@ describe('TinyProdutosSyncService — listas de locacao', () => {
 
     expect(mapa.size).toBe(0);
   });
+
+  it('imagem = o anexo MAIS RECENTE — a API do Tiny não deleta anexo, só empilha', async () => {
+    const { svc, prisma, client } = build([MB]);
+    client.get.mockImplementation((_e: string, caminho: string) => {
+      if (caminho.startsWith('/estoque/')) return Promise.resolve({ disponivel: 7 });
+      if (caminho.includes('/anexos'))
+        return Promise.resolve([
+          { id: 1, url: 'https://cdn/velho.png' },
+          { id: 2, url: 'https://cdn/novo.png' },
+        ]);
+      return Promise.resolve({ itens: [MB], paginacao: { total: 1 } });
+    });
+
+    await svc.sync('emp-1');
+
+    const chamada = prisma.produto.updateMany.mock.calls.find(
+      (c) => (c[0] as { data: Record<string, unknown> }).data.imagem,
+    );
+    expect((chamada?.[0] as { data: { imagem: string } }).data.imagem).toBe('https://cdn/novo.png');
+  });
 });
