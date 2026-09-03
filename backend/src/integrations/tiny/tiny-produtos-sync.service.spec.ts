@@ -183,3 +183,67 @@ describe('preço de locação', () => {
     expect(prisma.produto.create.mock.calls[0][0].data.precoLocacaoMensal).toBeNull();
   });
 });
+
+/**
+ * Passou a existir MAIS DE UMA lista de locacao (Padrao e + Data Sense, 02/09),
+ * e cada produto aparece em exatamente uma. E a de PLACEHOLDER nao pode ser
+ * apagada — a API do Tiny recusa DELETE em lista de preco — entao ela convive
+ * com as reais e nao pode concorrer.
+ */
+describe('TinyProdutosSyncService — listas de locacao', () => {
+  const clienteCom = (
+    listas: Array<{ id: number; descricao: string }>,
+    porLista: Record<number, Array<{ idProduto: number; preco: number }>>,
+  ) => ({
+    get: vi.fn((_e: string, caminho: string) => {
+      if (caminho.startsWith('/estoque/')) return Promise.resolve({ saldo: 0, disponivel: 0 });
+      if (caminho.includes('/anexos')) return Promise.resolve([]);
+      if (caminho === '/listas-precos') return Promise.resolve({ itens: listas });
+      const m = /\/listas-precos\/(\d+)/.exec(caminho);
+      if (m) return Promise.resolve({ excecoes: porLista[Number(m[1])] ?? [] });
+      return Promise.resolve({ itens: [], paginacao: { total: 0 } });
+    }),
+  });
+
+  const mapaDe = async (cliente: unknown) => {
+    // Ordem do construtor: (prisma, client, integracoes) — so o client importa aqui.
+    const svc = new TinyProdutosSyncService({} as never, cliente as never, {} as never);
+    // @ts-expect-error — metodo privado: e o alvo do teste
+    return svc.precosDeLocacao('emp-1') as Promise<Map<number, number>>;
+  };
+
+  it('junta TODAS as listas de locacao — uma familia nao pode apagar a outra', async () => {
+    const mapa = await mapaDe(
+      clienteCom(
+        [
+          { id: 1769, descricao: 'Locação mensal — Master Block Padrão 2026' },
+          { id: 1770, descricao: 'Locação mensal — Master Block + Data Sense 2026' },
+        ],
+        { 1769: [{ idProduto: 1, preco: 121 }], 1770: [{ idProduto: 2, preco: 564 }] },
+      ),
+    );
+
+    expect(mapa.get(1)).toBe(121);
+    expect(mapa.get(2)).toBe(564);
+  });
+
+  it('IGNORA a lista de PLACEHOLDER — ela nao pode ser apagada e concorreria com o preco real', async () => {
+    const mapa = await mapaDe(
+      clienteCom(
+        [
+          { id: 1701, descricao: 'Locação mensal (PLACEHOLDER — valores a confirmar)' },
+          { id: 1769, descricao: 'Locação mensal — Master Block Padrão 2026' },
+        ],
+        { 1701: [{ idProduto: 1, preco: 300 }], 1769: [{ idProduto: 1, preco: 121 }] },
+      ),
+    );
+
+    expect(mapa.get(1)).toBe(121);
+  });
+
+  it('sem lista nenhuma, devolve vazio em vez de estourar', async () => {
+    const mapa = await mapaDe(clienteCom([], {}));
+
+    expect(mapa.size).toBe(0);
+  });
+});

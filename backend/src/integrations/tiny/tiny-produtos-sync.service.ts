@@ -161,7 +161,13 @@ export class TinyProdutosSyncService {
   }
 
   /**
-   * Lê a lista de preços de LOCAÇÃO do ERP → mapa idProdutoTiny → mensalidade.
+   * Lê as listas de preços de LOCAÇÃO do ERP → mapa idProdutoTiny → mensalidade.
+   *
+   * ⚠️ TODAS as listas que casam, não a primeira. Passou a existir mais de uma
+   * família com mensalidade própria (Padrão e + Data Sense, 02/09), e cada
+   * produto aparece em exatamente uma delas. Lendo só a primeira, metade do
+   * catálogo ficaria sem mensalidade — e preço de locação vazio não parece bug,
+   * parece "ainda não cadastraram".
    *
    * Falha aqui NÃO derruba o sync: catálogo desatualizado é ruim, catálogo
    * ausente é pior. O produto entra sem locação e a tela mostra "—".
@@ -172,24 +178,34 @@ export class TinyProdutosSyncService {
       const listas = await this.client.get<{
         itens?: Array<{ id: number; descricao?: string }>;
       }>(empresaId, '/listas-precos', { limit: 100 });
-      const alvo = (listas.itens ?? []).find((l) =>
-        (l.descricao ?? '').toLowerCase().includes(LISTA_LOCACAO),
-      );
-      if (!alvo) return mapa;
+      const alvos = (listas.itens ?? []).filter((l) => {
+        const d = (l.descricao ?? '').toLowerCase();
+        // PLACEHOLDER fica de fora: a API do Tiny não deixa APAGAR lista de
+        // preço, então a de teste (MB-01 a R$ 300) convive com as reais. Sem
+        // este filtro ela concorreria com o preço verdadeiro.
+        return d.includes(LISTA_LOCACAO) && !d.includes('placeholder');
+      });
+      if (!alvos.length) return mapa;
       // ⚠️ O detalhe da lista devolve os produtos em `excecoes`, NÃO em `itens`
       // (é o terceiro formato diferente na mesma API: anexos vêm em array
       // direto, listagens em `itens`, e a lista de preços em `excecoes`). Ler a
       // chave errada dava mapa vazio, e preço de locação vazio não parece bug —
       // parece "ainda não cadastraram".
-      const detalhe = await this.client.get<{
-        excecoes?: Array<{ idProduto?: number; preco?: number }>;
-        itens?: Array<{ idProduto?: number; preco?: number }>;
-      }>(empresaId, `/listas-precos/${alvo.id}`);
-      const linhas = detalhe.excecoes ?? detalhe.itens ?? [];
-      for (const i of linhas) {
-        if (i.idProduto && typeof i.preco === 'number') mapa.set(i.idProduto, i.preco);
+      for (const alvo of alvos) {
+        const detalhe = await this.client.get<{
+          excecoes?: Array<{ idProduto?: number; preco?: number }>;
+          itens?: Array<{ idProduto?: number; preco?: number }>;
+        }>(empresaId, `/listas-precos/${alvo.id}`);
+        const linhas = detalhe.excecoes ?? detalhe.itens ?? [];
+        let dessa = 0;
+        for (const i of linhas) {
+          if (i.idProduto && typeof i.preco === 'number') {
+            mapa.set(i.idProduto, i.preco);
+            dessa += 1;
+          }
+        }
+        this.logger.log(`[tiny] lista de locação "${alvo.descricao}": ${dessa} preço(s)`);
       }
-      this.logger.log(`[tiny] lista de locação "${alvo.descricao}": ${mapa.size} preço(s)`);
     } catch (err) {
       this.logger.warn(
         `[tiny] não consegui ler a lista de locação: ${err instanceof Error ? err.message : String(err)}`,
