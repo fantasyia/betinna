@@ -185,7 +185,7 @@ export function CondicaoEditor({
         <>
           <Field
             label="Variável / campo"
-            hint="Ex: classificacao_final, lead.tags, lead.etapa_id"
+            hint="Ex: classificacao_final, lead.tags, conversa.bot_ligado"
           >
             <div>
               <Input
@@ -206,6 +206,11 @@ export function CondicaoEditor({
                 <option value="lead.uf" />
                 <option value="lead.cidade" />
                 <option value="lead.score" />
+                {/* Estado REAL da conversa — é o que protege régua com espera
+                    longa de falar por cima de atendente humano. */}
+                <option value="conversa.bot_ligado" />
+                <option value="conversa.precisa_humano" />
+                <option value="conversa.tem_dono" />
                 {variaveis.map((v) => (
                   <option key={v.id} value={v.chave} />
                 ))}

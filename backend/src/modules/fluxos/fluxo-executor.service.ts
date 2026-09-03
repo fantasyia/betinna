@@ -1041,12 +1041,14 @@ export class FluxoExecutorService {
     const min = String(agora.getMinutes()).padStart(2, '0');
     // Lookups são best-effort: o enriquecimento é auxiliar e NUNCA derruba o fluxo.
     let empresaNome = '';
+    let botDaEmpresa = false;
     try {
       const empresa = await this.prisma.empresa.findUnique({
         where: { id: empresaId },
-        select: { nome: true },
+        select: { nome: true, botWhatsappAtivo: true },
       });
       empresaNome = empresa?.nome ?? '';
+      botDaEmpresa = empresa?.botWhatsappAtivo ?? false;
     } catch {
       /* ignora — {{sistema.empresa_nome}} fica vazio */
     }
@@ -1172,11 +1174,15 @@ export class FluxoExecutorService {
 
     // {{custom.*}} = defaults da empresa sobrescritos pelas variáveis do lead.
     ctx.custom = { ...defaults, ...leadVars };
-    // {{conversa.*}} = efêmero: variáveis do turno + texto/classificação do evento.
+    // {{conversa.*}} = efêmero: variáveis do turno + texto/classificação do evento
+    // + o ESTADO REAL da conversa (ver `estadoDaConversa`). O estado vem por
+    // último de propósito: variável de lead com o mesmo nome não pode mascarar
+    // a resposta de "ainda posso falar com essa pessoa?".
     ctx.conversa = {
       ...leadVars,
       ...(typeof ctx.texto === 'string' ? { ultima_msg_lead: ctx.texto } : {}),
       ...(typeof ctx.classificacao === 'string' ? { classificacao: ctx.classificacao } : {}),
+      ...(await this.estadoDaConversa(empresaId, ctx, botDaEmpresa)),
     };
 
     // ATALHOS no TOPO do contexto: o usuário escreve {{nome}}, {{cidade}}, {{uf}},
@@ -2767,6 +2773,69 @@ export class FluxoExecutorService {
    * Best-effort: cliente SEM lead continua sem lead, e as acoes que nao
    * precisam de um seguem funcionando igual.
    */
+  /**
+   * Estado REAL da conversa pra uma `CONDICAO` poder perguntar "ainda posso
+   * falar com essa pessoa?".
+   *
+   * Sem isto, régua com espera longa atropelava atendimento humano: o P3
+   * agradece a entrega em D+2, o cliente responde que veio com defeito, um
+   * atendente assume — e dez dias depois o D+12 pergunta "conseguiu instalar?"
+   * por cima dele. `ENVIAR_WHATSAPP` não consulta estado nenhum: a proteção só
+   * pode morar numa condição antes, e ela não tinha o que ler — apesar do nome,
+   * `ctx.conversa` era montado a partir das variáveis do LEAD.
+   *
+   * A conversa inspecionada é a MESMA que o envio usaria de destino: a do
+   * contexto quando existe, senão a de WhatsApp da EMPRESA (`proprietarioId`
+   * null) mais recente do lead — mesma regra do `leadDoCliente` e do
+   * `conversaDaEmpresaDoLead`. Ler uma e mandar em outra protegeria a conversa
+   * errada.
+   *
+   * ⚠️ `bot_ligado` usa `conv.botLigado ?? empresa.botWhatsappAtivo`, a MESMA
+   * expressão do gatilho `apenasComBotLigado`. O campo da conversa é `null` até
+   * alguém mexer: ler `null` cru concluiria "bot desligado" em toda conversa
+   * virgem, o oposto da verdade. Duas expressões diferentes = duas respostas pra
+   * mesma pergunta.
+   *
+   * Sem conversa nenhuma, vale o default da empresa — é o estado que a conversa
+   * teria ao nascer com a mensagem que está prestes a sair.
+   */
+  private async estadoDaConversa(
+    empresaId: string,
+    ctx: Record<string, unknown>,
+    botDaEmpresa: boolean,
+  ): Promise<{ bot_ligado: boolean; precisa_humano: boolean; tem_dono: boolean }> {
+    const padrao = { bot_ligado: botDaEmpresa, precisa_humano: false, tem_dono: false };
+    try {
+      const conversationId =
+        typeof ctx.conversationId === 'string' ? (ctx.conversationId as string) : undefined;
+      const leadId = typeof ctx.leadId === 'string' ? (ctx.leadId as string) : undefined;
+      if (!conversationId && !leadId) return padrao;
+
+      const conv = await this.prisma.conversation.findFirst({
+        where: conversationId
+          ? { id: conversationId, empresaId }
+          : { empresaId, leadId, canal: 'WHATSAPP', proprietarioId: null },
+        orderBy: { ultimaMsgEm: 'desc' },
+        select: { botLigado: true, precisaHumano: true, proprietarioId: true },
+      });
+      if (!conv) return padrao;
+
+      return {
+        bot_ligado: conv.botLigado ?? botDaEmpresa,
+        precisa_humano: conv.precisaHumano ?? false,
+        tem_dono: conv.proprietarioId != null,
+      };
+    } catch (err) {
+      // Best-effort como o resto do enriquecimento — mas o default aqui é
+      // "pode falar", que é o comportamento de hoje. Falhar fechado calaria
+      // régua inteira por causa de um hiccup de banco.
+      this.logger.warn(
+        `Estado da conversa não veio: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return padrao;
+    }
+  }
+
   private async leadDoCliente(empresaId: string, clienteId: string): Promise<string | undefined> {
     try {
       const leads = await this.prisma.lead.findMany({

@@ -2315,7 +2315,14 @@ describe('FluxoExecutorService — lead resolvido pelo cliente', () => {
 
     await service.executarPasso('exec-1', 'no-1', 'job-test');
 
-    expect(prisma.conversation.findFirst).not.toHaveBeenCalled();
+    // Não é "nenhuma consulta a Conversation": o enriquecimento do contexto lê
+    // o estado da conversa (conversa.bot_ligado) em todo passo, e isso é outro
+    // assunto. O que não pode existir é o DESEMPATE — a consulta que filtra
+    // por `leadId: { in: [...] }` pra escolher entre vários leads do cliente.
+    const desempate = prisma.conversation.findFirst.mock.calls.filter(
+      (c) => (c[0] as { where?: { leadId?: unknown } })?.where?.leadId instanceof Object,
+    );
+    expect(desempate).toHaveLength(0);
   });
 
   it('cliente SEM lead continua como antes — a ação que exige lead falha, não inventa um', async () => {

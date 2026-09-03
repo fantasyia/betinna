@@ -1264,6 +1264,12 @@ const fluxoNoInput = z.object({
         '⚠️ Pra comparar ETAPA use SEMPRE `lead.etapa_id` (id, estável) — NÃO `lead.etapa_atual` ' +
         '(nome): renomear a etapa faz a condição parar de casar SEM erro, o fluxo só desvia pro ' +
         'outro ramo e ninguém percebe. `etapa_atual`/`funil` servem pra texto de mensagem. ' +
+        'ESTADO DA CONVERSA (fresco a cada passo): `conversa.bot_ligado` (bool — PAUSAR_IA derruba; ' +
+        'conversa nova resolve pelo default da empresa, não como desligado) · ' +
+        '`conversa.precisa_humano` (bool — TRANSFERIR_ATENDIMENTO liga) · `conversa.tem_dono` ' +
+        '(bool — conversa é de WhatsApp pessoal de um rep). ⚠️ Régua com espera LONGA (DELAY de ' +
+        'dias) deve checar `conversa.bot_ligado` antes de mandar: sem isso o toque seguinte fala ' +
+        'por cima do atendente que assumiu no meio. ENVIAR_WHATSAPP não checa nada sozinho. ' +
         'Trigger MENSAGEM_CANAL aceita: canais (string[], ' +
         'ex: ["WHATSAPP"]), palavrasChave (string[]), modo ("qualquer"|"todas"|"exata"), ' +
         'apenasComLead (bool), apenasSemLead (bool, uso de TRIAGEM), apenasComBotLigado (bool), ' +
