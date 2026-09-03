@@ -75,6 +75,39 @@ const MARCA_NAO_ENTREGUE = '[ERP] entrega não realizada';
  * app; sem casar, o pedido entra sem dono e só admin/diretor veem. Chutar um
  * dono seria pior: comissão é dinheiro de alguém.
  */
+/** Código dos Correios/Melhor Envio: 2 letras + 9 dígitos + 2 letras. */
+const CODIGO_OBJETO = /^[A-Z]{2}\d{9}[A-Z]{2}$/i;
+/** Nomes de forma de envio que passam pelo Melhor Envio (o Olist Envios é ele por baixo). */
+const ENVIO_MELHOR_ENVIO = /melhor\s*envio|olist\s*envios/i;
+
+/**
+ * Link de rastreio PRA MOSTRAR AO CLIENTE quando o ERP não manda nenhum.
+ *
+ * O `urlRastreamento` do Tiny é campo livre: vem preenchido quando a
+ * transportadora/integração fornece, e vazio no resto — e aí a mensagem de
+ * despacho sairia com o código e sem lugar nenhum pra clicar.
+ *
+ * O Melhor Rastreio resolve pelo código e é **público**: conferido em 03/09
+ * renderizando `/rastreio/<codigo>` sem sessão nenhuma (a página redireciona
+ * pra `/app/<transportadora>/<codigo>` e mostra o rastreio; "Entrar" é só o
+ * cabeçalho). Link que exige login não serve pro cliente final.
+ *
+ * Só monta quando dá pra ter certeza de que o código é rastreável lá: envio
+ * pelo Melhor Envio/Olist Envios, ou código no formato de objeto dos Correios.
+ * Fora disso devolve null — link que abre em "não encontrado" é pior que
+ * mensagem sem link.
+ */
+export function linkPublicoRastreio(
+  codigo: string | null,
+  formaEnvio?: { id?: number; nome?: string } | string,
+): string | null {
+  if (!codigo) return null;
+  const nomeEnvio = typeof formaEnvio === 'string' ? formaEnvio : (formaEnvio?.nome ?? '');
+  const rastreavel = ENVIO_MELHOR_ENVIO.test(nomeEnvio) || CODIGO_OBJETO.test(codigo);
+  if (!rastreavel) return null;
+  return `https://www.melhorrastreio.com.br/rastreio/${encodeURIComponent(codigo)}`;
+}
+
 @Injectable()
 export class PedidoErpSyncService {
   private readonly logger = new Logger(PedidoErpSyncService.name);
@@ -316,7 +349,9 @@ export class PedidoErpSyncService {
 
     const status = this.statusDe(d.situacao);
     const rastreioCodigo = d.transportador?.codigoRastreamento?.trim() || null;
-    const rastreioUrl = d.transportador?.urlRastreamento?.trim() || null;
+    const rastreioUrl =
+      d.transportador?.urlRastreamento?.trim() ||
+      linkPublicoRastreio(rastreioCodigo, d.transportador?.formaEnvio);
     const total = new Prisma.Decimal(d.valorTotalPedido ?? d.valorTotalProdutos ?? 0);
 
     if (existente) {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PedidoErpSyncService } from './pedido-erp-sync.service';
+import { PedidoErpSyncService, linkPublicoRastreio } from './pedido-erp-sync.service';
 
 /**
  * O caminho de VOLTA do ERP: o que nasce ou muda no Tiny precisa aparecer aqui.
@@ -514,6 +514,29 @@ describe('pedidos que vêm do ERP', () => {
       expect(
         bus.disparar.mock.calls.filter((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
       ).toHaveLength(0);
+    });
+  });
+
+  describe('linkPublicoRastreio', () => {
+    // O `urlRastreamento` do Tiny vem vazio na maioria dos envios; sem isto a
+    // mensagem de despacho sai com o código e sem lugar nenhum pra clicar.
+    it('monta o link público quando o envio é Olist Envios (Melhor Envio por baixo)', () => {
+      expect(linkPublicoRastreio('XX999888777BR', { nome: 'Olist Envios' })).toBe(
+        'https://www.melhorrastreio.com.br/rastreio/XX999888777BR',
+      );
+    });
+
+    it('monta pelo formato do código, mesmo sem saber a forma de envio', () => {
+      expect(linkPublicoRastreio('AA123456789BR')).toContain('melhorrastreio.com.br');
+    });
+
+    it('transportadora própria com código fora do padrão NÃO ganha link', () => {
+      // Link que abre em "não encontrado" é pior que mensagem sem link.
+      expect(linkPublicoRastreio('NF-2026-0001', { nome: 'Transportadora Fulano' })).toBeNull();
+    });
+
+    it('sem código não há link', () => {
+      expect(linkPublicoRastreio(null, { nome: 'Olist Envios' })).toBeNull();
     });
   });
 });
