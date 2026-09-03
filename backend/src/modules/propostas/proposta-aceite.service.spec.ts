@@ -189,4 +189,49 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
     expect(r.status).toBe('ACEITA');
     expect(tx.pedido.create).toHaveBeenCalled();
   });
+
+  describe('base do link de aceite', () => {
+    // O link sai da empresa: link errado aqui não quebra nada do nosso lado —
+    // o rep envia, o cliente clica, não abre, e a gente descobre pelo cliente.
+    const montar = (envs: Record<string, string>, producao = true) =>
+      new PropostaAceiteService(
+        {} as never,
+        { get: (k: string) => envs[k] ?? '', isProduction: producao } as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      ) as unknown as { frontendUrl: () => string };
+
+    it('usa FRONTEND_URL quando existe', () => {
+      const svc = montar({ FRONTEND_URL: 'https://app.somatecblocking.com.br/' });
+
+      expect(svc.frontendUrl()).toBe('https://app.somatecblocking.com.br');
+    });
+
+    it('limpa o nome da variável colado no valor (o paste que aconteceu em produção)', () => {
+      const svc = montar({
+        CORS_ORIGINS: 'CORS_ORIGINS=https://app.exemplo.com,https://outro.com',
+      });
+
+      expect(svc.frontendUrl()).toBe('https://app.exemplo.com');
+    });
+
+    it('em produção, ESTOURA em vez de gerar link pra localhost', () => {
+      const svc = montar({ CORS_ORIGINS: 'http://localhost:5173' });
+
+      expect(() => svc.frontendUrl()).toThrow(/FRONTEND_URL/);
+    });
+
+    it('em produção, ESTOURA quando não há base nenhuma', () => {
+      const svc = montar({});
+
+      expect(() => svc.frontendUrl()).toThrow(/FRONTEND_URL/);
+    });
+
+    it('fora de produção, localhost segue valendo', () => {
+      const svc = montar({ CORS_ORIGINS: 'http://localhost:5173' }, false);
+
+      expect(svc.frontendUrl()).toBe('http://localhost:5173');
+    });
+  });
 });

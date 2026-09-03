@@ -81,11 +81,40 @@ export class PropostaAceiteService {
     this.secret = new Uint8Array(derivedKey);
   }
 
+  /**
+   * Base do link de aceite — o endereço que vai PRO CLIENTE.
+   *
+   * ⚠️ Este link sai da empresa. Link errado aqui não quebra nada do nosso lado:
+   * o rep envia, o cliente clica, não abre, e a gente só descobre pelo cliente.
+   * Por isso os dois cuidados abaixo, medidos em produção (03/09):
+   *
+   * 1. **Prefixo colado**: a variável em produção estava com o valor
+   *    `CORS_ORIGINS=http://localhost:5173` — o nome da variável foi junto no
+   *    paste. O link saía `CORS_ORIGINS=http://localhost:5173/proposta/...`.
+   * 2. **localhost em produção**: sem `FRONTEND_URL` configurada, o fallback
+   *    entregava um endereço que só existe na máquina do dev.
+   *
+   * Em produção, agora, isso ESTOURA na hora de gerar — erro pro rep na tela é
+   * muito mais barato que link morto na mão do cliente.
+   */
   private frontendUrl(): string {
-    const fromEnv = this.env.get('FRONTEND_URL');
-    if (fromEnv) return fromEnv.replace(/\/$/, '');
-    const cors = this.env.get('CORS_ORIGINS').split(',')[0]?.trim();
-    return (cors ?? 'http://localhost:3000').replace(/\/$/, '');
+    const limpar = (v: string | undefined): string => {
+      if (!v) return '';
+      // Tira um `NOME_DA_VARIAVEL=` que tenha vindo colado no valor.
+      const semPrefixo = v.replace(/^[A-Z0-9_]+=/, '').trim();
+      return semPrefixo.replace(/\/$/, '');
+    };
+
+    const base =
+      limpar(this.env.get('FRONTEND_URL')) || limpar(this.env.get('CORS_ORIGINS').split(',')[0]);
+
+    if (this.env.isProduction && (!base || /localhost|127\.0\.0\.1/.test(base))) {
+      throw new BusinessRuleException(
+        'FRONTEND_URL não está configurada — o link de aceite sairia apontando pra localhost ' +
+          'e o cliente receberia um endereço que não abre. Configure FRONTEND_URL no ambiente.',
+      );
+    }
+    return base || 'http://localhost:3000';
   }
 
   /**
