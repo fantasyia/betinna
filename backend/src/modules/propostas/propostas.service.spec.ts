@@ -385,6 +385,49 @@ describe('PropostasService', () => {
       ).rejects.toThrow(/não tem preço de locação/i);
     });
 
+    it('produto SEM preço de venda recusa a proposta de VENDA — espelho da regra de locação', async () => {
+      // Master Block com IoT (Data Sense / End Point) só existe em LOCAÇÃO, e
+      // entra no ERP com preço de venda ZERO. Sem esta trava a proposta sairia
+      // a R$ 0,00 — mesma armadilha da locação, na direção oposta.
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-77',
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        {
+          id: 'p-1',
+          nome: 'MB-01 + Data Sense',
+          ativo: true,
+          precoTabela: 0,
+          precoLocacaoMensal: 564,
+        },
+      ]);
+
+      await expect(service.create(fakeUser(), baseDto)).rejects.toThrow(/não tem preço de venda/i);
+    });
+
+    it('o erro DIZ o caminho: trocar a modalidade pra locação', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-77',
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        {
+          id: 'p-1',
+          nome: 'MB-01 + Data Sense',
+          ativo: true,
+          precoTabela: 0,
+          precoLocacaoMensal: 564,
+        },
+      ]);
+
+      await expect(service.create(fakeUser(), baseDto)).rejects.toThrow(/locação/i);
+    });
+
     it('#R1: passa a comissaoPadrao do rep ao pedidoTotals, não 5% fixo', async () => {
       prisma.cliente.findFirst.mockResolvedValue({
         id: 'cli-1',
