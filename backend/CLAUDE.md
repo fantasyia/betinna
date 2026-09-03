@@ -307,6 +307,18 @@ $token = $r.access_token
 - **Prisma generate em Windows**: se o server está rodando, a DLL fica locked. Matar `node` antes de regenerar.
 - **GitHub user.email / user.name** configurados localmente nesse repo como `dev@betinna.ai`/`Betinna Dev` (mudar pra valores reais quando o cliente quiser).
 
+## 8.1 API do Tiny — a spec oficial está no repo
+
+`backend/docs/tiny/` tem o **OpenAPI completo** (`openapi.json`, 202 operações)
+e um índice greppável (`endpoints.txt`). **Nunca afirme que a API do Tiny não
+faz X sem procurar ali** — já aconteceu duas vezes de eu concluir "não dá"
+depois de testar UMA rota no chute, e mandar o cliente fazer na mão o que a API
+fazia. `grep -i anexo backend/docs/tiny/endpoints.txt` custa segundos.
+
+O README do diretório lista as armadilhas que a spec **não** conta (o DELETE de
+anexo leva o id no corpo, o POST empilha, o PUT estoura com lista vazia, campo
+desconhecido é ignorado em silêncio, 429 se disfarça de "não existe").
+
 ## 9. Pendências conhecidas
 
 **Resolvidas em 2026-05-17 (cleanup):**

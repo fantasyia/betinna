@@ -1,0 +1,202 @@
+PUT    /anuncios/{idMapeamento}/preco  — Atualizar preço do anúncio
+POST   /anuncios/{idMapeamento}/preco/enviar  — Enviar preço do anúncio para a plataforma de ecommerce
+POST   /categorias  — Criar categoria de produto
+GET    /categorias-receita-despesa  — Listar categorias de receita e despesa
+PUT    /categorias/{idCategoria}  — Editar categoria de produto
+DELETE /categorias/{idCategoria}  — Excluir categoria de produto
+GET    /categorias/{idCategoria}  — Obter categoria por identificador
+GET    /categorias/todas  — Listar árvore de categorias
+POST   /contas-pagar  — Criar conta a pagar
+GET    /contas-pagar  — Listar contas a pagar
+PUT    /contas-pagar/{idContaPagar}  — Atualizar conta a pagar
+GET    /contas-pagar/{idContaPagar}  — Obter conta a pagar
+POST   /contas-pagar/{idContaPagar}/baixar  — Baixar uma conta a pagar
+PUT    /contas-pagar/{idContaPagar}/marcadores  — Atualizar marcadores da conta a pagar
+POST   /contas-pagar/{idContaPagar}/marcadores  — Criar marcadores da conta a pagar
+DELETE /contas-pagar/{idContaPagar}/marcadores  — Excluir marcadores da conta a pagar
+GET    /contas-pagar/{idContaPagar}/marcadores  — Obter marcadores da conta a pagar
+GET    /contas-pagar/{idContaPagar}/recebimentos  — Obter recebimentos da conta a pagar
+POST   /contas-receber  — Criar conta a receber
+GET    /contas-receber  — Listar contas a receber
+PUT    /contas-receber/{idContaReceber}  — Atualizar conta a receber
+GET    /contas-receber/{idContaReceber}  — Obter conta a receber
+POST   /contas-receber/{idContaReceber}/baixar  — Baixar uma conta a receber
+PUT    /contas-receber/{idContaReceber}/marcadores  — Atualizar marcadores da conta a receber
+POST   /contas-receber/{idContaReceber}/marcadores  — Criar marcadores da conta a receber
+DELETE /contas-receber/{idContaReceber}/marcadores  — Excluir marcadores da conta a receber
+GET    /contas-receber/{idContaReceber}/marcadores  — Obter marcadores da conta a receber
+GET    /contas-receber/{idContaReceber}/recebimentos  — Obter recebimentos da conta a receber
+POST   /contatos  — Criar contato
+GET    /contatos  — Listar contatos
+PUT    /contatos/{idContato}  — Atualizar contato
+GET    /contatos/{idContato}  — Obter contato
+POST   /contatos/{idContato}/pessoas  — Criar pessoa de contato
+GET    /contatos/{idContato}/pessoas  — Listar pessoas de contato
+PUT    /contatos/{idContato}/pessoas/{idPessoa}  — Atualizar pessoa de contato
+DELETE /contatos/{idContato}/pessoas/{idPessoa}  — Excluir pessoa de contato
+GET    /contatos/{idContato}/pessoas/{idPessoa}  — Obter pessoa de contato
+PUT    /contatos/{idContato}/status-crm  — Atualizar status CRM do contato
+GET    /contatos/tipos  — Listar tipos de contatos
+POST   /crm/assuntos  — Criar assunto
+GET    /crm/assuntos  — Listar assuntos
+PUT    /crm/assuntos/{idAssunto}  — Atualizar assunto
+DELETE /crm/assuntos/{idAssunto}  — Deletar assunto
+GET    /crm/assuntos/{idAssunto}  — Obter assunto
+POST   /crm/assuntos/{idAssunto}/acoes  — Criar ação de assunto
+GET    /crm/assuntos/{idAssunto}/acoes  — Listar ações de um assunto
+PUT    /crm/assuntos/{idAssunto}/acoes/{idAcao}  — Atualizar ação de assunto
+DELETE /crm/assuntos/{idAssunto}/acoes/{idAcao}  — Deletar ação de um assunto
+GET    /crm/assuntos/{idAssunto}/acoes/{idAcao}  — Obter ação de um assunto
+POST   /crm/assuntos/{idAssunto}/anotacoes  — Criar anotação de assunto
+GET    /crm/assuntos/{idAssunto}/anotacoes  — Listar anotações de um assunto
+PUT    /crm/assuntos/{idAssunto}/anotacoes/{idAnotacao}  — Atualizar anotação de assunto
+DELETE /crm/assuntos/{idAssunto}/anotacoes/{idAnotacao}  — Deletar anotação de assunto
+PUT    /crm/assuntos/{idAssunto}/arquivar  — Arquivar ou desarquivar assunto
+PUT    /crm/assuntos/{idAssunto}/estrela  — Atualizar estrela do assunto
+PUT    /crm/assuntos/{idAssunto}/marcadores  — Atualizar marcadores do assunto
+POST   /crm/assuntos/{idAssunto}/marcadores  — Criar marcadores do assunto
+GET    /crm/assuntos/{idAssunto}/marcadores  — Listar marcadores de um assunto
+DELETE /crm/assuntos/{idAssunto}/marcadores  — Remover marcadores de um assunto
+POST   /crm/estagios  — Criar estágio
+GET    /crm/estagios  — Listar estágios
+PUT    /crm/estagios/{idEstagio}  — Atualizar estágio
+DELETE /crm/estagios/{idEstagio}  — Deletar estágio
+GET    /crm/estagios/{idEstagio}  — Obter estágio
+GET    /depositos  — Listar depósitos de estoque
+GET    /depositos/{idDeposito}  — Obter depósito de estoque por ID
+POST   /estoque/{idProduto}  — Atualizar o estoque de um produto
+GET    /estoque/{idProduto}  — Obter o estoque de um produto
+GET    /estoque/{idProduto}/logs-movimentacao  — Listar logs de movimentação de estoque (autoria e origem)
+POST   /expedicao  — Criar agrupamento de expedição
+GET    /expedicao  — Listar agrupamentos de expedição
+GET    /expedicao/{idAgrupamento}  — Obter agrupamento de expedição
+POST   /expedicao/{idAgrupamento}/concluir  — Concluir um agrupamento de expedição
+GET    /expedicao/{idAgrupamento}/etiquetas  — Obter etiquetas de um agrupamento de expedição
+PUT    /expedicao/{idAgrupamento}/expedicao/{idExpedicao}  — Alterar uma expedição dentro de um agrupamento
+GET    /expedicao/{idAgrupamento}/expedicao/{idExpedicao}/etiquetas  — Obter etiquetas de uma expedição dentro de um agrupamento
+POST   /expedicao/{idAgrupamento}/origens  — Adicionar origens a um agrupamento de expedição
+GET    /formas-envio  — Listar formas de envio
+GET    /formas-envio/{idFormaEnvio}  — Obter forma de envio
+GET    /formas-pagamento  — Listar formas de pagamento
+GET    /formas-pagamento/{idFormaPagamento}  — Obter forma de pagamento
+GET    /formas-recebimento  — Listar formas de recebimento
+GET    /formas-recebimento/{idFormaRecebimento}  — Obter forma de recebimento
+GET    /grupos-tags  — Listar grupos de tags
+GET    /info  — Obter informações da conta da empresa
+GET    /intermediadores  — Listar intermediadores
+GET    /intermediadores/{idIntermediador}  — Obter intermediador
+POST   /listas-precos  — Criar lista de preços
+GET    /listas-precos  — Listar listas de preços
+PUT    /listas-precos/{idListaDePreco}  — Atualizar lista de preços
+GET    /listas-precos/{idListaDePreco}  — Obter lista de preços
+DELETE /listas-precos/{idListaDePreco}/produtos/{idProduto}  — Excluir produto de lista de preços
+POST   /marcas  — Criar marca
+GET    /marcas  — Listar marcas
+PUT    /marcas/{idMarca}  — Atualizar marca
+GET    /notas  — Listar notas fiscais
+GET    /notas/{idNota}  — Obter nota fiscal
+GET    /notas/{idNota}/comprovante  — Obter comprovante (DANFE) da nota fiscal
+PUT    /notas/{idNota}/despacho  — Atualizar informações de rastreamento da nota fiscal
+POST   /notas/{idNota}/emitir  — Autorizar nota fiscal
+POST   /notas/{idNota}/estornar-contas  — Estornar contas da nota fiscal
+POST   /notas/{idNota}/estornar-estoque  — Estornar estoque da nota fiscal
+GET    /notas/{idNota}/itens/{idItem}  — Obter item da nota fiscal
+POST   /notas/{idNota}/lancar-contas  — Lançar contas da nota fiscal
+POST   /notas/{idNota}/lancar-estoque  — Lançar estoque da nota fiscal
+GET    /notas/{idNota}/link  — Obter link da nota fiscal
+PUT    /notas/{idNota}/marcadores  — Atualizar marcadores da nota fiscal
+POST   /notas/{idNota}/marcadores  — Criar marcadores da nota fiscal
+DELETE /notas/{idNota}/marcadores  — Excluir marcadores da nota fiscal
+GET    /notas/{idNota}/marcadores  — Obter marcadores da nota fiscal
+GET    /notas/{idNota}/xml  — Obter XML da nota fiscal
+POST   /notas/nota-fiscal-consumidor/xml  — Incluir nota fiscal de consumidor por XML
+POST   /notas/xml  — Incluir nota fiscal por XML
+POST   /notas/xml/cancelar  — Cancelar nota fiscal
+POST   /notas/xml/fornecedor  — Incluir nota fiscal de fornecedor por XML
+POST   /orcamentos  — Criar orçamentos (propostas comerciais)
+GET    /orcamentos  — Listar orçamentos (propostas comerciais)
+PUT    /orcamentos/{idOrcamento}  — Atualizar orçamento (proposta comercial)
+DELETE /orcamentos/{idOrcamento}  — Excluir orçamento (proposta comercial)
+GET    /orcamentos/{idOrcamento}  — Obter orçamento (proposta comercial)
+POST   /orcamentos/{idOrcamento}/marcadores  — Criar marcadores do orçamento
+DELETE /orcamentos/{idOrcamento}/marcadores  — Excluir marcadores do orçamento
+GET    /orcamentos/{idOrcamento}/marcadores  — Listar marcadores (tags) do orçamento
+PUT    /orcamentos/{idOrcamento}/situacao  — Atualizar situação do orçamento (proposta comercial)
+POST   /orcamentos/{idOrcamento}/venda  — Gerar venda (pedido) a partir de um orçamento (proposta comercial)
+GET    /orcamentos/modelos  — Listar modelos de orçamentos
+POST   /ordem-compra  — Criar ordem de compra
+GET    /ordem-compra  — Listar ordens de compra
+PUT    /ordem-compra/{idOrdemCompra}  — Atualizar ordem de compra
+GET    /ordem-compra/{idOrdemCompra}  — Obter ordem de compra
+POST   /ordem-compra/{idOrdemCompra}/lancar-contas  — Lançar contas da ordem de compra
+POST   /ordem-compra/{idOrdemCompra}/lancar-estoque  — Lançar estoque da ordem de compra
+PUT    /ordem-compra/{idOrdemCompra}/marcadores  — Atualizar marcadores da ordem de compra
+POST   /ordem-compra/{idOrdemCompra}/marcadores  — Criar marcadores da ordem de compra
+DELETE /ordem-compra/{idOrdemCompra}/marcadores  — Excluir marcadores da ordem de compra
+GET    /ordem-compra/{idOrdemCompra}/marcadores  — Obter marcadores da ordem de compra
+PUT    /ordem-compra/{idOrdemCompra}/situacao  — Atualizar situação da ordem de compra
+POST   /ordem-servico  — Criar ordem de serviço
+GET    /ordem-servico  — Listar ordem de serviço
+PUT    /ordem-servico/{idOrdemServico}  — Atualizar ordem de serviço
+GET    /ordem-servico/{idOrdemServico}  — Obter ordem de serviço
+POST   /ordem-servico/{idOrdemServico}/gerar-nota-fiscal  — Gerar nota fiscal para a ordem de serviço
+POST   /ordem-servico/{idOrdemServico}/lancar-contas  — Lançar contas da ordem de serviço
+POST   /ordem-servico/{idOrdemServico}/lancar-estoque  — Lançar estoque da ordem de serviço
+PUT    /ordem-servico/{idOrdemServico}/marcadores  — Atualizar marcadores da ordem de serviço
+POST   /ordem-servico/{idOrdemServico}/marcadores  — Criar marcadores da ordem de serviço
+DELETE /ordem-servico/{idOrdemServico}/marcadores  — Excluir marcadores da ordem de serviço
+GET    /ordem-servico/{idOrdemServico}/marcadores  — Obter marcadores da ordem de serviço
+PUT    /ordem-servico/{idOrdemServico}/situacao  — Atualizar situação da ordem de serviço
+POST   /pedidos  — Criar pedido
+GET    /pedidos  — Listar pedidos
+PUT    /pedidos/{idPedido}  — Atualizar pedido
+GET    /pedidos/{idPedido}  — Obter pedido
+PUT    /pedidos/{idPedido}/despacho  — Atualizar informações de rastreamento do pedido
+POST   /pedidos/{idPedido}/estornar-contas  — Estornar contas do pedido
+POST   /pedidos/{idPedido}/estornar-estoque  — Estornar estoque do pedido
+POST   /pedidos/{idPedido}/gerar-nota-fiscal  — Gerar nota fiscal do pedido
+POST   /pedidos/{idPedido}/gerar-ordem-producao  — Gerar ordem de produção do pedido
+PUT    /pedidos/{idPedido}/itens  — Atualizar itens do pedido
+POST   /pedidos/{idPedido}/lancar-contas  — Lançar contas do pedido
+POST   /pedidos/{idPedido}/lancar-estoque  — Lançar estoque do pedido
+PUT    /pedidos/{idPedido}/marcadores  — Atualizar marcadores do pedido
+POST   /pedidos/{idPedido}/marcadores  — Criar marcadores do pedido
+DELETE /pedidos/{idPedido}/marcadores  — Excluir marcadores do pedido
+GET    /pedidos/{idPedido}/marcadores  — Obter marcadores do pedido
+PUT    /pedidos/{idPedido}/situacao  — Atualizar situação do pedido
+POST   /produtos  — Criar produto
+GET    /produtos  — Listar produtos
+PUT    /produtos/{idProduto}  — Atualizar produto
+DELETE /produtos/{idProduto}  — Excluir produto
+GET    /produtos/{idProduto}  — Obter produto
+POST   /produtos/{idProduto}/anexos  — Adicionar anexos e imagens ao produto
+PUT    /produtos/{idProduto}/anexos  — Atualizar todos os anexos e imagens do produto
+DELETE /produtos/{idProduto}/anexos  — Deletar anexos e imagens do produto
+GET    /produtos/{idProduto}/anexos  — Obter anexos e imagens do produto
+GET    /produtos/{idProduto}/custos  — Listar custos do produto
+PUT    /produtos/{idProduto}/fabricado  — Atualizar produto fabricado
+GET    /produtos/{idProduto}/fabricado  — Obter produto fabricado
+PUT    /produtos/{idProduto}/kit  — Atualizar kit do produto
+GET    /produtos/{idProduto}/kit  — Obter produto kit
+PUT    /produtos/{idProduto}/preco  — Atualizar preço do produto
+PUT    /produtos/{idProduto}/tags  — Atualizar tags do produto
+POST   /produtos/{idProduto}/tags  — Criar tags do produto
+DELETE /produtos/{idProduto}/tags  — Excluir tags do produto
+GET    /produtos/{idProduto}/tags  — Obter tags do produto
+POST   /produtos/{idProduto}/variacoes  — Criar variação do produto
+PUT    /produtos/{idProduto}/variacoes/{idVariacao}  — Atualizar variação do produto
+DELETE /produtos/{idProduto}/variacoes/{idVariacao}  — Deletar variação do produto
+PUT    /produtos/{idProduto}/variacoes/{idVariacao}/preco  — Atualizar preço da variação do produto
+GET    /separacao  — Listar separações
+GET    /separacao/{idSeparacao}  — Obter separação
+PUT    /separacao/{idSeparacao}/situacao  — Alterar situação da separação
+POST   /servicos  — Criar serviço
+GET    /servicos  — Listar serviços
+PUT    /servicos/{idServico}  — Atualizar serviço
+DELETE /servicos/{idServico}  — Excluir serviço
+GET    /servicos/{idServico}  — Obter serviço
+POST   /servicos/{idServico}/transformar-produto  — Transformar serviço em produto
+POST   /tags  — Criar tags de produtos
+GET    /tags  — Listar tags de produtos
+GET    /usuarios  — Listar usuários
+GET    /vendedores  — Listar vendedores
