@@ -546,7 +546,7 @@ export class PropostasService {
       const precoBase =
         modalidade === 'LOCACAO'
           ? this.mensalidadeObrigatoria(p)
-          : (resolved?.precoFinal ?? Number(p.precoTabela));
+          : this.precoVendaObrigatorio(p, resolved?.precoFinal);
       // CAÇADA-BUG #2: converte override→desconto EFETIVO (ponto único do PedidoPricingService).
       // Antes guardava precoUnitario=override + desconto=0 → o gate de aprovação (que lê it.desconto)
       // via proposta→pedido enxergava 0% e o REP burlava o teto de desconto.
@@ -581,6 +581,35 @@ export class PropostasService {
     if (!valor) {
       throw new BusinessRuleException(
         `"${p.nome}" não tem preço de locação cadastrado — proposta de locação não pode usar o preço de venda.`,
+      );
+    }
+    return valor;
+  }
+
+  /**
+   * Preço de venda do produto — obrigatório na proposta de VENDA.
+   *
+   * ESPELHO do `mensalidadeObrigatoria`, pelo mesmo motivo e na direção
+   * oposta. Os Master Block com IoT (Data Sense e End Point) existem SOMENTE em
+   * locação: entram no ERP com preço de venda ZERO, porque é isso que "não tem
+   * valor de venda" significa lá.
+   *
+   * Sem esta trava, uma proposta de venda com um deles sairia a R$ 0,00 — não
+   * dá erro, não chama atenção, e o número plausível-e-errado vai pro cliente.
+   * É a mesma armadilha que a locação já tinha: preço faltando virando preço.
+   *
+   * Preço negociado do cliente vale: se alguém acordou um valor, existe venda.
+   */
+  private precoVendaObrigatorio(
+    p: { nome: string; precoTabela: unknown },
+    negociado: number | undefined,
+  ): number {
+    if (negociado) return negociado;
+    const valor = Number(p.precoTabela ?? 0);
+    if (!valor) {
+      throw new BusinessRuleException(
+        `"${p.nome}" não tem preço de venda — é produto de LOCAÇÃO. ` +
+          'Troque a modalidade da proposta para locação.',
       );
     }
     return valor;

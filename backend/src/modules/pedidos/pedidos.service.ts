@@ -1077,7 +1077,23 @@ export class PedidosService {
       }
     }
 
-    const priceMap = await this.pricing.priceForClientBatch(empresaId, clienteId, produtoIds);
+    const priceMapPre = await this.pricing.priceForClientBatch(empresaId, clienteId, produtoIds);
+    for (const p of produtos) {
+      // Produto de LOCAÇÃO (Master Block com IoT) entra no ERP com preço de
+      // venda ZERO — é o que "não tem valor de venda" significa lá. Sem esta
+      // trava o pedido sairia a R$ 0,00, sem erro e sem chamar atenção.
+      //
+      // Preço negociado do cliente vale: se alguém acordou um valor, existe
+      // venda. Mesma regra do espelho em propostas.
+      const negociado = priceMapPre.get(p.id)?.precoFinal;
+      if (!negociado && !Number(p.precoTabela ?? 0)) {
+        throw new BusinessRuleException(
+          `"${p.nome}" não tem preço de venda — é produto de LOCAÇÃO e não pode entrar em pedido de venda.`,
+        );
+      }
+    }
+
+    const priceMap = priceMapPre;
 
     // Conversão override→desconto efetivo (teto de aprovação): ponto único no PedidoPricingService,
     // compartilhado com propostas (evita o drift que abriu a CAÇADA-BUG #2).
