@@ -117,6 +117,11 @@ export default function PropostaAceitePage() {
         <div
           style={{
             background: '#fff',
+            // A cor do texto é EXPLÍCITA no cartão porque a página tem fundo
+            // escuro: sem isto, o que não declara cor herda o branco do fundo e
+            // some no cartão branco. Foi o que aconteceu com a tabela de itens —
+            // o cliente só via a proposta passando o mouse por cima.
+            color: '#1f2937',
             borderRadius: 10,
             padding: '1.75rem',
             boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
@@ -189,7 +194,7 @@ export default function PropostaAceitePage() {
                   </thead>
                   <tbody>
                     {data.itens.map((it, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                      <tr key={i} style={{ borderBottom: '1px solid #eee', color: '#1f2937' }}>
                         <td style={{ padding: '0.5rem' }}>{it.produtoNome}</td>
                         <td style={{ padding: '0.5rem', textAlign: 'right' }}>{it.quantidade}</td>
                         <td style={{ padding: '0.5rem', textAlign: 'right' }}>
