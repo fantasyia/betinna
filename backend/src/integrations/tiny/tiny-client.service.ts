@@ -49,7 +49,42 @@ export class TinyClientService {
     return this.request<T>(empresaId, 'put', caminho, body);
   }
 
+  /**
+   * 429 é a ÚNICA falha que a escrita re-tenta.
+   *
+   * O `retries: 0` do POST/PUT abaixo é proposital: timeout e 5xx podem ter
+   * sido processados do outro lado, e repetir criaria pedido duplicado. **429
+   * não tem essa dúvida** — o servidor RECUSOU a requisição, nada rodou. Não
+   * re-tentar transformava rajada em erro na cara do usuário: medido em 03/09,
+   * subir proposta pro ERP morreu com `POST /contatos HTTP 429` logo depois de
+   * uma varredura de produtos.
+   */
+  private static readonly TENTATIVAS_429 = 3;
+  private static readonly ESPERA_429_MS = 3000;
+
   private async request<T>(
+    empresaId: string,
+    metodo: 'get' | 'post' | 'put',
+    caminho: string,
+    body?: unknown,
+  ): Promise<T> {
+    for (let tentativa = 1; ; tentativa++) {
+      try {
+        return await this.requestUmaVez<T>(empresaId, metodo, caminho, body);
+      } catch (err) {
+        const ehLimite = err instanceof IntegrationException && /HTTP 429/.test(err.message);
+        if (!ehLimite || tentativa >= TinyClientService.TENTATIVAS_429) throw err;
+        const espera = TinyClientService.ESPERA_429_MS * tentativa;
+        this.logger.warn(
+          `[tiny] 429 em ${metodo.toUpperCase()} ${caminho} — nova tentativa em ${espera}ms ` +
+            `(${tentativa}/${TinyClientService.TENTATIVAS_429 - 1})`,
+        );
+        await new Promise((r) => setTimeout(r, espera));
+      }
+    }
+  }
+
+  private async requestUmaVez<T>(
     empresaId: string,
     metodo: 'get' | 'post' | 'put',
     caminho: string,
