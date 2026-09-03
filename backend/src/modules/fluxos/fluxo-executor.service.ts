@@ -2511,16 +2511,23 @@ export class FluxoExecutorService {
     this.assertEmpresaId(empresaId, 'PAUSAR_IA');
     const leadId = ctx['leadId'] as string | undefined;
     if (!leadId) throw new Error('contexto.leadId ausente para PAUSAR_IA');
-    const lead = await this.prisma.lead.findFirst({
-      where: { id: leadId, empresaId },
-      select: { contatoTelefone: true },
-    });
-    if (!lead?.contatoTelefone) {
-      throw new Error(`Lead ${leadId} sem contatoTelefone para PAUSAR_IA`);
-    }
-    const sufixo = lead.contatoTelefone.replace(/\D/g, '').slice(-8);
-    if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
     const religar = cfg.religar === true;
+
+    // ⚠️ ESCOPO. O mesmo telefone existe em DUAS caixas quando o rep também usa
+    // WhatsApp pessoal (D38): a da empresa (`proprietarioId` null) e a dele.
+    // Casar só por telefone atingia as duas — um contato descartado na triagem
+    // da EMPRESA silenciava o assistente do rep na conversa PARTICULAR dele, e
+    // o `religar` era pior ainda: ligava o bot dentro da conversa privada.
+    // Medido em campo (X.8, 03/09): `conversasAtualizadas: 2`.
+    //
+    // A ação vale no escopo do FLUXO, nunca fora dele:
+    //   1. tem `conversationId` no contexto → é ELA, e só ela;
+    //   2. não tem → casa por telefone dentro da MESMA caixa do fluxo
+    //      (`proprietarioId` do contexto, null = canal da empresa).
+    const conversationId =
+      typeof ctx['conversationId'] === 'string' ? (ctx['conversationId'] as string) : undefined;
+    const dono =
+      typeof ctx['proprietarioId'] === 'string' ? (ctx['proprietarioId'] as string) : null;
     // Religar devolve o controle ao bot de fato: além de botLigado, limpa o
     // botPausadoAte (handoff/anti-spam) e o precisaHumano — senão o gate do bot
     // continuaria mudo apesar de "ligado" (mesmo caminho do inbox.setBotLigado).
@@ -2529,13 +2536,41 @@ export class FluxoExecutorService {
     // 55 87 6543-2199 de Pernambuco, DDD 87) → pausava/religava o bot na conversa ERRADA. Padrão
     // canônico do repo (fix 707c3bc): RIGHT(REGEXP_REPLACE(...),8) = sufixo via $queryRaw, restrito a
     // @s.whatsapp.net (peer pessoal — nunca grupo/@lid).
-    const conversas = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT "id" FROM "Conversation"
-      WHERE "empresaId" = ${empresaId} AND "canal" = 'WHATSAPP'
-        AND "peerId" LIKE '%@s.whatsapp.net'
-        AND RIGHT(REGEXP_REPLACE(split_part("peerId", '@', 1), '[^0-9]', '', 'g'), 8) = ${sufixo}`;
+    let sufixo: string | undefined;
+    let conversas: Array<{ id: string }>;
+    if (conversationId) {
+      const c = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, empresaId },
+        select: { id: true },
+      });
+      conversas = c ? [c] : [];
+    } else {
+      const lead = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { contatoTelefone: true },
+      });
+      if (!lead?.contatoTelefone) {
+        throw new Error(`Lead ${leadId} sem contatoTelefone para PAUSAR_IA`);
+      }
+      sufixo = lead.contatoTelefone.replace(/\D/g, '').slice(-8);
+      if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
+      // `IS NOT DISTINCT FROM` porque `= NULL` não casa nada em SQL — e o caso
+      // mais comum aqui é justamente o dono nulo (canal da empresa).
+      conversas = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Conversation"
+        WHERE "empresaId" = ${empresaId} AND "canal" = 'WHATSAPP'
+          AND "peerId" LIKE '%@s.whatsapp.net'
+          AND "proprietarioId" IS NOT DISTINCT FROM ${dono}::text
+          AND RIGHT(REGEXP_REPLACE(split_part("peerId", '@', 1), '[^0-9]', '', 'g'), 8) = ${sufixo}`;
+    }
     if (conversas.length === 0) {
-      return { leadId, sufixo, botLigado: religar, conversasAtualizadas: 0 };
+      return {
+        leadId,
+        sufixo,
+        escopo: dono ?? 'empresa',
+        botLigado: religar,
+        conversasAtualizadas: 0,
+      };
     }
     const { count } = await this.prisma.conversation.updateMany({
       where: { id: { in: conversas.map((c) => c.id) }, empresaId },
@@ -2556,7 +2591,15 @@ export class FluxoExecutorService {
     const canceladas = religar
       ? 0
       : await this.cancelarExecucoesDoLead(empresaId, leadId, execucaoId);
-    return { leadId, sufixo, botLigado: religar, conversasAtualizadas: count, canceladas };
+    return {
+      leadId,
+      sufixo,
+      escopo: dono ?? 'empresa',
+      alvo: conversationId ? 'conversa do contexto' : 'telefone',
+      botLigado: religar,
+      conversasAtualizadas: count,
+      canceladas,
+    };
   }
 
   /**
