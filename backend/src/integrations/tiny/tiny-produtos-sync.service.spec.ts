@@ -266,4 +266,42 @@ describe('TinyProdutosSyncService — listas de locacao', () => {
     );
     expect((chamada?.[0] as { data: { imagem: string } }).data.imagem).toBe('https://cdn/novo.png');
   });
+
+  it('429 na busca do anexo não passa por "sem imagem" — tenta de novo e conta a falha', async () => {
+    const { svc, prisma, client } = build([MB]);
+    let tentativas = 0;
+    client.get.mockImplementation((_e: string, caminho: string) => {
+      if (caminho.startsWith('/estoque/')) return Promise.resolve({ disponivel: 7 });
+      if (caminho.includes('/anexos')) {
+        tentativas += 1;
+        if (tentativas === 1) return Promise.reject(new Error('Tiny HTTP 429'));
+        return Promise.resolve([{ id: 9, url: 'https://cdn/depois-do-429.png' }]);
+      }
+      return Promise.resolve({ itens: [MB], paginacao: { total: 1 } });
+    });
+
+    const r = await svc.sync('emp-1');
+
+    expect(r.imagensFalharam).toBe(0);
+    const chamada = prisma.produto.updateMany.mock.calls.find(
+      (c) => (c[0] as { data: Record<string, unknown> }).data.imagem,
+    );
+    expect((chamada?.[0] as { data: { imagem: string } }).data.imagem).toBe(
+      'https://cdn/depois-do-429.png',
+    );
+  });
+
+  it('imagem que não veio mesmo depois do retry aparece no resultado — "0 erros" não pode esconder', async () => {
+    const { svc, client } = build([MB]);
+    client.get.mockImplementation((_e: string, caminho: string) => {
+      if (caminho.startsWith('/estoque/')) return Promise.resolve({ disponivel: 7 });
+      if (caminho.includes('/anexos')) return Promise.reject(new Error('Tiny HTTP 500'));
+      return Promise.resolve({ itens: [MB], paginacao: { total: 1 } });
+    });
+
+    const r = await svc.sync('emp-1');
+
+    expect(r.erros).toBe(0);
+    expect(r.imagensFalharam).toBe(1);
+  });
 });

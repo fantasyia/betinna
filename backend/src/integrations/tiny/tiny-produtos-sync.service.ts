@@ -26,6 +26,13 @@ export interface ResultadoSync {
   atualizados: number;
   estoqueAtualizado: number;
   erros: number;
+  /**
+   * Produto lido cuja imagem NÃO pôde ser conferida (rate limit, 5xx). Fica
+   * separado de `erros` porque o produto entrou inteiro — só a foto ficou pra
+   * trás. Mas precisa aparecer: já aconteceu de o sync dizer "0 erros" com
+   * imagem velha no app, e ninguém tem como desconfiar disso.
+   */
+  imagensFalharam: number;
 }
 
 const PAGINA = 100;
@@ -82,6 +89,7 @@ export class TinyProdutosSyncService {
       atualizados: 0,
       estoqueAtualizado: 0,
       erros: 0,
+      imagensFalharam: 0,
     };
 
     // Preço de locação vem de uma LISTA de preços, não do cadastro do produto —
@@ -112,7 +120,7 @@ export class TinyProdutosSyncService {
           if (opcoes.comEstoque !== false) {
             if (await this.sincronizarEstoque(empresaId, p)) r.estoqueAtualizado += 1;
           }
-          await this.sincronizarImagem(empresaId, p);
+          if (!(await this.sincronizarImagem(empresaId, p))) r.imagensFalharam += 1;
         } catch (err) {
           // Produto que falha não interrompe o catálogo: um SKU problemático não
           // pode deixar os outros 300 desatualizados.
@@ -136,7 +144,8 @@ export class TinyProdutosSyncService {
 
     this.logger.log(
       `[tiny] sync de produtos (${modo}): ${r.lidos} lidos, ${r.criados} criados, ` +
-        `${r.atualizados} atualizados, ${r.estoqueAtualizado} com estoque, ${r.erros} erros`,
+        `${r.atualizados} atualizados, ${r.estoqueAtualizado} com estoque, ${r.erros} erros` +
+        (r.imagensFalharam ? `, ${r.imagensFalharam} imagem(ns) não conferida(s)` : ''),
     );
     return r;
   }
@@ -261,7 +270,9 @@ export class TinyProdutosSyncService {
    * lote da API v2 antes de estourar o rate limit.
    */
   private async sincronizarEstoque(empresaId: string, p: ProdutoTiny): Promise<boolean> {
-    const e = await this.client.get<EstoqueTiny>(empresaId, `/estoque/${p.id}`).catch(() => null);
+    const e = await this.comRetry429(() =>
+      this.client.get<EstoqueTiny>(empresaId, `/estoque/${p.id}`),
+    ).catch(() => null);
     if (!e) return false;
     // `disponivel` (saldo − reservado) é o que o rep pode prometer; `saldo` cru
     // incluiria peça já comprometida com outro pedido.
@@ -283,29 +294,51 @@ export class TinyProdutosSyncService {
    * Best-effort: produto sem imagem é produto normal. Falhar aqui não pode
    * impedir preço e estoque de entrarem.
    */
-  private async sincronizarImagem(empresaId: string, p: ProdutoTiny): Promise<void> {
+  private async sincronizarImagem(empresaId: string, p: ProdutoTiny): Promise<boolean> {
     try {
       // ⚠️ Este endpoint devolve ARRAY DIRETO, não `{ itens: [...] }` como o
       // resto da API. Ler `.itens` aqui dava vazio sempre — e "sem imagem" não
       // parece erro, parece produto sem foto. Aceita as duas formas pra não
       // depender de qual deles o Tiny resolve usar amanhã.
-      const resp = await this.client.get<
-        Array<{ url?: string }> | { itens?: Array<{ url?: string }> }
-      >(empresaId, `/produtos/${p.id}/anexos`);
+      const resp = await this.comRetry429(() =>
+        this.client.get<Array<{ url?: string }> | { itens?: Array<{ url?: string }> }>(
+          empresaId,
+          `/produtos/${p.id}/anexos`,
+        ),
+      );
       const lista = Array.isArray(resp) ? resp : (resp?.itens ?? []);
       // A ÚLTIMA, não a primeira: a API do Tiny não deleta anexo (só o painel,
       // na mão), então trocar a imagem de um produto é EMPILHAR uma nova. Pegar
       // a primeira prenderia o app na imagem mais velha pra sempre.
       const url = [...lista].reverse().find((a) => a.url)?.url;
-      if (!url) return;
+      // Produto sem anexo nenhum é produto normal, não falha.
+      if (!url) return true;
       await this.prisma.produto.updateMany({
         where: { empresaId, codigoErp: String(p.id) },
         data: { imagem: url },
       });
+      return true;
     } catch (err) {
-      this.logger.debug(
+      this.logger.warn(
         `[tiny] imagem de ${p.sku ?? p.id} não veio: ${err instanceof Error ? err.message : String(err)}`,
       );
+      return false;
+    }
+  }
+
+  /**
+   * 429 é "agora não", não "não". Sem isso, uma rajada de rate limit fazia o
+   * sync pular estoque e imagem EM SILÊNCIO e ainda relatar "0 erros".
+   */
+  private async comRetry429<T>(fn: () => Promise<T>): Promise<T> {
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/HTTP 429/.test(msg) || tentativa >= 2) throw err;
+        await new Promise((r) => setTimeout(r, 3000 * (tentativa + 1)));
+      }
     }
   }
 
