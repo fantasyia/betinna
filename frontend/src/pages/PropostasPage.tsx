@@ -1100,6 +1100,14 @@ function PropostaFormDialog({
   // item vem do produto conforme esta escolha — venda usa a tabela, locação usa
   // a mensalidade.
   const [modalidade, setModalidade] = useState<'VENDA' | 'LOCACAO'>('VENDA');
+  // Termos do CONTRATO. Locação vira contrato recorrente no ERP, e sem prazo,
+  // dia de vencimento e carência não há contrato pra criar. Ficam vazios de
+  // propósito: prazo e vencimento padrão são decisão comercial, não default meu.
+  const [prazoMeses, setPrazoMeses] = useState('');
+  const [diaVencimento, setDiaVencimento] = useState('');
+  const [carenciaDias, setCarenciaDias] = useState('');
+  // O REP vende locação sempre — a modalidade dele nem aparece na tela.
+  const ehLocacao = !gestao || modalidade === 'LOCACAO';
   const [itens, setItens] = useState<FormItem[]>([newFormItem()]);
   const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>('BOLETO');
   const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>('30dias');
@@ -1182,6 +1190,11 @@ function PropostaFormDialog({
     if (observacoes.trim()) payload.observacoes = observacoes.trim();
     if (gestao && representante) payload.representanteId = representante.id;
     if (gestao) payload.modalidade = modalidade;
+    if (ehLocacao) {
+      if (prazoMeses) payload.prazoMeses = Number(prazoMeses);
+      if (diaVencimento) payload.diaVencimento = Number(diaVencimento);
+      if (carenciaDias) payload.carenciaDias = Number(carenciaDias);
+    }
 
     try {
       await api.post('/propostas', payload);
@@ -1241,6 +1254,51 @@ function PropostaFormDialog({
               <option value="LOCACAO">Locação (mensalidade)</option>
             </Select>
           </Field>
+        )}
+
+        {ehLocacao && (
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Prazo (meses)">
+              <Input
+                type="number"
+                min={1}
+                max={120}
+                data-testid="proposta-prazo-meses"
+                value={prazoMeses}
+                onChange={(e) => setPrazoMeses(e.target.value)}
+                placeholder="24"
+              />
+            </Field>
+            <Field label="Dia do vencimento">
+              <Input
+                type="number"
+                min={1}
+                max={28}
+                data-testid="proposta-dia-vencimento"
+                value={diaVencimento}
+                onChange={(e) => setDiaVencimento(e.target.value)}
+                placeholder="10"
+              />
+            </Field>
+            <Field label="Carência (dias)">
+              <Input
+                type="number"
+                min={0}
+                max={180}
+                data-testid="proposta-carencia-dias"
+                value={carenciaDias}
+                onChange={(e) => setCarenciaDias(e.target.value)}
+                placeholder="60"
+              />
+            </Field>
+          </div>
+        )}
+        {ehLocacao && (
+          <p className="text-[11px] text-muted -mt-1">
+            Locação vira <strong>contrato recorrente</strong> no ERP. O dia do vencimento para
+            em 28 porque 29, 30 e 31 não existem em todo mês. A carência é o período de
+            avaliação grátis — a 1ª cobrança cai depois dela.
+          </p>
         )}
 
         {gestao && (

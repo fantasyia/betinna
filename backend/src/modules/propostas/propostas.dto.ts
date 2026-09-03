@@ -35,6 +35,20 @@ export const createPropostaSchema = z.object({
    * do rep saía com preço de VENDA — o número errado chegando no cliente.
    */
   modalidade: z.nativeEnum(PropostaModalidade).optional(),
+  /**
+   * Termos do CONTRATO — só fazem sentido em LOCACAO, e sem os três não dá pra
+   * criar o contrato recorrente no ERP (é ele que gera os pedidos mensais).
+   *
+   * `diaVencimento` para em 28 de propósito: 29, 30 e 31 não existem em todo
+   * mês, e vencimento que "pula" é cobrança errada — o cliente reclama e o
+   * financeiro conserta na mão todo fevereiro.
+   *
+   * `carenciaDias` é o período de avaliação GRÁTIS: a 1ª cobrança cai depois
+   * dele. Contrato que começa a cobrar no ato contraria a oferta comercial.
+   */
+  prazoMeses: z.number().int().min(1).max(120).optional(),
+  diaVencimento: z.number().int().min(1).max(28).optional(),
+  carenciaDias: z.number().int().min(0).max(180).optional(),
 });
 export type CreatePropostaDto = z.infer<typeof createPropostaSchema>;
 

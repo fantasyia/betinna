@@ -79,6 +79,17 @@ enum PropostaModalidade {
   LOCACAO
 }
 
+/// Ciclo de vida do contrato de LOCAÇÃO (a venda do rep vira contrato recorrente
+/// no ERP, não pedido avulso — decisão do Léo em 31/08).
+enum ContratoStatus {
+  RASCUNHO
+  AGUARDANDO_ASSINATURA
+  ASSINADO
+  ATIVO
+  ENCERRADO
+  CANCELADO
+}
+
 enum PropostaStatus {
   RASCUNHO
   ENVIADA
@@ -304,6 +315,7 @@ model Empresa {
   produtos              Produto[]
   pedidos               Pedido[]
   propostas             Proposta[]
+  contratos             Contrato[]
   leads                 Lead[]
   funis                 Funil[]
   ocorrencias           Ocorrencia[]
@@ -407,6 +419,7 @@ model Usuario {
   campanhaTemplatesCriados  CampanhaTemplate[]
   notificacoes              Notificacao[]
   propostas                 Proposta[]
+  contratos                 Contrato[]
   movimentosFidelidade      MovimentoFidelidade[]
   repCatalogoItens          RepCatalogoItem[]
   respostasRapidas          RespostaRapida[]
@@ -515,6 +528,7 @@ model Cliente {
 
   pedidos                Pedido[]
   propostas              Proposta[]
+  contratos              Contrato[]
   ocorrencias            Ocorrencia[]
   amostras               Amostra[]
   precos                 ClientePrecoEspecial[]
@@ -943,6 +957,17 @@ model Proposta {
   condicaoPagamento String?
   prazoEntrega      DateTime?
 
+  /// LOCAÇÃO vira CONTRATO recorrente no ERP, e contrato precisa de três coisas
+  /// que a proposta não tinha: por quantos meses, em que dia cobra, e quando a
+  /// primeira cobrança cai. Sem os três não dá pra criar o contrato — e a regra
+  /// comercial da Somatec é que o período de avaliação é GRÁTIS, então cobrar
+  /// no ato seria contrariar a oferta.
+  /// Ficam nulos em proposta de VENDA, que não gera contrato.
+  prazoMeses        Int?
+  diaVencimento     Int?
+  /// Dias de carência antes da 1ª cobrança (o período grátis).
+  carenciaDias      Int?
+
   // #17 — dinheiro em Decimal (precisão de centavos). descontoGeral (%) segue Float.
   subtotal         Decimal @default(0) @db.Decimal(14, 2)
   descontoGeral    Float   @default(0) // %
@@ -982,6 +1007,7 @@ model Proposta {
   cliente       Cliente        @relation(fields: [clienteId], references: [id])
   representante Usuario?       @relation(fields: [representanteId], references: [id], onDelete: SetNull)
   itens         PropostaItem[]
+  contrato      Contrato?
 
   @@unique([empresaId, numero])
   @@index([clienteId])
@@ -990,6 +1016,59 @@ model Proposta {
   // Seed demo
   @@index([empresaId, isDemo])
 }
+
+/// Contrato de LOCAÇÃO. Espelho do contrato no ERP (Tiny), que é quem gera os
+/// pedidos/notas mensais sozinho — é isso que dá lastro à comissão do rep mês a
+/// mês, em vez de o app inventar previsão.
+///
+/// ⚠️ Contrato NÃO existe na API v3 do Tiny (conferido na spec oficial: 202
+/// operações, zero de contrato). É a **v2** (`contrato.incluir.php`), com token
+/// estático. Por isso o app fala as duas APIs.
+model Contrato {
+  id              String  @id @default(cuid())
+  empresaId       String
+  /// 1 proposta = 1 contrato. É o unique que impede aprovar duas vezes virar
+  /// duas cobranças mensais no mesmo cliente.
+  propostaId      String  @unique
+  clienteId       String
+  representanteId String?
+
+  status      ContratoStatus @default(RASCUNHO)
+  valorMensal Decimal        @db.Decimal(14, 2)
+  prazoMeses  Int
+  /// Dia do mês em que a mensalidade vence.
+  diaVencimento Int
+  /// Quando a 1ª cobrança cai — DEPOIS do período grátis, não no ato.
+  primeiraCobrancaEm DateTime?
+
+  /// Contrato correspondente no ERP. Presente = já subiu.
+  contratoErpId String?
+  enviadoErpEm  DateTime?
+
+  /// Assinatura eletrônica (ClickSign). O contrato só sobe pro ERP DEPOIS de
+  /// assinado — contrato no ERP sem assinatura é o erro caro deste fluxo.
+  assinaturaId  String?   @unique
+  assinaturaUrl String?
+  assinadoEm    DateTime?
+  /// PDF assinado guardado no Storage.
+  documentoUrl  String?
+
+  encerradoEm        DateTime?
+  motivoEncerramento String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  proposta      Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
+  cliente       Cliente  @relation(fields: [clienteId], references: [id])
+  representante Usuario? @relation(fields: [representanteId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId, status])
+  @@index([clienteId])
+  @@index([representanteId])
+}
+
 
 model PropostaItem {
   id            String  @id @default(cuid())

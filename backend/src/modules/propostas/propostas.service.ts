@@ -174,6 +174,15 @@ export class PropostasService {
         formaPagamento: dto.formaPagamento,
         condicaoPagamento: dto.condicaoPagamento,
         prazoEntrega: dto.prazoEntrega,
+        // Termos do contrato: só gravam em LOCACAO. Em VENDA não existe ciclo
+        // mensal, e guardar prazo/vencimento ali só criaria dado que mente.
+        ...(modalidade === 'LOCACAO'
+          ? {
+              prazoMeses: dto.prazoMeses ?? null,
+              diaVencimento: dto.diaVencimento ?? null,
+              carenciaDias: dto.carenciaDias ?? null,
+            }
+          : {}),
         subtotal: totals.subtotal,
         descontoGeral: dto.descontoGeral,
         valor: totals.total,

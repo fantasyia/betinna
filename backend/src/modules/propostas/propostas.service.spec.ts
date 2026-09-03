@@ -308,6 +308,54 @@ describe('PropostasService', () => {
       expect(data.numero).toBe('PROP-0001');
     });
 
+    /** Locação vira CONTRATO recorrente no ERP, e contrato precisa de prazo,
+     *  dia de vencimento e carência. Sem os três não há o que criar. */
+    const prepararCliente = () => {
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: null,
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50, precoLocacaoMensal: 9 },
+      ]);
+      prisma.proposta.create.mockResolvedValue(fakeProposta({ status: 'RASCUNHO' }));
+    };
+
+    it('LOCACAO grava prazo, dia de vencimento e carência', async () => {
+      prepararCliente();
+
+      await service.create(fakeUser(), {
+        ...baseDto,
+        modalidade: 'LOCACAO' as const,
+        prazoMeses: 24,
+        diaVencimento: 10,
+        carenciaDias: 60,
+      });
+
+      expect(prisma.proposta.create.mock.calls[0][0].data).toMatchObject({
+        prazoMeses: 24,
+        diaVencimento: 10,
+        carenciaDias: 60,
+      });
+    });
+
+    it('VENDA não guarda termos de contrato — não existe ciclo mensal', async () => {
+      prepararCliente();
+
+      await service.create(fakeUser(), {
+        ...baseDto,
+        modalidade: 'VENDA' as const,
+        prazoMeses: 24,
+        diaVencimento: 10,
+      });
+
+      const data = prisma.proposta.create.mock.calls[0][0].data;
+      expect(data.prazoMeses).toBeUndefined();
+      expect(data.diaVencimento).toBeUndefined();
+    });
+
     it('REP fica como representanteId automaticamente', async () => {
       prisma.cliente.findFirst.mockResolvedValue({
         id: 'cli-1',
