@@ -54,19 +54,35 @@ export class ClickSignService {
     return Boolean(this.token) && Boolean(this.modelo);
   }
 
+  /**
+   * Lê a variável tolerando os dois erros de paste que já aconteceram neste
+   * projeto: o NOME da variável colado junto do valor
+   * (`CORS_ORIGINS=http://...`) e aspas em volta. Um token com lixo invisível
+   * vira 401 — e 401 aqui não quebra nada visível, só faz o contrato não sair.
+   */
+  private ler(chave: string): string {
+    const bruto = this.env.get(chave as never) as string | undefined;
+    if (!bruto) return '';
+    return bruto
+      .trim()
+      .replace(/^[A-Z0-9_]+=/, '')
+      .replace(/^['"]|['"]$/g, '')
+      .trim();
+  }
+
   private get base(): string {
-    return (this.env.get('CLICKSIGN_API_URL') || 'https://app.clicksign.com').replace(/\/$/, '');
+    return (this.ler('CLICKSIGN_API_URL') || 'https://app.clicksign.com').replace(/\/$/, '');
   }
   private get token(): string {
-    return this.env.get('CLICKSIGN_ACCESS_TOKEN') ?? '';
+    return this.ler('CLICKSIGN_ACCESS_TOKEN');
   }
   private get modelo(): string {
-    return this.env.get('CLICKSIGN_TEMPLATE_KEY') ?? '';
+    return this.ler('CLICKSIGN_TEMPLATE_KEY');
   }
   /** Quem assina pela casa. É signatário de verdade, não imagem no documento. */
   private get somatec(): SignatarioContrato | null {
-    const nome = this.env.get('CLICKSIGN_SIGNATARIO_NOME');
-    const email = this.env.get('CLICKSIGN_SIGNATARIO_EMAIL');
+    const nome = this.ler('CLICKSIGN_SIGNATARIO_NOME');
+    const email = this.ler('CLICKSIGN_SIGNATARIO_EMAIL');
     return nome && email ? { nome, email } : null;
   }
 
@@ -195,8 +211,14 @@ export class ClickSignService {
       return (await this.http.post<T>(url, { ...opcoes, body: corpo })).data;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // 401 aqui é quase sempre token com lixo no valor, não token errado —
+      // dizer isso na mensagem economiza meia hora de caça.
+      const dica = /status 401/.test(msg)
+        ? ' — token recusado. Confira se CLICKSIGN_ACCESS_TOKEN no ambiente tem só o valor ' +
+          '(sem o nome da variável junto, sem aspas e sem espaço no fim).'
+        : '';
       throw new IntegrationException(
-        `ClickSign ${metodo} ${caminho}: ${msg.slice(0, 300)}`,
+        `ClickSign ${metodo} ${caminho}: ${msg.slice(0, 300)}${dica}`,
         ErrorCode.INTEGRATION_ERROR,
       );
     }
