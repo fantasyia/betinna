@@ -217,7 +217,16 @@ if (acao === '--preparar') {
       await app('POST', '/contatos/vincular-cliente', { leadId: lead.id, clienteId: cliente.id });
     registrar('lead no funil dos reps, ligado ao cliente', Boolean(lead.id), 'etapa Qualificando');
   } else {
-    registrar('lead no funil dos reps, ligado ao cliente', true, 'reaproveitado');
+    // Lead reaproveitado volta pro começo — quem move pra TRÁS é gente, e aqui
+    // é exatamente isso: alguém remontando o teste. O app não faz isso sozinho
+    // (webhook fora de ordem não pode rebobinar o funil), então o reset passa
+    // pelo endpoint de mover etapa, como um clique no kanban.
+    await app('PUT', `/leads/${lead.id}/etapa`, { funilEtapaId: ETAPA_INICIAL });
+    registrar(
+      'lead no funil dos reps, ligado ao cliente',
+      true,
+      'reaproveitado (voltou pro início)',
+    );
   }
 
   // 3 · proposta de LOCAÇÃO com signatário e termos do contrato
@@ -231,7 +240,7 @@ if (acao === '--preparar') {
   });
   const prop = await app('POST', '/propostas', {
     clienteId: cliente.id,
-    itens: [{ produtoId: mb.id, quantidade: 2, desconto: 0 }],
+    itens: [{ produtoId: mb.id, quantidade: 1, desconto: 0 }],
     formaPagamento: 'BOLETO',
     condicaoPagamento: '30dias',
     modalidade: 'LOCACAO',
@@ -247,7 +256,7 @@ if (acao === '--preparar') {
   });
   const propostaId = prop.corpo?.id;
   registrar(
-    'proposta de locação (2× MB-05, 36 meses, venc. dia 5, sem carência)',
+    'proposta de locação (1× MB-05, 36 meses, venc. dia 5, sem carência)',
     prop.status === 201 && Boolean(propostaId),
     `${prop.corpo?.numero ?? ''} · rep ${rep?.nome ?? '—'} · ${JSON.stringify(prop.erro ?? '').slice(0, 120)}`,
   );
@@ -255,7 +264,28 @@ if (acao === '--preparar') {
 
   await app('PUT', `/propostas/${propostaId}/status`, { status: 'ENVIADA' });
 
-  // 4 · o e-mail com o LINK DE ACEITE (sem PDF: o link é o que fecha)
+  // 4 · O PROJETO do cliente. Sem ele a proposta não sai — e é assim que o
+  // teste exercita a regra, em vez de contorná-la. Projeto de teste: uma
+  // unidade, um quadro, o mínimo que prova o caminho.
+  const projeto = pdfDeUmaPagina([
+    'PROJETO DE INSTALACAO - TESTE',
+    '',
+    `Cliente: ${NOME_CLIENTE}`,
+    'Quadro: QGBT-01   Tensao: 380V',
+    'Equipamento: 1x Master Block MB-05',
+    '',
+    'Documento de teste do fluxo comercial. Sem valor tecnico.',
+  ]);
+  const form = new FormData();
+  form.append('file', new Blob([projeto], { type: 'application/pdf' }), 'projeto-teste.pdf');
+  const upload = await fetch(`${API}/propostas/${propostaId}/anexos`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  registrar('projeto anexado à proposta', upload.status < 300, `${projeto.length} bytes`);
+
+  // 5 · o e-mail com o LINK DE ACEITE (sem PDF: o link é o que fecha)
   const email = await app('POST', `/propostas/${propostaId}/enviar-email`);
   registrar(
     'e-mail da proposta enviado',
@@ -286,6 +316,42 @@ if (acao === '--preparar') {
   );
   console.log('  Agora é com você: abra o link, aceite como se fosse o cliente.');
   console.log('  Depois rode:  node scripts/e2e-contrato.mjs --conferir\n');
+}
+
+/**
+ * PDF de uma página, montado à mão.
+ *
+ * O teste precisa de um arquivo de verdade pra anexar, e trazer uma biblioteca
+ * de PDF só pra isso seria dependência nova por causa de teste. São 5 objetos e
+ * uma tabela de offsets — o formato é simples o bastante pra caber aqui.
+ */
+function pdfDeUmaPagina(linhas) {
+  const NL = '\n';
+  const escapar = (l) => l.replace(/[()\\]/g, (c) => `\\${c}`);
+  const texto = linhas
+    .map((l, i) => `BT /F1 12 Tf 60 ${760 - i * 20} Td (${escapar(l)}) Tj ET`)
+    .join(NL);
+  const objetos = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R ' +
+      '/Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${texto.length} >>${NL}stream${NL}${texto}${NL}endstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let pdf = `%PDF-1.4${NL}`;
+  const offsets = [];
+  objetos.forEach((o, i) => {
+    offsets.push(pdf.length);
+    pdf += `${i + 1} 0 obj${NL}${o}${NL}endobj${NL}`;
+  });
+  const xref = pdf.length;
+  pdf += `xref${NL}0 ${objetos.length + 1}${NL}0000000000 65535 f ${NL}`;
+  for (const off of offsets) pdf += `${String(off).padStart(10, '0')} 00000 n ${NL}`;
+  pdf +=
+    `trailer${NL}<< /Size ${objetos.length + 1} /Root 1 0 R >>${NL}` +
+    `startxref${NL}${xref}${NL}%%EOF${NL}`;
+  return Buffer.from(pdf, 'latin1');
 }
 
 // ── CONFERIR ─────────────────────────────────────────────────────────
