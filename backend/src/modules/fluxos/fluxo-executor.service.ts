@@ -496,6 +496,12 @@ export class FluxoExecutorService {
     // deve enfileirar o caminho normal nem tratar como falha.
     let roteado = false;
     let tipoErro: string | null = null;
+    // Nó "Conversar com IA" classificou já no 1º turno e JÁ enfileirou os
+    // sucessores. O executor não navega de novo — era essa segunda navegação
+    // que fazia o ramo seguinte rodar duas vezes (medido em 04/09: 13 passos
+    // onde deviam ser 8, com MUDAR_TAG falhando em unique constraint na 2ª
+    // passada e duas esperas registradas no mesmo nó de IA).
+    let navegou = false;
 
     try {
       if (no.tipo === 'ACAO' && no.acaoTipo === 'CONVERSAR_IA') {
@@ -511,11 +517,13 @@ export class FluxoExecutorService {
         puladoMotivo = r.motivo ?? null;
         roteado = r.roteado ?? false;
         tipoErro = r.tipoErro ?? null;
+        navegou = r.navegou ?? false;
         output = {
           conversarIa: true,
           aguardando,
           ...(pulado ? { pulado, motivo: puladoMotivo } : {}),
           ...(roteado ? { erro: true, tipoErro } : {}),
+          ...(navegou ? { navegou: true } : {}),
         };
       } else {
         // idemBase = chave determinística ESTÁVEL ao passo lógico (execucaoId:noId, não jobId):
@@ -732,6 +740,17 @@ export class FluxoExecutorService {
         .update({ where: { jobId }, data: { estado: 'CONCLUIDO', concluidoEm: new Date() } })
         .catch(() => undefined);
       this.logger.log(`Execução ${execucaoId} seguiu a saída "erro" (${tipoErro ?? '?'})`);
+      return;
+    }
+
+    // Nó de IA classificou no 1º turno: ele mesmo enfileirou os sucessores (a
+    // saída "classificou", ou o caminho normal como fallback). Navegar aqui
+    // também é o que duplicava o ramo.
+    if (navegou) {
+      await this.prisma.fluxoStepClaim
+        .update({ where: { jobId }, data: { estado: 'CONCLUIDO', concluidoEm: new Date() } })
+        .catch(() => undefined);
+      this.logger.debug(`Execução ${execucaoId} — nó de IA já roteou pela classificação`);
       return;
     }
 

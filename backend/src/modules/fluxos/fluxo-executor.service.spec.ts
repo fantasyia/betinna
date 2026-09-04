@@ -824,6 +824,22 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('CONVERSAR_IA que já roteou pela classificação (navegou) NÃO é navegado de novo', async () => {
+      // Card 🔴 04/09: o nó classificava no 1º turno, enfileirava o sucessor
+      // ele mesmo, e o executor enfileirava de novo — o ramo seguinte rodava
+      // duas vezes, a 12 ms de distância.
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ id: 'no-1', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA', titulo: 'Conversar com IA' }),
+      );
+      prisma.fluxoEdge.findMany.mockResolvedValue([fakeEdge('no-1', 'no-main')]);
+      conversarIa.iniciar.mockResolvedValue({ aguardando: false, navegou: true });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
     it('CAÇADA-BUG #18: aborta (FALHOU) quando atinge o teto de passos — anti-loop', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
       prisma.fluxoExecucaoLog.count.mockResolvedValue(500); // já rodou 500 passos (teto)

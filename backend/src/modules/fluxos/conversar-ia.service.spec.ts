@@ -683,6 +683,91 @@ describe('ConversarIaService', () => {
       expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'IA_CLASSIFICOU', expect.anything());
     });
 
+    // ── O ramo em DOBRO (card 🔴 de 04/09) ─────────────────────────────
+    // Medido montando o acolhimento do C1: nó que classifica SEM aresta
+    // "classificou" rodava o ramo seguinte duas vezes, a 12 ms de distância —
+    // 13 passos onde deviam ser 8, MUDAR_TAG falhando em unique constraint na
+    // segunda passada e duas esperas no mesmo nó de IA. Eram duas navegações:
+    // a da classificação (que somava o caminho normal) e a do executor.
+    it('classificou SEM aresta "classificou": segue o caminho normal UMA vez e avisa o executor', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue({
+        id: 'exec-1',
+        fluxoId: 'fx-1',
+        empresaId: 'emp-1',
+      });
+      // Só o caminho normal (sem rótulo) e a saída de erro.
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        { targetNoId: 'no-2', label: null },
+        { targetNoId: 'no-erro', label: 'erro' },
+      ]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: JSON.stringify({
+          resposta: 'Beleza!',
+          classificou: true,
+          classificacao: 'acolhido',
+        }),
+        modelo: 'gpt',
+      });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1', aguardarResposta: false }) as never,
+        { leadId: 'lead-1', texto: 'queimou meu CLP' },
+        'emp-1',
+        true,
+      );
+
+      // O executor NÃO pode navegar de novo — é esse aviso que mata a dobra.
+      expect(r.navegou).toBe(true);
+      expect(r.aguardando).toBe(false);
+      // E o caminho normal foi enfileirado UMA vez só.
+      const passos = queue.add.mock.calls.filter((c) => c[1]?.noId === 'no-2');
+      expect(passos).toHaveLength(1);
+      // A saída de erro não é sucessora da classificação.
+      expect(queue.add).not.toHaveBeenCalledWith(
+        'step',
+        expect.objectContaining({ noId: 'no-erro' }),
+        expect.anything(),
+      );
+    });
+
+    it('com aresta "classificou", ela MANDA — o caminho normal não vai junto', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue({
+        id: 'exec-1',
+        fluxoId: 'fx-1',
+        empresaId: 'emp-1',
+      });
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        { targetNoId: 'no-2', label: null },
+        { targetNoId: 'no-classificou', label: 'classificou' },
+      ]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: JSON.stringify({ resposta: 'ok', classificou: true, classificacao: 'X' }),
+        modelo: 'gpt',
+      });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1', aguardarResposta: false }) as never,
+        { leadId: 'lead-1', texto: 'oi' },
+        'emp-1',
+        true,
+      );
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        expect.objectContaining({ noId: 'no-classificou' }),
+        expect.anything(),
+      );
+      expect(queue.add).not.toHaveBeenCalledWith(
+        'step',
+        expect.objectContaining({ noId: 'no-2' }),
+        expect.anything(),
+      );
+    });
+
     it('ABORDAGEM FRIA não se auto-classifica — o lead ainda não falou', async () => {
       // Se o modelo devolvesse classificou:true na abertura de uma prospecção
       // fria (R1), o fluxo fecharia ANTES de a pessoa responder. Só o reativo

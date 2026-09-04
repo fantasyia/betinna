@@ -116,6 +116,38 @@ const MARCADORES_EMPRESA =
  * primeiro contato. Um token só também cai aqui — "Globalfer" sozinho não dá
  * pra distinguir de "Marcelo".
  */
+/**
+ * Pra onde um nó vai por uma saída ROTULADA — e o que fazer quando ela não existe.
+ *
+ * A saída com rótulo (`classificou`, `erro`) MANDA: existindo, é por ela que a
+ * execução segue. As arestas sem rótulo (o caminho normal do nó) são
+ * **fallback**, não companhia.
+ *
+ * Antes elas eram somadas (`label === alvo || !e.label`), e isso produzia o
+ * defeito medido em 04/09: o nó de IA que classificava sem ter aresta
+ * `classificou` enfileirava o caminho normal AQUI — e o executor, que também
+ * navega quando o nó não fica aguardando, enfileirava de novo. O ramo inteiro
+ * rodava duas vezes, a 12 ms de distância, com o `MUDAR_TAG` da segunda passada
+ * falhando em unique constraint e duas esperas registradas no mesmo nó. E em
+ * silêncio: nada no log dizia "segui duas vezes", só a contagem de passos.
+ *
+ * Com rótulo E sem rótulo no mesmo nó o efeito era pior ainda: disparava os
+ * dois ramos.
+ */
+export function alvosDaSaida<T extends { label: string | null }>(
+  arestas: T[],
+  label: string,
+  comFallback: boolean,
+): { alvos: T[]; via: 'rotulado' | 'fallback' | 'nenhum' } {
+  const rotuladas = arestas.filter((e) => e.label === label);
+  if (rotuladas.length > 0) return { alvos: rotuladas, via: 'rotulado' };
+  if (!comFallback) return { alvos: [], via: 'nenhum' };
+  const semRotulo = arestas.filter((e) => !e.label);
+  return semRotulo.length > 0
+    ? { alvos: semRotulo, via: 'fallback' }
+    : { alvos: [], via: 'nenhum' };
+}
+
 export function pareceNomeDePessoa(nomeCompleto?: string | null): boolean {
   const nome = (nomeCompleto ?? '').trim();
   if (!nome) return false;
@@ -834,6 +866,12 @@ export class ConversarIaService {
     /** Capturou erro de IA/WhatsApp e roteou pela saída "erro" (executor não segue o caminho normal). */
     roteado?: boolean;
     tipoErro?: string;
+    /**
+     * O nó JÁ enfileirou os sucessores (classificação no 1º turno). O executor
+     * não pode navegar de novo — foi essa navegação em dobro que fazia o ramo
+     * seguinte rodar duas vezes.
+     */
+    navegou?: boolean;
   }> {
     const cfg = (no.config ?? {}) as ConversarIaConfig;
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
@@ -1274,7 +1312,7 @@ export class ConversarIaService {
         select: { id: true, fluxoId: true, empresaId: true },
       });
       if (!execIni) return { aguardando: false };
-      await this.concluirClassificacao({
+      const fim = await this.concluirClassificacao({
         execucao: execIni,
         noId: no.id,
         ctx,
@@ -1291,7 +1329,9 @@ export class ConversarIaService {
         `CONVERSAR_IA: classificou no 1º turno "${turnoAbertura.classificacao ?? '?'}" ` +
           `(exec ${execucaoId}, lead ${leadId}) — fluxo avança sem esperar 2ª mensagem`,
       );
-      return { aguardando: false };
+      // `navegou` avisa o executor que o grafo JÁ andou aqui. Sem isso ele
+      // navegava também, e o ramo seguinte rodava duas vezes.
+      return { aguardando: fim.aguardando, navegou: fim.navegou };
     }
 
     // Mesma regra no turno de abertura: no REATIVO a pessoa já falou, e o que
@@ -2179,7 +2219,7 @@ export class ConversarIaService {
     classificacao?: string;
     historico: HistoricoMsg[];
     esperaMs: number;
-  }): Promise<void> {
+  }): Promise<{ navegou: boolean; aguardando: boolean }> {
     const { execucao, ctx, empresaId, leadId, gravaveis, esperaMs } = p;
     const execucaoId = execucao.id;
     const no = { id: p.noId };
@@ -2233,12 +2273,23 @@ export class ConversarIaService {
       });
       // Cancelada no meio do turno: não avança o grafo. Era daqui que saía a
       // SEGUNDA tarefa pro mesmo recado, depois de o envio já ter sido barrado.
-      if (!seguiuViva) return;
-      await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
+      if (!seguiuViva) return { navegou: true, aguardando: false };
+      const via = await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
       this.logger.log(
         `Execução ${execucaoId} — IA classificou "${classificacaoTurno ?? '?'}" (lead ${leadId})`,
       );
-      return;
+      // Pedido do card: dizer no log quando a classificação não tem pra onde ir
+      // por conta própria. Não é erro — o nó segue o caminho normal, UMA vez —
+      // mas quem monta o fluxo merece saber que a saída "classificou" não existe.
+      if (via === 'fallback') {
+        this.logger.warn(
+          `Nó ${no.id} classificou sem ter aresta "classificou" — seguiu o caminho normal ` +
+            '(uma vez). Se a classificação deve levar a outro lugar, ligue a saída "classificou".',
+        );
+      }
+      // `navegou`: o roteamento JÁ aconteceu aqui. Sem isto o executor navegava
+      // de novo e o ramo inteiro rodava em dobro.
+      return { navegou: true, aguardando: false };
     }
 
     // COM janela de encerramento: roda o ramo "classificou" numa execução-FILHA
@@ -2258,6 +2309,10 @@ export class ConversarIaService {
       `Execução ${execucaoId} — IA classificou "${classificacaoTurno ?? '?'}" (lead ${leadId}); ` +
         `ramo disparado, conversa segue ${Math.round(esperaMs / 1000)}s pro encerramento educado`,
     );
+    // O nó CONTINUA aguardando (janela de encerramento educado): quem chamou não
+    // pode navegar. O ramo "classificou" já está rodando na execução-filha, e o
+    // pai conclui sozinho quando a janela vence.
+    return { navegou: false, aguardando: true };
   }
 
   /**
@@ -2273,7 +2328,9 @@ export class ConversarIaService {
   ): Promise<void> {
     if (!execucao.empresaId) return;
     const arestas = await this.prisma.fluxoEdge.findMany({ where: { sourceNoId: noId } });
-    const alvos = arestas.filter((e) => e.label === 'classificou' || !e.label);
+    // Mesma regra do roteamento normal: a saída "classificou", quando existe,
+    // MANDA — o caminho normal é fallback, não companhia.
+    const { alvos } = alvosDaSaida(arestas, 'classificou', true);
     if (alvos.length === 0) return;
     const filha = await this.prisma.fluxoExecucao.create({
       data: {
@@ -2754,18 +2811,19 @@ export class ConversarIaService {
     noId: string,
     label: string,
     incluirSemLabel: boolean,
-  ): Promise<void> {
+  ): Promise<'rotulado' | 'fallback' | 'nenhum'> {
     const arestas = await this.prisma.fluxoEdge.findMany({ where: { sourceNoId: noId } });
-    const alvos = arestas.filter((e) => e.label === label || (incluirSemLabel && !e.label));
+    const { alvos, via } = alvosDaSaida(arestas, label, incluirSemLabel);
     if (alvos.length === 0) {
       // Sem sucessores, encerra — mas NÃO por cima de um CANCELADO. Foi assim
       // que a execução pausada terminou como CONCLUIDO no log do T1.11.
       await this.atualizarSeViva(execucaoId, { status: 'CONCLUIDO', terminouEm: new Date() });
-      return;
+      return 'nenhum';
     }
     for (const e of alvos) {
       await this.enfileirarStep(execucaoId, e.targetNoId);
     }
+    return via;
   }
 
   /** Enfileira um passo na fila BullMQ (mesmo padrão de opções do executor). */
