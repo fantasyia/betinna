@@ -46,6 +46,8 @@ function build(
     captura as never,
     sequence as never,
     erpPush as never,
+    // Comissão de canal: tem teste próprio no serviço dela.
+    { recalcular: vi.fn(async () => undefined) } as never,
   );
   return { svc, prisma, captura, erpPush };
 }

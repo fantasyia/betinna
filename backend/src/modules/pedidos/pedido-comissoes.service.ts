@@ -2,10 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 
-/** Origens que são VENDA DE CANAL — ninguém atendeu, então não há comissão de rep. */
+/**
+ * Venda de CANAL: entrou sozinha, ninguém atendeu. Não gera comissão de rep e é
+ * a única que paga a % de site.
+ *
+ * `ERP` ficou de FORA de propósito. É a origem de tudo que a rodada diária
+ * importa — inclusive o pedido que o financeiro digita no painel pra um cliente
+ * de rep — e o app tem código (`adotarRepresentante`) que existe justamente pra
+ * dar dono a esses pedidos. Tratá-los como canal pagaria % de site por venda que
+ * o site não fez, e calaria a comissão do rep que a fez.
+ */
 const ORIGENS_CANAL = new Set([
   'SITE',
-  'ERP',
   'MARKETPLACE_ML',
   'MARKETPLACE_SHOPEE',
   'MARKETPLACE_AMAZON',

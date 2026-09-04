@@ -1,18 +1,18 @@
-import { useMemo, useState } from "react";
-import { api, apiErrorMessage } from "@/lib/api";
-import { useApiQuery, type PaginatedResponse } from "@/hooks/useApiQuery";
-import { usePermission } from "@/hooks/usePermission";
-import { PageLayout } from "@/components/PageLayout";
-import { VendasTabs } from "@/components/VendasTabs";
-import { Table, Pagination, type Column } from "@/components/Table";
-import { StateView } from "@/components/StateView";
-import { FilterBar } from "@/components/FilterBar";
-import { Dialog } from "@/components/ui";
-import { FormField, Input, Select } from "@/components/FormField";
-import { cn } from "@/lib/cn";
-import { formatMoeda as fmtBRL, formatPercent } from "@/lib/masks";
+import { useMemo, useState } from 'react';
+import { api, apiErrorMessage } from '@/lib/api';
+import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { usePermission } from '@/hooks/usePermission';
+import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
+import { Table, Pagination, type Column } from '@/components/Table';
+import { StateView } from '@/components/StateView';
+import { FilterBar } from '@/components/FilterBar';
+import { Dialog } from '@/components/ui';
+import { FormField, Input, Select } from '@/components/FormField';
+import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 
-type ComissaoTipo = "REP" | "GERENTE" | "SITE";
+type ComissaoTipo = 'REP' | 'GERENTE' | 'SITE';
 
 /**
  * Espelha o `Comissao` do banco — nomes IGUAIS aos do backend.
@@ -83,36 +83,36 @@ interface Recebidas {
 }
 
 const MES_NOMES = [
-  "Jan",
-  "Fev",
-  "Mar",
-  "Abr",
-  "Mai",
-  "Jun",
-  "Jul",
-  "Ago",
-  "Set",
-  "Out",
-  "Nov",
-  "Dez",
+  'Jan',
+  'Fev',
+  'Mar',
+  'Abr',
+  'Mai',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Set',
+  'Out',
+  'Nov',
+  'Dez',
 ];
 
 /** '2026-08-05' -> '05/08/2026' (a data que o rep procura e a do pagamento). */
 function fmtData(iso: string | null | undefined) {
-  if (!iso) return "—";
-  const [a, m, d] = iso.slice(0, 10).split("-");
+  if (!iso) return '—';
+  const [a, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}/${a}`;
 }
 
 function fmtPct(p: number | null | undefined) {
-  const n = typeof p === "number" && Number.isFinite(p) ? p : 0;
+  const n = typeof p === 'number' && Number.isFinite(p) ? p : 0;
   return formatPercent(n, 2);
 }
 
 export default function ComissoesPage() {
-  const canViewOwn = usePermission("comissoes.own");
-  const canViewAllGlobal = usePermission("comissoes.all");
-  const canViewTeam = usePermission("comissoes.team");
+  const canViewOwn = usePermission('comissoes.own');
+  const canViewAllGlobal = usePermission('comissoes.all');
+  const canViewTeam = usePermission('comissoes.team');
   const canViewAll = canViewAllGlobal || canViewTeam;
 
   return (
@@ -132,41 +132,35 @@ export default function ComissoesPage() {
 // ─── Resumo pessoal (REP/GERENTE) ──────────────────────────────────────
 
 function ResumoPessoal() {
-  const { data, loading, error, refetch } = useApiQuery<Resumo>(
-    "/comissoes/meu-resumo",
-  );
+  const { data, loading, error, refetch } = useApiQuery<Resumo>('/comissoes/meu-resumo');
   // "Como quero ver": o consolidado responde "quanto"; o detalhado responde "de
   // onde saiu" — e e o detalhe que evita a discussao no fim do mes.
-  const [visao, setVisao] = useState<"consolidado" | "detalhado">(
-    "consolidado",
-  );
-  const [aba, setAba] = useState<"receber" | "recebidas">("receber");
+  const [visao, setVisao] = useState<'consolidado' | 'detalhado'>('consolidado');
+  const [aba, setAba] = useState<'receber' | 'recebidas'>('receber');
 
   return (
     <section className="bg-surface border border-border rounded-[10px] p-6 mb-6">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h2 className="m-0 text-[18px]">Minhas comissões</h2>
         <div className="flex gap-1 p-0.5 rounded-md bg-bg-alt border border-border">
-          {(["receber", "recebidas"] as const).map((k) => (
+          {(['receber', 'recebidas'] as const).map((k) => (
             <button
               key={k}
               type="button"
               data-testid={`comissao-aba-${k}`}
               onClick={() => setAba(k)}
               className={cn(
-                "px-3 py-1 rounded text-[12px] font-medium transition-colors",
-                aba === k
-                  ? "bg-surface text-text shadow-sm"
-                  : "text-muted hover:text-text",
+                'px-3 py-1 rounded text-[12px] font-medium transition-colors',
+                aba === k ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text',
               )}
             >
-              {k === "receber" ? "A receber" : "Recebidas"}
+              {k === 'receber' ? 'A receber' : 'Recebidas'}
             </button>
           ))}
         </div>
       </div>
 
-      {aba === "receber" ? (
+      {aba === 'receber' ? (
         <>
           <PrevisaoDoMes visao={visao} onVisao={setVisao} />
           <StateView loading={loading} error={error} onRetry={refetch}>
@@ -187,8 +181,7 @@ function ResumoPessoal() {
                 <h3 className="text-[14px] mb-2">Últimos lançamentos</h3>
                 {(data.historico ?? []).length === 0 ? (
                   <p className="text-[13px] text-muted m-0">
-                    Nenhuma comissão fechada ainda. Elas aparecem aqui quando o
-                    mês é fechado.
+                    Nenhuma comissão fechada ainda. Elas aparecem aqui quando o mês é fechado.
                   </p>
                 ) : (
                   <div className="flex gap-1 overflow-x-auto pb-1">
@@ -197,8 +190,8 @@ function ResumoPessoal() {
                         key={c.id}
                         data-testid="comissao-historico"
                         className={cn(
-                          "flex-[1_1_86px] min-w-[86px] p-2 rounded-md text-center border border-border",
-                          c.pago ? "bg-success/8" : "bg-bg-alt",
+                          'flex-[1_1_86px] min-w-[86px] p-2 rounded-md text-center border border-border',
+                          c.pago ? 'bg-success/8' : 'bg-bg-alt',
                         )}
                       >
                         <div className="text-[11px] text-muted">
@@ -207,9 +200,7 @@ function ResumoPessoal() {
                         <div className="font-semibold text-[13px] mt-0.5">
                           {fmtBRL(c.totalComissao)}
                         </div>
-                        <div className="text-[10px] text-muted mt-0.5">
-                          {c.tipo}
-                        </div>
+                        <div className="text-[10px] text-muted mt-0.5">{c.tipo}</div>
                         {c.pago && (
                           <div className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[9px] font-semibold leading-[1.6] tracking-[0.2px] bg-success/12 text-success border border-success/19 mt-1">
                             pago
@@ -240,12 +231,10 @@ function PrevisaoDoMes({
   visao,
   onVisao,
 }: {
-  visao: "consolidado" | "detalhado";
-  onVisao: (v: "consolidado" | "detalhado") => void;
+  visao: 'consolidado' | 'detalhado';
+  onVisao: (v: 'consolidado' | 'detalhado') => void;
 }) {
-  const { data, loading, error, refetch } = useApiQuery<Previsao>(
-    "/comissoes/minha-previsao",
-  );
+  const { data, loading, error, refetch } = useApiQuery<Previsao>('/comissoes/minha-previsao');
 
   return (
     <StateView loading={loading} error={error} onRetry={refetch}>
@@ -254,8 +243,7 @@ function PrevisaoDoMes({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-[12px] text-muted">
-                {data.fechado ? "Fechado" : "Previsão"} ·{" "}
-                {MES_NOMES[data.mes - 1]}/{data.ano}
+                {data.fechado ? 'Fechado' : 'Previsão'} · {MES_NOMES[data.mes - 1]}/{data.ano}
               </div>
               <div
                 className="text-[26px] font-semibold leading-tight"
@@ -264,38 +252,31 @@ function PrevisaoDoMes({
                 {fmtBRL(data.valor)}
               </div>
               <div className="text-[12px] text-muted mt-0.5">
-                {data.qtdPedidos} pedido{data.qtdPedidos === 1 ? "" : "s"} ·{" "}
-                {fmtBRL(data.base)} vendidos · pagamento previsto em{" "}
-                <strong className="text-text">
-                  {fmtData(data.previsaoPagamentoEm)}
-                </strong>
+                {data.qtdPedidos} pedido{data.qtdPedidos === 1 ? '' : 's'} · {fmtBRL(data.base)}{' '}
+                vendidos · pagamento previsto em{' '}
+                <strong className="text-text">{fmtData(data.previsaoPagamentoEm)}</strong>
               </div>
             </div>
             <div className="flex gap-1 p-0.5 rounded-md bg-surface border border-border">
-              {(["consolidado", "detalhado"] as const).map((v) => (
+              {(['consolidado', 'detalhado'] as const).map((v) => (
                 <button
                   key={v}
                   type="button"
                   data-testid={`comissao-visao-${v}`}
                   onClick={() => onVisao(v)}
                   className={cn(
-                    "px-3 py-1 rounded text-[12px] font-medium transition-colors",
-                    visao === v
-                      ? "bg-bg-alt text-text"
-                      : "text-muted hover:text-text",
+                    'px-3 py-1 rounded text-[12px] font-medium transition-colors',
+                    visao === v ? 'bg-bg-alt text-text' : 'text-muted hover:text-text',
                   )}
                 >
-                  {v === "consolidado" ? "Consolidado" : "Detalhado"}
+                  {v === 'consolidado' ? 'Consolidado' : 'Detalhado'}
                 </button>
               ))}
             </div>
           </div>
 
-          {visao === "detalhado" && (
-            <div
-              className="mt-3 overflow-x-auto"
-              data-testid="comissao-previsao-detalhe"
-            >
+          {visao === 'detalhado' && (
+            <div className="mt-3 overflow-x-auto" data-testid="comissao-previsao-detalhe">
               {data.pedidos.length === 0 ? (
                 <p className="text-[13px] text-muted m-0">
                   Nenhum pedido atribuído a você neste mês ainda.
@@ -308,9 +289,7 @@ function PrevisaoDoMes({
                       <th className="text-left font-medium py-1.5">Cliente</th>
                       <th className="text-left font-medium py-1.5">Data</th>
                       <th className="text-right font-medium py-1.5">Venda</th>
-                      <th className="text-right font-medium py-1.5">
-                        Comissão
-                      </th>
+                      <th className="text-right font-medium py-1.5">Comissão</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -319,12 +298,8 @@ function PrevisaoDoMes({
                         <td className="py-1.5">{p.numero}</td>
                         <td className="py-1.5">{p.cliente}</td>
                         <td className="py-1.5">{fmtData(p.data)}</td>
-                        <td className="py-1.5 text-right">
-                          {fmtBRL(p.totalPedido)}
-                        </td>
-                        <td className="py-1.5 text-right font-medium">
-                          {fmtBRL(p.comissao)}
-                        </td>
+                        <td className="py-1.5 text-right">{fmtBRL(p.totalPedido)}</td>
+                        <td className="py-1.5 text-right font-medium">{fmtBRL(p.comissao)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -340,13 +315,13 @@ function PrevisaoDoMes({
 
 /** Extrato do que ja caiu, filtrado pela data do PAGAMENTO. */
 function Recebimentos() {
-  const [de, setDe] = useState("");
-  const [ate, setAte] = useState("");
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
   const qs = new URLSearchParams();
-  if (de) qs.set("de", de);
-  if (ate) qs.set("ate", ate);
+  if (de) qs.set('de', de);
+  if (ate) qs.set('ate', ate);
   const { data, loading, error, refetch } = useApiQuery<Recebidas>(
-    `/comissoes/minhas-recebidas${qs.toString() ? `?${qs.toString()}` : ""}`,
+    `/comissoes/minhas-recebidas${qs.toString() ? `?${qs.toString()}` : ''}`,
   );
 
   return (
@@ -373,8 +348,8 @@ function Recebimentos() {
             type="button"
             className="text-[12px] text-muted hover:text-text underline pb-2"
             onClick={() => {
-              setDe("");
-              setAte("");
+              setDe('');
+              setAte('');
             }}
           >
             limpar
@@ -390,23 +365,17 @@ function Recebimentos() {
               color="var(--success)"
             />
             {data.itens.length === 0 ? (
-              <p className="text-[13px] text-muted mt-4 mb-0">
-                Nenhuma comissão paga no período.
-              </p>
+              <p className="text-[13px] text-muted mt-4 mb-0">Nenhuma comissão paga no período.</p>
             ) : (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-[13px] border-collapse">
                   <thead>
                     <tr className="text-muted text-[11px] uppercase tracking-wide">
-                      <th className="text-left font-medium py-1.5">
-                        Competência
-                      </th>
+                      <th className="text-left font-medium py-1.5">Competência</th>
                       <th className="text-left font-medium py-1.5">Tipo</th>
                       <th className="text-left font-medium py-1.5">Pago em</th>
                       <th className="text-right font-medium py-1.5">Vendas</th>
-                      <th className="text-right font-medium py-1.5">
-                        Comissão
-                      </th>
+                      <th className="text-right font-medium py-1.5">Comissão</th>
                     </tr>
                   </thead>
                   <tbody data-testid="comissao-recebidas-lista">
@@ -417,12 +386,8 @@ function Recebimentos() {
                         </td>
                         <td className="py-1.5">{c.tipo}</td>
                         <td className="py-1.5">{fmtData(c.pagoEm)}</td>
-                        <td className="py-1.5 text-right">
-                          {fmtBRL(c.totalVendas)}
-                        </td>
-                        <td className="py-1.5 text-right font-medium">
-                          {fmtBRL(c.totalComissao)}
-                        </td>
+                        <td className="py-1.5 text-right">{fmtBRL(c.totalVendas)}</td>
+                        <td className="py-1.5 text-right font-medium">{fmtBRL(c.totalComissao)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -440,7 +405,7 @@ function StatBox({
   label,
   value,
   hint,
-  color = "var(--text)",
+  color = 'var(--text)',
 }: {
   label: string;
   value: string;
@@ -449,9 +414,7 @@ function StatBox({
 }) {
   return (
     <div className="bg-bg-alt border border-border rounded-md p-3">
-      <div className="text-[11px] uppercase text-muted font-semibold">
-        {label}
-      </div>
+      <div className="text-[11px] uppercase text-muted font-semibold">{label}</div>
       <div className="text-[22px] font-bold mt-1" style={{ color }}>
         {value}
       </div>
@@ -465,21 +428,21 @@ function StatBox({
 function ListaAdmin() {
   // D46+D48: fechar mês / marcar pago / desmarcar = DIRECTOR (mandatário do
   // tenant) OU ADMIN (master da plataforma). GERENTE só visualiza.
-  const canManage = usePermission("comissoes.manage");
+  const canManage = usePermission('comissoes.manage');
   const [page, setPage] = useState(1);
   const now = new Date();
-  const [mes, setMes] = useState<number | "">(now.getMonth() + 1);
+  const [mes, setMes] = useState<number | ''>(now.getMonth() + 1);
   const [ano, setAno] = useState<number>(now.getFullYear());
-  const [pago, setPago] = useState<string>("");
+  const [pago, setPago] = useState<string>('');
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({
       page: String(page),
-      limit: "20",
+      limit: '20',
       ano: String(ano),
     });
-    if (mes !== "") qs.set("mes", String(mes));
-    if (pago) qs.set("pago", pago);
+    if (mes !== '') qs.set('mes', String(mes));
+    if (pago) qs.set('pago', pago);
     return `/comissoes?${qs.toString()}`;
   }, [page, mes, ano, pago]);
 
@@ -495,24 +458,24 @@ function ListaAdmin() {
 
   const columns: Column<Comissao>[] = [
     {
-      key: "periodo",
-      header: "Período",
+      key: 'periodo',
+      header: 'Período',
       render: (c) => `${MES_NOMES[c.mes - 1]}/${c.ano}`,
     },
     {
-      key: "rep",
-      header: "Representante",
+      key: 'rep',
+      header: 'Representante',
       render: (c) => (
         <div>
-          <div>{c.representante?.nome ?? "—"}</div>
+          <div>{c.representante?.nome ?? '—'}</div>
           <span
             className={cn(
-              "inline-flex items-center rounded-full px-[9px] py-0.5 text-[10px] font-semibold leading-[1.6] tracking-[0.2px] border",
-              c.tipo === "GERENTE"
-                ? "bg-warning/12 text-warning border-warning/19"
-                : c.tipo === "SITE"
-                  ? "bg-magenta/12 text-magenta border-magenta/19"
-                  : "bg-info/12 text-info border-info/19",
+              'inline-flex items-center rounded-full px-[9px] py-0.5 text-[10px] font-semibold leading-[1.6] tracking-[0.2px] border',
+              c.tipo === 'GERENTE'
+                ? 'bg-warning/12 text-warning border-warning/19'
+                : c.tipo === 'SITE'
+                  ? 'bg-magenta/12 text-magenta border-magenta/19'
+                  : 'bg-info/12 text-info border-info/19',
             )}
           >
             {c.tipo}
@@ -521,23 +484,23 @@ function ListaAdmin() {
       ),
     },
     {
-      key: "vendido",
-      header: "Vendido",
+      key: 'vendido',
+      header: 'Vendido',
       render: (c) => fmtBRL(c.totalVendas),
     },
     {
-      key: "percentual",
-      header: "%",
+      key: 'percentual',
+      header: '%',
       render: (c) => fmtPct(c.percentual),
     },
     {
-      key: "valor",
-      header: "Comissão",
+      key: 'valor',
+      header: 'Comissão',
       render: (c) => <strong>{fmtBRL(c.totalComissao)}</strong>,
     },
     {
-      key: "status",
-      header: "Status",
+      key: 'status',
+      header: 'Status',
       render: (c) =>
         c.pago ? (
           <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-success/12 text-success border border-success/19">
@@ -550,8 +513,8 @@ function ListaAdmin() {
         ),
     },
     {
-      key: "actions",
-      header: "",
+      key: 'actions',
+      header: '',
       render: (c) =>
         canManage && !c.pago ? (
           <button
@@ -587,7 +550,7 @@ function ListaAdmin() {
           data-testid="filter-mes"
           value={mes}
           onChange={(e) => {
-            setMes(e.target.value === "" ? "" : Number(e.target.value));
+            setMes(e.target.value === '' ? '' : Number(e.target.value));
             setPage(1);
           }}
         >
@@ -635,15 +598,8 @@ function ListaAdmin() {
       >
         {pageResp && (
           <>
-            <Table
-              data={pageResp.data}
-              columns={columns}
-              rowKey={(c) => c.id}
-            />
-            <Pagination
-              pagination={pageResp.pagination}
-              onPageChange={setPage}
-            />
+            <Table data={pageResp.data} columns={columns} rowKey={(c) => c.id} />
+            <Pagination pagination={pageResp.pagination} onPageChange={setPage} />
           </>
         )}
       </StateView>
@@ -671,13 +627,7 @@ function ListaAdmin() {
   );
 }
 
-function FecharMesModal({
-  onClose,
-  onDone,
-}: {
-  onClose: () => void;
-  onDone: () => void;
-}) {
+function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const now = new Date();
   // Default: mês anterior (que é o que normalmente se fecha)
   const dPrev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -692,7 +642,7 @@ function FecharMesModal({
     setBusy(true);
     setError(null);
     try {
-      await api.post("/comissoes/fechar-mes", { mes, ano, reprocessar });
+      await api.post('/comissoes/fechar-mes', { mes, ano, reprocessar });
       onDone();
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -722,23 +672,18 @@ function FecharMesModal({
             disabled={busy}
             className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
-            {busy ? "Fechando…" : "Fechar mês"}
+            {busy ? 'Fechando…' : 'Fechar mês'}
           </button>
         </>
       }
     >
       <form id="fechar-mes-form" onSubmit={submit}>
         <p className="text-muted text-[13px] mt-0">
-          Agrega pedidos comissionáveis do período e cria/atualiza registros REP
-          + GERENTE + SITE.
+          Agrega pedidos comissionáveis do período e cria/atualiza registros REP + GERENTE + SITE.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Mês" htmlFor="fm-mes" required>
-            <Select
-              id="fm-mes"
-              value={mes}
-              onChange={(e) => setMes(Number(e.target.value))}
-            >
+            <Select id="fm-mes" value={mes} onChange={(e) => setMes(Number(e.target.value))}>
               {MES_NOMES.map((n, i) => (
                 <option key={i} value={i + 1}>
                   {n}
@@ -781,7 +726,7 @@ function PagarModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [reciboUrl, setReciboUrl] = useState("");
+  const [reciboUrl, setReciboUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -822,15 +767,14 @@ function PagarModal({
             disabled={busy}
             className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
-            {busy ? "Marcando…" : "Marcar como pago"}
+            {busy ? 'Marcando…' : 'Marcar como pago'}
           </button>
         </>
       }
     >
       <form id="pagar-form" onSubmit={submit}>
         <p className="mt-0 text-[14px]">
-          <strong>{comissao.representante?.nome}</strong> —{" "}
-          {fmtBRL(comissao.totalComissao)}
+          <strong>{comissao.representante?.nome}</strong> — {fmtBRL(comissao.totalComissao)}
         </p>
         <FormField
           label="URL do recibo (opcional)"

@@ -378,6 +378,10 @@ export class PedidoErpSyncService {
         !new Prisma.Decimal(existente.total).equals(total);
 
       const naoEntregue = await this.tratarNaoEntregue(empresaId, d, existente);
+      // Recalcula ANTES do atalho de "nada mudou": o que muda a comissão nem
+      // sempre é o pedido. Trocar a % de alguém deixaria a linha velha de pé pra
+      // sempre, porque o pedido continua idêntico e a varredura passa reto.
+      await this.comissoes.recalcular(existente.id);
       if (!mudou) return naoEntregue || adotouRep ? 'atualizado' : 'semMudanca';
 
       const viraEntregue = status === 'ENTREGUE' && existente.status !== 'ENTREGUE';
@@ -416,7 +420,7 @@ export class PedidoErpSyncService {
           motivo: `NF emitida no pedido ${existente.numero} (ERP ${numeroErp})`,
         });
       }
-      // Total, devolução ou dono podem ter mudado — a comissão acompanha.
+      // Total ou devolução podem ter mudado agora — refaz com os valores novos.
       await this.comissoes.recalcular(existente.id);
       if (viraEntregue) await this.dispararEntregue(empresaId, existente.id);
       if (ganhouRastreio) await this.dispararRastreio(empresaId, existente.id);

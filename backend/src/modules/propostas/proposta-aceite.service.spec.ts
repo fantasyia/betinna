@@ -90,6 +90,8 @@ function makeService(txProverbCount: number, recusaCount = 1) {
     pedidoPricing as never,
     clicksign as never,
     etapa as never,
+    // Comissão do pedido nascido do aceite: tem teste próprio no serviço dela.
+    { recalcular: vi.fn(async () => undefined) } as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
   return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa };

@@ -78,6 +78,8 @@ function build(
     // Marco "instalação": só anda quando a NF sai e o lead está em contrato
     // assinado. Aqui é mudo — tem teste próprio no serviço de etapa.
     { mover: vi.fn(async () => 'nao-configurado' as const) } as never,
+    // Comissão por pedido: tem teste próprio no serviço dela.
+    { recalcular: vi.fn(async () => undefined) } as never,
   );
   return { svc, prisma, tiny, notificacoes, bus, sequence };
 }
