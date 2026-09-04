@@ -200,9 +200,9 @@ export class ClickSignService {
     //     ("já existe um requisito do tipo token");
     //  2. `official_document` NÃO anda junto de biometria facial ("não pode ser
     //     utilizado com facial_biometrics").
-    // A combinação mais forte possível é, então, um token + biometria facial.
-    // Sem telefone no cadastro o token cai pro e-mail: melhor degradar a
-    // autenticação do que não conseguir mandar o contrato.
+    // Ou seja: "WhatsApp E e-mail" não existe — é um ou outro. Fica o WhatsApp,
+    // e sem telefone no cadastro cai pro e-mail: degradar a autenticação é
+    // melhor que não conseguir mandar o contrato.
     for (const s of signatarios) {
       const token = s.telefone ? this.canalToken : 'email';
       const requisitos = s.automatico
@@ -211,8 +211,13 @@ export class ClickSignService {
             { action: 'agree', role: 'sign' },
           ]
         : [
+            // Só o token + o CPF que o signatário digita (`has_documentation`).
+            // Biometria facial foi testada e funciona, mas o Léo tirou em
+            // 04/09: contrato de 10 a 50 mil justifica mais que e-mail, e o
+            // token no telefone já é um segundo canal — quem nega ter assinado
+            // precisa explicar acesso ao celular E ao e-mail. Selfie com prova
+            // de vida era atrito sem retorno proporcional.
             { action: 'provide_evidence', auth: token },
-            { action: 'provide_evidence', auth: 'facial_biometrics' },
             { action: 'agree', role: 'sign' },
           ];
       for (const attributes of requisitos) {
