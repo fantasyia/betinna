@@ -58,6 +58,8 @@ export const createPropostaSchema = z.object({
    */
   signatarioNome: z.string().trim().min(3).max(120).optional(),
   signatarioEmail: z.string().trim().email().max(160).optional(),
+  /** Telefone do signatário — exigido pela autenticação por SMS/WhatsApp. */
+  signatarioTelefone: z.string().trim().max(30).optional(),
 });
 export type CreatePropostaDto = z.infer<typeof createPropostaSchema>;
 

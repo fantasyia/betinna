@@ -986,6 +986,9 @@ model Proposta {
   /// válido"), então sem uma pessoa aqui o contrato não sai.
   signatarioNome  String?
   signatarioEmail String?
+  /// Telefone do signatário — a autenticação por SMS/WhatsApp da assinatura
+  /// eletrônica exige. Sem ele, a assinatura cai pro token por e-mail.
+  signatarioTelefone String?
 
   // #17 — dinheiro em Decimal (precisão de centavos). descontoGeral (%) segue Float.
   subtotal         Decimal @default(0) @db.Decimal(14, 2)

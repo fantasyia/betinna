@@ -25,6 +25,8 @@ export const envSchema = z
     CLICKSIGN_API_URL: z.string().url().optional(),
     CLICKSIGN_ACCESS_TOKEN: z.string().optional(),
     CLICKSIGN_TEMPLATE_KEY: z.string().optional(),
+    /// Canal do token de autenticação do cliente: whatsapp (padrão), sms ou email.
+    CLICKSIGN_AUTH_CANAL: z.string().optional(),
     /// Quem assina pela casa — signatário de verdade, com log próprio.
     CLICKSIGN_SIGNATARIO_NOME: z.string().optional(),
     CLICKSIGN_SIGNATARIO_EMAIL: z.string().email().optional(),

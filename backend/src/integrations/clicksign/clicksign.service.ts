@@ -8,6 +8,8 @@ export interface SignatarioContrato {
   /** Nome de PESSOA. Razão social é recusada pela API ("formato inválido"). */
   nome: string;
   email: string;
+  /** Só dígitos, com DDI: `5511999998888`. Com `+` na frente a API recusa. */
+  telefone?: string;
 }
 
 export interface ContratoParaAssinar {
@@ -86,6 +88,19 @@ export class ClickSignService {
   private get modelo(): string {
     return this.ler('CLICKSIGN_TEMPLATE_KEY');
   }
+  /**
+   * Canal do token de autenticação do CLIENTE: `whatsapp`, `sms` ou `email`.
+   *
+   * É UM só — a API trata os três como "requisito do tipo token" e recusa o
+   * segundo. Fica configurável porque trocar o canal é decisão operacional (nem
+   * todo cliente industrial tem WhatsApp no telefone do cadastro) e não deveria
+   * exigir deploy.
+   */
+  private get canalToken(): 'whatsapp' | 'sms' | 'email' {
+    const v = this.ler('CLICKSIGN_AUTH_CANAL').toLowerCase();
+    return v === 'sms' || v === 'email' || v === 'whatsapp' ? v : 'whatsapp';
+  }
+
   /** Quem assina pela casa. É signatário de verdade, não imagem no documento. */
   private get somatec(): SignatarioContrato | null {
     const nome = this.ler('CLICKSIGN_SIGNATARIO_NOME');
@@ -135,7 +150,12 @@ export class ClickSignService {
       { ...dados.cliente, automatico: false },
       ...(this.somatec ? [{ ...this.somatec, automatico: true }] : []),
     ];
-    const signatarios: Array<{ id: string; email: string; automatico: boolean }> = [];
+    const signatarios: Array<{
+      id: string;
+      email: string;
+      automatico: boolean;
+      telefone?: string;
+    }> = [];
     for (const s of paraAssinar) {
       const criado = await this.chamar<{ data: { id: string } }>(
         'POST',
@@ -146,6 +166,7 @@ export class ClickSignService {
             attributes: {
               name: s.nome,
               email: s.email,
+              ...(s.telefone ? { phone_number: s.telefone } : {}),
               // `has_documentation` faz a ClickSign PEDIR o CPF na hora de
               // assinar. Não precisamos ter o dado: quem preenche é o
               // signatário, e é isso que dá identificação de verdade — com
@@ -156,7 +177,12 @@ export class ClickSignService {
           },
         },
       );
-      signatarios.push({ id: criado.data.id, email: s.email, automatico: s.automatico });
+      signatarios.push({
+        id: criado.data.id,
+        email: s.email,
+        automatico: s.automatico,
+        telefone: s.telefone,
+      });
     }
 
     // Requisitos por signatário: como ele se autentica e o ato de concordar.
@@ -168,14 +194,25 @@ export class ClickSignService {
     // vez entre o administrador da conta e ele; sem o termo, a ClickSign recusa.
     // E `auto_signature` tem que ser a ÚNICA autenticação do signatário: a API
     // recusa qualquer outra junto.
+    //
+    // ⚠️ A API impõe duas exclusividades, descobertas testando:
+    //  1. `email`, `sms` e `whatsapp` são todos "token" — só UM por signatário
+    //     ("já existe um requisito do tipo token");
+    //  2. `official_document` NÃO anda junto de biometria facial ("não pode ser
+    //     utilizado com facial_biometrics").
+    // A combinação mais forte possível é, então, um token + biometria facial.
+    // Sem telefone no cadastro o token cai pro e-mail: melhor degradar a
+    // autenticação do que não conseguir mandar o contrato.
     for (const s of signatarios) {
+      const token = s.telefone ? this.canalToken : 'email';
       const requisitos = s.automatico
         ? [
             { action: 'provide_evidence', auth: 'auto_signature' },
             { action: 'agree', role: 'sign' },
           ]
         : [
-            { action: 'provide_evidence', auth: 'email' },
+            { action: 'provide_evidence', auth: token },
+            { action: 'provide_evidence', auth: 'facial_biometrics' },
             { action: 'agree', role: 'sign' },
           ];
       for (const attributes of requisitos) {

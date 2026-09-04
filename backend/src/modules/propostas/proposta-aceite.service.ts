@@ -435,9 +435,10 @@ export class PropostaAceiteService {
           diaVencimento: true,
           signatarioNome: true,
           signatarioEmail: true,
+          signatarioTelefone: true,
           clienteId: true,
           representanteId: true,
-          cliente: { select: { nome: true, email: true, cnpj: true } },
+          cliente: { select: { nome: true, email: true, cnpj: true, telefone: true } },
           itens: {
             select: {
               produtoId: true,
@@ -456,6 +457,12 @@ export class PropostaAceiteService {
       // por isso o nome vem da proposta, preenchido por quem montou o negócio.
       const nome = p.signatarioNome?.trim();
       const email = p.signatarioEmail?.trim() || p.cliente.email?.trim();
+      // A autenticação por SMS/WhatsApp exige o número em dígitos com DDI. Cai
+      // pro telefone do cliente quando a proposta não informou um específico;
+      // sem nenhum, a assinatura usa token por e-mail.
+      const telefoneBruto = p.signatarioTelefone?.trim() || p.cliente.telefone?.trim() || '';
+      const so = telefoneBruto.replace(/\D/g, '');
+      const telefoneAssinatura = so.length >= 12 ? so : so.length >= 10 ? `55${so}` : undefined;
       if (!nome || !email) {
         this.logger.warn(
           `Proposta ${p.numero} aceita, mas sem signatário (nome/e-mail) — contrato não enviado.`,
@@ -478,7 +485,7 @@ export class PropostaAceiteService {
 
       const envelope = await this.clicksign.enviarParaAssinatura({
         titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
-        cliente: { nome, email },
+        cliente: { nome, email, telefone: telefoneAssinatura },
         variaveis: variaveisDoContrato({
           numero: p.numero,
           valor: p.valor,

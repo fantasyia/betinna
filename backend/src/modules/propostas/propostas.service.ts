@@ -183,6 +183,7 @@ export class PropostasService {
               carenciaDias: dto.carenciaDias ?? null,
               signatarioNome: dto.signatarioNome ?? null,
               signatarioEmail: dto.signatarioEmail ?? null,
+              signatarioTelefone: dto.signatarioTelefone ?? null,
             }
           : {}),
         subtotal: totals.subtotal,
