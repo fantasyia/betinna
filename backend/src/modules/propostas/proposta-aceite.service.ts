@@ -490,6 +490,8 @@ export class PropostaAceiteService {
       const envelope = await this.clicksign.enviarParaAssinatura({
         titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
         cliente: { nome, email, telefone: telefoneAssinatura },
+        // Volta no webhook de assinatura — rastro que não depende de id.
+        metadata: { proposta: p.numero, proposta_id: p.id },
         variaveis: variaveisDoContrato({
           numero: p.numero,
           valor: p.valor,
@@ -517,6 +519,7 @@ export class PropostaAceiteService {
           prazoMeses: p.prazoMeses ?? 36,
           diaVencimento: p.diaVencimento ?? 5,
           assinaturaId: envelope.envelopeId,
+          assinaturaDocumentoId: envelope.documentoId,
         },
       });
       this.logger.log(

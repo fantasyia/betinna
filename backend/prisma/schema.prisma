@@ -1070,6 +1070,10 @@ model Contrato {
   /// Assinatura eletrônica (ClickSign). O contrato só sobe pro ERP DEPOIS de
   /// assinado — contrato no ERP sem assinatura é o erro caro deste fluxo.
   assinaturaId  String?   @unique
+  /// Id do DOCUMENTO dentro do envelope. O webhook de assinatura identifica o
+  /// documento, não o envelope — sem guardar isto, o retorno chega e não dá pra
+  /// saber de qual contrato ele é.
+  assinaturaDocumentoId String? @unique
   assinaturaUrl String?
   assinadoEm    DateTime?
   /// PDF assinado guardado no Storage.

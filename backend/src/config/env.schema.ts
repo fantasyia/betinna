@@ -36,6 +36,11 @@ export const envSchema = z
     /// "false" faz a casa assinar manualmente — usado enquanto o Termo de
     /// Assinatura Automática não estiver assinado na conta.
     CLICKSIGN_SOMATEC_AUTO: z.string().optional(),
+    /// Segredo HMAC do webhook, devolvido pela ClickSign quando o webhook é
+    /// cadastrado (`POST /webhooks` → `attributes.secret`). Sem ele o endpoint
+    /// RECUSA tudo: aceitar sem verificar deixaria qualquer um marcar contrato
+    /// como assinado.
+    CLICKSIGN_WEBHOOK_SECRET: z.string().optional(),
 
     // Database
     DATABASE_URL: z.string().url(),

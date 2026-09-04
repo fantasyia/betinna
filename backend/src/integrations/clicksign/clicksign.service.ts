@@ -19,6 +19,11 @@ export interface SignatarioContrato {
 export interface ContratoParaAssinar {
   /** Aparece na lista de envelopes e no e-mail do signatário. */
   titulo: string;
+  /**
+   * Carimbo nosso no documento. Volta no webhook — é o que liga o retorno da
+   * assinatura ao contrato daqui sem depender só de id.
+   */
+  metadata?: Record<string, string>;
   /** Valores das variáveis `{{...}}` do modelo. */
   variaveis: Record<string, string>;
   /** O cliente. Assina primeiro. */
@@ -156,6 +161,7 @@ export class ClickSignService {
             // A API exige extensão .docx aqui — é o formato do modelo.
             filename: 'contrato.docx',
             template: { key: this.modelo, data: dados.variaveis },
+            ...(dados.metadata ? { metadata: dados.metadata } : {}),
           },
         },
       },
