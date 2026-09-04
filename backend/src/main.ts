@@ -14,6 +14,7 @@ import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { EnvService } from '@config/env.service';
 import { bodySizeGuard } from '@shared/middleware/body-size-guard';
+import { semRuidoDeBoot } from '@shared/observability/logger-sem-ruido-de-boot';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -38,10 +39,17 @@ async function bootstrap(): Promise<void> {
   app.useBodyParser('json', { limit: '20mb' });
   app.useBodyParser('urlencoded', { extended: true, limit: '20mb' });
 
-  // Logger Pino como logger global
-  app.useLogger(app.get(PinoLogger));
-
   const env = app.get(EnvService);
+
+  // Logger Pino como logger global.
+  //
+  // Em produção, embrulhado pra calar o inventário de boot do Nest (uma linha
+  // por rota + por controller + por módulo, todas no mesmo segundo). Isso batia
+  // o teto de 500 logs/s do Railway, que então DESCARTA o excedente — e o que
+  // se perde é arbitrário, inclusive um eventual erro de boot. Só `log`/`debug`/
+  // `verbose` desses contextos somem; `error` e `warn` passam sempre.
+  const pino = app.get(PinoLogger);
+  app.useLogger(env.isProduction ? semRuidoDeBoot(pino) : pino);
 
   // Audita config (ENCRYPTION_KEY fraca, ERP em demo em prod, etc).
   // Em produção, problemas críticos abortam o boot — corrija antes de subir.
