@@ -346,6 +346,39 @@ describe('MullerWhatsappService — regras do bot', () => {
     expect(inbox.responderComoBot).not.toHaveBeenCalled();
   });
 
+  it('lead que NASCE durante a geração cala o bot (primeiro contato)', async () => {
+    // Card 🔴🔴 GO-LIVE (04/09): a pessoa escreve, o bot começa a processar e o
+    // lead só nasce alguns ms depois, criado pela triagem. O guard "por lead"
+    // não existia no começo, e o valor antigo (undefined) era reaproveitado no
+    // re-check — então o bot geral falava por cima do T1/C1, pedindo foto de
+    // etiqueta no primeiro contato de um lead novo.
+    let buscas = 0;
+    prisma.$queryRaw = vi.fn(async () => {
+      buscas += 1;
+      // 1ª busca (portão de entrada): o lead ainda não existe.
+      // 2ª busca (re-check, depois de gerar): a triagem já criou.
+      return buscas === 1 ? [] : [{ id: 'lead-novo' }];
+    });
+    prisma.lead.findUnique = vi.fn(async () => ({
+      id: 'lead-novo',
+      etapa: 'NOVO',
+      funilEtapa: null,
+      tags: [],
+    }));
+    // O C1 conduz por LEAD, não por conversa — é justamente o buraco do card: a
+    // execução dele não carrega conversationId, então só o guard por lead pega.
+    prisma.fluxoExecucao.findFirst = vi.fn(
+      async (args?: { where?: { contexto?: { path?: string[] } } }) =>
+        args?.where?.contexto?.path?.[0] === 'leadId' ? { id: 'exec-c1' } : null,
+    );
+
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+
+    // A IA gerou (a corrida é essa), mas o cliente não recebeu nada do bot geral.
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+    expect(buscas).toBeGreaterThan(1); // o lead FOI re-resolvido
+  });
+
   it('conversa que segue liberada NÃO é descartada pelo re-check', async () => {
     // A rede de segurança não pode virar mordaça: sem pausa no meio, responde.
     prisma.conversation.findUnique = vi.fn(async () => ({

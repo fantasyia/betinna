@@ -672,7 +672,18 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      if (await this.fluxoAssumiu(params.empresaId, convId, leadDoPeer?.id)) {
+      // O LEAD é re-resolvido AQUI, e não reaproveitado da primeira busca.
+      //
+      // Primeiro contato é a janela em que o guard por lead não existe ainda: a
+      // pessoa escreve, o bot começa a processar, e o lead só NASCE alguns
+      // milissegundos depois — criado pelo fluxo de triagem. Com o valor antigo
+      // (`undefined`), a metade "por lead" do guard nem roda, e o bot fala por
+      // cima do fluxo que está conduzindo. Medido em 04/09: o cliente recebeu
+      // cinco mensagens, duas delas do bot geral, fora do roteiro.
+      const leadAgora =
+        leadDoPeer ??
+        (await this.buscarLeadDoPeer(params.empresaId, params.peerId, params.peerTelefone));
+      if (await this.fluxoAssumiu(params.empresaId, convId, leadAgora?.id)) {
         this.logger.log(
           `[bot] fluxo assumiu a conversa durante a geração — bot geral descarta a resposta conv=${convId}`,
         );

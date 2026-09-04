@@ -33,6 +33,10 @@ const makePrismaMock = () => ({
   tag: {
     findFirst: vi.fn().mockResolvedValue(null),
   } satisfies MockModel,
+  // Conversa do lead — o bus completa o contexto com ela quando o evento não traz.
+  conversation: {
+    findFirst: vi.fn().mockResolvedValue(null),
+  } satisfies MockModel,
 });
 
 const fakeFluxo = (overrides: Record<string, unknown> = {}) => ({
@@ -252,6 +256,55 @@ describe('FluxoEventBusService', () => {
       });
 
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+
+    // ── A conversa no contexto (card 🔴🔴 GO-LIVE de 04/09) ────────────
+    // O bot geral cala quando vê fluxo conduzindo — e enxerga por CONVERSA ou
+    // por LEAD. Evento de lead (mudança de etapa, tag, cron) não trazia
+    // conversationId, então a metade "por conversa" ficava cega e o bot
+    // respondia por cima do atendimento, fora do roteiro, no primeiro contato.
+    it('evento com lead e SEM conversa: o bus resolve a conversa e grava no contexto', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fakeFluxo({ triggerTipo: 'LEAD_ETAPA_MUDOU' })]);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-do-lead' });
+
+      await service.disparar('emp-1', 'LEAD_ETAPA_MUDOU' as FluxoTriggerTipo, { leadId: 'lead-1' });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contexto: expect.objectContaining({ leadId: 'lead-1', conversationId: 'conv-do-lead' }),
+          }),
+        }),
+      );
+    });
+
+    it('evento que JÁ traz conversa não é sobrescrito (a do rep não vira a da empresa)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { canais: ['WHATSAPP'] } }],
+        }),
+      ]);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-do-rep',
+        leadId: 'lead-1',
+        texto: 'oi',
+      });
+
+      expect(prisma.conversation.findFirst).not.toHaveBeenCalled();
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            contexto: expect.objectContaining({ conversationId: 'conv-do-rep' }),
+          }),
+        }),
+      );
     });
 
     it('MENSAGEM_CANAL: filtro de canal é case-INSENSITIVE (config "whatsapp" × contexto "WHATSAPP")', async () => {

@@ -35,6 +35,37 @@ export class FluxoEventBusService {
   ) {}
 
   /**
+   * Completa o contexto com a CONVERSA do lead quando ela falta.
+   *
+   * Não sobrescreve o que veio: `MENSAGEM_CANAL` já traz a conversa certa (e
+   * pode ser a do WhatsApp pessoal de um rep). Só preenche o vazio — e é a
+   * WhatsApp mais recente do lead, que é onde a conversa está acontecendo.
+   *
+   * Falha silenciosa: sem a conversa o fluxo roda como rodava antes.
+   */
+  private async comConversaDoLead(
+    empresaId: string,
+    contexto: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const leadId = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : null;
+    if (!leadId || contexto['conversationId']) return contexto;
+    try {
+      const conversa = await this.prisma.conversation.findFirst({
+        where: { empresaId, leadId, canal: 'WHATSAPP' },
+        orderBy: { ultimaMsgEm: 'desc' },
+        select: { id: true },
+      });
+      return conversa ? { ...contexto, conversationId: conversa.id } : contexto;
+    } catch (err) {
+      this.logger.warn(
+        `Não consegui resolver a conversa do lead ${leadId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return contexto;
+    }
+  }
+
+  /**
    * Dispara o bus para um evento.
    *
    * @param empresaId  ID da empresa (multi-tenant)
@@ -82,6 +113,20 @@ export class FluxoEventBusService {
       });
 
       if (fluxos.length === 0) return;
+
+      // ── conversationId no contexto, SEMPRE que houver lead ────────────────
+      //
+      // O guard que cala o bot geral tem duas metades: por CONVERSA e por LEAD.
+      // A metade por conversa procura execução viva com `contexto.conversationId`
+      // — e eventos de LEAD (mudança de etapa, tag, lead criado, cron) não
+      // carregavam esse campo. Resultado medido em 04/09: o T1 terminou, o C1
+      // assumiu SEM conversationId, o guard olhou e não achou ninguém, e o bot
+      // geral respondeu por cima do atendimento — pedindo foto de etiqueta, fora
+      // do roteiro, no primeiro contato de um lead novo.
+      //
+      // Resolver aqui cobre a família inteira de eventos de lead de uma vez, em
+      // vez de lembrar de propagar em cada disparo (e esquecer no próximo).
+      const contextoEnriquecido = await this.comConversaDoLead(empresaId, contexto);
 
       this.logger.debug(
         `FluxoEventBus: ${triggerTipo} em empresa ${empresaId} → ${fluxos.length} fluxo(s)`,
@@ -498,7 +543,7 @@ export class FluxoEventBusService {
               fluxoId: fluxo.id,
               empresaId,
               status: 'PENDENTE',
-              contexto: toJsonInput(contexto),
+              contexto: toJsonInput(contextoEnriquecido),
             },
           });
 

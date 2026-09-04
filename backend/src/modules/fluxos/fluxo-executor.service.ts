@@ -2059,6 +2059,13 @@ export class FluxoExecutorService {
           funilId: etapa.funilId,
           deFunilEtapaId: origemId,
           paraFunilEtapaId: etapa.id,
+          // A conversa VIAJA junto. O fluxo seguinte (C1, C2…) nasce com ela no
+          // contexto, e é por ela que o guard do bot geral enxerga que alguém
+          // está conduzindo — sem isso, o bot fala por cima. O bus também
+          // resolve pelo lead como rede, mas aqui a conversa é a EXATA.
+          ...(typeof ctx['conversationId'] === 'string'
+            ? { conversationId: ctx['conversationId'] }
+            : {}),
           _hops: hops + 1,
           ...this.marcaDeTeste(ctx),
         });
