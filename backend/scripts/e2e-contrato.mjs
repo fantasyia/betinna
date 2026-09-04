@@ -423,14 +423,15 @@ if (acao === '--conferir') {
       const env_ = await clickSign(`/envelopes/${contrato.assinaturaId}`);
       const st = env_.corpo?.data?.attributes?.status;
       registrar('envelope no ClickSign', env_.status === 200, `status ${st}`);
+      // Quem diz se assinaram é o ENVELOPE (`closed` = fechado, todos
+      // assinaram). O signatário NÃO traz `signed_at` nos atributos — a
+      // primeira versão deste teste checava esse campo e acusava "ainda não"
+      // com o contrato já assinado. Falso alarme custa mais caro que teste
+      // nenhum: ensina a ignorar o vermelho.
+      registrar('todos assinaram (envelope fechado)', st === 'closed', `status ${st}`);
       const signers = await clickSign(`/envelopes/${contrato.assinaturaId}/signers`);
       for (const s of signers.corpo?.data ?? []) {
-        const a = s.attributes ?? {};
-        registrar(
-          `  signatário ${a.name}`,
-          Boolean(a.signed_at ?? a.signature?.signed_at),
-          `${a.email} · ${(a.signed_at ?? a.signature?.signed_at) ? 'assinou' : 'ainda não'}`,
-        );
+        console.log(`         · ${s.attributes?.name} <${s.attributes?.email}>`);
       }
     }
 
@@ -445,7 +446,10 @@ if (acao === '--conferir') {
       contrato.documentoUrl ?? '—',
     );
     if (contrato.status === 'ASSINADO' && !contrato.contratoErpId) {
-      aguarda('contrato sobe pro ERP', 'ainda não implementado (E1 — API v2)');
+      aguarda(
+        'contrato como OBJETO no ERP (/contratos#list)',
+        'não implementado — é a API v2, item E1. O orçamento pro Leandro já sobe.',
+      );
     }
   }
 
