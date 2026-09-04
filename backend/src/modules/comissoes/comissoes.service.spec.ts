@@ -16,7 +16,10 @@ const makePrismaMock = () => ({
   },
   pedido: { groupBy: vi.fn() },
   // Linhas de comissão por pedido — de onde sai a folha de SITE.
-  pedidoComissao: { groupBy: vi.fn(async () => [] as unknown[]) },
+  pedidoComissao: {
+    groupBy: vi.fn(async () => [] as unknown[]),
+    findMany: vi.fn(async () => [] as unknown[]),
+  },
   usuario: { findMany: vi.fn() },
   empresa: { findUnique: vi.fn(async (): Promise<{ config: unknown }> => ({ config: null })) },
   $transaction: vi.fn(async (ops: unknown[]) => {
@@ -293,9 +296,14 @@ describe('ComissoesService', () => {
       prisma.pedidoComissao.groupBy.mockResolvedValue([
         {
           usuarioId: 'leo',
+          percentual: 7.25,
           _sum: { base: new Prisma.Decimal('1000.00'), valor: new Prisma.Decimal('72.50') },
           _count: { _all: 2 },
         },
+      ]);
+      prisma.pedidoComissao.findMany.mockResolvedValue([
+        { base: new Prisma.Decimal('600.00') },
+        { base: new Prisma.Decimal('400.00') },
       ]);
 
       const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
@@ -309,10 +317,57 @@ describe('ComissoesService', () => {
       expect((siteUpsert?.[0] as { create: unknown }).create).toMatchObject({
         representanteId: 'leo',
         tipo: 'SITE',
-        // % efetiva do mês, derivada das linhas (72,50 / 1000).
+        // A % configurada, exata — não a razão arredondada entre centavos.
         percentual: 7.25,
         totalVendas: 1_000,
         totalComissao: 72.5,
+        qtdPedidos: 2,
+      });
+    });
+
+    it('duas pessoas no MESMO pedido: vendas contadas uma vez, % de quem mudou vira efetiva', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([]);
+      prisma.usuario.findMany.mockResolvedValue([]);
+      // Um pedido de R$50 com dois beneficiários; o segundo trocou de 5% pra
+      // 7,25% no meio do mês (dois grupos pra ele).
+      const D = (v: string) => new Prisma.Decimal(v);
+      prisma.pedidoComissao.groupBy.mockResolvedValue([
+        {
+          usuarioId: 'teste',
+          percentual: 7.25,
+          _sum: { base: D('50'), valor: D('3.63') },
+          _count: { _all: 1 },
+        },
+        {
+          usuarioId: 'harada',
+          percentual: 5,
+          _sum: { base: D('30'), valor: D('1.50') },
+          _count: { _all: 1 },
+        },
+        {
+          usuarioId: 'harada',
+          percentual: 7.25,
+          _sum: { base: D('20'), valor: D('1.45') },
+          _count: { _all: 1 },
+        },
+      ]);
+      // distinct por pedido: o site vendeu R$50, não R$100.
+      prisma.pedidoComissao.findMany.mockResolvedValue([{ base: D('50') }]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      expect(out.site).toBe(2);
+      expect(out.totalVendas).toBe(50);
+      expect(out.totalComissao).toBe(6.58);
+      const harada = prisma.comissao.upsert.mock.calls
+        .map((c: unknown[]) => (c[0] as { create: Record<string, unknown> }).create)
+        .find((c) => c.representanteId === 'harada');
+      // 2,95 / 50 = 5,9% — efetiva, porque a % configurada não foi uma só no mês.
+      expect(harada).toMatchObject({
+        tipo: 'SITE',
+        percentual: 5.9,
+        totalVendas: 50,
+        totalComissao: 2.95,
         qtdPedidos: 2,
       });
     });
@@ -322,6 +377,7 @@ describe('ComissoesService', () => {
       prisma.pedidoComissao.groupBy.mockResolvedValue([
         {
           usuarioId: 'leo',
+          percentual: 7.25,
           _sum: { base: new Prisma.Decimal('1000.00'), valor: new Prisma.Decimal('72.50') },
           _count: { _all: 1 },
         },

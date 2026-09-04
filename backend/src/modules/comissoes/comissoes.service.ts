@@ -165,22 +165,39 @@ export class ComissoesService {
     // de Pedido acima — vem das linhas por pedido (`PedidoComissao`), que ja
     // nascem com a % da PESSOA e a base liquida do pedido. So ADMIN/DIRECTOR
     // fecham: gerente nao tem canal sob a gerencia dele.
+    const siteWhere: Prisma.PedidoComissaoWhereInput = {
+      empresaId,
+      tipo: 'SITE',
+      pedido: {
+        status: { in: STATUS_COMISSIONAVEL as Prisma.EnumPedidoStatusFilter['in'] },
+        enviadoErpEm: { gte: inicio, lt: fim },
+      },
+    };
+    // Agrupa por (pessoa, %): quando a % da pessoa não mudou no mês, o snapshot
+    // gravado é EXATAMENTE a % configurada (7,25), e não a razão arredondada
+    // entre dois valores em centavos (3,63/50 = 7,26).
     const siteAgg =
       repScopeIds === null
         ? await this.prisma.pedidoComissao.groupBy({
-            by: ['usuarioId'],
-            where: {
-              empresaId,
-              tipo: 'SITE',
-              pedido: {
-                status: { in: STATUS_COMISSIONAVEL as Prisma.EnumPedidoStatusFilter['in'] },
-                enviadoErpEm: { gte: inicio, lt: fim },
-              },
-            },
+            by: ['usuarioId', 'percentual'],
+            where: siteWhere,
             _sum: { base: true, valor: true },
             _count: { _all: true },
           })
         : [];
+    // Vendas de canal do mês contadas UMA vez por pedido — cada pedido tem uma
+    // linha por beneficiário, e somar por linha diria "R$100 vendidos" num mês
+    // em que o site vendeu R$50 pra duas pessoas comissionarem.
+    const vendasSite =
+      siteAgg.length === 0
+        ? 0
+        : (
+            await this.prisma.pedidoComissao.findMany({
+              where: siteWhere,
+              distinct: ['pedidoId'],
+              select: { base: true },
+            })
+          ).reduce((soma, l) => soma + Number(l.base), 0);
 
     const aggregated = await this.prisma.pedido.groupBy({
       by: ['representanteId'],
@@ -439,16 +456,44 @@ export class ComissoesService {
     // A % ja veio snapshotada em cada linha; o percentual gravado aqui e o
     // EFETIVO do mes (comissao / base) — se a % da pessoa mudar no meio do mes,
     // a folha continua batendo com a soma das vendas.
-    const siteOps = siteAgg.map((row) => {
-      const totalVendas = Number(row._sum.base ?? 0);
-      const totalComissao = Number(row._sum.valor ?? 0);
+    // Uma pessoa pode ter mais de um grupo (a % mudou no meio do mês): aí a
+    // folha soma tudo e o percentual gravado é o efetivo (comissão / vendas).
+    const porPessoa = new Map<
+      string,
+      { totalVendas: number; totalComissao: number; qtd: number; pcts: Set<number> }
+    >();
+    for (const g of siteAgg) {
+      const acc = porPessoa.get(g.usuarioId) ?? {
+        totalVendas: 0,
+        totalComissao: 0,
+        qtd: 0,
+        pcts: new Set<number>(),
+      };
+      acc.totalVendas += Number(g._sum.base ?? 0);
+      acc.totalComissao += Number(g._sum.valor ?? 0);
+      acc.qtd += g._count._all;
+      acc.pcts.add(g.percentual);
+      porPessoa.set(g.usuarioId, acc);
+    }
+    let vendasSiteContadas = false;
+    const siteOps = Array.from(porPessoa.entries()).map(([usuarioId, acc]) => {
+      const totalVendas = Math.round(acc.totalVendas * 100) / 100;
+      const totalComissao = Math.round(acc.totalComissao * 100) / 100;
       const pct =
-        totalVendas > 0 ? Math.round((totalComissao / totalVendas) * 100 * 10000) / 10000 : 0;
-      if (!jaExistentes.has(`${row.usuarioId}:SITE`)) {
-        totalVendasAgg += totalVendas;
+        acc.pcts.size === 1
+          ? [...acc.pcts][0]
+          : totalVendas > 0
+            ? Math.round((totalComissao / totalVendas) * 100 * 10000) / 10000
+            : 0;
+      if (!jaExistentes.has(`${usuarioId}:SITE`)) {
+        if (!vendasSiteContadas) {
+          totalVendasAgg += vendasSite;
+          vendasSiteContadas = true;
+        }
         totalComissaoAgg += totalComissao;
         registrosNovos += 1;
       }
+      const row = { usuarioId, _count: { _all: acc.qtd } };
       return this.prisma.comissao.upsert({
         where: {
           empresaId_representanteId_tipo_ano_mes: {
