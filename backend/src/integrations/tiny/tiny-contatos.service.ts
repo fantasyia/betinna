@@ -72,12 +72,27 @@ export class TinyContatosService {
     const cep = (endereco?.cep ?? '').replace(/\D/g, '');
     if (!cep) return;
     try {
-      const atual = await this.client.get<{ endereco?: { cep?: string } }>(
-        empresaId,
-        `/contatos/${idContato}`,
-      );
+      const atual = await this.client.get<{
+        endereco?: { cep?: string };
+        nome?: string;
+        tipoPessoa?: string;
+        cpfCnpj?: string;
+        email?: string;
+        telefone?: string;
+        celular?: string;
+      }>(empresaId, `/contatos/${idContato}`);
       if ((atual?.endereco?.cep ?? '').replace(/\D/g, '')) return; // já tem — não toca
+      // O PUT do Tiny SUBSTITUI o contato: mandar só `endereco` volta com
+      // "nome: este valor não deve ser vazio" — e, como esta chamada é
+      // best-effort, o erro sumia num warning e o cadastro seguia sem CEP.
+      // Por isso a identidade do contato vai junto, relida do próprio ERP.
       await this.client.put(empresaId, `/contatos/${idContato}`, {
+        nome: atual?.nome,
+        ...(atual?.tipoPessoa ? { tipoPessoa: atual.tipoPessoa } : {}),
+        ...(atual?.cpfCnpj ? { cpfCnpj: atual.cpfCnpj.replace(/\D/g, '') } : {}),
+        ...(atual?.email ? { email: atual.email } : {}),
+        ...(atual?.telefone ? { telefone: atual.telefone } : {}),
+        ...(atual?.celular ? { celular: atual.celular } : {}),
         endereco: this.enderecoTiny(endereco),
       });
       this.logger.log(`[tiny] endereço preenchido no contato ${idContato}`);
