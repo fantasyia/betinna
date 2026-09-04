@@ -7,6 +7,7 @@ import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.serv
 import { EvolutionInstanciaService } from './evolution-instancia.service';
 import { EvolutionService } from './evolution.service';
 import { extrairCtwaReferral } from './ctwa-referral.util';
+import { normalizarJid } from './jid.util';
 
 /** Mensagem como o Evolution entrega no webhook messages.upsert (formato Baileys). */
 interface EvoMessage {
@@ -248,7 +249,10 @@ export class EvolutionInboundService {
       // real fica em remoteJidAlt. Prefere o telefone (@s.whatsapp.net) — é
       // estável e casa o cliente por sufixo; senão a conversa fica "sem contato".
       const rjidAlt = m.key?.remoteJidAlt ?? '';
-      const peerId = rjid.endsWith('@lid') && rjidAlt ? rjidAlt : rjid;
+      // `normalizarJid`: o remoteJidAlt às vezes vem em E.164 (com `+`), e a
+      // conversa é casada por peerId EXATO — sem isto o mesmo contato vira duas
+      // conversas, com metade das mensagens em cada. Ver jid.util.ts.
+      const peerId = normalizarJid(rjid.endsWith('@lid') && rjidAlt ? rjidAlt : rjid);
       if (!peerId || peerId.endsWith('@broadcast') || peerId === 'status@broadcast') return;
       // Grupos (@g.us) AGORA passam — peerNome = subject do grupo, senderName = autor.
       const isGroup = peerId.endsWith('@g.us');
@@ -359,7 +363,10 @@ export class EvolutionInboundService {
     // um id OPACO. Retorná-los envenenava `metadata.telefone` e o match por sufixo-8 (podia casar o
     // cliente/lead ERRADO). Espelha o guard do contatos.service (telDaConversa).
     if (jid.includes('@lid') || jid.includes('@g.us')) return undefined;
-    const m = jid.match(/^(\d+)(?::\d+)?@/);
+    // `\+?`: cinto e suspensório. O peerId já vem normalizado por `normalizarJid`,
+    // mas esta função também é chamada com jid cru — e sem tolerar o `+` ela
+    // devolvia `undefined`, deixando a conversa sem telefone e sem cliente.
+    const m = jid.match(/^\+?(\d+)(?::\d+)?@/);
     return m ? m[1] : undefined;
   }
 }
