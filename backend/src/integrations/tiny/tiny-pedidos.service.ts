@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TinyClientService } from './tiny-client.service';
-import { TinyContatosService } from './tiny-contatos.service';
+import { TinyContatosService, type EnderecoParaTiny } from './tiny-contatos.service';
 
 export interface ItemPedidoTiny {
   /** SKU — a chave que amarra site ↔ ERP ↔ app. */
@@ -16,6 +16,7 @@ export interface PedidoParaTiny {
     cpfCnpj?: string;
     email?: string;
     telefone?: string;
+    endereco?: EnderecoParaTiny;
   };
   itens: ItemPedidoTiny[];
   /** Número do pedido no site — o que o cliente diz quando liga. */
@@ -199,6 +200,8 @@ export class TinyPedidosService {
       cpfCnpj: cliente.cpfCnpj,
       email: cliente.email,
       telefone: cliente.telefone,
+      // Sem endereço no contato o ERP não cota frete nem emite etiqueta.
+      endereco: cliente.endereco,
     });
   }
 

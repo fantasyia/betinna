@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TinyClientService } from './tiny-client.service';
-import { TinyContatosService } from './tiny-contatos.service';
+import { TinyContatosService, type EnderecoParaTiny } from './tiny-contatos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
 
 export interface ItemOrcamentoTiny {
@@ -13,7 +13,14 @@ export interface ItemOrcamentoTiny {
 }
 
 export interface OrcamentoParaTiny {
-  cliente: { nome: string; cpfCnpj?: string; email?: string; telefone?: string };
+  cliente: {
+    nome: string;
+    cpfCnpj?: string;
+    email?: string;
+    telefone?: string;
+    /** Sem endereço no contato, o ERP não cota frete nem emite etiqueta. */
+    endereco?: EnderecoParaTiny;
+  };
   itens: ItemOrcamentoTiny[];
   vendedorId?: number;
   /** Dias de validade da proposta (o Tiny conta a partir da data). */

@@ -106,6 +106,18 @@ export class PropostaErpService {
         cpfCnpj: proposta.cliente.cnpj ?? undefined,
         email: proposta.cliente.email ?? undefined,
         telefone: proposta.cliente.telefone ?? undefined,
+        // O endereço vai junto: é ele que faz o ERP conseguir cotar frete e
+        // emitir etiqueta depois. Sem isso o contato nasce sem CEP e a falha
+        // só aparece na expedição, com uma mensagem que não fala em cadastro.
+        endereco: {
+          cep: proposta.cliente.cep,
+          endereco: proposta.cliente.endereco,
+          numero: proposta.cliente.numero,
+          complemento: proposta.cliente.complemento,
+          bairro: proposta.cliente.bairro,
+          cidade: proposta.cliente.cidade,
+          uf: proposta.cliente.uf,
+        },
       },
       itens: proposta.itens.map((i) => ({
         sku: skuPorProduto.get(i.produtoId)!,

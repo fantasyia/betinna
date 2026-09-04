@@ -151,6 +151,16 @@ export class TinyPedidoPushService {
         cpfCnpj: pedido.cliente.cnpj ?? undefined,
         email: pedido.cliente.email ?? undefined,
         telefone: pedido.cliente.telefone ?? undefined,
+        // Endereço junto — o ERP precisa dele pra cotar frete e emitir etiqueta.
+        endereco: {
+          cep: pedido.cliente.cep,
+          endereco: pedido.cliente.endereco,
+          numero: pedido.cliente.numero,
+          complemento: pedido.cliente.complemento,
+          bairro: pedido.cliente.bairro,
+          cidade: pedido.cliente.cidade,
+          uf: pedido.cliente.uf,
+        },
       },
       itens: pedido.itens.map((i) => ({
         sku: i.produto!.sku!,

@@ -1,12 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TinyClientService } from './tiny-client.service';
 
+export interface EnderecoParaTiny {
+  cep?: string | null;
+  endereco?: string | null;
+  numero?: string | null;
+  complemento?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  uf?: string | null;
+}
+
 export interface ContatoParaTiny {
   nome: string;
   /** CPF ou CNPJ — a única chave que não muda. */
   cpfCnpj?: string | null;
   email?: string | null;
   telefone?: string | null;
+  /**
+   * ENDEREÇO — sem ele o ERP não calcula frete nem emite etiqueta.
+   *
+   * O contato nascia só com nome, documento, e-mail e telefone; o endereço
+   * ficava no app e nunca atravessava. O efeito só aparece lá na frente, na
+   * expedição: o Tiny recusa a etiqueta com um genérico "Não foi possível
+   * enviar a lista de postagem", e ninguém liga esse erro ao cadastro.
+   */
+  endereco?: EnderecoParaTiny | null;
 }
 
 /**
@@ -31,8 +50,61 @@ export class TinyContatosService {
   /** Devolve o id do contato no Tiny, criando se ainda não existir. */
   async garantir(empresaId: string, contato: ContatoParaTiny): Promise<number> {
     const existente = await this.achar(empresaId, contato);
-    if (existente) return existente;
+    if (existente) {
+      await this.completarEndereco(empresaId, existente, contato.endereco);
+      return existente;
+    }
     return this.criar(empresaId, contato);
+  }
+
+  /**
+   * PREENCHE o endereço do contato que está sem — e só isso.
+   *
+   * Nunca sobrescreve: o cadastro do ERP é a fonte da verdade do fiscal, e
+   * quem mexe nele é o financeiro. Aqui a gente só tapa o buraco que a gente
+   * mesmo criou, nos contatos que o app cadastrou sem endereço nenhum.
+   */
+  private async completarEndereco(
+    empresaId: string,
+    idContato: number,
+    endereco?: EnderecoParaTiny | null,
+  ): Promise<void> {
+    const cep = (endereco?.cep ?? '').replace(/\D/g, '');
+    if (!cep) return;
+    try {
+      const atual = await this.client.get<{ endereco?: { cep?: string } }>(
+        empresaId,
+        `/contatos/${idContato}`,
+      );
+      if ((atual?.endereco?.cep ?? '').replace(/\D/g, '')) return; // já tem — não toca
+      await this.client.put(empresaId, `/contatos/${idContato}`, {
+        endereco: this.enderecoTiny(endereco),
+      });
+      this.logger.log(`[tiny] endereço preenchido no contato ${idContato}`);
+    } catch (err) {
+      // Cadastro incompleto não pode derrubar a venda: o pedido sobe e a
+      // etiqueta é que vai reclamar depois, com o cadastro na mão de quem
+      // resolve.
+      this.logger.warn(
+        `[tiny] não consegui completar o endereço do contato ${idContato}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  private enderecoTiny(e?: EnderecoParaTiny | null): Record<string, string> | undefined {
+    const cep = (e?.cep ?? '').replace(/\D/g, '');
+    if (!cep) return undefined;
+    return {
+      cep,
+      ...(e?.endereco ? { endereco: e.endereco } : {}),
+      ...(e?.numero ? { numero: e.numero } : {}),
+      ...(e?.complemento ? { complemento: e.complemento } : {}),
+      ...(e?.bairro ? { bairro: e.bairro } : {}),
+      ...(e?.cidade ? { municipio: e.cidade } : {}),
+      ...(e?.uf ? { uf: e.uf } : {}),
+      pais: 'Brasil',
+    };
   }
 
   /** Procura sem criar — devolve `null` quando não acha. */
@@ -146,6 +218,9 @@ export class TinyContatosService {
       ...(doc ? { cpfCnpj: doc } : {}),
       ...(contato.email ? { email: contato.email } : {}),
       ...(contato.telefone ? { celular: contato.telefone } : {}),
+      ...(this.enderecoTiny(contato.endereco)
+        ? { endereco: this.enderecoTiny(contato.endereco) }
+        : {}),
       situacao: 'A',
     });
     this.logger.log(`[tiny] contato criado id=${criado?.id} (${contato.nome})`);
