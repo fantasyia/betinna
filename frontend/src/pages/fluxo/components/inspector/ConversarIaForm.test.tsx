@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { ConversarIaForm } from './ConversarIaForm';
-import type { NodePayload } from '@/pages/fluxo/lib/types';
-import type { InspectorPrompt } from '@/pages/fluxo/hooks/useInspectorData';
+import { useState } from "react";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { ConversarIaForm } from "./ConversarIaForm";
+import type { NodePayload } from "@/pages/fluxo/lib/types";
+import type { InspectorPrompt } from "@/pages/fluxo/hooks/useInspectorData";
 
 /**
  * Render-test de CONTRATO do ConversarIaForm.
@@ -22,21 +22,21 @@ import type { InspectorPrompt } from '@/pages/fluxo/hooks/useInspectorData';
  */
 
 const prompts: InspectorPrompt[] = [
-  { id: 'p1', nome: 'Prompt Vendas' },
-  { id: 'p2', nome: 'Prompt Suporte', isPadrao: true },
+  { id: "p1", nome: "Prompt Vendas" },
+  { id: "p2", nome: "Prompt Suporte", isPadrao: true },
 ];
 
 /** NodePayload representativo, com config já preenchido pros controles renderizarem com valor. */
 function makeData(configOverrides: Record<string, unknown> = {}): NodePayload {
   return {
-    titulo: 'Conversar com IA',
-    tipo: 'ACAO',
-    acaoTipo: 'CONVERSAR_IA',
+    titulo: "Conversar com IA",
+    tipo: "ACAO",
+    acaoTipo: "CONVERSAR_IA",
     config: {
-      promptId: 'p1',
+      promptId: "p1",
       aguardarResposta: true,
       timeoutHoras: 12,
-      variaveisGravadas: ['classificacao', 'canal'],
+      variaveisGravadas: ["classificacao", "canal"],
       ...configOverrides,
     },
   };
@@ -73,20 +73,22 @@ function Harness({
 
 afterEach(() => cleanup());
 
-describe('ConversarIaForm — contrato de config-keys', () => {
-  it('lê promptId no select de prompt e escreve a chave certa ao trocar', () => {
+describe("ConversarIaForm — contrato de config-keys", () => {
+  it("lê promptId no select de prompt e escreve a chave certa ao trocar", () => {
     const initial = makeData();
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
     // ROUND-TRIP DE LEITURA: o select de prompt reflete config.promptId.
-    const promptSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-    expect(promptSelect.value).toBe('p1');
+    const promptSelect = screen.getAllByRole(
+      "combobox",
+    )[0] as HTMLSelectElement;
+    expect(promptSelect.value).toBe("p1");
 
     // ESCRITA: trocar pra p2 grava config.promptId = 'p2'.
-    fireEvent.change(promptSelect, { target: { value: 'p2' } });
-    expect(box.current.config.promptId).toBe('p2');
-    expect(promptSelect.value).toBe('p2');
+    fireEvent.change(promptSelect, { target: { value: "p2" } });
+    expect(box.current.config.promptId).toBe("p2");
+    expect(promptSelect.value).toBe("p2");
   });
 
   it('"Prompt padrão da empresa" (value vazio) grava promptId = undefined', () => {
@@ -94,24 +96,39 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    const promptSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-    fireEvent.change(promptSelect, { target: { value: '' } });
+    const promptSelect = screen.getAllByRole(
+      "combobox",
+    )[0] as HTMLSelectElement;
+    fireEvent.change(promptSelect, { target: { value: "" } });
     expect(box.current.config.promptId).toBe(undefined);
   });
 
-  it('naoFalarPrimeiro: default é FALAR (fluxo existente não muda)', () => {
+  it("naoFalarPrimeiro: default é FALAR (fluxo existente não muda)", () => {
     // A opção nasceu pra permitir "IA acolhe → texto FIXO pergunta → IA conduz".
     // Sem a flag, o nó fala como sempre falou.
     const initial = makeData({});
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    // Índice 5: entra logo depois de "Aguardar resposta" (4) e antes do timeout.
-    const select = screen.getAllByRole('combobox')[5] as HTMLSelectElement;
-    expect(select.value).toBe('sim');
+    // Índice 6: entra logo depois de "Aguardar resposta" (5) e antes do timeout.
+    const select = screen.getAllByRole("combobox")[6] as HTMLSelectElement;
+    expect(select.value).toBe("sim");
 
-    fireEvent.change(select, { target: { value: 'nao' } });
+    fireEvent.change(select, { target: { value: "nao" } });
     expect(box.current.config.naoFalarPrimeiro).toBe(true);
+  });
+
+  it("maxBaloes: vazio = persona; escolher 1 grava número; voltar pro padrão APAGA a chave", () => {
+    const initial = makeData({});
+    const box = { current: initial };
+    render(<Harness initial={initial} box={box} />);
+
+    // Índice 4: entra antes de "Aguardar resposta".
+    const select = screen.getAllByRole("combobox")[4] as HTMLSelectElement;
+    expect(select.value).toBe("");
+
+    fireEvent.change(select, { target: { value: "1" } });
+    expect(box.current.config.maxBaloes).toBe(1);
   });
 
   it('aguardarResposta: lê true como "sim" e escreve "nao" → false', () => {
@@ -120,11 +137,13 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     render(<Harness initial={initial} box={box} />);
 
     // ROUND-TRIP DE LEITURA: aguardarResposta true → select mostra 'sim'.
-    const aguardarSelect = screen.getAllByRole('combobox')[4] as HTMLSelectElement;
-    expect(aguardarSelect.value).toBe('sim');
+    const aguardarSelect = screen.getAllByRole(
+      "combobox",
+    )[5] as HTMLSelectElement;
+    expect(aguardarSelect.value).toBe("sim");
 
     // ESCRITA: 'nao' vira boolean false (transformação string→bool).
-    fireEvent.change(aguardarSelect, { target: { value: 'nao' } });
+    fireEvent.change(aguardarSelect, { target: { value: "nao" } });
     expect(box.current.config.aguardarResposta).toBe(false);
   });
 
@@ -133,71 +152,86 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    const aguardarSelect = screen.getAllByRole('combobox')[4] as HTMLSelectElement;
-    expect(aguardarSelect.value).toBe('nao');
+    const aguardarSelect = screen.getAllByRole(
+      "combobox",
+    )[5] as HTMLSelectElement;
+    expect(aguardarSelect.value).toBe("nao");
 
-    fireEvent.change(aguardarSelect, { target: { value: 'sim' } });
+    fireEvent.change(aguardarSelect, { target: { value: "sim" } });
     expect(box.current.config.aguardarResposta).toBe(true);
   });
 
-  it('timeoutHoras: lê o número e escreve Number(value) na chave certa', () => {
+  it("timeoutHoras: lê o número e escreve Number(value) na chave certa", () => {
     const initial = makeData({ timeoutHoras: 12 });
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
     // ROUND-TRIP DE LEITURA: input number reflete 12.
-    const timeoutInput = screen.getByDisplayValue('12') as HTMLInputElement;
-    expect(timeoutInput.value).toBe('12');
+    const timeoutInput = screen.getByDisplayValue("12") as HTMLInputElement;
+    expect(timeoutInput.value).toBe("12");
 
     // ESCRITA: vira Number (não string).
-    fireEvent.change(timeoutInput, { target: { value: '48' } });
+    fireEvent.change(timeoutInput, { target: { value: "48" } });
     expect(box.current.config.timeoutHoras).toBe(48);
   });
 
-  it('variaveisGravadas: lê o array como CSV e escreve split/trim/filter → array', () => {
-    const initial = makeData({ variaveisGravadas: ['classificacao', 'canal'] });
+  it("variaveisGravadas: lê o array como CSV e escreve split/trim/filter → array", () => {
+    const initial = makeData({ variaveisGravadas: ["classificacao", "canal"] });
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
     // ROUND-TRIP DE LEITURA: array renderiza como "classificacao, canal".
-    const varsInput = screen.getByTestId('ia-variaveis-gravadas') as HTMLInputElement;
-    expect(varsInput.value).toBe('classificacao, canal');
+    const varsInput = screen.getByTestId(
+      "ia-variaveis-gravadas",
+    ) as HTMLInputElement;
+    expect(varsInput.value).toBe("classificacao, canal");
 
     // ESCRITA: "a, b" vira ['a','b'] (split por vírgula + trim).
-    fireEvent.change(varsInput, { target: { value: 'a, b' } });
-    expect(box.current.config.variaveisGravadas).toEqual(['a', 'b']);
+    fireEvent.change(varsInput, { target: { value: "a, b" } });
+    expect(box.current.config.variaveisGravadas).toEqual(["a", "b"]);
   });
 
-  it('variaveisGravadas: trim + filter de itens vazios (vírgula sobrando)', () => {
+  it("variaveisGravadas: trim + filter de itens vazios (vírgula sobrando)", () => {
     const initial = makeData();
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    const varsInput = screen.getByTestId('ia-variaveis-gravadas') as HTMLInputElement;
-    fireEvent.change(varsInput, { target: { value: '  classificacao ,, canal , ' } });
-    expect(box.current.config.variaveisGravadas).toEqual(['classificacao', 'canal']);
+    const varsInput = screen.getByTestId(
+      "ia-variaveis-gravadas",
+    ) as HTMLInputElement;
+    fireEvent.change(varsInput, {
+      target: { value: "  classificacao ,, canal , " },
+    });
+    expect(box.current.config.variaveisGravadas).toEqual([
+      "classificacao",
+      "canal",
+    ]);
   });
 
-  it('preserva o resto do config ao escrever (spread não dropa chaves)', () => {
-    const initial = makeData({ promptId: 'p1', timeoutHoras: 12 });
+  it("preserva o resto do config ao escrever (spread não dropa chaves)", () => {
+    const initial = makeData({ promptId: "p1", timeoutHoras: 12 });
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    const aguardarSelect = screen.getAllByRole('combobox')[4] as HTMLSelectElement;
-    fireEvent.change(aguardarSelect, { target: { value: 'nao' } });
+    const aguardarSelect = screen.getAllByRole(
+      "combobox",
+    )[5] as HTMLSelectElement;
+    fireEvent.change(aguardarSelect, { target: { value: "nao" } });
     // mexeu só em aguardarResposta; promptId/timeoutHoras intactos.
-    expect(box.current.config.promptId).toBe('p1');
+    expect(box.current.config.promptId).toBe("p1");
     expect(box.current.config.timeoutHoras).toBe(12);
     expect(box.current.config.aguardarResposta).toBe(false);
   });
 
-  it('renderiza com prompts=null sem quebrar e cai no prompt padrão (value vazio)', () => {
+  it("renderiza com prompts=null sem quebrar e cai no prompt padrão (value vazio)", () => {
     const initial = makeData({ promptId: undefined });
     const box = { current: initial };
     render(<Harness initial={initial} box={box} promptsList={null} />);
 
-    const promptSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-    expect(promptSelect.value).toBe('');
+    const promptSelect = screen.getAllByRole(
+      "combobox",
+    )[0] as HTMLSelectElement;
+    expect(promptSelect.value).toBe("");
   });
 
   it('a sintaxe "nome: A | B" passa INTEIRA pro config (é ela que vira o enum)', () => {
@@ -207,13 +241,13 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    fireEvent.change(screen.getByTestId('ia-variaveis-gravadas'), {
-      target: { value: 'perfil_energia: Industrial | Nao industrial, regiao' },
+    fireEvent.change(screen.getByTestId("ia-variaveis-gravadas"), {
+      target: { value: "perfil_energia: Industrial | Nao industrial, regiao" },
     });
 
     expect(box.current.config.variaveisGravadas).toEqual([
-      'perfil_energia: Industrial | Nao industrial',
-      'regiao',
+      "perfil_energia: Industrial | Nao industrial",
+      "regiao",
     ]);
   });
 });

@@ -936,6 +936,84 @@ describe('ConversarIaService', () => {
       );
     });
 
+    it('maxBaloes=1 manda UMA mensagem só, mesmo com a persona quebrando', async () => {
+      // O caso que motivou o campo: acolhimento longo (acima do limite de 200
+      // caracteres que a rede de segurança pica por frase) que precisa chegar
+      // inteiro. Antes, a única saída era trocar a IA por texto fixo.
+      const longo =
+        'Oi! O que queimou aí foi o transiente da rede, aquele pico rapidíssimo que o disjuntor ' +
+        'não vê. O Master Block corta isso antes de chegar no equipamento, e qualquer eletricista ' +
+        'instala em minutos, sem parar a produção.';
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: longo, modelo: 'gpt' });
+      persona.obterConfigBot.mockResolvedValue({
+        historicoMensagens: 10,
+        delayRespostaSegundos: 0,
+        mostrarDigitando: false,
+        quebrarMensagens: true,
+        maxMensagens: 4,
+        transcreverAudio: false,
+        analisarImagem: false,
+      });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ aguardarResposta: false, maxBaloes: 1 }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+      expect(whatsapp.enviarTexto.mock.calls[0][2]).toBe(longo);
+    });
+
+    it('maxBaloes=1 junta o que veio com ||| num balão só', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Oi|||tudo bem?', modelo: 'gpt' });
+      persona.obterConfigBot.mockResolvedValue({
+        historicoMensagens: 10,
+        delayRespostaSegundos: 0,
+        mostrarDigitando: false,
+        quebrarMensagens: true,
+        maxMensagens: 4,
+        transcreverAudio: false,
+        analisarImagem: false,
+      });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ aguardarResposta: false, maxBaloes: 1 }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+      expect(whatsapp.enviarTexto.mock.calls[0][2]).toBe('Oi tudo bem?');
+    });
+
+    it('maxBaloes ganha da persona também no outro sentido (persona sem quebra, nó com 3)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'um|||dois|||três', modelo: 'gpt' });
+      persona.obterConfigBot.mockResolvedValue({
+        historicoMensagens: 10,
+        delayRespostaSegundos: 0,
+        mostrarDigitando: false,
+        quebrarMensagens: false,
+        maxMensagens: 3,
+        transcreverAudio: false,
+        analisarImagem: false,
+      });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ aguardarResposta: false, maxBaloes: 3 }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(3);
+    });
+
     it('guarda a abertura na memória da IA (pra não se reapresentar)', async () => {
       prisma.lead.findFirst.mockResolvedValue({
         contatoTelefone: '11999990000',

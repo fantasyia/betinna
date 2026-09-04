@@ -228,6 +228,26 @@ export interface ConversarIaConfig {
    * saúda de forma neutra.
    */
   usarNomeDoLead?: boolean;
+  /**
+   * Teto de balões DESTE nó — sobrescreve a persona do bot.
+   *
+   * Existe porque a decisão de quebrar era global e o nó não podia discordar:
+   * mesmo sem `|||` e sem linha em branco, texto acima de 200 caracteres era
+   * picado por frase, como rede de segurança contra o modelo ignorar o `|||`.
+   * O efeito colateral é que **instrução de formato no prompt não valia nada**
+   * pro número de balões — e mensagem que tem forma esperada (acolhimento,
+   * confirmação, entrega de link) só saía inteira virando texto fixo, o que
+   * custa a capacidade de responder o que o lead perguntou.
+   *
+   * | valor | efeito |
+   * |---|---|
+   * | ausente | usa a persona (`quebrarMensagens` + `maxMensagens`) |
+   * | `1` | UM balão, sempre — não quebra por tamanho nem por frase |
+   * | `2`+ | quebra normal, com este teto no lugar do da persona |
+   *
+   * A persona segue sendo o padrão: isto é exceção por nó.
+   */
+  maxBaloes?: number;
 }
 
 /** Config da ação LIBERAR_LOTE (orquestração Fase B). */

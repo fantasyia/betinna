@@ -1,6 +1,6 @@
-import { Input, Select, Field } from '@/components/ui';
-import type { NodePayload } from '@/pages/fluxo/lib/types';
-import type { InspectorPrompt } from '@/pages/fluxo/hooks/useInspectorData';
+import { Input, Select, Field } from "@/components/ui";
+import type { NodePayload } from "@/pages/fluxo/lib/types";
+import type { InspectorPrompt } from "@/pages/fluxo/hooks/useInspectorData";
 
 /** CONVERSAR_IA — prompt + aguardar resposta + timeout + variáveis que a IA grava. */
 export function ConversarIaForm({
@@ -14,10 +14,13 @@ export function ConversarIaForm({
 }) {
   return (
     <>
-      <Field label="Prompt" hint="Da biblioteca de prompts. Vazio = prompt padrão da empresa.">
+      <Field
+        label="Prompt"
+        hint="Da biblioteca de prompts. Vazio = prompt padrão da empresa."
+      >
         <Select
           size="sm"
-          value={(data.config.promptId as string) ?? ''}
+          value={(data.config.promptId as string) ?? ""}
           onChange={(e) =>
             onUpdate((d) => ({
               ...d,
@@ -29,7 +32,7 @@ export function ConversarIaForm({
           {(prompts ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.nome}
-              {p.isPadrao ? ' (padrão)' : ''}
+              {p.isPadrao ? " (padrão)" : ""}
             </option>
           ))}
         </Select>
@@ -40,11 +43,18 @@ export function ConversarIaForm({
       >
         <Select
           size="sm"
-          value={(data.config.consultarCatalogo as boolean | undefined) ? 'sim' : 'nao'}
+          value={
+            (data.config.consultarCatalogo as boolean | undefined)
+              ? "sim"
+              : "nao"
+          }
           onChange={(e) =>
             onUpdate((d) => ({
               ...d,
-              config: { ...d.config, consultarCatalogo: e.target.value === 'sim' },
+              config: {
+                ...d.config,
+                consultarCatalogo: e.target.value === "sim",
+              },
             }))
           }
         >
@@ -58,11 +68,18 @@ export function ConversarIaForm({
       >
         <Select
           size="sm"
-          value={(data.config.consultarConhecimento as boolean | undefined) ? 'sim' : 'nao'}
+          value={
+            (data.config.consultarConhecimento as boolean | undefined)
+              ? "sim"
+              : "nao"
+          }
           onChange={(e) =>
             onUpdate((d) => ({
               ...d,
-              config: { ...d.config, consultarConhecimento: e.target.value === 'sim' },
+              config: {
+                ...d.config,
+                consultarConhecimento: e.target.value === "sim",
+              },
             }))
           }
         >
@@ -77,12 +94,14 @@ export function ConversarIaForm({
         <Select
           size="sm"
           value={
-            ((data.config.usarNomeDoLead as boolean | undefined) ?? true) ? 'sim' : 'nao'
+            ((data.config.usarNomeDoLead as boolean | undefined) ?? true)
+              ? "sim"
+              : "nao"
           }
           onChange={(e) =>
             onUpdate((d) => ({
               ...d,
-              config: { ...d.config, usarNomeDoLead: e.target.value === 'sim' },
+              config: { ...d.config, usarNomeDoLead: e.target.value === "sim" },
             }))
           }
         >
@@ -90,14 +109,47 @@ export function ConversarIaForm({
           <option value="nao">Não — conversa sem citar o nome</option>
         </Select>
       </Field>
+      <Field
+        label="Quantas mensagens no WhatsApp?"
+        hint="Por padrão o nó segue a persona do bot — que quebra textos longos em vários balões mesmo quando o prompt pede uma mensagem só. Use 'uma mensagem' quando o texto tem forma fixa (acolhimento, confirmação, entrega de link)."
+      >
+        <Select
+          size="sm"
+          value={String((data.config.maxBaloes as number | undefined) ?? "")}
+          onChange={(e) =>
+            onUpdate((d) => {
+              const { maxBaloes: _removido, ...resto } = d.config;
+              return {
+                ...d,
+                config: e.target.value
+                  ? { ...d.config, maxBaloes: Number(e.target.value) }
+                  : resto,
+              };
+            })
+          }
+        >
+          <option value="">Como a persona do bot manda (padrão)</option>
+          <option value="1">Uma mensagem só — nunca quebra</option>
+          <option value="2">Até 2 mensagens</option>
+          <option value="3">Até 3 mensagens</option>
+          <option value="4">Até 4 mensagens</option>
+        </Select>
+      </Field>
       <Field label="Aguardar resposta do lead?">
         <Select
           size="sm"
-          value={((data.config.aguardarResposta as boolean | undefined) ?? true) ? 'sim' : 'nao'}
+          value={
+            ((data.config.aguardarResposta as boolean | undefined) ?? true)
+              ? "sim"
+              : "nao"
+          }
           onChange={(e) =>
             onUpdate((d) => ({
               ...d,
-              config: { ...d.config, aguardarResposta: e.target.value === 'sim' },
+              config: {
+                ...d.config,
+                aguardarResposta: e.target.value === "sim",
+              },
             }))
           }
         >
@@ -108,16 +160,27 @@ export function ConversarIaForm({
       <Field label="Falar ao chegar neste nó?">
         <Select
           size="sm"
-          value={(data.config.naoFalarPrimeiro as boolean | undefined) ? 'nao' : 'sim'}
+          value={
+            (data.config.naoFalarPrimeiro as boolean | undefined)
+              ? "nao"
+              : "sim"
+          }
           onChange={(e) =>
             onUpdate((d) => ({
               ...d,
-              config: { ...d.config, naoFalarPrimeiro: e.target.value === 'nao' },
+              config: {
+                ...d.config,
+                naoFalarPrimeiro: e.target.value === "nao",
+              },
             }))
           }
         >
-          <option value="sim">Sim — a IA escreve assim que o fluxo chega aqui</option>
-          <option value="nao">Não — só espera a resposta (a pergunta veio de um nó fixo)</option>
+          <option value="sim">
+            Sim — a IA escreve assim que o fluxo chega aqui
+          </option>
+          <option value="nao">
+            Não — só espera a resposta (a pergunta veio de um nó fixo)
+          </option>
         </Select>
       </Field>
       <Field label="Timeout (horas)">
@@ -136,30 +199,31 @@ export function ConversarIaForm({
       {(data.config.aguardarResposta as boolean | undefined) !== false &&
         Number(data.config.timeoutHoras ?? 0) > 0 && (
           <p className="text-[11px] text-muted">
-            Com timeout, o nó tem <strong>3 saídas</strong> no canvas: 🟢{' '}
-            <strong>classificou</strong> (IA concluiu), 🟠 <strong>timeout</strong> (passou o
-            prazo sem resposta) e 🔴 <strong>erro</strong> (falha de IA/WhatsApp) — conecte cada
-            uma a um caminho.
+            Com timeout, o nó tem <strong>3 saídas</strong> no canvas: 🟢{" "}
+            <strong>classificou</strong> (IA concluiu), 🟠{" "}
+            <strong>timeout</strong> (passou o prazo sem resposta) e 🔴{" "}
+            <strong>erro</strong> (falha de IA/WhatsApp) — conecte cada uma a um
+            caminho.
           </p>
         )}
       <p className="text-[11px] text-muted">
-        A saída 🔴 <strong>erro</strong> aparece <strong>sempre</strong> — use-a pra tratar falha
-        técnica (tag, tarefa de revisão manual, alerta pra equipe). Sem conexão, o erro só fica
-        no log de execução.
+        A saída 🔴 <strong>erro</strong> aparece <strong>sempre</strong> — use-a
+        pra tratar falha técnica (tag, tarefa de revisão manual, alerta pra
+        equipe). Sem conexão, o erro só fica no log de execução.
       </p>
       <Field
         label="Variáveis que a IA pode gravar"
         hint={
-          'Separe por vírgula (ex: classificacao, canal). Vazio = livre. ' +
+          "Separe por vírgula (ex: classificacao, canal). Vazio = livre. " +
           'Pra travar os valores aceitos, use "nome: A | B | C" — aí a IA fica IMPEDIDA ' +
-          'de gravar fora da lista (útil quando o roteador compara por texto exato).'
+          "de gravar fora da lista (útil quando o roteador compara por texto exato)."
         }
       >
         <Input
           value={
             Array.isArray(data.config.variaveisGravadas)
-              ? (data.config.variaveisGravadas as string[]).join(', ')
-              : ''
+              ? (data.config.variaveisGravadas as string[]).join(", ")
+              : ""
           }
           onChange={(e) =>
             onUpdate((d) => ({
@@ -167,7 +231,7 @@ export function ConversarIaForm({
               config: {
                 ...d.config,
                 variaveisGravadas: e.target.value
-                  .split(',')
+                  .split(",")
                   .map((s) => s.trim())
                   .filter(Boolean),
               },
@@ -185,7 +249,10 @@ export function ConversarIaForm({
           <Input
             type="number"
             min={0}
-            value={(data.config.encerramentoEspera as { valor?: number } | undefined)?.valor ?? 0}
+            value={
+              (data.config.encerramentoEspera as { valor?: number } | undefined)
+                ?.valor ?? 0
+            }
             onChange={(e) =>
               onUpdate((d) => ({
                 ...d,
@@ -194,8 +261,10 @@ export function ConversarIaForm({
                   encerramentoEspera: {
                     valor: Number(e.target.value),
                     unidade:
-                      (d.config.encerramentoEspera as { unidade?: string } | undefined)?.unidade ??
-                      'minutos',
+                      (
+                        d.config.encerramentoEspera as
+                          { unidade?: string } | undefined
+                      )?.unidade ?? "minutos",
                   },
                 },
               }))
@@ -204,8 +273,10 @@ export function ConversarIaForm({
           <Select
             size="sm"
             value={
-              (data.config.encerramentoEspera as { unidade?: string } | undefined)?.unidade ??
-              'minutos'
+              (
+                data.config.encerramentoEspera as
+                  { unidade?: string } | undefined
+              )?.unidade ?? "minutos"
             }
             onChange={(e) =>
               onUpdate((d) => ({
@@ -214,7 +285,10 @@ export function ConversarIaForm({
                   ...d.config,
                   encerramentoEspera: {
                     valor:
-                      (d.config.encerramentoEspera as { valor?: number } | undefined)?.valor ?? 0,
+                      (
+                        d.config.encerramentoEspera as
+                          { valor?: number } | undefined
+                      )?.valor ?? 0,
                     unidade: e.target.value,
                   },
                 },

@@ -1229,6 +1229,7 @@ export class ConversarIaService {
         `fx:${execucaoId}:${no.id}:opener`,
         this.donoDaConversa(ctx),
         execucaoId,
+        cfg.maxBaloes,
       );
     } catch (err) {
       // Janela/teto NÃO é falha de WhatsApp — é "ainda não" (auditoria 20/08).
@@ -1858,6 +1859,7 @@ export class ConversarIaService {
         undefined, // sem idemKey: aviso pontual
         this.donoDaConversa(ctx),
         execucaoId,
+        cfg.maxBaloes,
       ).catch(() => undefined);
       await this.rotearParaErro(
         execucaoId,
@@ -1991,6 +1993,7 @@ export class ConversarIaService {
         idemTurno,
         this.donoDaConversa(ctx),
         execucaoId,
+        cfg.maxBaloes,
       );
     } catch (err) {
       // Mesma regra do opener: porta fechada sobe pro executor (retry +
@@ -2527,6 +2530,11 @@ export class ConversarIaService {
      * execução tiver sido CANCELADA enquanto a IA pensava — ver `execucaoViva`.
      */
     execucaoId?: string,
+    /**
+     * Teto de balões DESTE nó (`ConversarIaConfig.maxBaloes`). Ausente = persona.
+     * 1 = um balão só, mesmo que o texto passe do limite de tamanho.
+     */
+    maxBaloes?: number | null,
   ): Promise<void> {
     if (!texto.trim()) return;
     // ÚLTIMA TRAVA antes de falar. A chamada ao modelo leva de 10 a 90s, e nesse
@@ -2551,11 +2559,16 @@ export class ConversarIaService {
     // MESMA persona, MESMO helper do bot geral (enviarEmBaloes): balões, delay e
     // "digitando…" idênticos — sem distinção entre fluxo e bot geral. Sem config
     // (erro ao buscar), cai em defaults seguros (sem quebra, sem delay).
+    // O NÓ ganha da persona quando pede um teto próprio — nos dois sentidos:
+    // `1` manda inteiro mesmo com a persona quebrando, e `2+` quebra mesmo com a
+    // persona sem quebra. Sem `maxBaloes`, nada muda: a persona continua sendo o
+    // padrão, e a maior parte dos nós deve seguir o estilo do bot.
+    const teto = typeof maxBaloes === 'number' && maxBaloes >= 1 ? Math.floor(maxBaloes) : null;
     await enviarEmBaloes(
       texto,
       {
-        quebrarMensagens: cfg?.quebrarMensagens ?? false,
-        maxMensagens: cfg?.maxMensagens ?? 3,
+        quebrarMensagens: teto !== null ? teto > 1 : (cfg?.quebrarMensagens ?? false),
+        maxMensagens: teto !== null ? teto : (cfg?.maxMensagens ?? 3),
         mostrarDigitando: cfg?.mostrarDigitando ?? false,
         delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
       },
