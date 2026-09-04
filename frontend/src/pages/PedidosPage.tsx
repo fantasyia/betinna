@@ -125,6 +125,7 @@ interface PedidoDetail extends Pedido {
 const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
   RASCUNHO: Pencil,
   AGUARDANDO_APROVACAO: CircleDashed,
+  AGUARDANDO_LIBERACAO: CircleDashed,
   ENVIADO_ERP: Send,
   PAGO: CreditCard,
   EM_SEPARACAO: Receipt,
@@ -670,7 +671,12 @@ export default function PedidosPage() {
                   <tbody>
                     {pageResp.data.map((p) => {
                       const isSelected = p.id === selected;
-                      const StatusIcon = STATUS_ICON[p.status];
+                      // `?? Pencil`: status que o backend conhece e o front ainda
+                      // não vira `undefined` aqui, e renderizar `<undefined />`
+                      // derruba a PÁGINA INTEIRA no ErrorBoundary — foi o que
+                      // aconteceu em 04/09 com AGUARDANDO_LIBERACAO. Ícone
+                      // genérico é degradação; tela branca não é.
+                      const StatusIcon = STATUS_ICON[p.status] ?? Pencil;
                       return (
                         <tr
                           key={p.id}

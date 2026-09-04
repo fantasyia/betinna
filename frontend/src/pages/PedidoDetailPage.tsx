@@ -55,6 +55,7 @@ import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 type PedidoStatus =
   | 'RASCUNHO'
   | 'AGUARDANDO_APROVACAO'
+  | 'AGUARDANDO_LIBERACAO'
   | 'ENVIADO_ERP'
   | 'PAGO'
   | 'EM_SEPARACAO'
@@ -111,6 +112,7 @@ interface PedidoDetail {
 const STATUS_LABEL: Record<PedidoStatus, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  AGUARDANDO_LIBERACAO: 'Aguardando liberação no ERP',
   ENVIADO_ERP: 'Enviado ao ERP',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
@@ -125,6 +127,7 @@ const STATUS_VARIANT: Record<
 > = {
   RASCUNHO: 'neutral',
   AGUARDANDO_APROVACAO: 'warning',
+  AGUARDANDO_LIBERACAO: 'warning',
   ENVIADO_ERP: 'info',
   PAGO: 'success',
   EM_SEPARACAO: 'primary',
@@ -136,6 +139,7 @@ const STATUS_VARIANT: Record<
 const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
   RASCUNHO: Pencil,
   AGUARDANDO_APROVACAO: CircleDashed,
+  AGUARDANDO_LIBERACAO: CircleDashed,
   ENVIADO_ERP: Send,
   PAGO: CreditCard,
   EM_SEPARACAO: Receipt,

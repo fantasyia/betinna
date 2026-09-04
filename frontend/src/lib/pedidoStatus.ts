@@ -5,6 +5,8 @@
 export type PedidoStatus =
   | 'RASCUNHO'
   | 'AGUARDANDO_APROVACAO'
+  /** Contrato assinado — travado esperando a liberação no ERP. */
+  | 'AGUARDANDO_LIBERACAO'
   | 'ENVIADO_ERP'
   | 'PAGO'
   | 'EM_SEPARACAO'
@@ -15,6 +17,7 @@ export type PedidoStatus =
 export const PEDIDO_STATUSES: PedidoStatus[] = [
   'RASCUNHO',
   'AGUARDANDO_APROVACAO',
+  'AGUARDANDO_LIBERACAO',
   'ENVIADO_ERP',
   'PAGO',
   'EM_SEPARACAO',
@@ -47,6 +50,7 @@ export const VARIANT_LABEL: Record<StatusVariant, string> = {
 export const STATUS_LABEL_DEFAULT: Record<PedidoStatus, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  AGUARDANDO_LIBERACAO: 'Aguardando liberação no ERP',
   ENVIADO_ERP: 'Enviado ao ERP',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
@@ -58,6 +62,7 @@ export const STATUS_LABEL_DEFAULT: Record<PedidoStatus, string> = {
 export const STATUS_VARIANT_DEFAULT: Record<PedidoStatus, StatusVariant> = {
   RASCUNHO: 'neutral',
   AGUARDANDO_APROVACAO: 'warning',
+  AGUARDANDO_LIBERACAO: 'warning',
   ENVIADO_ERP: 'info',
   PAGO: 'success',
   EM_SEPARACAO: 'primary',
@@ -75,7 +80,11 @@ export type PedidoStatusConfig = Partial<Record<PedidoStatus, PedidoStatusMeta>>
 
 /** Nome efetivo do status: o custom do tenant, senão o default. */
 export function resolveStatusLabel(status: PedidoStatus, cfg?: PedidoStatusConfig | null): string {
-  return cfg?.[status]?.label?.trim() || STATUS_LABEL_DEFAULT[status];
+  // Fallback pro PRÓPRIO nome do status: em 04/09 o backend ganhou
+  // AGUARDANDO_LIBERACAO, o front não conhecia a chave, e a página de pedidos
+  // inteira caiu no "Algo deu errado" — por causa de um rótulo. Status novo
+  // pode ficar feio na tela; não pode derrubar a tela.
+  return cfg?.[status]?.label?.trim() || STATUS_LABEL_DEFAULT[status] || String(status);
 }
 
 /** Cor (variant) efetiva do status: a custom do tenant, senão a default. */
@@ -83,5 +92,5 @@ export function resolveStatusVariant(
   status: PedidoStatus,
   cfg?: PedidoStatusConfig | null,
 ): StatusVariant {
-  return cfg?.[status]?.variant ?? STATUS_VARIANT_DEFAULT[status];
+  return cfg?.[status]?.variant ?? STATUS_VARIANT_DEFAULT[status] ?? 'neutral';
 }

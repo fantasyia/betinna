@@ -142,6 +142,7 @@ interface DashboardResp {
 const STATUS_LABEL_PT: Record<string, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  AGUARDANDO_LIBERACAO: 'Aguardando liberação',
   ENVIADO_ERP: 'Enviado ERP',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
@@ -152,6 +153,7 @@ const STATUS_LABEL_PT: Record<string, string> = {
 const STATUS_COLOR_PT: Record<string, string> = {
   RASCUNHO: 'var(--muted)',
   AGUARDANDO_APROVACAO: 'var(--warning)',
+  AGUARDANDO_LIBERACAO: 'var(--warning)',
   ENVIADO_ERP: 'var(--info)',
   PAGO: 'var(--success)',
   EM_SEPARACAO: 'var(--magenta)',
