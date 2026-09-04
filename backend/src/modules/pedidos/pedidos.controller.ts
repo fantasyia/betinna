@@ -32,6 +32,7 @@ import {
 } from './pedidos.dto';
 import { PedidosService } from './pedidos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
+import { TinyRepsSyncService } from '@integrations/tiny/tiny-reps-sync.service';
 
 @ApiTags('pedidos')
 @ApiBearerAuth()
@@ -40,6 +41,7 @@ export class PedidosController {
   constructor(
     private readonly pedidos: PedidosService,
     private readonly erpSync: PedidoErpSyncService,
+    private readonly repsSync: TinyRepsSyncService,
   ) {}
 
   @Post('preview')
@@ -71,14 +73,19 @@ export class PedidosController {
   @RequirePermissions({ module: 'pedidos', action: 'view' })
   @Audit({ action: 'sync_erp', resource: 'pedido' })
   @ApiOperation({ summary: 'Traz pedidos, status e rastreio do ERP (Tiny) para o app.' })
-  syncErp(@CurrentUser() user: AuthenticatedUser, @Query('dias') dias?: string) {
+  async syncErp(@CurrentUser() user: AuthenticatedUser, @Query('dias') dias?: string) {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const janela = Number(dias);
-    return this.erpSync.sincronizar(user.empresaIdAtiva, {
+    const pedidos = await this.erpSync.sincronizar(user.empresaIdAtiva, {
       dias: Number.isFinite(janela) && janela > 0 ? janela : undefined,
     });
+    // Reps sem contato no ERP sobem na mesma rodada — igual à diária. Sem isto,
+    // um rep cadastrado hoje só virava contato (e só entrava na folha do ERP)
+    // às 03:00 da madrugada, e o botão dizia "sincronizado" pela metade.
+    const reps = await this.repsSync.sincronizar(user.empresaIdAtiva);
+    return { ...pedidos, reps };
   }
 
   @Post('bulk/enviar-erp')
