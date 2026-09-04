@@ -108,9 +108,10 @@ export class PedidoSiteService {
         status: 'RASCUNHO',
         subtotal: new Prisma.Decimal(subtotal),
         total: new Prisma.Decimal(total),
+        // Frete em coluna própria: entra no total, mas fica FORA da comissão.
+        frete: new Prisma.Decimal(dto.valorFrete ?? 0),
         comissao: new Prisma.Decimal(0),
-        // O frete entra no total (o Pedido não tem coluna própria de frete) e
-        // fica dito na observação, que é o que a expedição lê.
+        // O frete também fica dito na observação, que é o que a expedição lê.
         observacoes: [
           `Pedido ${dto.numeroSite} (site)`,
           dto.valorFrete ? `frete R$ ${dto.valorFrete.toFixed(2)}` : '',

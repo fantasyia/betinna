@@ -33,6 +33,7 @@ function build(
   };
   const contas = {
     criarContaPagar: vi.fn().mockResolvedValue(4242),
+    atualizarContaPagar: vi.fn().mockResolvedValue(undefined),
     criarContaReceber: vi.fn().mockResolvedValue(4243),
     acharCategoria: vi.fn().mockResolvedValue(77),
   };
@@ -65,6 +66,25 @@ describe('folha de comissões no financeiro do ERP', () => {
     expect(lancamento.dataCompetencia).toBe('2026-07');
     expect(lancamento.valor).toBe(5000);
     expect(lancamento.idContato).toBe(894881870);
+  });
+
+  it('folha reprocessada REESCREVE a conta que já existe no ERP (valor novo)', async () => {
+    // Antes, "já provisionada" era ponto final: a folha mudava aqui e o
+    // financeiro pagava o número velho lá.
+    const { svc, contas } = build({
+      comissoes: [{ ...COMISSAO_REP, totalComissao: 3.63, contaPagarErpId: '338146928' }],
+    });
+
+    const r = await svc.provisionar('emp-1', 9, 2026);
+
+    expect(contas.criarContaPagar).not.toHaveBeenCalled();
+    expect(contas.atualizarContaPagar).toHaveBeenCalledTimes(1);
+    const [, id, lancamento] = contas.atualizarContaPagar.mock.calls[0];
+    expect(id).toBe(338146928);
+    expect(lancamento.valor).toBe(3.63);
+    expect(lancamento.dataVencimento).toBe('2026-10-05');
+    expect(r.jaProvisionadas).toBe(1);
+    expect(r.atualizadas).toBe(1);
   });
 
   it('dezembro vence em 05 de JANEIRO do ano seguinte', async () => {

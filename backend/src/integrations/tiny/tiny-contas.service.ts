@@ -38,6 +38,17 @@ export class TinyContasService {
 
   constructor(private readonly client: TinyClientService) {}
 
+  /** Reescreve uma conta a pagar já criada (valor/histórico) — reprocessamento da folha. */
+  async atualizarContaPagar(empresaId: string, id: number, l: LancamentoFinanceiro): Promise<void> {
+    // O PUT aceita SÓ estes campos (spec) — contato e histórico ficam como estão.
+    await this.client.put(empresaId, `/contas-pagar/${id}`, {
+      valor: Math.round(l.valor * 100) / 100,
+      dataVencimento: l.dataVencimento,
+      ...(l.dataCompetencia ? { dataCompetencia: l.dataCompetencia } : {}),
+      ...(l.idCategoria ? { categoria: { id: l.idCategoria } } : {}),
+    });
+  }
+
   async criarContaPagar(empresaId: string, l: LancamentoFinanceiro): Promise<number> {
     const r = await this.client.post<{ id: number }>(empresaId, '/contas-pagar', this.corpo(l));
     this.logger.log(

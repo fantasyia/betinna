@@ -8,6 +8,8 @@ export interface ResultadoProvisionamento {
   provisionadas: number;
   semContatoNoErp: string[];
   jaProvisionadas: number;
+  /** Já tinham conta no ERP e o valor mudou (reprocessamento) — a conta foi reescrita lá. */
+  atualizadas: number;
   originacao: { valor: number; provisionada: boolean; motivo?: string };
   erros: number;
 }
@@ -75,6 +77,7 @@ export class ComissaoErpService {
       provisionadas: 0,
       semContatoNoErp: [],
       jaProvisionadas: 0,
+      atualizadas: 0,
       originacao: { valor: 0, provisionada: false },
       erros: 0,
     };
@@ -100,11 +103,33 @@ export class ComissaoErpService {
     const competencia = this.competencia(mes, ano);
 
     for (const c of comissoes) {
+      const contato = Number(c.representante?.contatoErpId ?? 0);
       if (c.contaPagarErpId) {
+        // Reprocessar a folha muda o valor aqui — a conta lá precisa acompanhar,
+        // senão o financeiro paga o número velho. Idempotente: reescreve o mesmo.
         r.jaProvisionadas += 1;
+        if (contato && Number(c.totalComissao) > 0) {
+          try {
+            await this.contas.atualizarContaPagar(empresaId, Number(c.contaPagarErpId), {
+              idContato: contato,
+              valor: Number(c.totalComissao),
+              dataVencimento: vencimento,
+              dataCompetencia: competencia,
+              numeroDocumento: `COMISSAO ${String(mes).padStart(2, '0')}/${ano}`,
+              historico:
+                `Comissão ${c.tipo} ${String(mes).padStart(2, '0')}/${ano} — ${c.representante?.nome ?? ''}`.trim(),
+              idCategoria,
+            });
+            r.atualizadas += 1;
+          } catch (err) {
+            r.erros += 1;
+            this.logger.error(
+              `[erp] conta ${c.contaPagarErpId} da comissão ${c.id} não atualizada: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
         continue;
       }
-      const contato = Number(c.representante?.contatoErpId ?? 0);
       if (!contato) {
         // Sem contato no ERP não existe a quem pagar. Isso é pendência de
         // cadastro (o rep sobe como contato na rodada diária), não erro — e

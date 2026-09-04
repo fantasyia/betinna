@@ -86,6 +86,22 @@ describe('PedidoComissoesService', () => {
     expect(Number(criada.valor)).toBe(40);
   });
 
+  it('frete fica FORA da base — é repasse pra transportadora, não venda', async () => {
+    // Total do ERP inclui o frete cotado lá: R$50 de produto + R$10,11 de frete.
+    prisma.pedido.findUnique.mockResolvedValue(
+      pedido({ total: new Prisma.Decimal('60.11'), frete: new Prisma.Decimal('10.11') }),
+    );
+    prisma.usuario.findMany.mockResolvedValue([{ id: 'harada', comissaoSite: 7.25 }]);
+
+    await svc.recalcular('ped-1');
+
+    const criada = (
+      tx.pedidoComissao.upsert.mock.calls[0][0] as { create: Record<string, unknown> }
+    ).create;
+    expect(Number(criada.base)).toBe(50);
+    expect(Number(criada.valor)).toBe(3.63);
+  });
+
   it('pedido cancelado apaga as linhas que existiam', async () => {
     prisma.pedido.findUnique.mockResolvedValue(pedido({ status: 'CANCELADO' }));
     prisma.pedidoComissao.deleteMany.mockResolvedValue({ count: 2 });

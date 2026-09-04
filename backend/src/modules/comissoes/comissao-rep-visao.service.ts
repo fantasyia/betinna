@@ -99,6 +99,7 @@ export class ComissaoRepVisaoService {
         id: true,
         numero: true,
         total: true,
+        frete: true,
         valorDevolvido: true,
         comissao: true,
         comissaoEstornada: true,
@@ -113,7 +114,10 @@ export class ComissaoRepVisaoService {
       numero: p.numero,
       cliente: p.cliente?.nome ?? '—',
       data: p.enviadoErpEm ? p.enviadoErpEm.toISOString() : null,
-      totalPedido: Math.max(0, Number(p.total) - Number(p.valorDevolvido ?? 0)),
+      totalPedido: Math.max(
+        0,
+        Number(p.total) - Number(p.frete ?? 0) - Number(p.valorDevolvido ?? 0),
+      ),
       // Líquido: devolução aprovada já estornou parte da comissão.
       comissao: Math.max(0, Number(p.comissao) - Number(p.comissaoEstornada ?? 0)),
     }));

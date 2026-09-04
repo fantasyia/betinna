@@ -76,6 +76,7 @@ export class PedidoComissoesService {
         origem: true,
         status: true,
         total: true,
+        frete: true,
         valorDevolvido: true,
         representanteId: true,
       },
@@ -93,9 +94,10 @@ export class PedidoComissoesService {
     // Em Decimal do começo ao fim: `50 × 7,25%` dá 3,625, e em float isso é
     // 3,62499…, que arredonda pra BAIXO — meio centavo somindo em toda venda
     // que cai na metade exata.
+    // Frete fora: é repasse pra transportadora, não venda.
     const base = Prisma.Decimal.max(
       0,
-      new Prisma.Decimal(pedido.total).minus(pedido.valorDevolvido ?? 0),
+      new Prisma.Decimal(pedido.total).minus(pedido.frete ?? 0).minus(pedido.valorDevolvido ?? 0),
     );
 
     const linhas: Array<{ usuarioId: string; tipo: 'REP' | 'SITE'; percentual: number }> = [];

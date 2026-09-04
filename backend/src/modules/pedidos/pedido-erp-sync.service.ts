@@ -346,6 +346,7 @@ export class PedidoErpSyncService {
         status: true,
         observacoes: true,
         total: true,
+        frete: true,
         rastreioCodigo: true,
         rastreioUrl: true,
         representanteId: true,
@@ -360,6 +361,9 @@ export class PedidoErpSyncService {
       d.transportador?.urlRastreamento?.trim() ||
       linkPublicoRastreio(rastreioCodigo, d.transportador?.formaEnvio);
     const total = new Prisma.Decimal(d.valorTotalPedido ?? d.valorTotalProdutos ?? 0);
+    // O total do ERP inclui o frete cotado lá. Guardar separado é o que deixa
+    // a comissão sair sobre a VENDA — frete é repasse pra transportadora.
+    const frete = new Prisma.Decimal(d.valorFrete ?? 0);
 
     if (existente) {
       // Pedido órfão ADOTA o dono quando ele passa a existir.
@@ -375,7 +379,8 @@ export class PedidoErpSyncService {
         (status !== null && status !== existente.status) ||
         rastreioCodigo !== existente.rastreioCodigo ||
         rastreioUrl !== existente.rastreioUrl ||
-        !new Prisma.Decimal(existente.total).equals(total);
+        !new Prisma.Decimal(existente.total).equals(total) ||
+        !new Prisma.Decimal(existente.frete ?? 0).equals(frete);
 
       const naoEntregue = await this.tratarNaoEntregue(empresaId, d, existente);
       // Recalcula ANTES do atalho de "nada mudou": o que muda a comissão nem
@@ -398,6 +403,7 @@ export class PedidoErpSyncService {
           rastreioCodigo,
           rastreioUrl,
           total,
+          frete,
           // Só carimba a primeira entrega: é a base da janela de devolução.
           ...(viraEntregue ? { entregueEm: new Date() } : {}),
         },
@@ -526,7 +532,8 @@ export class PedidoErpSyncService {
         status: (status ?? 'ENVIADO_ERP') as never,
         subtotal: new Prisma.Decimal(d.valorTotalProdutos ?? d.valorTotalPedido ?? 0),
         total,
-        comissao: total.mul(comissaoPct).div(100),
+        frete,
+        comissao: total.minus(frete).mul(comissaoPct).div(100),
         rastreioCodigo,
         rastreioUrl,
         propostaNumero: this.propostaDaObservacao(d),
@@ -604,6 +611,7 @@ export class PedidoErpSyncService {
         numero: true,
         numeroSite: true,
         total: true,
+        frete: true,
         clienteId: true,
         representanteId: true,
         rastreioCodigo: true,

@@ -91,6 +91,8 @@ interface Pedido {
   representante?: { id: string; nome: string };
   criadoEm: string;
   numeroErp?: string | null;
+  /** Número que o cliente do SITE recebeu (SB…) — é o que ele cita ao ligar. */
+  numeroSite?: string | null;
   enviadoErpEm?: string | null;
   /** Rastreio do ERP — quem despacha é o Tiny, aqui é espelho. */
   rastreioCodigo?: string | null;
@@ -707,6 +709,11 @@ export default function PedidosPage() {
                               <strong className="text-sm text-text tabular font-semibold">
                                 #{p.numero}
                               </strong>
+                              {p.numeroSite && (
+                                <span className="text-[11px] text-secondary tabular">
+                                  Site {p.numeroSite}
+                                </span>
+                              )}
                               {p.numeroErp && (
                                 <span className="text-[11px] text-muted tabular">
                                   ERP {p.numeroErp}
@@ -1015,7 +1022,11 @@ function PedidoDetailDrawer({
       open
       onClose={onClose}
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
-      description={data?.numeroErp ? `ERP ${data.numeroErp}` : undefined}
+      description={
+        [data?.numeroSite ? `Site ${data.numeroSite}` : '', data?.numeroErp ? `ERP ${data.numeroErp}` : '']
+          .filter(Boolean)
+          .join(' · ') || undefined
+      }
       width="lg"
       footer={
         data && (
@@ -1132,6 +1143,9 @@ function PedidoDetailDrawer({
                   label="Criado em"
                   value={fmtDateTime(data.criadoEm)}
                 />
+                {data.numeroSite && (
+                  <InfoCell icon={<Hash />} label="Site" value={data.numeroSite} mono />
+                )}
                 {data.numeroErp && (
                   <InfoCell icon={<Hash />} label="ERP" value={data.numeroErp} mono />
                 )}

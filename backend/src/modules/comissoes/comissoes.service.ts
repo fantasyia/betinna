@@ -203,7 +203,13 @@ export class ComissoesService {
       by: ['representanteId'],
       where: baseWhere,
       // Estorno de devolução APROVADA (líquido): subtrai comissaoEstornada/valorDevolvido.
-      _sum: { total: true, comissao: true, comissaoEstornada: true, valorDevolvido: true },
+      _sum: {
+        total: true,
+        frete: true,
+        comissao: true,
+        comissaoEstornada: true,
+        valorDevolvido: true,
+      },
       _count: { _all: true },
     });
 
@@ -291,9 +297,12 @@ export class ComissoesService {
       .map((row) => {
         // #17 — _sum do Pedido vem Decimal; converte pra number. LÍQUIDO de devolução
         // aprovada: vendas − valorDevolvido, comissão − comissaoEstornada (nunca < 0).
+        // Líquido de devolução E de frete: frete não é venda.
         const totalVendas = Math.max(
           0,
-          Number(row._sum.total ?? 0) - Number(row._sum.valorDevolvido ?? 0),
+          Number(row._sum.total ?? 0) -
+            Number(row._sum.frete ?? 0) -
+            Number(row._sum.valorDevolvido ?? 0),
         );
         // CAÇADA-BUG #5: comissão REP = faturamento LÍQUIDO × % efetivo.
         //  - Escalonada: % da faixa por faturamento.
@@ -365,7 +374,12 @@ export class ComissoesService {
         // #17 — Decimal→number, LÍQUIDO de devolução (mesma base do rep).
         vendasPorRep.set(
           row.representanteId,
-          Math.max(0, Number(row._sum.total ?? 0) - Number(row._sum.valorDevolvido ?? 0)),
+          Math.max(
+            0,
+            Number(row._sum.total ?? 0) -
+              Number(row._sum.frete ?? 0) -
+              Number(row._sum.valorDevolvido ?? 0),
+          ),
         );
       }
     }
