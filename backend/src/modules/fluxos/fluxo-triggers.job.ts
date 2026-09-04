@@ -6,7 +6,7 @@ import { RedisService } from '@database/redis.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
-import { ConversarIaService } from './conversar-ia.service';
+import { ConversarIaService, TTL_CLAIM_MS } from './conversar-ia.service';
 import { CronMetricsService } from './cron-metrics.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { proximaExecucaoCrons, CRON_TZ_PADRAO } from './cron.util';
@@ -24,6 +24,9 @@ import { ehFeriadoNacional } from './feriados.util';
  *   do cron de 30min porque o prazo configurado era arredondado pra cima até a
  *   próxima :00/:30 — um timeout de 5min virava até 30min (6x o prometido), em
  *   silêncio. Timeout longo (24h/72h) não notava; timeout curto é inviável assim.
+ * - `destravarTurnosOrfaos` (a cada 2min): lock de turno de IA preso porque o
+ *   processo morreu no meio do `retomar`. Saiu do `reconciliarClaims` de 15min —
+ *   cada minuto ali era um minuto a mais de cliente sem resposta.
  */
 @Injectable()
 export class FluxoTriggersJob {
@@ -91,51 +94,7 @@ export class FluxoTriggersJob {
     const antigos = await this.prisma.fluxoStepClaim.deleteMany({
       where: { estado: 'CONCLUIDO', criadoEm: { lt: new Date(agora - 7 * 24 * 60 * 60 * 1000) } },
     });
-    // Destrava o lock de turno órfão: se o worker morreu no meio do retomar (sem rodar o
-    // finally), processandoTurno fica preso em true e o bot nunca mais responde o lead.
-    // Turno de IA é curto (segundos), então 15min sem progresso = órfão seguro de resetar.
-    //
-    // O claim agora tem TTL próprio (3min, no `ConversarIaService`), então este
-    // reaper virou a rede de baixo: pega o que sobrar. A janela caiu de 15min
-    // pra 5 — e, principalmente, ele passou a VARRER as mensagens perdidas.
-    // Destravar sem varrer é recuperação só no papel: o cliente que escreveu
-    // durante o travamento continuava sem resposta, porque a varredura só
-    // rodava no `finally` de um turno bem-sucedido. Quem mandava duas mensagens
-    // e desistia nunca era respondido (medido em produção, 29/08).
-    const travadas = await this.prisma.fluxoExecucao.findMany({
-      where: {
-        status: 'AGUARDANDO',
-        processandoTurno: true,
-        // turnoIniciadoEm (início do TURNO), não iniciouEm (início da execução): senão uma
-        // conversa saudável de 24h teria iniciouEm sempre >15min atrás e o reaper resetaria
-        // o lock no meio de um turno legítimo → turno em dobro (custo + classificou 2×).
-        turnoIniciadoEm: { lt: new Date(agora - 5 * 60 * 1000) },
-      },
-      select: { id: true },
-      take: 50,
-    });
-    const lockOrfaos = travadas.length
-      ? await this.prisma.fluxoExecucao.updateMany({
-          where: { id: { in: travadas.map((e) => e.id) } },
-          data: { processandoTurno: false },
-        })
-      : { count: 0 };
-    for (const e of travadas) {
-      // Uma falha não pode impedir a varredura das outras — cada conversa
-      // destravada é um cliente esperando.
-      await this.conversarIa.varrerPendentesAposDestravar(e.id).catch((err) => {
-        this.logger.warn(
-          `[reaper] varredura pós-destrave falhou (exec ${e.id}): ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-        );
-        return false;
-      });
-    }
-    if (travadas.length) {
-      this.logger.warn(
-        `[reaper] ${travadas.length} turno(s) preso(s) destravado(s) — mensagens pendentes varridas`,
-      );
-    }
+    // (O lock de turno de IA órfão saiu daqui: vive em `destravarTurnosOrfaos`, a cada 2min.)
     // Órfãs PENDENTE do cron: o CRON_AGENDADO cria a execução ANTES do dedup por jobId;
     // numa rodada sobreposta o job é deduplicado e a execução fica PENDENTE pra sempre.
     // PENDENTE de cron com >15min (job nunca rodou) é lixo seguro de remover.
@@ -214,19 +173,70 @@ export class FluxoTriggersJob {
       );
     }
 
-    if (
-      orfaos.count > 0 ||
-      antigos.count > 0 ||
-      lockOrfaos.count > 0 ||
-      cronOrfas.count > 0 ||
-      abandonadas > 0
-    ) {
+    if (orfaos.count > 0 || antigos.count > 0 || cronOrfas.count > 0 || abandonadas > 0) {
       this.logger.log(
         `Reconciliação: ${orfaos.count} claim(s) órfão(s) + ${antigos.count} antigo(s) removidos, ` +
-          `${lockOrfaos.count} lock(s) destravado(s), ${cronOrfas.count} execução(ões) cron órfã(s), ` +
+          `${cronOrfas.count} execução(ões) cron órfã(s), ` +
           `${abandonadas} execução(ões) abandonada(s) marcada(s) como FALHOU`,
       );
     }
+  }
+
+  /**
+   * Turno de IA com lock ÓRFÃO: destrava e varre as mensagens que ficaram sem resposta.
+   *
+   * O lock fica órfão quando o processo morre no meio do `retomar` (o `finally`
+   * não roda). Em 04/09 medimos que isso acontecia a CADA deploy: o Railway mata
+   * o processo no SIGTERM, sem drain. A primeira linha de defesa agora é o
+   * `onModuleDestroy` do `ConversarIaService`, que segura o encerramento até o
+   * turno acabar; este reaper é a rede de baixo — drain que estoura, OOM, crash.
+   *
+   * Saiu do `reconciliarClaims` (15min) pra um cron próprio de 2min: lá, o
+   * cliente esperava até 20min pela resposta; aqui, no máximo ~5.
+   *
+   * Limiar = TTL_CLAIM_MS (3min), o MESMO que o claim usa pra considerar um lock
+   * morto — antes eram 5min aqui e 3 lá, duas definições de "órfão". Turno
+   * legítimo nunca passa de TIMEOUT_TURNO_MS (2min), então 3 é seguro.
+   */
+  @Cron('*/2 * * * *', { name: 'fluxo-turno-orfao', timeZone: 'UTC' })
+  async destravarTurnosOrfaos(): Promise<void> {
+    if (this.env.get('NODE_ENV') === 'test') return;
+    if (!(await this.cronLock.acquire('fluxo-turno-orfao', 100))) return;
+
+    const travadas = await this.prisma.fluxoExecucao.findMany({
+      where: {
+        status: 'AGUARDANDO',
+        processandoTurno: true,
+        // turnoIniciadoEm (início do TURNO), não iniciouEm (início da execução): senão uma
+        // conversa saudável de 24h teria iniciouEm sempre velho e o reaper resetaria o
+        // lock no meio de um turno legítimo → turno em dobro (custo + classificou 2×).
+        turnoIniciadoEm: { lt: new Date(Date.now() - TTL_CLAIM_MS) },
+      },
+      select: { id: true },
+      take: 50,
+    });
+    if (travadas.length === 0) return;
+
+    await this.prisma.fluxoExecucao.updateMany({
+      where: { id: { in: travadas.map((e) => e.id) } },
+      data: { processandoTurno: false },
+    });
+    // Destravar sem varrer é recuperação só no papel: o cliente que escreveu
+    // durante o travamento continuava sem resposta (medido em produção, 29/08).
+    // Uma falha não pode impedir a varredura das outras — cada conversa é um
+    // cliente esperando.
+    for (const e of travadas) {
+      await this.conversarIa.varrerPendentesAposDestravar(e.id).catch((err) => {
+        this.logger.warn(
+          `[reaper] varredura pós-destrave falhou (exec ${e.id}): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+        return false;
+      });
+    }
+    this.logger.warn(
+      `[reaper] ${travadas.length} turno(s) preso(s) destravado(s) — mensagens pendentes varridas`,
+    );
   }
 
   /**

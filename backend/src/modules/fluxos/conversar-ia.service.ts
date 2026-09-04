@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { diaBrasilia, mesBrasilia } from '@shared/utils/data-brasilia.util';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
 import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -537,7 +537,7 @@ export function mesclarHistorico(
  * morto e outra mensagem pode tomá-lo. É este número — não o cron de 15min —
  * que define quanto tempo o cliente pode ficar sem resposta.
  */
-const TTL_CLAIM_MS = 3 * 60 * 1000;
+export const TTL_CLAIM_MS = 3 * 60 * 1000;
 
 /**
  * Quanto antes do início do turno a varredura de recuperação olha.
@@ -551,9 +551,18 @@ const MARGEM_MSG_DO_TURNO_MS = 60 * 1000;
 /** Teto de um turno. Existe pra GARANTIR que o `finally` rode e solte o lock. */
 const TIMEOUT_TURNO_MS = 2 * 60 * 1000;
 
+/**
+ * Quanto o encerramento do processo espera pelos turnos em voo. Tem que caber em
+ * `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` (30s nos serviços api e worker) — é o
+ * Railway quem decide quando manda o SIGKILL, e o padrão dele é ZERO segundos.
+ */
+const DRAIN_MAX_MS = 25 * 1000;
+
 @Injectable()
-export class ConversarIaService {
+export class ConversarIaService implements OnModuleDestroy {
   private readonly logger = new Logger(ConversarIaService.name);
+  /** Turnos rodando agora — o que o `onModuleDestroy` espera antes de deixar o processo morrer. */
+  private readonly turnosEmVoo = new Set<Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1564,8 +1573,80 @@ export class ConversarIaService {
     });
   }
 
-  /** Lead respondeu — roda 1 turno da IA e avança o fluxo se classificou. */
+  /**
+   * Segura o encerramento do processo até os turnos em voo terminarem.
+   *
+   * O turno roda DENTRO do processo: o webhook do WhatsApp chega na API e o
+   * `retomar` sai do hook da Inbox em fire-and-forget — ninguém espera por ele.
+   * No redeploy o Railway manda SIGTERM e, por padrão, SIGKILL no MESMO instante.
+   * O turno morria no meio do `await` da OpenAI: sem `catch` (nenhum erro), sem
+   * `finally` (lock preso), e a mensagem do cliente ia junto. Medido em produção
+   * em 04/09: cada push no `main` engolia o turno que estivesse rodando naquele
+   * segundo — não era azar de deploy, era todo deploy.
+   *
+   * Este hook roda antes do `PrismaService` desligar (o Nest destrói os dependentes
+   * primeiro), então o `finally` do turno ainda consegue soltar o lock. Só funciona
+   * com `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` > DRAIN_MAX_MS no serviço; sem isso o
+   * processo morre antes de qualquer hook rodar.
+   */
+  async onModuleDestroy(): Promise<void> {
+    if (this.turnosEmVoo.size === 0) return;
+    const inicio = Date.now();
+    this.logger.warn(
+      `CONVERSAR_IA: encerrando com ${this.turnosEmVoo.size} turno(s) em voo — ` +
+        `aguardando até ${DRAIN_MAX_MS / 1000}s`,
+    );
+    let estourou = false;
+    const prazo = new Promise<void>((resolve) =>
+      setTimeout(() => {
+        estourou = true;
+        resolve();
+      }, DRAIN_MAX_MS).unref?.(),
+    );
+    // Turno novo pode entrar enquanto os atuais terminam (o servidor HTTP ainda
+    // responde no começo do shutdown): repete até esvaziar ou estourar o prazo.
+    while (this.turnosEmVoo.size > 0 && !estourou) {
+      await Promise.race([Promise.allSettled([...this.turnosEmVoo]), prazo]);
+    }
+    if (this.turnosEmVoo.size > 0) {
+      this.logger.error(
+        `CONVERSAR_IA: drain estourou ${DRAIN_MAX_MS / 1000}s com ${this.turnosEmVoo.size} ` +
+          'turno(s) ainda em voo — o reaper de turno órfão recupera em até 2min',
+      );
+    } else {
+      this.logger.log(`CONVERSAR_IA: drain concluído em ${Date.now() - inicio}ms`);
+    }
+  }
+
+  /**
+   * Lead respondeu — roda 1 turno da IA e avança o fluxo se classificou.
+   *
+   * Registra o turno em `turnosEmVoo` enquanto ele roda: é o que o
+   * `onModuleDestroy` usa pra não deixar o processo morrer no meio dele.
+   */
   async retomar(
+    execucaoId: string,
+    conversationId: string | null,
+    textoLead: string,
+    imagemDataUrl?: string,
+    tentativa = 1,
+  ): Promise<void> {
+    const turno = this.retomarInterno(
+      execucaoId,
+      conversationId,
+      textoLead,
+      imagemDataUrl,
+      tentativa,
+    );
+    this.turnosEmVoo.add(turno);
+    try {
+      await turno;
+    } finally {
+      this.turnosEmVoo.delete(turno);
+    }
+  }
+
+  private async retomarInterno(
     execucaoId: string,
     conversationId: string | null,
     textoLead: string,
