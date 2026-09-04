@@ -58,6 +58,12 @@ ter um termo assinado para a utilização da assinatura automática"*. Enquanto 
 `CLICKSIGN_SOMATEC_AUTO=false` faz a casa assinar manualmente e o fluxo roda
 inteiro.
 
+## A documentação oficial está no repo
+
+`backend/docs/clicksign/` tem as **138 páginas** da documentação da ClickSign em
+markdown, com um índice greppável de **56 endpoints** (`_endpoints.txt`). Antes
+de tentar rota no chute, é lá que se procura.
+
 ## Armadilhas da API — todas descobertas batendo, não lendo
 
 - **`status: running` NÃO manda e-mail.** O envelope fica "em andamento" e
