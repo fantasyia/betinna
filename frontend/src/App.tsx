@@ -1,8 +1,13 @@
-import { lazy, Suspense } from 'react';
-import { createBrowserRouter, RouterProvider, Navigate, useParams } from 'react-router-dom';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { PwaBanner } from '@/components/PwaBanner';
+import { lazy, Suspense } from "react";
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Navigate,
+  useParams,
+} from "react-router-dom";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PwaBanner } from "@/components/PwaBanner";
 
 /**
  * App router — Sprint 4 FIX 5 + FIX 6.
@@ -14,58 +19,65 @@ import { PwaBanner } from '@/components/PwaBanner';
  */
 
 // Lazy-loaded pages — code splitting per route
-const LoginPage = lazy(() => import('@/pages/LoginPage'));
-const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
-const PropostaAceitePage = lazy(() => import('@/pages/PropostaAceitePage'));
-const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
-const KanbanBoardsPage = lazy(() => import('@/pages/kanban/KanbanBoardsPage'));
-const CalendarioMarketingPage = lazy(() => import('@/pages/CalendarioMarketingPage'));
-const KanbanBoardPage = lazy(() => import('@/pages/kanban/KanbanBoardPage'));
-const TokensApiPage = lazy(() => import('@/pages/TokensApiPage'));
-const MeusItensPage = lazy(() => import('@/pages/kanban/MeusItensPage'));
-const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
-const AdminPage = lazy(() => import('@/pages/AdminPage'));
-const ForbiddenPage = lazy(() => import('@/pages/ForbiddenPage'));
-const ClientesPage = lazy(() => import('@/pages/ClientesPage'));
-const ContatosPage = lazy(() => import('@/pages/ContatosPage'));
-const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
-const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
-const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
-const PersonaBotPage = lazy(() => import('@/pages/PersonaBotPage'));
-const PromptsBotPage = lazy(() => import('@/pages/PromptsBotPage'));
-const KnowledgePage = lazy(() => import('@/pages/KnowledgePage'));
-const BotAuditoriaPage = lazy(() => import('@/pages/BotAuditoriaPage'));
-const RespostasRapidasPage = lazy(() => import('@/pages/RespostasRapidasPage'));
-const MetasPage = lazy(() => import('@/pages/MetasPage'));
-const SegmentosPage = lazy(() => import('@/pages/SegmentosPage'));
-const MarketplaceIncidentsPage = lazy(() => import('@/pages/MarketplaceIncidentsPage'));
-const ConfiguracoesPage = lazy(() => import('@/pages/ConfiguracoesPage'));
-const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
-const TagsPage = lazy(() => import('@/pages/TagsPage'));
-const FluxosPage = lazy(() => import('@/pages/FluxosPage'));
-const FluxoTemplatesPage = lazy(() => import('@/pages/FluxoTemplatesPage'));
-const MonitorPage = lazy(() => import('@/pages/MonitorPage'));
-const CampanhasPage = lazy(() => import('@/pages/CampanhasPage'));
-const PermissoesPage = lazy(() => import('@/pages/PermissoesPage'));
-const RelatoriosPage = lazy(() => import('@/pages/RelatoriosPage'));
-const PedidosPage = lazy(() => import('@/pages/PedidosPage'));
-const PedidoDetailPage = lazy(() => import('@/pages/PedidoDetailPage'));
-const FunisPage = lazy(() => import('@/pages/FunisPage'));
-const ComissoesPage = lazy(() => import('@/pages/ComissoesPage'));
-const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
-const PropostasPage = lazy(() => import('@/pages/PropostasPage'));
-const AmostrasPage = lazy(() => import('@/pages/AmostrasPage'));
-const MateriaisPage = lazy(() => import('@/pages/MateriaisPage'));
-const DevolucoesPage = lazy(() => import('@/pages/DevolucoesPage'));
-const InboxInternaPage = lazy(() => import('@/pages/InboxInternaPage'));
-const OcorrenciasPage = lazy(() => import('@/pages/OcorrenciasPage'));
-const ProdutosPage = lazy(() => import('@/pages/ProdutosPage'));
-const AgendaPage = lazy(() => import('@/pages/AgendaPage'));
-const AprovacoesPage = lazy(() => import('@/pages/AprovacoesPage'));
-const InboxPage = lazy(() => import('@/pages/InboxPage'));
-const IntegracoesPage = lazy(() => import('@/pages/IntegracoesPage'));
-const MinhasIntegracoesPage = lazy(() => import('@/pages/MinhasIntegracoesPage'));
-const NotificacoesPage = lazy(() => import('@/pages/NotificacoesPage'));
+const LoginPage = lazy(() => import("@/pages/LoginPage"));
+const WelcomePage = lazy(() => import("@/pages/WelcomePage"));
+const PropostaAceitePage = lazy(() => import("@/pages/PropostaAceitePage"));
+const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
+const KanbanBoardsPage = lazy(() => import("@/pages/kanban/KanbanBoardsPage"));
+const CalendarioMarketingPage = lazy(
+  () => import("@/pages/CalendarioMarketingPage"),
+);
+const KanbanBoardPage = lazy(() => import("@/pages/kanban/KanbanBoardPage"));
+const TokensApiPage = lazy(() => import("@/pages/TokensApiPage"));
+const MeusItensPage = lazy(() => import("@/pages/kanban/MeusItensPage"));
+const WhatsAppPage = lazy(() => import("@/pages/WhatsAppPage"));
+const AdminPage = lazy(() => import("@/pages/AdminPage"));
+const ForbiddenPage = lazy(() => import("@/pages/ForbiddenPage"));
+const ClientesPage = lazy(() => import("@/pages/ClientesPage"));
+const ContatosPage = lazy(() => import("@/pages/ContatosPage"));
+const ClienteDetailPage = lazy(() => import("@/pages/ClienteDetailPage"));
+const CatalogoPage = lazy(() => import("@/pages/CatalogoPage"));
+const MullerBotPage = lazy(() => import("@/pages/MullerBotPage"));
+const PersonaBotPage = lazy(() => import("@/pages/PersonaBotPage"));
+const PromptsBotPage = lazy(() => import("@/pages/PromptsBotPage"));
+const KnowledgePage = lazy(() => import("@/pages/KnowledgePage"));
+const BotAuditoriaPage = lazy(() => import("@/pages/BotAuditoriaPage"));
+const RespostasRapidasPage = lazy(() => import("@/pages/RespostasRapidasPage"));
+const MetasPage = lazy(() => import("@/pages/MetasPage"));
+const SegmentosPage = lazy(() => import("@/pages/SegmentosPage"));
+const MarketplaceIncidentsPage = lazy(
+  () => import("@/pages/MarketplaceIncidentsPage"),
+);
+const ConfiguracoesPage = lazy(() => import("@/pages/ConfiguracoesPage"));
+const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
+const TagsPage = lazy(() => import("@/pages/TagsPage"));
+const FluxosPage = lazy(() => import("@/pages/FluxosPage"));
+const FluxoTemplatesPage = lazy(() => import("@/pages/FluxoTemplatesPage"));
+const MonitorPage = lazy(() => import("@/pages/MonitorPage"));
+const CampanhasPage = lazy(() => import("@/pages/CampanhasPage"));
+const PermissoesPage = lazy(() => import("@/pages/PermissoesPage"));
+const RelatoriosPage = lazy(() => import("@/pages/RelatoriosPage"));
+const PedidosPage = lazy(() => import("@/pages/PedidosPage"));
+const PedidoDetailPage = lazy(() => import("@/pages/PedidoDetailPage"));
+const FunisPage = lazy(() => import("@/pages/FunisPage"));
+const ComissoesPage = lazy(() => import("@/pages/ComissoesPage"));
+const LeadsPage = lazy(() => import("@/pages/LeadsPage"));
+const PropostasPage = lazy(() => import("@/pages/PropostasPage"));
+const ContratosPage = lazy(() => import("@/pages/ContratosPage"));
+const AmostrasPage = lazy(() => import("@/pages/AmostrasPage"));
+const MateriaisPage = lazy(() => import("@/pages/MateriaisPage"));
+const DevolucoesPage = lazy(() => import("@/pages/DevolucoesPage"));
+const InboxInternaPage = lazy(() => import("@/pages/InboxInternaPage"));
+const OcorrenciasPage = lazy(() => import("@/pages/OcorrenciasPage"));
+const ProdutosPage = lazy(() => import("@/pages/ProdutosPage"));
+const AgendaPage = lazy(() => import("@/pages/AgendaPage"));
+const AprovacoesPage = lazy(() => import("@/pages/AprovacoesPage"));
+const InboxPage = lazy(() => import("@/pages/InboxPage"));
+const IntegracoesPage = lazy(() => import("@/pages/IntegracoesPage"));
+const MinhasIntegracoesPage = lazy(
+  () => import("@/pages/MinhasIntegracoesPage"),
+);
+const NotificacoesPage = lazy(() => import("@/pages/NotificacoesPage"));
 
 function PageSuspense({ children }: { children: React.ReactNode }) {
   return (
@@ -73,7 +85,11 @@ function PageSuspense({ children }: { children: React.ReactNode }) {
       fallback={
         <div
           data-testid="page-suspense"
-          style={{ padding: '4rem', textAlign: 'center', fontFamily: 'system-ui' }}
+          style={{
+            padding: "4rem",
+            textAlign: "center",
+            fontFamily: "system-ui",
+          }}
         >
           Carregando…
         </div>
@@ -87,16 +103,18 @@ function PageSuspense({ children }: { children: React.ReactNode }) {
 /** Compat de links antigos: /ocorrencias/:id → /ocorrencias?highlight=:id. */
 function RedirectOcorrencia() {
   const { id } = useParams();
-  return <Navigate to={`/ocorrencias${id ? `?highlight=${id}` : ''}`} replace />;
+  return (
+    <Navigate to={`/ocorrencias${id ? `?highlight=${id}` : ""}`} replace />
+  );
 }
 
 const router = createBrowserRouter([
   {
-    path: '/',
+    path: "/",
     element: <Navigate to="/login" replace />,
   },
   {
-    path: '/login',
+    path: "/login",
     element: (
       <ErrorBoundary>
         <PageSuspense>
@@ -107,7 +125,7 @@ const router = createBrowserRouter([
   },
   {
     // Página pública — finalização do convite (token no hash).
-    path: '/welcome',
+    path: "/welcome",
     element: (
       <ErrorBoundary>
         <PageSuspense>
@@ -118,7 +136,7 @@ const router = createBrowserRouter([
   },
   {
     // C3 — Página pública de aceite de proposta (token na URL, sem login).
-    path: '/proposta/aceite/:token',
+    path: "/proposta/aceite/:token",
     element: (
       <ErrorBoundary>
         <PageSuspense>
@@ -128,7 +146,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/403',
+    path: "/403",
     element: (
       <ErrorBoundary>
         <PageSuspense>
@@ -138,7 +156,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/dashboard',
+    path: "/dashboard",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -150,7 +168,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/notificacoes',
+    path: "/notificacoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -162,7 +180,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/whatsapp',
+    path: "/whatsapp",
     element: (
       <ErrorBoundary>
         {/* SEM requirePermission: esta página tem DUAS abas e a própria página
@@ -181,7 +199,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/admin',
+    path: "/admin",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="admin.panel">
@@ -193,7 +211,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/admin/*',
+    path: "/admin/*",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="admin.panel">
@@ -205,7 +223,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/clientes',
+    path: "/clientes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="clientes.view">
@@ -217,7 +235,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/contatos',
+    path: "/contatos",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="clientes.view">
@@ -229,7 +247,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/clientes/:id',
+    path: "/clientes/:id",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="clientes.view">
@@ -241,7 +259,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/catalogo',
+    path: "/catalogo",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -253,7 +271,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/mullerbot',
+    path: "/mullerbot",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -265,7 +283,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/mullerbot/persona',
+    path: "/mullerbot/persona",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="mullerbot.config">
@@ -277,7 +295,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/mullerbot/prompts',
+    path: "/mullerbot/prompts",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="mullerbot.config">
@@ -289,7 +307,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/mullerbot/conhecimento',
+    path: "/mullerbot/conhecimento",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -301,7 +319,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/mullerbot/auditoria',
+    path: "/mullerbot/auditoria",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="mullerbot.auditoria">
@@ -313,7 +331,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/respostas-rapidas',
+    path: "/respostas-rapidas",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -325,7 +343,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/incidentes',
+    path: "/incidentes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="incidentes.view">
@@ -337,7 +355,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/configuracoes',
+    path: "/configuracoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="configuracoes.empresa">
@@ -349,7 +367,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/perfil',
+    path: "/perfil",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -361,7 +379,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/usuarios',
+    path: "/usuarios",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="usuarios.view">
@@ -373,7 +391,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/usuarios/:id',
+    path: "/usuarios/:id",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="usuarios.view">
@@ -385,7 +403,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/tags',
+    path: "/tags",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="clientes.view">
@@ -397,7 +415,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/fluxos',
+    path: "/fluxos",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="fluxos.view">
@@ -409,7 +427,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/fluxos/templates',
+    path: "/fluxos/templates",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="fluxos.view">
@@ -421,7 +439,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/fluxos/monitor',
+    path: "/fluxos/monitor",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="fluxos.view">
@@ -433,7 +451,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/campanhas',
+    path: "/campanhas",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="campanhas.view">
@@ -445,7 +463,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/permissoes',
+    path: "/permissoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="permissoes.view">
@@ -457,7 +475,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/relatorios',
+    path: "/relatorios",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="relatorios.view">
@@ -469,7 +487,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/pedidos',
+    path: "/pedidos",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -481,7 +499,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/pedidos/:id',
+    path: "/pedidos/:id",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -493,7 +511,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/leads',
+    path: "/leads",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -505,7 +523,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/kanban',
+    path: "/kanban",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -517,10 +535,10 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/calendario-marketing',
+    path: "/calendario-marketing",
     element: (
       <ErrorBoundary>
-        <ProtectedRoute bloquearPara={['REP']}>
+        <ProtectedRoute bloquearPara={["REP"]}>
           <PageSuspense>
             <CalendarioMarketingPage />
           </PageSuspense>
@@ -532,7 +550,7 @@ const router = createBrowserRouter([
     // Tokens de API do MCP moraram em /kanban/tokens até 21/08. Saíram de lá
     // porque o escopo deles nunca foi só o quadro (fluxos, funis, CRM, inbox…)
     // e configuração de acesso pertence a Sistema, junto do resto.
-    path: '/configuracoes/tokens',
+    path: "/configuracoes/tokens",
     element: (
       <ErrorBoundary>
         {/* Sem `requirePermission`: o gate vem do mapa ROUTE_MODULO
@@ -549,11 +567,11 @@ const router = createBrowserRouter([
   {
     // Endereço antigo: quem tem link salvo (ou o passo a passo do MCP colado
     // num README) não pode cair num 404.
-    path: '/kanban/tokens',
+    path: "/kanban/tokens",
     element: <Navigate to="/configuracoes/tokens" replace />,
   },
   {
-    path: '/kanban/meus-itens',
+    path: "/kanban/meus-itens",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -565,7 +583,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/kanban/:boardId',
+    path: "/kanban/:boardId",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -577,7 +595,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/funis',
+    path: "/funis",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -589,7 +607,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/metas',
+    path: "/metas",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -601,7 +619,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/segmentos',
+    path: "/segmentos",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="segmentos.view">
@@ -613,7 +631,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/propostas',
+    path: "/propostas",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -625,7 +643,19 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/amostras',
+    path: "/contratos",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <ContratosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/amostras",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -637,7 +667,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/materiais',
+    path: "/materiais",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -649,7 +679,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/devolucoes',
+    path: "/devolucoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -661,7 +691,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/inbox-interna',
+    path: "/inbox-interna",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -673,7 +703,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/ocorrencias',
+    path: "/ocorrencias",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -688,11 +718,11 @@ const router = createBrowserRouter([
     // Notificações ANTIGAS já gravadas apontam pra /ocorrencias/:id, que não
     // existia — o catch-all mandava pro dashboard e o ticket sumia. Redireciona
     // pro formato que a página consome (?highlight=).
-    path: '/ocorrencias/:id',
+    path: "/ocorrencias/:id",
     element: <RedirectOcorrencia />,
   },
   {
-    path: '/produtos',
+    path: "/produtos",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -704,7 +734,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/agenda',
+    path: "/agenda",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -716,7 +746,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/aprovacoes',
+    path: "/aprovacoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -728,7 +758,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/inbox',
+    path: "/inbox",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -740,7 +770,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/integracoes',
+    path: "/integracoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute requirePermission="integracoes.view">
@@ -752,7 +782,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/minhas-integracoes',
+    path: "/minhas-integracoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -764,7 +794,7 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/comissoes',
+    path: "/comissoes",
     element: (
       <ErrorBoundary>
         <ProtectedRoute>
@@ -777,7 +807,7 @@ const router = createBrowserRouter([
   },
   // 404 — qualquer rota desconhecida
   {
-    path: '*',
+    path: "*",
     element: <Navigate to="/dashboard" replace />,
   },
 ]);

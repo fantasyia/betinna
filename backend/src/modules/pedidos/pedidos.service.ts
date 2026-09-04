@@ -350,6 +350,14 @@ export class PedidosService {
   // ─── Atualizar (apenas rascunho ou aguardando aprovação) ────────────────
   async update(user: AuthenticatedUser, id: string, dto: UpdatePedidoDto): Promise<PedidoWithRel> {
     const existing = await this.findById(user, id);
+    // Pedido com CONTRATO ASSINADO não se edita: o que o cliente assinou é o
+    // que vale, e mexer aqui faria o app divergir do documento.
+    if (existing.status === 'AGUARDANDO_LIBERACAO') {
+      throw new BusinessRuleException(
+        'Pedido travado: o contrato já foi assinado e o pedido aguarda a liberação no ERP. ' +
+          'Para mudar valores, é preciso uma proposta nova.',
+      );
+    }
     if (!['RASCUNHO', 'AGUARDANDO_APROVACAO'].includes(existing.status)) {
       throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser editado`);
     }
@@ -939,6 +947,15 @@ export class PedidosService {
     // status pós-envio (ENVIADO_ERP/PAGO/EM_SEPARACAO/ENVIADO/ENTREGUE) já passaram pelo ERP —
     // reenviar regredia o status e resetava `enviadoErpEm`, fazendo o fecharMes contar a comissão
     // DE NOVO em outro mês (folha paga em dobro). Whitelist fecha todos os estados pós-envio de uma vez.
+    // Travado pelo contrato: o caminho pro ERP é a PROPOSTA (o orçamento que o
+    // Leandro revisa), não o pedido. Empurrar o pedido daqui criaria no ERP uma
+    // venda que ninguém liberou.
+    if (pedido.status === 'AGUARDANDO_LIBERACAO') {
+      throw new BusinessRuleException(
+        'Pedido travado pelo contrato assinado — a proposta já subiu pro ERP como orçamento. ' +
+          'A liberação é lá, e o pedido volta pra cá sozinho.',
+      );
+    }
     if (pedido.status !== 'RASCUNHO' && pedido.status !== 'AGUARDANDO_APROVACAO') {
       throw new BusinessRuleException(`Pedido já foi enviado ao ERP (status ${pedido.status})`);
     }

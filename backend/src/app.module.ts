@@ -28,6 +28,7 @@ import { DeadLetterModule } from '@modules/dead-letter/dead-letter.module';
 import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
 import { MetasModule } from '@modules/metas/metas.module';
 import { SegmentosModule } from '@modules/segmentos/segmentos.module';
+import { ContratosModule } from '@modules/contratos/contratos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { ImportModule } from '@modules/import/import.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
@@ -245,6 +246,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     MetasModule,
     SegmentosModule,
     NotificacoesModule,
+    ContratosModule,
     ImportModule,
     CampanhasModule,
     RelatoriosModule,

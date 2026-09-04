@@ -47,6 +47,11 @@ enum ClienteErpStatus {
 enum PedidoStatus {
   RASCUNHO
   AGUARDANDO_APROVACAO
+  /// Contrato ASSINADO — o pedido está travado esperando a liberação no ERP.
+  /// Não é aprovação de desconto: aqui não há nada pra decidir no app, e por
+  /// isso nem o rep nem a gestão editam ou reenviam. Sai deste estado quando o
+  /// pedido volta do ERP (adotado pelo número da proposta) ou é cancelado.
+  AGUARDANDO_LIBERACAO
   ENVIADO_ERP
   PAGO
   EM_SEPARACAO

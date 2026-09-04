@@ -25,6 +25,8 @@ import { PropostasService } from './propostas.service';
   ],
   controllers: [PropostasController],
   providers: [PropostasService, PropostaExportService, PropostaAceiteService, PropostaErpService],
-  exports: [PropostasService],
+  // PropostaErpService sai porque quem sobe a proposta pro ERP agora é o
+  // retorno da assinatura — o contrato assinado é que autoriza o envio.
+  exports: [PropostasService, PropostaErpService],
 })
 export class PropostasModule {}

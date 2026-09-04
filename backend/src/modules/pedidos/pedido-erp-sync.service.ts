@@ -441,6 +441,50 @@ export class PedidoErpSyncService {
     // não adianta nada: o sync seguinte traz de volta.
     if (status === 'CANCELADO') return 'jaCancelado';
 
+    // ── O pedido que estava TRAVADO aqui é ESTE, voltando liberado ──────
+    //
+    // O ciclo do rep fecha assim: proposta aceita → pedido travado no app →
+    // contrato assinado → orçamento no ERP → o Leandro libera e o ERP gera o
+    // pedido de venda. Sem esta adoção, esse pedido nasceria como um SEGUNDO
+    // registro e o cliente apareceria com dois pedidos do mesmo negócio — um
+    // travado pra sempre, outro "nascido no ERP", cada um com sua comissão.
+    const daProposta = this.propostaDaObservacao(d);
+    if (daProposta) {
+      const travado = await this.prisma.pedido.findFirst({
+        where: { empresaId, propostaNumero: daProposta, status: 'AGUARDANDO_LIBERACAO' },
+        select: { id: true, numero: true, representanteId: true },
+      });
+      if (travado) {
+        await this.prisma.pedido.update({
+          where: { id: travado.id },
+          data: {
+            numeroErp,
+            status: (status ?? 'ENVIADO_ERP') as never,
+            total,
+            rastreioCodigo,
+            rastreioUrl,
+            enviadoErpEm: new Date(),
+            // O ERP é quem sabe o vendedor depois que o Leandro atribuiu — mas
+            // só adota quem ainda não tem dono (trocar dono mexe na comissão de
+            // duas pessoas).
+            ...(travado.representanteId
+              ? {}
+              : { representanteId: await this.resolverRepresentante(empresaId, d) }),
+          },
+        });
+        this.logger.log(
+          `[erp] pedido ${travado.numero} LIBERADO no ERP (nº ${numeroErp}) — saiu de AGUARDANDO_LIBERACAO`,
+        );
+        await this.notificarLiberado(
+          empresaId,
+          travado.id,
+          travado.numero,
+          travado.representanteId,
+        );
+        return 'atualizado';
+      }
+    }
+
     const cliente = await this.resolverCliente(empresaId, d);
     const representanteId = await this.resolverRepresentante(empresaId, d);
     if (!representanteId && d.vendedor) {
@@ -770,6 +814,27 @@ export class PedidoErpSyncService {
    * isso o app grava `[PROP-0001]` no COMEÇO dela: assim dá pra achar por
    * código, e não só lendo.
    */
+  /** Quem vendeu precisa saber que o negócio saiu do limbo. */
+  private async notificarLiberado(
+    empresaId: string,
+    pedidoId: string,
+    numero: string,
+    representanteId: string | null,
+  ): Promise<void> {
+    if (!representanteId) return;
+    await this.notificacoes
+      .criarParaUsuario({
+        empresaId,
+        usuarioId: representanteId,
+        tipo: 'GENERICO',
+        prioridade: 'ALTA',
+        titulo: `Pedido ${numero} liberado no ERP`,
+        mensagem: 'O contrato foi aprovado e o pedido saiu da espera — já é venda.',
+        link: `/pedidos/${pedidoId}`,
+      })
+      .catch(() => undefined);
+  }
+
   private propostaDaObservacao(d: PedidoTinyDetalhe): string | null {
     const texto = `${d.observacoesInternas ?? ''} ${d.observacoes ?? ''}`;
     return /\[(PROP-\d+)\]/.exec(texto)?.[1] ?? null;

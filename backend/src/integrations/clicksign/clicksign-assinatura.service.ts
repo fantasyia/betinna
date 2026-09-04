@@ -4,6 +4,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
+import { PropostaErpService } from '@modules/propostas/proposta-erp.service';
 
 /** O recorte do payload que interessa. O resto do documento a gente ignora. */
 interface DocumentoWebhook {
@@ -40,6 +41,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     private readonly env: EnvService,
     private readonly notificacoes: NotificacoesService,
     private readonly etapa: LeadEtapaSistemaService,
+    private readonly propostaErp: PropostaErpService,
   ) {
     this.storage = createClient(
       this.env.get('SUPABASE_URL'),
@@ -99,11 +101,20 @@ export class ClickSignAssinaturaService implements OnModuleInit {
       motivo: `Contrato da ${contrato.proposta.numero} assinado`,
     });
 
+    // O pedido que nasceu do aceite TRAVA aqui. Enquanto o contrato não existia,
+    // ele era um rascunho que o rep podia editar e mandar pro ERP por conta —
+    // agora existe documento assinado, e quem libera é o Leandro, no ERP.
+    await this.travarPedido(contrato.empresaId, contrato.proposta.numero);
+
+    // E o contrato assinado sobe pro ERP como PROPOSTA (orçamento): é ali que o
+    // Leandro revisa, põe o rep como vendedor e transforma em pedido de venda.
+    await this.subirParaErp(contrato.empresaId, contrato.proposta, contrato.representanteId);
+
     await this.avisar(
       contrato.empresaId,
       contrato.representanteId,
       `Contrato da ${contrato.proposta.numero} assinado`,
-      `${contrato.cliente.nome} assinou o contrato. Pode seguir pro ERP.`,
+      `${contrato.cliente.nome} assinou o contrato. O pedido ficou travado até a liberação no ERP.`,
     );
     return 'aplicado';
   }
@@ -137,6 +148,55 @@ export class ClickSignAssinaturaService implements OnModuleInit {
   }
 
   /**
+   * Pedido em RASCUNHO da proposta assinada → `AGUARDANDO_LIBERACAO`.
+   *
+   * Só mexe em rascunho: pedido que já andou (foi pro ERP, foi entregue) não
+   * volta pra fila de liberação por causa de um webhook repetido.
+   */
+  private async travarPedido(empresaId: string, propostaNumero: string): Promise<void> {
+    const r = await this.prisma.pedido.updateMany({
+      where: { empresaId, propostaNumero, status: 'RASCUNHO' },
+      data: { status: 'AGUARDANDO_LIBERACAO' },
+    });
+    if (r.count > 0) {
+      this.logger.log(`Pedido da ${propostaNumero} travado aguardando liberação no ERP`);
+    }
+  }
+
+  /**
+   * Sobe a proposta pro ERP como ORÇAMENTO, agora que o contrato está assinado.
+   *
+   * **Best-effort, e de propósito.** A assinatura é fato consumado: se o ERP
+   * estiver fora do ar, segurar o resto (a etapa, o aviso, o PDF guardado)
+   * esconderia um contrato assinado. A falha vira aviso pro responsável, com o
+   * que fazer — e o botão "enviar pro ERP" da proposta continua existindo.
+   *
+   * Não anexa o PDF lá: a API do Tiny só tem anexo em PRODUTO (conferido em
+   * `docs/tiny/endpoints.txt`). O contrato assinado fica no app, em /contratos.
+   */
+  private async subirParaErp(
+    empresaId: string,
+    proposta: { id: string; numero: string; orcamentoErpId: string | null },
+    representanteId: string | null,
+  ): Promise<void> {
+    if (proposta.orcamentoErpId) return; // já subiu — reenviar criaria orçamento duplicado
+    try {
+      const r = await this.propostaErp.enviar(proposta.id, empresaId);
+      this.logger.log(`Proposta ${proposta.numero} → ERP como orçamento ${r.orcamentoErpId}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Contrato da ${proposta.numero} assinado, mas não subiu pro ERP: ${msg}`);
+      await this.avisar(
+        empresaId,
+        representanteId,
+        `Contrato da ${proposta.numero} assinado — mas não subiu pro ERP`,
+        `O contrato está assinado e guardado. O envio pro ERP falhou (${msg.slice(0, 160)}). ` +
+          'Dá pra reenviar pela própria proposta.',
+      );
+    }
+  }
+
+  /**
    * O campo `document` chega ora como objeto, ora como lista — a documentação
    * mostra as duas formas em eventos diferentes.
    */
@@ -161,7 +221,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
    */
   private async acharContrato(doc: DocumentoWebhook) {
     const include = {
-      proposta: { select: { numero: true } },
+      proposta: { select: { id: true, numero: true, orcamentoErpId: true } },
       cliente: { select: { nome: true } },
     };
     if (doc.key) {
