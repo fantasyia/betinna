@@ -80,6 +80,8 @@ function makeService(txProverbCount: number, recusaCount = 1) {
   // ClickSign desligado nos testes de aceite: o envio do contrato é best-effort
   // e tem teste próprio. `configurado: false` mantém o caminho antigo intacto.
   const clicksign = { configurado: false, enviarParaAssinatura: vi.fn() };
+  // Marco do funil: o aceite move a etapa do lead, e o move é best-effort.
+  const etapa = { mover: vi.fn(async () => 'movido' as const) };
   const svc = new PropostaAceiteService(
     prisma as never,
     makeEnv() as never,
@@ -87,9 +89,10 @@ function makeService(txProverbCount: number, recusaCount = 1) {
     notificacoes as never,
     pedidoPricing as never,
     clicksign as never,
+    etapa as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
-  return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign };
+  return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa };
 }
 
 describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () => {
@@ -201,6 +204,7 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
       new PropostaAceiteService(
         {} as never,
         { get: (k: string) => envs[k] ?? '', isProduction: producao } as never,
+        {} as never,
         {} as never,
         {} as never,
         {} as never,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { EmailModule } from '@integrations/email/email.module';
 import { PedidosModule } from '@modules/pedidos/pedidos.module';
 import { EmpresasModule } from '@modules/empresas/empresas.module';
+import { LeadsModule } from '@modules/leads/leads.module';
 import { ProdutosModule } from '@modules/produtos/produtos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { TinyModule } from '@integrations/tiny/tiny.module';
@@ -19,6 +20,8 @@ import { PropostasService } from './propostas.service';
     EmailModule,
     TinyModule,
     EmpresasModule,
+    // Marcos do funil (proposta enviada / assinada) movem a etapa do lead.
+    LeadsModule,
   ],
   controllers: [PropostasController],
   providers: [PropostasService, PropostaExportService, PropostaAceiteService, PropostaErpService],

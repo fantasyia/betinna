@@ -3,6 +3,7 @@ import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 
 /** O recorte do payload que interessa. O resto do documento a gente ignora. */
 interface DocumentoWebhook {
@@ -38,6 +39,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
     private readonly notificacoes: NotificacoesService,
+    private readonly etapa: LeadEtapaSistemaService,
   ) {
     this.storage = createClient(
       this.env.get('SUPABASE_URL'),
@@ -85,6 +87,17 @@ export class ClickSignAssinaturaService implements OnModuleInit {
       `Contrato ${contrato.id} (proposta ${contrato.proposta.numero}) ASSINADO` +
         (caminho ? ' — PDF guardado' : ' — sem PDF'),
     );
+
+    // A etapa anda por conta do FATO, não do que vem depois dele. Se o envio
+    // pro ERP falhar, o contrato continua assinado — condicionar o move ao
+    // sucesso do ERP esconderia um contrato assinado e ninguém ficaria sabendo.
+    await this.etapa.mover({
+      empresaId: contrato.empresaId,
+      clienteId: contrato.clienteId,
+      marco: 'contratoAssinado',
+      origem: 'webhook',
+      motivo: `Contrato da ${contrato.proposta.numero} assinado`,
+    });
 
     await this.avisar(
       contrato.empresaId,

@@ -9,6 +9,7 @@ import { TinyContatosService } from '@integrations/tiny/tiny-contatos.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { SiteStatusService } from './site-status.service';
 
@@ -48,6 +49,8 @@ const STATUS_POR_SITUACAO: Record<number, string> = {
   8: 'ENVIADO_ERP', // dados incompletos — existe no ERP, ainda não caminhou
 };
 
+/** Situação do Tiny em que a NOTA FISCAL saiu. É o marco da instalação. */
+const SITUACAO_FATURADA = 1;
 const SITUACAO_NAO_ENTREGUE = 9;
 const MARCA_NAO_ENTREGUE = '[ERP] entrega não realizada';
 
@@ -121,6 +124,7 @@ export class PedidoErpSyncService {
     private readonly site: SiteStatusService,
     private readonly notificacoes: NotificacoesService,
     private readonly bus: FluxoEventBusService,
+    private readonly etapa: LeadEtapaSistemaService,
   ) {}
 
   async sincronizar(
@@ -344,6 +348,7 @@ export class PedidoErpSyncService {
         rastreioUrl: true,
         representanteId: true,
         numeroSite: true,
+        clienteId: true,
       },
     });
 
@@ -395,6 +400,20 @@ export class PedidoErpSyncService {
         `[erp] pedido ${existente.numero} (ERP ${numeroErp}): ` +
           `${existente.status} → ${status ?? existente.status}`,
       );
+      // NOTA FISCAL emitida = a primeira mensalidade foi faturada, e é isso que
+      // move o cliente pra instalação. `somenteDe` limita ao contrato recém
+      // assinado: sem ele, a nota do 7º mês de um contrato antigo empurraria
+      // pra instalação um lead que voltou a negociar outra coisa.
+      if (d.situacao === SITUACAO_FATURADA && status !== existente.status) {
+        await this.etapa.mover({
+          empresaId,
+          clienteId: existente.clienteId,
+          marco: 'instalacao',
+          somenteDe: 'contratoAssinado',
+          origem: 'erp',
+          motivo: `NF emitida no pedido ${existente.numero} (ERP ${numeroErp})`,
+        });
+      }
       if (viraEntregue) await this.dispararEntregue(empresaId, existente.id);
       if (ganhouRastreio) await this.dispararRastreio(empresaId, existente.id);
       // O site é dono da tela do cliente: sem este aviso, quem comprou lá fica

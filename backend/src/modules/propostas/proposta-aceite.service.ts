@@ -7,6 +7,7 @@ import { ClickSignService } from '@integrations/clicksign/clicksign.service';
 import { variaveisDoContrato } from './contrato-variaveis.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
+import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { vigenteAteFimDoDiaBrt } from '@shared/utils/data-brt.util';
@@ -76,6 +77,7 @@ export class PropostaAceiteService {
     private readonly notificacoes: NotificacoesService,
     private readonly pedidoPricing: PedidoPricingService,
     private readonly clicksign: ClickSignService,
+    private readonly etapa: LeadEtapaSistemaService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -142,9 +144,21 @@ export class PropostaAceiteService {
       .sign(this.secret);
 
     const expiraEm = new Date(Date.now() + this.ttlSeconds * 1000);
-    await this.prisma.proposta.update({
+    const proposta = await this.prisma.proposta.update({
       where: { id: propostaId },
       data: { aceiteToken: token, aceiteExpiraEm: expiraEm, status: 'AGUARDANDO_ASSINATURA' },
+      select: { clienteId: true },
+    });
+
+    // Gerar o link É enviar a proposta pro cliente: é o mesmo endereço que o rep
+    // manda no WhatsApp e no e-mail. Por isso o marco entra aqui, e não em cada
+    // canal de envio — canal novo amanhã já nasce contando a mesma história.
+    await this.etapa.mover({
+      empresaId,
+      clienteId: proposta.clienteId,
+      marco: 'propostaEnviada',
+      origem: 'webhook',
+      motivo: `Proposta ${propostaId} enviada pro cliente`,
     });
 
     return { token, url: `${this.frontendUrl()}/proposta/aceite/${token}`, expiraEm };
@@ -405,6 +419,17 @@ export class PropostaAceiteService {
     this.logger.log(
       `Proposta ${proposta.numero} ACEITA pelo cliente (ip ${ip ?? '?'}) → pedido ${numeroPedido}`,
     );
+
+    // O cliente assinou a PROPOSTA. Sem tarefa e sem aviso de propósito: daqui
+    // a assinatura eletrônica segue sozinha, e a etapa serve só pra enxergar
+    // onde o cliente está.
+    await this.etapa.mover({
+      empresaId,
+      clienteId: proposta.clienteId,
+      marco: 'propostaAssinada',
+      origem: 'webhook',
+      motivo: `Proposta ${proposta.numero} aceita pelo cliente`,
+    });
 
     // O contrato sai AGORA, e não antes: mandar documento pra assinar antes de
     // a pessoa aceitar a proposta inverte a conversa comercial.

@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { LeadsModule } from '@modules/leads/leads.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { ClickSignAssinaturaService } from './clicksign-assinatura.service';
 import { ClickSignWebhookController } from './clicksign-webhook.controller';
@@ -14,7 +15,7 @@ import { ClickSignService } from './clicksign.service';
  */
 @Global()
 @Module({
-  imports: [NotificacoesModule],
+  imports: [NotificacoesModule, LeadsModule],
   controllers: [ClickSignWebhookController],
   providers: [ClickSignService, ClickSignAssinaturaService],
   exports: [ClickSignService],

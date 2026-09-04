@@ -75,6 +75,9 @@ function build(
     { notificar: vi.fn().mockResolvedValue(false), configurado: false } as never,
     notificacoes as never,
     bus as never,
+    // Marco "instalação": só anda quando a NF sai e o lead está em contrato
+    // assinado. Aqui é mudo — tem teste próprio no serviço de etapa.
+    { mover: vi.fn(async () => 'nao-configurado' as const) } as never,
   );
   return { svc, prisma, tiny, notificacoes, bus, sequence };
 }

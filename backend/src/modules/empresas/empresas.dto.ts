@@ -331,6 +331,28 @@ const marcaSchema = z
   .partial()
   .optional();
 
+/**
+ * Qual etapa do funil corresponde a cada MARCO que o app conhece sozinho.
+ *
+ * O app sabe quando a proposta foi enviada, quando o cliente aceitou, quando o
+ * contrato voltou assinado e quando a nota da primeira mensalidade saiu. Quais
+ * etapas representam isso é decisão de quem desenhou o funil — e muda sem
+ * deploy. Marco sem etapa aqui simplesmente não move nada.
+ */
+const funilEtapasSchema = z
+  .object({
+    /** O rep mandou o link de aceite pro cliente. */
+    propostaEnviada: z.string().max(40).nullable().optional(),
+    /** O cliente aceitou a proposta (daí a assinatura eletrônica segue sozinha). */
+    propostaAssinada: z.string().max(40).nullable().optional(),
+    /** O contrato voltou assinado — é onde entra o passo humano no ERP. */
+    contratoAssinado: z.string().max(40).nullable().optional(),
+    /** NF da primeira mensalidade emitida. */
+    instalacao: z.string().max(40).nullable().optional(),
+  })
+  .partial()
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
@@ -349,6 +371,7 @@ export const tenantConfigPatchSchema = z
     comissaoOriginacao: comissaoOriginacaoSchema.nullable(),
     vendas: vendasSchema.nullable(),
     marca: marcaSchema.nullable(),
+    funilEtapas: funilEtapasSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

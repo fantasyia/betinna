@@ -12,7 +12,16 @@ import type { PrismaService } from '@database/prisma.service';
  * forwardRef. Best-effort: falha aqui loga em ERROR mas NÃO derruba o move (o
  * move já commitou; abortar não desfaz e ainda quebraria a operação do usuário).
  */
-export type OrigemMudancaEtapa = 'manual' | 'fluxo' | 'api' | 'criacao' | 'seed';
+export type OrigemMudancaEtapa =
+  | 'manual'
+  | 'fluxo'
+  | 'api'
+  | 'criacao'
+  | 'seed'
+  /// Fato que o app soube por retorno externo (assinatura eletrônica).
+  | 'webhook'
+  /// Fato que veio do ERP (nota emitida, pedido faturado).
+  | 'erp';
 
 export interface TransicaoEtapa {
   empresaId: string;
