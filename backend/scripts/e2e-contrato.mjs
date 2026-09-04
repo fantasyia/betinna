@@ -1,0 +1,455 @@
+#!/usr/bin/env node
+/**
+ * Teste ponta a ponta do ciclo COMERCIAL, contra produção.
+ *
+ * Do zero: lead no funil → cliente → proposta de locação → e-mail com o link de
+ * aceite → aceite do cliente → contrato montado e mandado pra assinatura →
+ * assinaturas → webhook de volta → contrato assinado guardado.
+ *
+ * O teste é em DUAS FASES porque tem gente no meio — o cliente clica no link e
+ * as pessoas assinam. Automatizar isso seria testar outra coisa.
+ *
+ *   node scripts/e2e-contrato.mjs --preparar   # cria e manda o e-mail
+ *   node scripts/e2e-contrato.mjs --conferir   # mede onde o ciclo chegou
+ *   node scripts/e2e-contrato.mjs --limpar     # apaga o que o teste criou
+ *
+ * Credenciais: backend/.env.local + frontend/.env.local (gitignored).
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const AQUI = dirname(fileURLToPath(import.meta.url));
+const BACKEND = join(AQUI, '..');
+const FRONTEND = join(BACKEND, '..', 'frontend');
+
+const lerEnv = (caminho) =>
+  Object.fromEntries(
+    readFileSync(caminho, 'utf8')
+      .split(/\r?\n/)
+      .filter((l) => l && !l.startsWith('#') && l.includes('='))
+      .map((l) => {
+        const i = l.indexOf('=');
+        let v = l.slice(i + 1).trim();
+        const m = /^(['"])([\s\S]*)\1$/.exec(v);
+        if (m) v = m[2];
+        return [l.slice(0, i).trim(), v];
+      }),
+  );
+
+const env = lerEnv(join(BACKEND, '.env.local'));
+const envFront = lerEnv(join(FRONTEND, '.env.local'));
+const API = env.E2E_API_URL ?? 'https://api-production-9426.up.railway.app/api/v1';
+
+/** Onde o cliente do teste recebe a proposta e o contrato (e-mails do Léo). */
+const EMAIL_CLIENTE = 'pedidos@somatecblocking.com.br';
+const NOME_SIGNATARIO = 'Leonardo Beltran';
+const NOME_CLIENTE = 'INDÚSTRIA TESTE CONTRATO LTDA (apagar)';
+/** Funil "Clientes - Canal Reps" e a etapa de onde o lead parte. */
+const FUNIL = 'cms56hef4005hkeapqxyt9ede';
+const ETAPA_INICIAL = 'cms56hef9005kkeap6u344pcn'; // Qualificando
+const ETAPAS = {
+  cms56hef9005kkeap6u344pcn: 'Qualificando',
+  cms56hef9005lkeap39m7cojl: 'Proposta enviada',
+  cmtn1pn5z0002oebqmmbrio4k: 'Proposta assinada',
+  cmtn1q1320005oebq10cumh7y: 'Contrato assinado',
+  cmsfjts9u001in5aph2pd2b44: 'Instalação',
+};
+
+const acao = process.argv[2];
+if (!['--preparar', '--conferir', '--limpar'].includes(acao)) {
+  console.log('uso: --preparar | --conferir | --limpar');
+  process.exit(1);
+}
+
+const passos = [];
+const registrar = (nome, ok, detalhe = '') => {
+  passos.push({ nome, ok });
+  console.log(
+    `${ok ? '  OK  ' : ok === null ? '  ··  ' : ' FALHA'} │ ${nome}${detalhe ? ` — ${detalhe}` : ''}`,
+  );
+};
+const aguarda = (nome, detalhe) => {
+  passos.push({ nome, ok: null });
+  console.log(`  ··   │ ${nome}${detalhe ? ` — ${detalhe}` : ''}`);
+};
+
+let token;
+const app = async (metodo, rota, corpo) => {
+  const r = await fetch(API + rota, {
+    method: metodo,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    ...(corpo ? { body: JSON.stringify(corpo) } : {}),
+  });
+  const t = await r.text();
+  let j;
+  try {
+    j = JSON.parse(t);
+  } catch {
+    j = t.slice(0, 300);
+  }
+  return { status: r.status, corpo: j?.data ?? j, erro: j?.error };
+};
+
+const clickSign = async (caminho) => {
+  const base = (env.CLICKSIGN_API_URL || 'https://app.clicksign.com').replace(/\/$/, '');
+  const tk = (env.CLICKSIGN_ACCESS_TOKEN || '').replace(/^['"<]+|['">]+$/g, '');
+  const r = await fetch(`${base}/api/v3${caminho}?access_token=${tk}`, {
+    headers: { Accept: 'application/vnd.api+json' },
+  });
+  const t = await r.text();
+  try {
+    return { status: r.status, corpo: JSON.parse(t) };
+  } catch {
+    return { status: r.status, corpo: t.slice(0, 300) };
+  }
+};
+
+console.log(`\n═══ E2E do ciclo comercial (${acao.slice(2)}) ═══\n`);
+
+// Login + acesso direto ao banco (o teste confere estado que a API não expõe).
+const login = await fetch(`${API}/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: envFront.BET_EMAIL, password: envFront.BET_SENHA }),
+});
+token = (await login.json())?.data?.accessToken;
+registrar('login no app', Boolean(token));
+if (!token) process.exit(1);
+
+process.env.DATABASE_URL = env.DATABASE_URL;
+const { PrismaClient } = await import(
+  `file:///${BACKEND}/node_modules/@prisma/client/default.js`.replace(/\\/g, '/')
+);
+const prisma = new PrismaClient();
+
+const empresa = await prisma.empresa.findFirst({ select: { id: true, nome: true } });
+
+/**
+ * CNPJ válido que ainda não existe na base.
+ *
+ * O teste cria um cliente de verdade, e o cadastro recusa CNPJ repetido — os
+ * dois números "de exemplo" que se costuma usar já estavam ocupados por testes
+ * anteriores. Gerar um livre é mais honesto que reaproveitar cliente alheio.
+ */
+const cnpjLivre = async () => {
+  const dv = (base) => {
+    const calc = (nums) => {
+      const pesos =
+        nums.length === 12
+          ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+          : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+      const r = nums.reduce((a, n, i) => a + n * pesos[i], 0) % 11;
+      return r < 2 ? 0 : 11 - r;
+    };
+    const n = base.split('').map(Number);
+    const d1 = calc(n);
+    return `${base}${d1}${calc([...n, d1])}`;
+  };
+  for (let i = 0; i < 30; i++) {
+    const cnpj = dv(`${String(70000000 + Math.floor(Math.random() * 9999999)).slice(0, 8)}0001`);
+    const existe = await prisma.cliente.findFirst({ where: { cnpj }, select: { id: true } });
+    if (!existe) return cnpj;
+  }
+  throw new Error('não achei CNPJ livre');
+};
+
+// ── PREPARAR ─────────────────────────────────────────────────────────
+if (acao === '--preparar') {
+  // 1 · cliente industrial (locação é oferta INDUSTRIAL — nunca padaria/restaurante)
+  let cliente = await prisma.cliente.findFirst({
+    where: { nome: NOME_CLIENTE },
+    select: { id: true },
+  });
+  if (!cliente) {
+    const r = await app('POST', '/clientes', {
+      nome: NOME_CLIENTE,
+      cnpj: await cnpjLivre(),
+      email: EMAIL_CLIENTE,
+      telefone: '11999990000',
+      segmento: 'INDUSTRIA',
+      cep: '01310-100',
+      endereco: 'Avenida Paulista',
+      numero: '1000',
+      bairro: 'Bela Vista',
+      cidade: 'São Paulo',
+      uf: 'SP',
+    });
+    cliente = { id: r.corpo?.id };
+    registrar(
+      'cliente industrial de teste',
+      Boolean(cliente.id),
+      JSON.stringify(r.erro ?? '').slice(0, 120),
+    );
+  } else {
+    registrar('cliente industrial de teste', true, 'reaproveitado');
+  }
+
+  // 2 · lead no funil dos reps, VINCULADO ao cliente
+  //
+  // O vínculo é o que faz o funil andar sozinho: os marcos resolvem o lead pelo
+  // cliente da proposta. Lead solto não anda — e é bom o teste provar isso pelo
+  // caminho de verdade (a tela de contatos), não por escrita direta no banco.
+  if (!cliente?.id) {
+    console.log('  sem cliente — nada a fazer.');
+    process.exit(1);
+  }
+  let lead = await prisma.lead.findFirst({
+    where: { clienteId: cliente.id },
+    select: { id: true },
+  });
+  if (!lead) {
+    const r = await app('POST', '/leads', {
+      nome: NOME_CLIENTE,
+      contatoNome: NOME_SIGNATARIO,
+      contatoEmail: EMAIL_CLIENTE,
+      contatoTelefone: '11999990000',
+      segmento: 'INDUSTRIA',
+      cidade: 'São Paulo',
+      uf: 'SP',
+      canalOrigem: 'OUTRO',
+      funilId: FUNIL,
+      funilEtapaId: ETAPA_INICIAL,
+      observacoes: 'E2E do ciclo comercial — pode apagar.',
+    });
+    lead = { id: r.corpo?.id };
+    if (lead.id)
+      await app('POST', '/contatos/vincular-cliente', { leadId: lead.id, clienteId: cliente.id });
+    registrar('lead no funil dos reps, ligado ao cliente', Boolean(lead.id), 'etapa Qualificando');
+  } else {
+    registrar('lead no funil dos reps, ligado ao cliente', true, 'reaproveitado');
+  }
+
+  // 3 · proposta de LOCAÇÃO com signatário e termos do contrato
+  const mb = await prisma.produto.findFirst({
+    where: { sku: 'MB-05' },
+    select: { id: true, sku: true },
+  });
+  const rep = await prisma.usuario.findFirst({
+    where: { role: 'REP', status: 'ATIVO' },
+    select: { id: true, nome: true },
+  });
+  const prop = await app('POST', '/propostas', {
+    clienteId: cliente.id,
+    itens: [{ produtoId: mb.id, quantidade: 2, desconto: 0 }],
+    formaPagamento: 'BOLETO',
+    condicaoPagamento: '30dias',
+    modalidade: 'LOCACAO',
+    representanteId: rep?.id,
+    prazoMeses: 36,
+    diaVencimento: 5,
+    carenciaDias: 60,
+    signatarioNome: NOME_SIGNATARIO,
+    signatarioEmail: EMAIL_CLIENTE,
+    observacoes: 'E2E do ciclo comercial — pode apagar.',
+  });
+  const propostaId = prop.corpo?.id;
+  registrar(
+    'proposta de locação (2× MB-05, 36 meses, venc. dia 5)',
+    prop.status === 201 && Boolean(propostaId),
+    `${prop.corpo?.numero ?? ''} · rep ${rep?.nome ?? '—'} · ${JSON.stringify(prop.erro ?? '').slice(0, 120)}`,
+  );
+  if (!propostaId) process.exit(1);
+
+  await app('PUT', `/propostas/${propostaId}/status`, { status: 'ENVIADA' });
+
+  // 4 · o e-mail com o LINK DE ACEITE (sem PDF: o link é o que fecha)
+  const email = await app('POST', `/propostas/${propostaId}/enviar-email`);
+  registrar(
+    'e-mail da proposta enviado',
+    email.status < 300,
+    email.corpo?.enviadoPara ?? JSON.stringify(email.erro ?? '').slice(0, 160),
+  );
+
+  const depois = await prisma.proposta.findUnique({
+    where: { id: propostaId },
+    select: { numero: true, status: true, aceiteToken: true, valor: true },
+  });
+  const leadAgora = await prisma.lead.findFirst({
+    where: { clienteId: cliente.id },
+    select: { funilEtapaId: true },
+  });
+  registrar(
+    'lead moveu pra "Proposta enviada"',
+    leadAgora?.funilEtapaId === 'cms56hef9005lkeap39m7cojl',
+    ETAPAS[leadAgora?.funilEtapaId] ?? leadAgora?.funilEtapaId ?? '—',
+  );
+
+  console.log(
+    `\n  proposta ${depois.numero} · R$ ${Number(depois.valor).toFixed(2)} · ${depois.status}`,
+  );
+  console.log(`  link de aceite (o mesmo que foi por e-mail):`);
+  console.log(
+    `  https://frontend-production-fd70.up.railway.app/proposta/aceite/${depois.aceiteToken}\n`,
+  );
+  console.log('  Agora é com você: abra o link, aceite como se fosse o cliente.');
+  console.log('  Depois rode:  node scripts/e2e-contrato.mjs --conferir\n');
+}
+
+// ── CONFERIR ─────────────────────────────────────────────────────────
+if (acao === '--conferir') {
+  const proposta = await prisma.proposta.findFirst({
+    where: { cliente: { nome: NOME_CLIENTE } },
+    orderBy: { criadoEm: 'desc' },
+    select: {
+      id: true,
+      numero: true,
+      status: true,
+      valor: true,
+      clienteId: true,
+      aceiteEm: true,
+      aceiteIp: true,
+      signatarioNome: true,
+      signatarioEmail: true,
+      prazoMeses: true,
+      diaVencimento: true,
+    },
+  });
+  if (!proposta) {
+    console.log('  Nenhuma proposta de teste encontrada — rode --preparar antes.\n');
+    process.exit(1);
+  }
+  console.log(`  proposta ${proposta.numero} · ${proposta.status}\n`);
+
+  registrar(
+    'cliente aceitou a proposta',
+    proposta.status === 'ACEITA',
+    proposta.aceiteEm
+      ? `em ${proposta.aceiteEm.toISOString()} (ip ${proposta.aceiteIp ?? '?'})`
+      : 'ainda não',
+  );
+
+  const contrato = await prisma.contrato.findFirst({
+    where: { propostaId: proposta.id },
+    select: {
+      id: true,
+      status: true,
+      valorMensal: true,
+      prazoMeses: true,
+      diaVencimento: true,
+      assinaturaId: true,
+      assinaturaDocumentoId: true,
+      assinadoEm: true,
+      documentoUrl: true,
+      contratoErpId: true,
+    },
+  });
+  registrar(
+    'contrato criado no app',
+    Boolean(contrato),
+    contrato ? `${contrato.status}` : 'não existe',
+  );
+
+  if (contrato) {
+    registrar(
+      'termos do contrato batem com a proposta',
+      contrato.prazoMeses === proposta.prazoMeses &&
+        contrato.diaVencimento === proposta.diaVencimento &&
+        Number(contrato.valorMensal) === Number(proposta.valor),
+      `R$ ${Number(contrato.valorMensal).toFixed(2)} · ${contrato.prazoMeses} meses · venc. dia ${contrato.diaVencimento}`,
+    );
+
+    // 5 · o envelope do lado do ClickSign — quem assinou, e como
+    if (contrato.assinaturaId) {
+      const env_ = await clickSign(`/envelopes/${contrato.assinaturaId}`);
+      const st = env_.corpo?.data?.attributes?.status;
+      registrar('envelope no ClickSign', env_.status === 200, `status ${st}`);
+      const signers = await clickSign(`/envelopes/${contrato.assinaturaId}/signers`);
+      for (const s of signers.corpo?.data ?? []) {
+        const a = s.attributes ?? {};
+        registrar(
+          `  signatário ${a.name}`,
+          Boolean(a.signed_at ?? a.signature?.signed_at),
+          `${a.email} · ${(a.signed_at ?? a.signature?.signed_at) ? 'assinou' : 'ainda não'}`,
+        );
+      }
+    }
+
+    registrar(
+      'webhook fechou o contrato',
+      contrato.status === 'ASSINADO',
+      contrato.assinadoEm ? `assinado em ${contrato.assinadoEm.toISOString()}` : 'aguardando',
+    );
+    registrar(
+      'PDF assinado guardado no Storage',
+      Boolean(contrato.documentoUrl),
+      contrato.documentoUrl ?? '—',
+    );
+    if (contrato.status === 'ASSINADO' && !contrato.contratoErpId) {
+      aguarda('contrato sobe pro ERP', 'ainda não implementado (E1 — API v2)');
+    }
+  }
+
+  const lead = await prisma.lead.findFirst({
+    where: { clienteId: proposta.clienteId },
+    select: { id: true, funilEtapaId: true },
+  });
+  registrar(
+    'lead no funil',
+    Boolean(lead),
+    ETAPAS[lead?.funilEtapaId] ?? lead?.funilEtapaId ?? 'sem lead',
+  );
+
+  const historico = await prisma.leadEtapaHistorico.findMany({
+    where: { leadId: lead?.id ?? '—' },
+    orderBy: { ocorridoEm: 'asc' },
+    select: { etapaOrigem: true, etapaDestino: true, origemMudanca: true, ocorridoEm: true },
+  });
+  if (historico.length) {
+    console.log('\n  trajetória do lead:');
+    for (const h of historico) {
+      console.log(
+        `    ${h.ocorridoEm.toISOString().slice(11, 19)}  ${ETAPAS[h.etapaOrigem] ?? h.etapaOrigem ?? '∅'} → ` +
+          `${ETAPAS[h.etapaDestino] ?? h.etapaDestino} (${h.origemMudanca})`,
+      );
+    }
+  }
+
+  const pedido = await prisma.pedido.findFirst({
+    where: { propostaNumero: proposta.numero },
+    select: { numero: true, status: true, numeroErp: true, total: true, representanteId: true },
+  });
+  if (pedido) {
+    console.log(
+      `\n  pedido gerado no aceite: ${pedido.numero} · ${pedido.status} · R$ ${Number(pedido.total).toFixed(2)}` +
+        ` · ERP ${pedido.numeroErp ?? '—'} · rep ${pedido.representanteId ? 'sim' : 'não'}`,
+    );
+  }
+
+  const ok = passos.filter((p) => p.ok === true).length;
+  const falhou = passos.filter((p) => p.ok === false).length;
+  console.log(`\n  ${ok} conferidos · ${falhou} pendentes/falhos\n`);
+}
+
+// ── LIMPAR ───────────────────────────────────────────────────────────
+if (acao === '--limpar') {
+  const props = await prisma.proposta.findMany({
+    where: { cliente: { nome: NOME_CLIENTE } },
+    select: { id: true, numero: true },
+  });
+  for (const p of props) {
+    const r = await app('DELETE', `/propostas/${p.id}`);
+    registrar(
+      `proposta ${p.numero} apagada`,
+      r.status < 300,
+      JSON.stringify(r.erro ?? '').slice(0, 120),
+    );
+  }
+  const cliente = await prisma.cliente.findFirst({
+    where: { nome: NOME_CLIENTE },
+    select: { id: true },
+  });
+  if (cliente) {
+    const leads = await prisma.lead.findMany({
+      where: { clienteId: cliente.id },
+      select: { id: true },
+    });
+    for (const l of leads) {
+      const r = await app('DELETE', `/leads/${l.id}`);
+      registrar(`lead ${l.id} apagado`, r.status < 300);
+    }
+  }
+  console.log('\n  O cliente e os pedidos ficam — apague na tela se quiser.\n');
+}
+
+await prisma.$disconnect();
