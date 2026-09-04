@@ -176,6 +176,10 @@ export class TinyPedidoPushService {
       // (O casamento na volta é por `numeroErp`, não por este campo, então
       // trocar aqui não afeta a sincronização.)
       numeroPedidoEcommerce: pedido.numeroSite ?? pedido.numero,
+      // E o mesmo número no "Nº da ordem de compra": é o campo que aparece no
+      // cabeçalho e na lista do painel. O de e-commerce só aparece na busca —
+      // quem abre o pedido 40 lá precisa ver "SB239379" (ou "PED-0001") na cara.
+      numeroOrdemCompra: pedido.numeroSite ?? pedido.numero,
       ...(this.enderecoDe(pedido.cliente)
         ? { enderecoEntrega: this.enderecoDe(pedido.cliente)! }
         : {}),
