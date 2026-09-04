@@ -348,6 +348,10 @@ export class PropostaAceiteService {
         data: {
           empresaId,
           numero: numeroPedido,
+          // De qual proposta este pedido nasceu. Sem isto, o pedido criado
+          // AQUI ficava sem rastro — só o que descia do ERP tinha, e aí
+          // metade dos pedidos não respondia "de onde veio essa venda?".
+          propostaNumero: proposta.numero,
           clienteId: proposta.clienteId,
           representanteId: proposta.representanteId,
           origem: 'REP_APP',

@@ -675,6 +675,36 @@ describe('PropostasService', () => {
   // -------------------------------------------------------------------------
 
   describe('converterEmPedido', () => {
+    it('o pedido carrega o NÚMERO DA PROPOSTA que o originou', async () => {
+      // "De onde veio essa venda?" precisa ter resposta em todo pedido nascido
+      // de proposta — o do app e o que desce do ERP. Antes só o do ERP tinha.
+      prisma.proposta.findFirst.mockResolvedValue(
+        fakeProposta({
+          status: 'ACEITA',
+          pedidoId: null,
+          numero: 'PROP-0042',
+          itens: [
+            {
+              produtoId: 'p-1',
+              quantidade: 1,
+              precoUnitario: 50,
+              desconto: 0,
+              total: 50,
+              negociado: false,
+            },
+          ],
+        }),
+      );
+      sequence.next.mockResolvedValue(7);
+      const tx = prisma._tx;
+      tx.pedido.create.mockResolvedValue({ id: 'ped-new', numero: 'PED-0007' });
+      tx.proposta.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.converterEmPedido(fakeUser(), 'prop-1');
+
+      expect(tx.pedido.create.mock.calls[0][0].data.propostaNumero).toBe('PROP-0042');
+    });
+
     it('converte proposta ACEITA em pedido via transação', async () => {
       const prop = fakeProposta({
         status: 'ACEITA',
