@@ -29,6 +29,8 @@ const makePrisma = () => ({
     create: vi.fn().mockResolvedValue({ id: 'filha-1' }),
   },
   fluxoNo: { findUnique: vi.fn() },
+  // Turno que falha deixa rastro aqui (passo FALHOU) — antes não deixava nada.
+  fluxoExecucaoLog: { create: vi.fn().mockResolvedValue({}) },
   // #23: prompt do nó tem que existir/estar ativo — default: existe.
   botPrompt: {
     findFirst: vi.fn().mockResolvedValue({ id: 'p1' }),
@@ -1294,6 +1296,68 @@ describe('ConversarIaService', () => {
       expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
       expect(prisma.fluxoNo.findUnique).not.toHaveBeenCalled();
+    });
+
+    // ── O turno que engolia a mensagem (card 🔴 de 04/09) ─────────────
+    // O cliente respondeu "aqui e 220V", o turno pendurou 11 minutos e morreu
+    // sem erro, sem retry e sem rastro: a execução voltou a AGUARDANDO como se
+    // nada tivesse chegado, e quem não insistiu virou lead perdido.
+    it('turno que PENDURA: deixa passo FALHOU e REPETE com a mesma mensagem', async () => {
+      // Erro da IA já era tratado dentro do turno (sai pela saída "erro"). O que
+      // não era tratado é o turno que NÃO VOLTA — nem sucesso, nem erro. Ele
+      // estourava o teto, o lock era solto e a mensagem do cliente ia junto.
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa
+        .mockImplementationOnce(() => new Promise(() => {})) // pendura pra sempre
+        .mockResolvedValue({
+          texto: '{"resposta":"220V, anotado!","classificou":false}',
+          modelo: 'gpt',
+        });
+
+      vi.useFakeTimers();
+      try {
+        const emCurso = svc.retomar('exec-1', 'conv-1', 'aqui e 220V');
+        await vi.advanceTimersByTimeAsync(130_000); // passa do teto do turno
+        await emCurso;
+      } finally {
+        vi.useRealTimers();
+      }
+
+      // O rastro que faltava.
+      expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'FALHOU' }),
+        }),
+      );
+      // E a mensagem do cliente NÃO se perdeu: a 2ª passada usou o mesmo texto.
+      expect(muller.gerarRespostaIa).toHaveBeenCalledTimes(2);
+    });
+
+    it('turno que pendura DUAS vezes sai pela saída "erro" (não fica em silêncio)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-erro', label: 'erro' }]);
+      muller.gerarRespostaIa.mockImplementation(() => new Promise(() => {}));
+
+      vi.useFakeTimers();
+      try {
+        const emCurso = svc.retomar('exec-1', 'conv-1', 'aqui e 220V');
+        await vi.advanceTimersByTimeAsync(300_000); // cobre as duas tentativas
+        await emCurso;
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(muller.gerarRespostaIa).toHaveBeenCalledTimes(2);
+      expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalledTimes(2);
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        expect.objectContaining({ noId: 'no-erro' }),
+        expect.anything(),
+      );
     });
 
     it('classificacao_final SOZINHA no meio da conversa NÃO encerra a entrevista', async () => {

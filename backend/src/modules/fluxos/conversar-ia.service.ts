@@ -1561,6 +1561,13 @@ export class ConversarIaService {
     conversationId: string | null,
     textoLead: string,
     imagemDataUrl?: string,
+    /**
+     * Qual passada é esta. Turno que falha ganha UMA segunda chance com a MESMA
+     * mensagem — e só depois vira ramo de erro. Sem isso, a resposta do cliente
+     * era engolida: o turno morria, o lock era solto e a mensagem ia junto, com
+     * a execução voltando a esperar como se nada tivesse chegado.
+     */
+    tentativa = 1,
   ): Promise<void> {
     const execucao = await this.prisma.fluxoExecucao.findUnique({ where: { id: execucaoId } });
     if (!execucao || execucao.status !== 'AGUARDANDO' || !execucao.aguardandoNoId) return;
@@ -1611,6 +1618,7 @@ export class ConversarIaService {
       return;
     }
     const inicioDoTurno = new Date();
+    let falha: unknown = null;
     try {
       // Timeout que GARANTE o finally. A causa raiz do lock preso é um turno que
       // nunca se resolve — nem sucesso, nem erro. Promise pendurada não roda
@@ -1630,15 +1638,50 @@ export class ConversarIaService {
       // foi respondido do ponto de vista do WhatsApp). O que importa é liberar o
       // lock e deixar rastro.
       this.logger.error(
-        `CONVERSAR_IA: turno falhou na exec ${execucaoId}: ` +
+        `CONVERSAR_IA: turno falhou na exec ${execucaoId} (tentativa ${tentativa}): ` +
           `${err instanceof Error ? err.message : String(err)}`,
       );
+      falha = err;
     } finally {
       // Libera o claim sem tocar no status (que pode ter virado EM_EXECUCAO no caminho
       // que classifica e avança). Best-effort.
       await this.prisma.fluxoExecucao
         .updateMany({ where: { id: execucaoId }, data: { processandoTurno: false } })
         .catch(() => undefined);
+    }
+
+    // ── Turno falhou: rastro, uma segunda chance, e depois o ramo de erro ──
+    //
+    // O buraco medido em 04/09: o turno pendurou 11 minutos, o `finally` soltou
+    // o lock e ACABOU. Sem passo FALHOU, sem `erroMsg`, sem retry — a execução
+    // voltava a AGUARDANDO como se a mensagem nunca tivesse chegado, e o cliente
+    // ficava no silêncio. Quem respondeu de novo foi atendido; quem desistiu
+    // virou lead perdido, e nem em métrica isso aparecia.
+    if (falha) {
+      await this.registrarTurnoFalho(execucao, falha, tentativa);
+      if (tentativa < 2) {
+        this.logger.warn(
+          `CONVERSAR_IA: repetindo o turno da exec ${execucaoId} com a MESMA mensagem ` +
+            '(2ª e última tentativa)',
+        );
+        // A chave de idempotência do envio é por TURNO, então repetir não manda
+        // a mesma coisa duas vezes pro cliente.
+        await this.retomar(execucaoId, conversationId, textoLead, imagemDataUrl, tentativa + 1);
+        return;
+      }
+      // Segunda falha: o nó sai do limbo pela saída "erro" — que já existe, já
+      // cria a tarefa urgente e já escala pra humano.
+      const ctxFalha = (execucao.contexto ?? {}) as ExecucaoContexto;
+      if (execucao.aguardandoNoId) {
+        await this.rotearParaErro(
+          execucaoId,
+          execucao.aguardandoNoId,
+          ctxFalha,
+          'turno_pendurado',
+          falha,
+        );
+      }
+      return;
     }
     // Chegou mensagem do lead DURANTE o turno? Processa agora (a que perdeu o
     // claim lá em cima). Guardas: só se a execução ainda está AGUARDANDO (se
@@ -1688,6 +1731,43 @@ export class ConversarIaService {
    * roda um turno extra com elas. Sem isso, mensagem em rajada ficava sem
    * resposta e o lead achava que o bot travou.
    */
+  /**
+   * Deixa RASTRO de um turno que falhou.
+   *
+   * Um turno não gera passo no `FluxoExecucaoLog` (só os nós do grafo geram), e
+   * por isso a falha dele era invisível: a execução ficava verde no painel, com
+   * `erroMsg` nulo e zero tentativas, e a única forma de descobrir era ir no
+   * banco olhar `processandoTurno`. Agora o turno falho aparece onde as pessoas
+   * olham.
+   */
+  private async registrarTurnoFalho(
+    execucao: FluxoExecucao,
+    err: unknown,
+    tentativa: number,
+  ): Promise<void> {
+    const mensagem = err instanceof Error ? err.message : String(err);
+    const agora = new Date();
+    await this.prisma.fluxoExecucaoLog
+      .create({
+        data: {
+          execucaoId: execucao.id,
+          noId: execucao.aguardandoNoId,
+          noTitulo: `Turno da IA (tentativa ${tentativa})`,
+          status: 'FALHOU',
+          erroMsg: mensagem.slice(0, 1000),
+          iniciadoEm: execucao.turnoIniciadoEm ?? agora,
+          terminadoEm: agora,
+        },
+      })
+      .catch(() => undefined);
+    await this.prisma.fluxoExecucao
+      .updateMany({
+        where: { id: execucao.id },
+        data: { erroMsg: mensagem.slice(0, 1000) },
+      })
+      .catch(() => undefined);
+  }
+
   private async processarMensagensPerdidas(
     execucaoId: string,
     empresaId: string,
