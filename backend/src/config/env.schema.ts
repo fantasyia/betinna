@@ -30,6 +30,9 @@ export const envSchema = z
     /// Quem assina pela casa — signatário de verdade, com log próprio.
     CLICKSIGN_SIGNATARIO_NOME: z.string().optional(),
     CLICKSIGN_SIGNATARIO_EMAIL: z.string().email().optional(),
+    /// Assinatura automática exige nascimento (YYYY-MM-DD) e CPF do signatário.
+    CLICKSIGN_SIGNATARIO_NASCIMENTO: z.string().optional(),
+    CLICKSIGN_SIGNATARIO_DOCUMENTO: z.string().optional(),
 
     // Database
     DATABASE_URL: z.string().url(),

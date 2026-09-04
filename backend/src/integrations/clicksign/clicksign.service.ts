@@ -10,6 +10,10 @@ export interface SignatarioContrato {
   email: string;
   /** Só dígitos, com DDI: `5511999998888`. Com `+` na frente a API recusa. */
   telefone?: string;
+  /** `YYYY-MM-DD`. Obrigatório na assinatura automática. */
+  nascimento?: string;
+  /** CPF. Obrigatório na assinatura automática. */
+  documento?: string;
 }
 
 export interface ContratoParaAssinar {
@@ -101,11 +105,23 @@ export class ClickSignService {
     return v === 'sms' || v === 'email' || v === 'whatsapp' ? v : 'whatsapp';
   }
 
-  /** Quem assina pela casa. É signatário de verdade, não imagem no documento. */
+  /**
+   * Quem assina pela casa. É signatário de verdade, não imagem no documento.
+   *
+   * ⚠️ A assinatura automática exige do signatário **nome, e-mail, data de
+   * nascimento e CPF** — não é opcional. Sem os quatro a ClickSign recusa, e o
+   * contrato fica assinado só pelo cliente.
+   */
   private get somatec(): SignatarioContrato | null {
     const nome = this.ler('CLICKSIGN_SIGNATARIO_NOME');
     const email = this.ler('CLICKSIGN_SIGNATARIO_EMAIL');
-    return nome && email ? { nome, email } : null;
+    if (!nome || !email) return null;
+    return {
+      nome,
+      email,
+      nascimento: this.ler('CLICKSIGN_SIGNATARIO_NASCIMENTO') || undefined,
+      documento: this.ler('CLICKSIGN_SIGNATARIO_DOCUMENTO') || undefined,
+    };
   }
 
   /**
@@ -167,11 +183,16 @@ export class ClickSignService {
               name: s.nome,
               email: s.email,
               ...(s.telefone ? { phone_number: s.telefone } : {}),
+              ...(s.nascimento ? { birthday: s.nascimento } : {}),
+              ...(s.documento ? { documentation: s.documento } : {}),
               // `has_documentation` faz a ClickSign PEDIR o CPF na hora de
               // assinar. Não precisamos ter o dado: quem preenche é o
               // signatário, e é isso que dá identificação de verdade — com
               // `false`, assinar era só clicar num link de e-mail.
-              has_documentation: !s.automatico,
+              // Pro cliente, `true` faz a ClickSign PEDIR o CPF na hora de
+              // assinar. Pra quem assina em automático não há "hora de
+              // assinar" — o CPF tem que vir daqui, no `documentation`.
+              has_documentation: s.automatico ? Boolean(s.documento) : true,
               refusable: !s.automatico,
             },
           },
