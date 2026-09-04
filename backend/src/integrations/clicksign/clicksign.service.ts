@@ -162,9 +162,18 @@ export class ClickSignService {
     );
 
     // Ordem importa: o cliente assina primeiro, a casa confirma depois.
+    //
+    // A assinatura automática da casa depende de um **Termo de Assinatura
+    // Automática** assinado na conta — que não é self-service: pede-se ao
+    // suporte da ClickSign. Enquanto o termo não existe, a assinatura automática
+    // é RECUSADA e o contrato fica assinado só pelo cliente. Por isso a chave:
+    // com ela desligada o Leandro entra como signatário normal e o fluxo roda
+    // inteiro. É explícita de propósito — cair pro manual em silêncio esconderia
+    // que o automático nunca funcionou.
+    const auto = this.ler('CLICKSIGN_SOMATEC_AUTO').toLowerCase() !== 'false';
     const paraAssinar: Array<SignatarioContrato & { automatico: boolean }> = [
       { ...dados.cliente, automatico: false },
-      ...(this.somatec ? [{ ...this.somatec, automatico: true }] : []),
+      ...(this.somatec ? [{ ...this.somatec, automatico: auto }] : []),
     ];
     const signatarios: Array<{
       id: string;

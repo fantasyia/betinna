@@ -33,6 +33,9 @@ export const envSchema = z
     /// Assinatura automática exige nascimento (YYYY-MM-DD) e CPF do signatário.
     CLICKSIGN_SIGNATARIO_NASCIMENTO: z.string().optional(),
     CLICKSIGN_SIGNATARIO_DOCUMENTO: z.string().optional(),
+    /// "false" faz a casa assinar manualmente — usado enquanto o Termo de
+    /// Assinatura Automática não estiver assinado na conta.
+    CLICKSIGN_SOMATEC_AUTO: z.string().optional(),
 
     // Database
     DATABASE_URL: z.string().url(),
