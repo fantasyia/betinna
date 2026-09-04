@@ -15,6 +15,8 @@ const makePrismaMock = () => ({
     updateMany: vi.fn(),
   },
   pedido: { groupBy: vi.fn() },
+  // Linhas de comissão por pedido — de onde sai a folha de SITE.
+  pedidoComissao: { groupBy: vi.fn(async () => [] as unknown[]) },
   usuario: { findMany: vi.fn() },
   empresa: { findUnique: vi.fn(async (): Promise<{ config: unknown }> => ({ config: null })) },
   $transaction: vi.fn(async (ops: unknown[]) => {
@@ -281,6 +283,58 @@ describe('ComissoesService', () => {
       expect(out.gerentes).toBe(0);
       // 2 findMany (repsConfig + reps) — não há gerente pra buscar
       expect(prisma.usuario.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('fecha SITE mesmo sem NENHUM pedido de rep no mês', async () => {
+      // Venda de canal não tem representante — não aparece no groupBy de Pedido.
+      // Antes disso o método saía no early return e a comissão de site sumia.
+      prisma.pedido.groupBy.mockResolvedValue([]);
+      prisma.usuario.findMany.mockResolvedValue([]);
+      prisma.pedidoComissao.groupBy.mockResolvedValue([
+        {
+          usuarioId: 'leo',
+          _sum: { base: new Prisma.Decimal('1000.00'), valor: new Prisma.Decimal('72.50') },
+          _count: { _all: 2 },
+        },
+      ]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      expect(out.site).toBe(1);
+      expect(out.totalVendas).toBe(1_000);
+      expect(out.totalComissao).toBe(72.5);
+      const siteUpsert = prisma.comissao.upsert.mock.calls.find(
+        (c: unknown[]) => (c[0] as { create?: { tipo?: string } }).create?.tipo === 'SITE',
+      );
+      expect((siteUpsert?.[0] as { create: unknown }).create).toMatchObject({
+        representanteId: 'leo',
+        tipo: 'SITE',
+        // % efetiva do mês, derivada das linhas (72,50 / 1000).
+        percentual: 7.25,
+        totalVendas: 1_000,
+        totalComissao: 72.5,
+        qtdPedidos: 2,
+      });
+    });
+
+    it('GERENTE não fecha SITE — canal não pertence à gerência dele', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([]);
+      prisma.pedidoComissao.groupBy.mockResolvedValue([
+        {
+          usuarioId: 'leo',
+          _sum: { base: new Prisma.Decimal('1000.00'), valor: new Prisma.Decimal('72.50') },
+          _count: { _all: 1 },
+        },
+      ]);
+
+      const out = await svc.fecharMes(fakeUser({ role: 'GERENTE' as UserRole }), {
+        mes: 4,
+        ano: 2026,
+        reprocessar: false,
+      });
+
+      expect(out.site).toBe(0);
+      expect(prisma.pedidoComissao.groupBy).not.toHaveBeenCalled();
     });
 
     it('soma _sum do Pedido como Prisma.Decimal sem virar string — #17 Fase 2', async () => {

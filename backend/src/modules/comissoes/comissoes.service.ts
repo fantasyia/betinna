@@ -133,6 +133,7 @@ export class ComissoesService {
     ano: number;
     representantes: number;
     gerentes: number;
+    site: number;
     totalVendas: number;
     totalComissao: number;
   }> {
@@ -160,6 +161,27 @@ export class ComissoesService {
       baseWhere.representanteId = { in: repScopeIds };
     }
 
+    // Comissao de CANAL (site): nao tem representante, entao nao entra no groupBy
+    // de Pedido acima — vem das linhas por pedido (`PedidoComissao`), que ja
+    // nascem com a % da PESSOA e a base liquida do pedido. So ADMIN/DIRECTOR
+    // fecham: gerente nao tem canal sob a gerencia dele.
+    const siteAgg =
+      repScopeIds === null
+        ? await this.prisma.pedidoComissao.groupBy({
+            by: ['usuarioId'],
+            where: {
+              empresaId,
+              tipo: 'SITE',
+              pedido: {
+                status: { in: STATUS_COMISSIONAVEL as Prisma.EnumPedidoStatusFilter['in'] },
+                enviadoErpEm: { gte: inicio, lt: fim },
+              },
+            },
+            _sum: { base: true, valor: true },
+            _count: { _all: true },
+          })
+        : [];
+
     const aggregated = await this.prisma.pedido.groupBy({
       by: ['representanteId'],
       where: baseWhere,
@@ -168,7 +190,7 @@ export class ComissoesService {
       _count: { _all: true },
     });
 
-    if (aggregated.length === 0) {
+    if (aggregated.length === 0 && siteAgg.length === 0) {
       this.logger.warn(
         `Nenhum pedido comissionável encontrado para ${dto.mes}/${dto.ano} (empresa ${empresaId})`,
       );
@@ -178,6 +200,7 @@ export class ComissoesService {
         ano: dto.ano,
         representantes: 0,
         gerentes: 0,
+        site: 0,
         totalVendas: 0,
         totalComissao: 0,
       };
@@ -412,8 +435,60 @@ export class ComissoesService {
       }, 0);
     }
 
-    // Atômico: comissões de REP + GERENTE gravadas juntas (tudo-ou-nada).
-    await this.prisma.$transaction([...repOps, ...gerenteOps]);
+    // Comissao de SITE: uma linha por beneficiario, somando as linhas por pedido.
+    // A % ja veio snapshotada em cada linha; o percentual gravado aqui e o
+    // EFETIVO do mes (comissao / base) — se a % da pessoa mudar no meio do mes,
+    // a folha continua batendo com a soma das vendas.
+    const siteOps = siteAgg.map((row) => {
+      const totalVendas = Number(row._sum.base ?? 0);
+      const totalComissao = Number(row._sum.valor ?? 0);
+      const pct =
+        totalVendas > 0 ? Math.round((totalComissao / totalVendas) * 100 * 10000) / 10000 : 0;
+      if (!jaExistentes.has(`${row.usuarioId}:SITE`)) {
+        totalVendasAgg += totalVendas;
+        totalComissaoAgg += totalComissao;
+        registrosNovos += 1;
+      }
+      return this.prisma.comissao.upsert({
+        where: {
+          empresaId_representanteId_tipo_ano_mes: {
+            empresaId,
+            representanteId: row.usuarioId,
+            tipo: 'SITE',
+            ano: dto.ano,
+            mes: dto.mes,
+          },
+        },
+        // Diferente de REP/GERENTE, aqui o reprocessamento REESCREVE o percentual:
+        // ele nao e um snapshot de configuracao, e a razao entre dois numeros que
+        // vieram das linhas — congelar o antigo criaria contradicao com o valor.
+        update: dto.reprocessar
+          ? {
+              totalVendas,
+              totalComissao,
+              qtdPedidos: row._count._all,
+              tipo: 'SITE',
+              percentual: pct,
+            }
+          : {},
+        create: {
+          empresaId,
+          representanteId: row.usuarioId,
+          tipo: 'SITE',
+          percentual: pct,
+          calculadoEm: agora,
+          ano: dto.ano,
+          mes: dto.mes,
+          totalVendas,
+          totalComissao,
+          qtdPedidos: row._count._all,
+          pago: false,
+        },
+      });
+    });
+
+    // Atômico: comissões de REP + GERENTE + SITE gravadas juntas (tudo-ou-nada).
+    await this.prisma.$transaction([...repOps, ...gerenteOps, ...siteOps]);
 
     addBreadcrumb('comissoes', 'fechamento-completo', {
       empresaId,
@@ -421,12 +496,13 @@ export class ComissoesService {
       ano: dto.ano,
       reps: aggregated.length,
       gerentes: gerentesProcessados,
+      site: siteOps.length,
       totalVendas: totalVendasAgg,
       totalComissao: totalComissaoAgg,
     });
 
     this.logger.log(
-      `Fechamento ${dto.mes}/${dto.ano} (empresa ${empresaId}): ${aggregated.length} reps + ${gerentesProcessados} gerentes · R$${totalVendasAgg.toFixed(2)} vendas · R$${totalComissaoAgg.toFixed(2)} comissão`,
+      `Fechamento ${dto.mes}/${dto.ano} (empresa ${empresaId}): ${aggregated.length} reps + ${gerentesProcessados} gerentes + ${siteOps.length} site · R$${totalVendasAgg.toFixed(2)} vendas · R$${totalComissaoAgg.toFixed(2)} comissão`,
     );
 
     // Notifica/e-mail SÓ quando houve gravação real (registro novo) ou reprocessamento — senão
@@ -465,6 +541,7 @@ export class ComissoesService {
       ano: dto.ano,
       representantes: aggregated.length,
       gerentes: gerentesProcessados,
+      site: siteOps.length,
       totalVendas: totalVendasAgg,
       totalComissao: totalComissaoAgg,
     };

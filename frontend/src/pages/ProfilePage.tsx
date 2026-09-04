@@ -1,30 +1,30 @@
-import { useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
-import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { useRole } from '@/hooks/usePermission';
-import { getSession } from '@/lib/auth-store';
-import { PageLayout } from '@/components/PageLayout';
-import { SistemaTabs } from '@/components/SistemaTabs';
-import { Table, Pagination, type Column } from '@/components/Table';
-import { StateView } from '@/components/StateView';
-import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Dialog } from '@/components/ui';
-import { FormField, Input, Select } from '@/components/FormField';
-import { useToast } from '@/components/toast';
-import { maskTelefone } from '@/lib/masks';
-import { cn } from '@/lib/cn';
-import { startOnboarding } from '@/components/OnboardingTour';
+import { useMemo, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { api, ApiError } from "@/lib/api";
+import { useApiQuery, type PaginatedResponse } from "@/hooks/useApiQuery";
+import { useRole } from "@/hooks/usePermission";
+import { getSession } from "@/lib/auth-store";
+import { PageLayout } from "@/components/PageLayout";
+import { SistemaTabs } from "@/components/SistemaTabs";
+import { Table, Pagination, type Column } from "@/components/Table";
+import { StateView } from "@/components/StateView";
+import { FilterBar, SearchInput } from "@/components/FilterBar";
+import { Dialog } from "@/components/ui";
+import { FormField, Input, Select } from "@/components/FormField";
+import { useToast } from "@/components/toast";
+import { maskTelefone } from "@/lib/masks";
+import { cn } from "@/lib/cn";
+import { startOnboarding } from "@/components/OnboardingTour";
 
 // Classes Tailwind dos objetos legados (pixel-idênticas ao styles.ts).
-const cardCls = 'bg-surface border border-border rounded-[10px] p-6';
+const cardCls = "bg-surface border border-border rounded-[10px] p-6";
 const btnCls =
-  'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]';
+  "bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]";
 const btnSecondaryCls =
-  'bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
+  "bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]";
 // Layout do badge — cores aplicadas inline (color-mix) por serem dinâmicas.
 const badgeCls =
-  'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] border';
+  "inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] border";
 function badgeStyle(color: string): React.CSSProperties {
   return {
     background: `color-mix(in srgb, ${color} 12%, transparent)`,
@@ -33,8 +33,8 @@ function badgeStyle(color: string): React.CSSProperties {
   };
 }
 
-type UserRole = 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
-type UserStatus = 'ATIVO' | 'PENDENTE' | 'INATIVO';
+type UserRole = "ADMIN" | "DIRECTOR" | "GERENTE" | "SAC" | "REP";
+type UserStatus = "ATIVO" | "PENDENTE" | "INATIVO";
 
 interface User {
   id: string;
@@ -46,6 +46,7 @@ interface User {
   regiao?: string | null;
   tetoDesconto?: number;
   comissaoPadrao?: number;
+  comissaoSite?: number;
   gerente?: { id: string; nome: string } | null;
   empresas?: Array<{ id: string; nome: string }>;
   ultimoAcesso?: string | null;
@@ -53,22 +54,22 @@ interface User {
 }
 
 const ROLE_COLOR: Record<UserRole, string> = {
-  ADMIN: '#7c3aed',
-  DIRECTOR: 'var(--primary)',
-  GERENTE: '#0891b2',
-  SAC: 'var(--warning)',
-  REP: 'var(--success)',
+  ADMIN: "#7c3aed",
+  DIRECTOR: "var(--primary)",
+  GERENTE: "#0891b2",
+  SAC: "var(--warning)",
+  REP: "var(--success)",
 };
 const STATUS_COLOR: Record<UserStatus, string> = {
-  ATIVO: 'var(--success)',
-  PENDENTE: 'var(--warning)',
-  INATIVO: 'var(--muted)',
+  ATIVO: "var(--success)",
+  PENDENTE: "var(--warning)",
+  INATIVO: "var(--muted)",
 };
 
 function fmtDate(d: string | null | undefined) {
-  if (!d) return '—';
+  if (!d) return "—";
   try {
-    return new Date(d).toLocaleDateString('pt-BR');
+    return new Date(d).toLocaleDateString("pt-BR");
   } catch {
     return d;
   }
@@ -93,8 +94,9 @@ export default function ProfilePage() {
   // Decide visualização baseado na ROTA, não na role:
   // - /usuarios sem id → lista (se tem permissão de gerenciar usuários)
   // - /perfil ou /perfil/:id ou /usuarios/:id → detalhe
-  const isUsuariosRoute = location.pathname.startsWith('/usuarios');
-  const isAdminOrDirector = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
+  const isUsuariosRoute = location.pathname.startsWith("/usuarios");
+  const isAdminOrDirector =
+    role === "ADMIN" || role === "DIRECTOR" || role === "GERENTE";
   const showList = isUsuariosRoute && !id && isAdminOrDirector;
   const targetId = id ?? session?.user.id ?? null;
 
@@ -108,34 +110,44 @@ export default function ProfilePage() {
       </PageLayout>
     );
   }
-  return <UserDetail userId={targetId} isOwnProfile={targetId === session?.user.id} />;
+  return (
+    <UserDetail
+      userId={targetId}
+      isOwnProfile={targetId === session?.user.id}
+    />
+  );
 }
 
 // ─── List (admin) ────────────────────────────────────────────────────
 
 function UsersList() {
   const role = useRole();
-  const canInvite = role === 'ADMIN' || role === 'DIRECTOR';
+  const canInvite = role === "ADMIN" || role === "DIRECTOR";
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [creating, setCreating] = useState(false);
 
   const listPath = useMemo(() => {
-    const qs = new URLSearchParams({ page: String(page), limit: '30' });
-    if (search.trim()) qs.set('search', search.trim());
-    if (roleFilter) qs.set('role', roleFilter);
-    if (statusFilter) qs.set('status', statusFilter);
+    const qs = new URLSearchParams({ page: String(page), limit: "30" });
+    if (search.trim()) qs.set("search", search.trim());
+    if (roleFilter) qs.set("role", roleFilter);
+    if (statusFilter) qs.set("status", statusFilter);
     return `/users?${qs.toString()}`;
   }, [page, search, roleFilter, statusFilter]);
 
-  const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<User>>(listPath);
+  const {
+    data: pageResp,
+    loading,
+    error,
+    refetch,
+  } = useApiQuery<PaginatedResponse<User>>(listPath);
 
   const columns: Column<User>[] = [
     {
-      key: 'user',
-      header: 'Usuário',
+      key: "user",
+      header: "Usuário",
       render: (u) => (
         <div>
           <div className="font-semibold">{u.nome}</div>
@@ -144,37 +156,48 @@ function UsersList() {
       ),
     },
     {
-      key: 'role',
-      header: 'Papel',
+      key: "role",
+      header: "Papel",
       render: (u) => (
         <span className={badgeCls} style={badgeStyle(ROLE_COLOR[u.role])}>
           {u.role}
         </span>
       ),
     },
-    { key: 'regiao', header: 'Região', render: (u) => u.regiao ?? '—' },
+    { key: "regiao", header: "Região", render: (u) => u.regiao ?? "—" },
     {
-      key: 'teto',
-      header: 'Teto desc.',
+      key: "teto",
+      header: "Teto desc.",
       render: (u) =>
-        u.role === 'REP' && u.tetoDesconto !== undefined ? `${u.tetoDesconto}%` : '—',
+        u.role === "REP" && u.tetoDesconto !== undefined
+          ? `${u.tetoDesconto}%`
+          : "—",
     },
     {
-      key: 'comissao',
-      header: 'Comissão',
-      render: (u) =>
-        ['REP', 'GERENTE'].includes(u.role) && u.comissaoPadrao !== undefined
-          ? `${u.comissaoPadrao}%`
-          : '—',
+      key: "comissao",
+      header: "Comissão",
+      render: (u) => {
+        const rep = ["REP", "GERENTE"].includes(u.role)
+          ? (u.comissaoPadrao ?? 0)
+          : null;
+        const site = u.comissaoSite ?? 0;
+        if (rep === null && site === 0) return "—";
+        return [
+          rep !== null ? `${rep}%` : null,
+          site > 0 ? `site ${site}%` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      },
     },
     {
-      key: 'gerente',
-      header: 'Gerente',
+      key: "gerente",
+      header: "Gerente",
       render: (u) => u.gerente?.nome ?? <em className="text-muted">—</em>,
     },
     {
-      key: 'status',
-      header: 'Status',
+      key: "status",
+      header: "Status",
       render: (u) => (
         <span className={badgeCls} style={badgeStyle(STATUS_COLOR[u.status])}>
           {u.status}
@@ -182,8 +205,8 @@ function UsersList() {
       ),
     },
     {
-      key: 'actions',
-      header: '',
+      key: "actions",
+      header: "",
       render: (u) => (
         <Link
           to={`/usuarios/${u.id}`}
@@ -273,8 +296,15 @@ function UsersList() {
         >
           {pageResp && (
             <>
-              <Table data={pageResp.data} columns={columns} rowKey={(u) => u.id} />
-              <Pagination pagination={pageResp.pagination} onPageChange={setPage} />
+              <Table
+                data={pageResp.data}
+                columns={columns}
+                rowKey={(u) => u.id}
+              />
+              <Pagination
+                pagination={pageResp.pagination}
+                onPageChange={setPage}
+              />
             </>
           )}
         </StateView>
@@ -285,17 +315,25 @@ function UsersList() {
 
 // ─── Detail / Profile ────────────────────────────────────────────────
 
-function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: boolean }) {
+function UserDetail({
+  userId,
+  isOwnProfile,
+}: {
+  userId: string;
+  isOwnProfile: boolean;
+}) {
   const role = useRole();
   const toast = useToast();
-  const canEdit = role === 'ADMIN' || (isOwnProfile && role !== null);
-  const isAdmin = role === 'ADMIN';
+  const canEdit = role === "ADMIN" || (isOwnProfile && role !== null);
+  const isAdmin = role === "ADMIN";
   // D46+D48: teto-desconto e comissão = DIRECTOR (mandatário do tenant) OU
   // ADMIN (master da plataforma). Outros papéis bloqueados.
-  const canSetTeto = role === 'DIRECTOR' || role === 'ADMIN';
-  const canSetComissao = role === 'DIRECTOR' || role === 'ADMIN';
+  const canSetTeto = role === "DIRECTOR" || role === "ADMIN";
+  const canSetComissao = role === "DIRECTOR" || role === "ADMIN";
 
-  const { data, loading, error, refetch } = useApiQuery<User>(`/users/${userId}`);
+  const { data, loading, error, refetch } = useApiQuery<User>(
+    `/users/${userId}`,
+  );
 
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -311,28 +349,43 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
     setActionError(null);
     setConviteLink(null);
     try {
-      const r = await api.post<{ inviteUrl?: string; emailEnviado?: boolean; motivo?: string }>(
-        `/users/${data.id}/reenviar-convite`,
-      );
+      const r = await api.post<{
+        inviteUrl?: string;
+        emailEnviado?: boolean;
+        motivo?: string;
+      }>(`/users/${data.id}/reenviar-convite`);
       // O link SEMPRE aparece na tela, tenha o e-mail saído ou não. Depender do
       // e-mail deixava o admin sem saída em tenant sem Resend — e mesmo com ele
       // configurado, endereço errado ou spam dão no mesmo. Com o link à mão, dá
       // pra entregar por WhatsApp, chat, o que for.
       if (r?.inviteUrl) setConviteLink(r.inviteUrl);
       if (r?.emailEnviado === false) {
-        toast.info?.('Convite gerado — e-mail NÃO saiu', r.motivo ?? 'Use o link abaixo.');
+        toast.info?.(
+          "Convite gerado — e-mail NÃO saiu",
+          r.motivo ?? "Use o link abaixo.",
+        );
       } else {
-        toast.success('Convite reenviado', `E-mail enviado pra ${data.email}`);
+        toast.success("Convite reenviado", `E-mail enviado pra ${data.email}`);
       }
     } catch (err) {
-      const motivo = err instanceof ApiError ? err.message : 'Erro inesperado';
+      const motivo = err instanceof ApiError ? err.message : "Erro inesperado";
       // Log estruturado pra diagnóstico.
-      console.error('[convite] falha ao reenviar', { userId: data.id, email: data.email, motivo });
+      console.error("[convite] falha ao reenviar", {
+        userId: data.id,
+        email: data.email,
+        motivo,
+      });
       setActionError(motivo);
       toast.error(
         `Não foi possível enviar o e-mail para ${data.email}`,
         `${motivo} Verifique e tente novamente.`,
-        { sticky: true, action: { label: 'Tentar novamente', onClick: () => void reenviarConvite() } },
+        {
+          sticky: true,
+          action: {
+            label: "Tentar novamente",
+            onClick: () => void reenviarConvite(),
+          },
+        },
       );
     } finally {
       setBusy(false);
@@ -351,10 +404,15 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
     setActionError(null);
     try {
       await api.delete(`/users/${data.id}`);
-      toast.success('Usuário desativado', `${data.nome} não poderá mais entrar.`);
+      toast.success(
+        "Usuário desativado",
+        `${data.nome} não poderá mais entrar.`,
+      );
       refetch();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha ao desativar');
+      setActionError(
+        err instanceof ApiError ? err.message : "Falha ao desativar",
+      );
     } finally {
       setBusy(false);
     }
@@ -366,10 +424,12 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
     setActionError(null);
     try {
       await api.put(`/users/${data.id}/ativar`);
-      toast.success('Usuário reativado', `${data.nome} pode entrar novamente.`);
+      toast.success("Usuário reativado", `${data.nome} pode entrar novamente.`);
       refetch();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha ao reativar');
+      setActionError(
+        err instanceof ApiError ? err.message : "Falha ao reativar",
+      );
     } finally {
       setBusy(false);
     }
@@ -377,10 +437,11 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
 
   return (
     <PageLayout
-      title={data ? data.nome : 'Perfil'}
+      title={data ? data.nome : "Perfil"}
       actions={
-        !isOwnProfile && (role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE') ? (
-          <Link to="/usuarios" className={cn(btnSecondaryCls, 'no-underline')}>
+        !isOwnProfile &&
+        (role === "ADMIN" || role === "DIRECTOR" || role === "GERENTE") ? (
+          <Link to="/usuarios" className={cn(btnSecondaryCls, "no-underline")}>
             ← Voltar pra lista
           </Link>
         ) : undefined
@@ -392,10 +453,16 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
             <div className={cardCls}>
               <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <span className={badgeCls} style={badgeStyle(ROLE_COLOR[data.role])}>
+                <span
+                  className={badgeCls}
+                  style={badgeStyle(ROLE_COLOR[data.role])}
+                >
                   {data.role}
                 </span>
-                <span className={badgeCls} style={badgeStyle(STATUS_COLOR[data.status])}>
+                <span
+                  className={badgeCls}
+                  style={badgeStyle(STATUS_COLOR[data.status])}
+                >
                   {data.status}
                 </span>
                 {isOwnProfile && (
@@ -406,16 +473,21 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[14px]">
                 <Info label="Nome">{data.nome}</Info>
                 <Info label="E-mail">{data.email}</Info>
-                <Info label="Telefone">{data.telefone ?? '—'}</Info>
-                <Info label="Região">{data.regiao ?? '—'}</Info>
-                {data.role === 'REP' && (
+                <Info label="Telefone">{data.telefone ?? "—"}</Info>
+                <Info label="Região">{data.regiao ?? "—"}</Info>
+                {data.role === "REP" && (
                   <>
                     <Info label="Teto desconto">{data.tetoDesconto ?? 0}%</Info>
-                    <Info label="Gerente">{data.gerente?.nome ?? 'sem gerente'}</Info>
+                    <Info label="Gerente">
+                      {data.gerente?.nome ?? "sem gerente"}
+                    </Info>
                   </>
                 )}
-                {['REP', 'GERENTE'].includes(data.role) && (
+                {["REP", "GERENTE"].includes(data.role) && (
                   <Info label="Comissão %">{data.comissaoPadrao ?? 0}%</Info>
+                )}
+                {(data.comissaoSite ?? 0) > 0 && (
+                  <Info label="Comissão site %">{data.comissaoSite}%</Info>
                 )}
                 <Info label="Último acesso">{fmtDate(data.ultimoAcesso)}</Info>
                 <Info label="Criado em">{fmtDate(data.criadoEm)}</Info>
@@ -432,7 +504,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                         key={e.id}
                         className={cn(
                           badgeCls,
-                          'bg-primary/12 text-primary border-primary/19',
+                          "bg-primary/12 text-primary border-primary/19",
                         )}
                       >
                         {e.nome}
@@ -443,9 +515,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
               )}
 
               {actionError && (
-                <p className="text-danger text-[13px] mt-2">
-                  {actionError}
-                </p>
+                <p className="text-danger text-[13px] mt-2">{actionError}</p>
               )}
 
               {/* Link de cadastro de senha. Fica visível pra ser entregue por
@@ -457,11 +527,15 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   data-testid="convite-link"
                   className="mt-3 rounded-[10px] border border-border bg-bg p-3"
                 >
-                  <p className="m-0 text-[12px] font-semibold" style={{ color: 'var(--text)' }}>
+                  <p
+                    className="m-0 text-[12px] font-semibold"
+                    style={{ color: "var(--text)" }}
+                  >
                     🔗 Link de cadastro de senha
                   </p>
                   <p className="m-0 mt-1 text-[11px] text-muted">
-                    Quem abrir este link define a senha desta conta. Mande só pra pessoa certa.
+                    Quem abrir este link define a senha desta conta. Mande só
+                    pra pessoa certa.
                   </p>
                   <textarea
                     readOnly
@@ -476,7 +550,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                     data-testid="convite-link-copiar"
                     onClick={() => {
                       void navigator.clipboard?.writeText(conviteLink);
-                      toast.success('Link copiado');
+                      toast.success("Link copiado");
                     }}
                     className={btnSecondaryCls}
                   >
@@ -494,64 +568,72 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   type="button"
                   data-testid="user-edit-btn"
                   onClick={() => setEditing(true)}
-                  className={cn(btnCls, 'w-full mb-2')}
+                  className={cn(btnCls, "w-full mb-2")}
                 >
                   Editar dados
                 </button>
               )}
-              {canSetTeto && data.role === 'REP' && (
+              {canSetTeto && data.role === "REP" && (
                 <button
                   type="button"
                   data-testid="user-teto-btn"
                   onClick={() => setTetoModalOpen(true)}
-                  className={cn(btnSecondaryCls, 'w-full mb-2')}
+                  className={cn(btnSecondaryCls, "w-full mb-2")}
                 >
                   Definir teto desconto
                 </button>
               )}
-              {canSetComissao && ['REP', 'GERENTE'].includes(data.role) && (
+              {/* Qualquer papel: a % de SITE nao e do rep — e de quem a empresa
+                  decidir remunerar pela venda de canal. */}
+              {canSetComissao && (
                 <button
                   type="button"
                   data-testid="user-comissao-btn"
                   onClick={() => setComissaoModalOpen(true)}
-                  className={cn(btnSecondaryCls, 'w-full mb-2')}
+                  className={cn(btnSecondaryCls, "w-full mb-2")}
                 >
                   Definir comissão %
                 </button>
               )}
-              {isAdmin && data.status === 'PENDENTE' && (
+              {isAdmin && data.status === "PENDENTE" && (
                 <button
                   type="button"
                   data-testid="user-resend-btn"
                   onClick={reenviarConvite}
                   disabled={busy}
-                  className={cn(btnSecondaryCls, 'w-full mb-2')}
+                  className={cn(btnSecondaryCls, "w-full mb-2")}
                 >
-                  {busy ? 'Enviando…' : 'Reenviar convite'}
+                  {busy ? "Enviando…" : "Reenviar convite"}
                 </button>
               )}
 
               {/* Desativar/Reativar — só ADMIN, nunca pra si próprio */}
-              {isAdmin && !isOwnProfile && data.status !== 'INATIVO' && (
+              {isAdmin && !isOwnProfile && data.status !== "INATIVO" && (
                 <button
                   type="button"
                   data-testid="user-deactivate-btn"
                   onClick={desativarUsuario}
                   disabled={busy}
-                  className={cn(btnSecondaryCls, 'w-full text-danger border-danger mt-2')}
+                  className={cn(
+                    btnSecondaryCls,
+                    "w-full text-danger border-danger mt-2",
+                  )}
                 >
-                  {busy ? 'Aguarde…' : 'Desativar usuário'}
+                  {busy ? "Aguarde…" : "Desativar usuário"}
                 </button>
               )}
-              {isAdmin && !isOwnProfile && data.status === 'INATIVO' && (
+              {isAdmin && !isOwnProfile && data.status === "INATIVO" && (
                 <button
                   type="button"
                   data-testid="user-reactivate-btn"
                   onClick={reativarUsuario}
                   disabled={busy}
-                  className={cn(btnSecondaryCls, 'w-full text-success border-success mt-2')}
+                  className={cn(
+                    btnSecondaryCls,
+                    "w-full text-success border-success mt-2",
+                  )}
                 >
-                  {busy ? 'Aguarde…' : 'Reativar usuário'}
+                  {busy ? "Aguarde…" : "Reativar usuário"}
                 </button>
               )}
 
@@ -614,7 +696,13 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
   );
 }
 
-function Info({ label, children }: { label: string; children: React.ReactNode }) {
+function Info({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <div className="text-[11px] uppercase text-muted mb-0.5 tracking-[0.3px] font-semibold">
@@ -639,14 +727,14 @@ function EditUserModal({
   onSaved: () => void;
 }) {
   const role = useRole();
-  const isAdmin = role === 'ADMIN';
+  const isAdmin = role === "ADMIN";
   // ADMIN pode mudar role/status; user comum só campos básicos do próprio
   const canChangeRole = isAdmin && !isOwnProfile;
 
   const [form, setForm] = useState({
     nome: user.nome,
-    telefone: user.telefone ?? '',
-    regiao: user.regiao ?? '',
+    telefone: user.telefone ?? "",
+    regiao: user.regiao ?? "",
     role: user.role,
     status: user.status,
   });
@@ -680,11 +768,11 @@ function EditUserModal({
     }
     try {
       // Editando a si mesmo sem ser ADMIN, vai pela rota do próprio cadastro.
-      const rota = isAdmin ? `/users/${user.id}` : '/users/me';
+      const rota = isAdmin ? `/users/${user.id}` : "/users/me";
       await api.patch(rota, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(err instanceof ApiError ? err.message : "Falha");
     } finally {
       setBusy(false);
     }
@@ -708,7 +796,7 @@ function EditUserModal({
               disabled={busy || form.nome.trim().length < 2}
               className={btnCls}
             >
-              {busy ? 'Salvando…' : 'Salvar'}
+              {busy ? "Salvando…" : "Salvar"}
             </button>
           )}
         </>
@@ -723,8 +811,9 @@ function EditUserModal({
         )}
         {canSave && !isAdmin && (
           <div className="px-3 py-2.5 mb-3.5 bg-[#fef3c7] border border-[#facc15] rounded-md text-[13px] text-[#78350f]">
-            Você pode alterar seu <strong>nome</strong> e <strong>telefone</strong>. Papel, região,
-            teto de desconto e comissão são definidos pela empresa.
+            Você pode alterar seu <strong>nome</strong> e{" "}
+            <strong>telefone</strong>. Papel, região, teto de desconto e
+            comissão são definidos pela empresa.
           </div>
         )}
         <FormField label="Nome" required>
@@ -741,7 +830,12 @@ function EditUserModal({
           <FormField label="Telefone">
             <Input
               value={form.telefone}
-              onChange={(e) => setForm((s) => ({ ...s, telefone: maskTelefone(e.target.value) }))}
+              onChange={(e) =>
+                setForm((s) => ({
+                  ...s,
+                  telefone: maskTelefone(e.target.value),
+                }))
+              }
               disabled={!canSave}
               placeholder="(00) 00000-0000"
               maxLength={15}
@@ -754,7 +848,9 @@ function EditUserModal({
                 em silêncio seria pior que não poder mexer. */}
             <Input
               value={form.regiao}
-              onChange={(e) => setForm((s) => ({ ...s, regiao: e.target.value }))}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, regiao: e.target.value }))
+              }
               disabled={!isAdmin}
             />
           </FormField>
@@ -763,7 +859,9 @@ function EditUserModal({
               <FormField label="Papel">
                 <Select
                   value={form.role}
-                  onChange={(e) => setForm((s) => ({ ...s, role: e.target.value as UserRole }))}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, role: e.target.value as UserRole }))
+                  }
                 >
                   <option value="ADMIN">ADMIN</option>
                   <option value="DIRECTOR">DIRECTOR</option>
@@ -775,7 +873,12 @@ function EditUserModal({
               <FormField label="Status">
                 <Select
                   value={form.status}
-                  onChange={(e) => setForm((s) => ({ ...s, status: e.target.value as UserStatus }))}
+                  onChange={(e) =>
+                    setForm((s) => ({
+                      ...s,
+                      status: e.target.value as UserStatus,
+                    }))
+                  }
                 >
                   <option value="ATIVO">Ativo</option>
                   <option value="PENDENTE">Pendente</option>
@@ -813,7 +916,7 @@ function SetTetoModal({
       await api.put(`/users/${user.id}/teto-desconto`, { tetoDesconto: teto });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(err instanceof ApiError ? err.message : "Falha");
     } finally {
       setBusy(false);
     }
@@ -836,14 +939,14 @@ function SetTetoModal({
             onClick={submit}
             className={btnCls}
           >
-            {busy ? 'Salvando…' : 'Salvar'}
+            {busy ? "Salvando…" : "Salvar"}
           </button>
         </>
       }
     >
       <p className="mt-0 text-[14px] text-muted">
-        Desconto máximo que o representante pode aplicar sem aprovação. Acima disso, o pedido entra em
-        fluxo de aprovação via Gerente/Diretor.
+        Desconto máximo que o representante pode aplicar sem aprovação. Acima
+        disso, o pedido entra em fluxo de aprovação via Gerente/Diretor.
       </p>
       <FormField label="Teto desconto (%)" htmlFor="teto-input">
         <Input
@@ -874,6 +977,7 @@ function SetComissaoModal({
   onSaved: () => void;
 }) {
   const [com, setCom] = useState(user.comissaoPadrao ?? 0);
+  const [site, setSite] = useState(user.comissaoSite ?? 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -884,10 +988,13 @@ function SetComissaoModal({
       // O campo é `comissaoPadrao` — o mesmo nome do banco e do DTO. Enquanto
       // isto mandava `comissaoPercentual`, a API recusava por validação e a
       // tela só dizia "Falha": a % do rep não tinha como ser alterada.
-      await api.put(`/users/${user.id}/comissao`, { comissaoPadrao: com });
+      await api.put(`/users/${user.id}/comissao`, {
+        comissaoPadrao: com,
+        comissaoSite: site,
+      });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(err instanceof ApiError ? err.message : "Falha");
     } finally {
       setBusy(false);
     }
@@ -910,15 +1017,17 @@ function SetComissaoModal({
             onClick={submit}
             className={btnCls}
           >
-            {busy ? 'Salvando…' : 'Salvar'}
+            {busy ? "Salvando…" : "Salvar"}
           </button>
         </>
       }
     >
       <p className="mt-0 text-[14px] text-muted">
-        {user.role === 'REP'
-          ? '% de comissão sobre o total dos pedidos próprios do representante.'
-          : '% de comissão do GERENTE sobre o total de vendas dos REPs sob a gerência dele.'}
+        {user.role === "REP"
+          ? "% de comissão sobre o total dos pedidos próprios do representante."
+          : user.role === "GERENTE"
+            ? "% de comissão do GERENTE sobre o total de vendas dos REPs sob a gerência dele."
+            : "Este papel não vende com carteira própria — o que vale pra ele é a % de site."}
       </p>
       <FormField label="Comissão (%)" htmlFor="com-input">
         <Input
@@ -932,6 +1041,22 @@ function SetComissaoModal({
           onChange={(e) => setCom(Number(e.target.value))}
         />
       </FormField>
+      <FormField label="Comissão site (%)" htmlFor="com-site-input">
+        <Input
+          id="com-site-input"
+          data-testid="comissao-site-input"
+          type="number"
+          min={0}
+          max={100}
+          step="0.01"
+          value={site}
+          onChange={(e) => setSite(Number(e.target.value))}
+        />
+      </FormField>
+      <p className="text-[12px] text-muted">
+        Vale sobre pedido que entra pelo SITE, onde não há representante. Zero =
+        não participa.
+      </p>
       {error && <p className="text-danger text-[13px]">{error}</p>}
     </Dialog>
   );
@@ -965,15 +1090,15 @@ function ConvidarUsuarioModal({
   onCreated: () => void;
 }) {
   const toast = useToast();
-  const isDirector = callerRole === 'DIRECTOR';
-  const { data: empresas } = useApiQuery<EmpresaOpt[]>('/empresas/minhas');
+  const isDirector = callerRole === "DIRECTOR";
+  const { data: empresas } = useApiQuery<EmpresaOpt[]>("/empresas/minhas");
 
-  const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [cpfCnpj, setCpfCnpj] = useState('');
-  const [novoRole, setNovoRole] = useState<UserRole>('REP');
-  const [regiao, setRegiao] = useState('');
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [cpfCnpj, setCpfCnpj] = useState("");
+  const [novoRole, setNovoRole] = useState<UserRole>("REP");
+  const [regiao, setRegiao] = useState("");
   const [empresaIds, setEmpresaIds] = useState<string[]>(
     callerEmpresaId ? [callerEmpresaId] : [],
   );
@@ -984,8 +1109,8 @@ function ConvidarUsuarioModal({
 
   // DIRECTOR só pode convidar GERENTE/SAC/REP — esconde ADMIN/DIRECTOR
   const rolesPermitidos: UserRole[] = isDirector
-    ? ['GERENTE', 'SAC', 'REP']
-    : ['DIRECTOR', 'GERENTE', 'SAC', 'REP'];
+    ? ["GERENTE", "SAC", "REP"]
+    : ["DIRECTOR", "GERENTE", "SAC", "REP"];
 
   function toggleEmpresa(id: string) {
     setEmpresaIds((cur) =>
@@ -997,31 +1122,33 @@ function ConvidarUsuarioModal({
     e.preventDefault();
     setErr(null);
     if (nome.trim().length < 2) {
-      setErr('Nome obrigatório (mínimo 2 caracteres).');
+      setErr("Nome obrigatório (mínimo 2 caracteres).");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setErr('E-mail inválido.');
+      setErr("E-mail inválido.");
       return;
     }
     if (empresaIds.length === 0) {
-      setErr('Selecione pelo menos uma empresa.');
+      setErr("Selecione pelo menos uma empresa.");
       return;
     }
-    if (novoRole === 'REP' && !regiao.trim()) {
-      setErr('Região é obrigatória para representantes.');
+    if (novoRole === "REP" && !regiao.trim()) {
+      setErr("Região é obrigatória para representantes.");
       return;
     }
     // O REP vira CONTATO no ERP (e depois vendedor). Sem telefone e documento,
     // a rodada diária não consegue subir — e descobrir isso semanas depois, com
     // o pedido dele entrando sem dono, é o caro.
-    if (novoRole === 'REP' && !telefone.trim()) {
-      setErr('Telefone é obrigatório para representantes.');
+    if (novoRole === "REP" && !telefone.trim()) {
+      setErr("Telefone é obrigatório para representantes.");
       return;
     }
-    const digitos = cpfCnpj.replace(/\D/g, '');
-    if (novoRole === 'REP' && digitos.length !== 11 && digitos.length !== 14) {
-      setErr('CPF (11 dígitos) ou CNPJ (14) é obrigatório para representantes.');
+    const digitos = cpfCnpj.replace(/\D/g, "");
+    if (novoRole === "REP" && digitos.length !== 11 && digitos.length !== 14) {
+      setErr(
+        "CPF (11 dígitos) ou CNPJ (14) é obrigatório para representantes.",
+      );
       return;
     }
     setBusy(true);
@@ -1035,16 +1162,19 @@ function ConvidarUsuarioModal({
       if (telefone.trim()) payload.telefone = telefone.trim();
       if (digitos) payload.cpfCnpj = digitos;
       if (regiao.trim()) payload.regiao = regiao.trim();
-      if (novoRole === 'REP') {
+      if (novoRole === "REP") {
         payload.tetoDesconto = tetoDesconto;
       }
-      if (novoRole === 'REP' || novoRole === 'GERENTE') {
+      if (novoRole === "REP" || novoRole === "GERENTE") {
         payload.comissaoPadrao = comissaoPadrao;
       }
-      const created = await api.post<{ emailAviso?: string }>('/users', payload);
+      const created = await api.post<{ emailAviso?: string }>(
+        "/users",
+        payload,
+      );
       if (created?.emailAviso) {
         // Usuário criado, mas o e-mail não saiu — avisa em vez de "sucesso" falso.
-        console.error('[convite] usuário criado mas e-mail falhou', {
+        console.error("[convite] usuário criado mas e-mail falhou", {
           email: email.trim(),
           motivo: created.emailAviso,
         });
@@ -1055,19 +1185,25 @@ function ConvidarUsuarioModal({
         );
       } else {
         toast.success(
-          'Convite enviado',
+          "Convite enviado",
           `O usuário receberá um e-mail em ${email.trim()} pra criar a senha.`,
         );
       }
       onCreated();
     } catch (e2) {
-      const motivo = e2 instanceof ApiError ? e2.message : 'Falha ao convidar usuário';
-      console.error('[convite] falha ao convidar usuário', { email: email.trim(), motivo });
+      const motivo =
+        e2 instanceof ApiError ? e2.message : "Falha ao convidar usuário";
+      console.error("[convite] falha ao convidar usuário", {
+        email: email.trim(),
+        motivo,
+      });
       setErr(motivo);
       toast.error(
         `Não foi possível convidar ${email.trim()}`,
         `${motivo} Verifique e tente novamente.`,
-        { action: { label: 'Tentar novamente', onClick: () => void submit(e) } },
+        {
+          action: { label: "Tentar novamente", onClick: () => void submit(e) },
+        },
       );
     } finally {
       setBusy(false);
@@ -1089,9 +1225,9 @@ function ConvidarUsuarioModal({
             form="invite-user-form"
             data-testid="user-invite-save"
             disabled={busy}
-            className={cn(btnCls, busy ? 'opacity-60' : 'opacity-100')}
+            className={cn(btnCls, busy ? "opacity-60" : "opacity-100")}
           >
-            {busy ? 'Enviando…' : 'Enviar convite'}
+            {busy ? "Enviando…" : "Enviar convite"}
           </button>
         </>
       }
@@ -1120,9 +1256,9 @@ function ConvidarUsuarioModal({
           />
         </FormField>
         <FormField
-          label={novoRole === 'REP' ? 'Telefone' : 'Telefone (opcional)'}
+          label={novoRole === "REP" ? "Telefone" : "Telefone (opcional)"}
           htmlFor="inv-tel"
-          required={novoRole === 'REP'}
+          required={novoRole === "REP"}
         >
           <Input
             id="inv-tel"
@@ -1136,12 +1272,12 @@ function ConvidarUsuarioModal({
             evita cadastro duplicado — nome varia demais. Por isso é pedido na
             criação, não descoberto depois com o pedido dele já sem dono. */}
         <FormField
-          label={novoRole === 'REP' ? 'CPF ou CNPJ' : 'CPF ou CNPJ (opcional)'}
+          label={novoRole === "REP" ? "CPF ou CNPJ" : "CPF ou CNPJ (opcional)"}
           htmlFor="inv-doc"
-          required={novoRole === 'REP'}
+          required={novoRole === "REP"}
           hint={
-            novoRole === 'REP'
-              ? 'Vai virar o contato do representante no ERP'
+            novoRole === "REP"
+              ? "Vai virar o contato do representante no ERP"
               : undefined
           }
         >
@@ -1167,7 +1303,7 @@ function ConvidarUsuarioModal({
             ))}
           </Select>
         </FormField>
-        {novoRole === 'REP' && (
+        {novoRole === "REP" && (
           <FormField
             label="Região"
             htmlFor="inv-regiao"
@@ -1186,7 +1322,8 @@ function ConvidarUsuarioModal({
         <FormField label="Empresa(s) vinculada(s)" required>
           {isDirector ? (
             <div className="py-2 px-3 text-[13px] bg-surface-hover border border-border rounded-md text-muted">
-              {empresas?.find((e) => e.id === callerEmpresaId)?.nome ?? 'Sua empresa ativa'}
+              {empresas?.find((e) => e.id === callerEmpresaId)?.nome ??
+                "Sua empresa ativa"}
               <div className="text-[11px] mt-1">
                 DIRECTOR só pode convidar pra empresa ativa.
               </div>
@@ -1214,7 +1351,7 @@ function ConvidarUsuarioModal({
             </div>
           )}
         </FormField>
-        {novoRole === 'REP' && (
+        {novoRole === "REP" && (
           <FormField label="Teto de desconto (%)" htmlFor="inv-teto">
             <Input
               id="inv-teto"
@@ -1226,14 +1363,14 @@ function ConvidarUsuarioModal({
             />
           </FormField>
         )}
-        {(novoRole === 'REP' || novoRole === 'GERENTE') && (
+        {(novoRole === "REP" || novoRole === "GERENTE") && (
           <FormField
             label="Comissão padrão (%)"
             htmlFor="inv-com"
             hint={
-              novoRole === 'GERENTE'
-                ? 'Sobre o total dos REPs sob gerência'
-                : 'Sobre os pedidos próprios'
+              novoRole === "GERENTE"
+                ? "Sobre o total dos REPs sob gerência"
+                : "Sobre os pedidos próprios"
             }
           >
             <Input

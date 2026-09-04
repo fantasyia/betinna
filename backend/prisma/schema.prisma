@@ -350,6 +350,7 @@ model Empresa {
   campanhaTemplates     CampanhaTemplate[]
   fluxos                Fluxo[]
   comissoes             Comissao[]
+  comissoesPedido       PedidoComissao[]
   sequencias            EmpresaSequence[]
   programaFidelidade    ProgramaFidelidade?
   recompensasFidelidade RecompensaFidelidade[]
@@ -380,9 +381,9 @@ model Empresa {
   kanbanApiTokens       KanbanApiToken[]
   mesclagens            MesclagemContato[]
   inboxLimpezas         InboxLimpeza[]
+  comissoesOriginacao   ComissaoOriginacao[]
 
   @@index([ativo])
-  comissoesOriginacao ComissaoOriginacao[]
 }
 
 // ─── USUÁRIOS / AUTH ──────────────────────────────────────────────────
@@ -402,15 +403,23 @@ model Usuario {
   /// CPF ou CNPJ (só dígitos). É a chave que amarra o usuário ao CONTATO do ERP:
   /// nome varia ("Marcelo", "Marcelo Harada", "M. Harada") e cada variação viraria
   /// um contato novo lá. Pedido no cadastro do REP, que é quem vira contato.
-  cpfCnpj             String?
+  cpfCnpj      String?
   /// Id do contato correspondente no ERP. Preenchido pela rodada diária —
   /// presença = já subiu, e é o que impede de criar o mesmo contato duas vezes.
-  contatoErpId        String?
+  contatoErpId String?
 
   // se for rep
   regiao              String?
   tetoDesconto        Float?  @default(5) // % máximo sem aprovação
-  comissaoPadrao      Float?  @default(5) // %
+  /// % do REP sobre os pedidos que ele mesmo vendeu.
+  comissaoPadrao      Float?  @default(10) // %
+  /// % sobre pedidos que entram pelo SITE (canal), onde não há representante.
+  ///
+  /// É POR PESSOA porque a regra é de algumas pessoas, não da empresa: quem
+  /// tem 0 aqui simplesmente não participa da venda de canal. Antes isso vivia
+  /// em `Empresa.config.comissaoOriginacao`, que só comportava UM beneficiário
+  /// pra empresa inteira.
+  comissaoSite        Float?  @default(0) // %
   apiKeyOpenAI        String? // criptografada
   googleCalendarToken String? // criptografada
 
@@ -432,6 +441,7 @@ model Usuario {
   cancelamentosDecididos    PedidoCancelamentoSolicitacao[] @relation("CancelamentoDecisor")
   notasPrivadas             NotaPrivada[]
   comissoes                 Comissao[]
+  comissoesPedido           PedidoComissao[]
   leads                     Lead[]                          @relation("LeadRep")
   ocorrenciasAtendidas      Ocorrencia[]                    @relation("OcorrenciaResp")
   ocorrenciasCriadas        Ocorrencia[]                    @relation("OcorrenciaCriador")
@@ -514,9 +524,9 @@ model UsuarioPermissao {
 // ─── CLIENTES (CRM) ───────────────────────────────────────────────────
 
 model Cliente {
-  id                    String            @id @default(cuid())
+  id                    String           @id @default(cuid())
   empresaId             String
-  codigoErp            String?
+  codigoErp             String?
   nome                  String
   // Dados fiscais e contato (obrigatórios via DTO; nullable no schema pra
   // suportar legado e import do ERP sem todos os campos preenchidos)
@@ -533,11 +543,11 @@ model Cliente {
   cidade                String?
   uf                    String?
   regiao                String?
-  status                ClienteStatus     @default(NOVO)
-  erpStatus            ClienteErpStatus @default(ATIVO) // só ativo/bloqueado importa
-  score                 Int               @default(50)
-  prazoPagamento        Int               @default(30) // dias
-  limiteCredito         Decimal?          @db.Decimal(14, 2)
+  status                ClienteStatus    @default(NOVO)
+  erpStatus             ClienteErpStatus @default(ATIVO) // só ativo/bloqueado importa
+  score                 Int              @default(50)
+  prazoPagamento        Int              @default(30) // dias
+  limiteCredito         Decimal?         @db.Decimal(14, 2)
   ultimoPedidoEm        DateTime?
   /// Última vez que o gatilho CLIENTE_INATIVO_30D disparou pra este cliente —
   /// evita re-disparo (spam) dentro da janela de inatividade.
@@ -545,9 +555,9 @@ model Cliente {
   representanteId       String?
   /// Marca registros gerados pelo seed-demo (script /admin/seed-demo).
   /// Permite limpeza seletiva sem mexer em dados reais do tenant.
-  isDemo                Boolean           @default(false)
-  criadoEm              DateTime          @default(now())
-  atualizadoEm          DateTime          @updatedAt
+  isDemo                Boolean          @default(false)
+  criadoEm              DateTime         @default(now())
+  atualizadoEm          DateTime         @updatedAt
 
   empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   representante Usuario? @relation(fields: [representanteId], references: [id])
@@ -660,7 +670,7 @@ model Documento {
 model Produto {
   id                    String                       @id @default(cuid())
   empresaId             String
-  codigoErp            String?
+  codigoErp             String?
   sku                   String?
   nome                  String
   descricao             String?                      @db.Text
@@ -827,7 +837,7 @@ model RepCatalogoItem {
 model Pedido {
   id              String  @id @default(cuid())
   numero          String // PED-XXXX — unicidade por empresa (@@unique abaixo)
-  numeroErp      String? // unicidade POR EMPRESA (@@unique abaixo) — não global
+  numeroErp       String? // unicidade POR EMPRESA (@@unique abaixo) — não global
   empresaId       String
   clienteId       String
   representanteId String?
@@ -873,12 +883,12 @@ model Pedido {
   /// Marca registros gerados pelo seed-demo.
   isDemo Boolean @default(false)
 
-  criadoEm      DateTime  @default(now())
-  atualizadoEm  DateTime  @updatedAt
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
   enviadoErpEm DateTime?
-  pagoEm        DateTime?
+  pagoEm       DateTime?
   /// Setado no avancarStatus quando vira ENTREGUE — base da janela de devolução.
-  entregueEm    DateTime?
+  entregueEm   DateTime?
 
   /// Quando o pedido foi criado via "duplicar", aponta pro pedido original.
   /// SetNull se o original for excluído — preserva o histórico do duplicado.
@@ -892,6 +902,7 @@ model Pedido {
   duplicados    Pedido[] @relation("PedidoDuplicado")
 
   itens                    PedidoItem[]
+  comissoesPedido          PedidoComissao[]
   aprovacaoDesconto        AprovacaoDesconto?
   cancelamentoSolicitacoes PedidoCancelamentoSolicitacao[]
   movimentosFidelidade     MovimentoFidelidade[]
@@ -981,11 +992,11 @@ model Proposta {
   clienteId       String
   representanteId String?
 
-  status        PropostaStatus @default(RASCUNHO)
+  status        PropostaStatus     @default(RASCUNHO)
   /// VENDA (preço de tabela) ou LOCACAO (mensalidade). O REP vende locação —
   /// preço de venda na proposta dele é o erro que chega no cliente.
   modalidade    PropostaModalidade @default(VENDA)
-  probabilidade Int            @default(50)
+  probabilidade Int                @default(50)
   validoAte     DateTime?
 
   formaPagamento    PagamentoForma @default(BOLETO)
@@ -998,10 +1009,10 @@ model Proposta {
   /// comercial da Somatec é que o período de avaliação é GRÁTIS, então cobrar
   /// no ato seria contrariar a oferta.
   /// Ficam nulos em proposta de VENDA, que não gera contrato.
-  prazoMeses        Int?
-  diaVencimento     Int?
+  prazoMeses    Int?
+  diaVencimento Int?
   /// Dias de carência antes da 1ª cobrança (o período grátis).
-  carenciaDias      Int?
+  carenciaDias  Int?
 
   /// QUEM assina o contrato pelo cliente — pessoa, não empresa.
   ///
@@ -1010,8 +1021,8 @@ model Proposta {
   /// na seguinte. E é obrigatório na prática — a assinatura eletrônica recusa
   /// razão social como nome de signatário ("name não está em um formato
   /// válido"), então sem uma pessoa aqui o contrato não sai.
-  signatarioNome  String?
-  signatarioEmail String?
+  signatarioNome     String?
+  signatarioEmail    String?
   /// Telefone do signatário — a autenticação por SMS/WhatsApp da assinatura
   /// eletrônica exige. Sem ele, a assinatura cai pro token por e-mail.
   signatarioTelefone String?
@@ -1051,10 +1062,10 @@ model Proposta {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresa       Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   anexos        PropostaAnexo[]
-  cliente       Cliente        @relation(fields: [clienteId], references: [id])
-  representante Usuario?       @relation(fields: [representanteId], references: [id], onDelete: SetNull)
+  cliente       Cliente         @relation(fields: [clienteId], references: [id])
+  representante Usuario?        @relation(fields: [representanteId], references: [id], onDelete: SetNull)
   itens         PropostaItem[]
   contrato      Contrato?
 
@@ -1082,11 +1093,11 @@ model Contrato {
   clienteId       String
   representanteId String?
 
-  status      ContratoStatus @default(RASCUNHO)
-  valorMensal Decimal        @db.Decimal(14, 2)
-  prazoMeses  Int
+  status             ContratoStatus @default(RASCUNHO)
+  valorMensal        Decimal        @db.Decimal(14, 2)
+  prazoMeses         Int
   /// Dia do mês em que a mensalidade vence.
-  diaVencimento Int
+  diaVencimento      Int
   /// Quando a 1ª cobrança cai — DEPOIS do período grátis, não no ato.
   primeiraCobrancaEm DateTime?
 
@@ -1096,15 +1107,15 @@ model Contrato {
 
   /// Assinatura eletrônica (ClickSign). O contrato só sobe pro ERP DEPOIS de
   /// assinado — contrato no ERP sem assinatura é o erro caro deste fluxo.
-  assinaturaId  String?   @unique
+  assinaturaId          String?   @unique
   /// Id do DOCUMENTO dentro do envelope. O webhook de assinatura identifica o
   /// documento, não o envelope — sem guardar isto, o retorno chega e não dá pra
   /// saber de qual contrato ele é.
-  assinaturaDocumentoId String? @unique
-  assinaturaUrl String?
-  assinadoEm    DateTime?
+  assinaturaDocumentoId String?   @unique
+  assinaturaUrl         String?
+  assinadoEm            DateTime?
   /// PDF assinado guardado no Storage.
-  documentoUrl  String?
+  documentoUrl          String?
 
   encerradoEm        DateTime?
   motivoEncerramento String?
@@ -1121,7 +1132,6 @@ model Contrato {
   @@index([clienteId])
   @@index([representanteId])
 }
-
 
 model PropostaItem {
   id            String  @id @default(cuid())
@@ -1577,10 +1587,10 @@ model Amostra {
   /// Lote 6 / P7 — Remessa de amostra grátis pro ERP.
   /// produtoId (opcional) vincula a um Produto real pra obter codigoErp/sku —
   /// obrigatório só na hora de enviar pro ERP (criação avulsa por nome continua valendo).
-  produtoId     String?
-  quantidade    Float     @default(1)
+  produtoId    String?
+  quantidade   Float     @default(1)
   /// CFOP usado na remessa: "5911" (mesma UF) ou "6911" (interestadual). Resolvido no envio.
-  cfop          String?
+  cfop         String?
   /// Número da remessa retornado pelo ERP após envio (null = ainda não enviada).
   numeroErp    String?
   enviadoErpEm DateTime?
@@ -1632,6 +1642,8 @@ model MaterialVenda {
 enum ComissaoTipo {
   REP
   GERENTE
+  /// Comissão sobre venda de CANAL (site), somada das linhas por pedido.
+  SITE
 }
 
 /// Comissão de ORIGINAÇÃO — a de quem trouxe o representante, não a de quem
@@ -1652,6 +1664,36 @@ model ComissaoOriginacao {
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   @@unique([empresaId, ano, mes])
+}
+
+/// Comissão de UM pedido para UMA pessoa.
+///
+/// O `Pedido.comissao` é um campo só, do representante — não cabe um segundo
+/// beneficiário, e some no agregado do mês. Com uma linha por pedido dá pra
+/// abrir a folha e ver de quais vendas ela veio, e pedido cancelado ou
+/// devolvido deixa de contar sem ninguém precisar lembrar.
+model PedidoComissao {
+  id         String       @id @default(cuid())
+  empresaId  String
+  pedidoId   String
+  usuarioId  String
+  /// REP = quem vendeu. SITE = quem recebe sobre venda de canal.
+  tipo       ComissaoTipo
+  /// Snapshot da % no momento do cálculo.
+  percentual Float
+  /// Base usada (total do pedido líquido de devolução).
+  base       Decimal      @db.Decimal(14, 2)
+  valor      Decimal      @db.Decimal(14, 2)
+  criadoEm   DateTime     @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// Uma linha por pessoa/tipo em cada pedido — recalcular não duplica.
+  @@unique([pedidoId, usuarioId, tipo])
+  @@index([empresaId, criadoEm])
+  @@index([usuarioId])
 }
 
 model Comissao {
@@ -2120,17 +2162,17 @@ model CampanhaDestinatario {
   /// abertura, clique) de volta com ESTE destinatário — sem ele o evento chega e
   /// não há onde pendurar. `lido`/`lidoEm` acima são do recibo do WhatsApp e não
   /// servem pra e-mail.
-  resendEmailId String? @unique
+  resendEmailId String?   @unique
   entregueEm    DateTime?
   abertoEm      DateTime?
   clicadoEm     DateTime?
   bounceEm      DateTime?
   /// Contadores: a mesma pessoa abre e clica mais de uma vez, e o primeiro toque
   /// (as datas acima) é uma informação diferente do volume.
-  aberturas Int @default(0)
-  cliques   Int @default(0)
+  aberturas     Int       @default(0)
+  cliques       Int       @default(0)
 
-  criadoEm    DateTime           @default(now())
+  criadoEm DateTime @default(now())
 
   campanha Campanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
   cliente  Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)

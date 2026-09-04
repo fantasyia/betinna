@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { LeadCaptureService } from '@modules/leads/lead-capture.service';
 import { TinyPedidoPushService } from '@integrations/tiny/tiny-pedido-push.service';
+import { PedidoComissoesService } from './pedido-comissoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { SequenceService } from '@shared/utils/sequence.service';
@@ -54,6 +55,7 @@ export class PedidoSiteService {
     private readonly captura: LeadCaptureService,
     private readonly sequence: SequenceService,
     private readonly erpPush: TinyPedidoPushService,
+    private readonly comissoes: PedidoComissoesService,
   ) {}
 
   async receber(
@@ -133,6 +135,10 @@ export class PedidoSiteService {
       },
       select: { id: true, numero: true },
     });
+
+    // Comissão de canal: quem tem % de site configurada ganha a linha dele
+    // agora, amarrada a ESTE pedido — e não num agregado do fim do mês.
+    await this.comissoes.recalcular(pedido.id);
 
     // Sobe pro ERP na hora: pedido do site que fica esperando a rodada diária é
     // pedido que o cliente pagou e a expedição não vê. Falha aqui NÃO derruba a

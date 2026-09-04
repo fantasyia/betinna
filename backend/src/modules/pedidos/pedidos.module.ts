@@ -6,6 +6,7 @@ import { EmailModule } from '@integrations/email/email.module';
 import { ProdutosModule } from '@modules/produtos/produtos.module';
 import { AprovacoesController } from './aprovacoes.controller';
 import { AprovacoesService } from './aprovacoes.service';
+import { PedidoComissoesService } from './pedido-comissoes.service';
 import { PedidoPricingService } from './pedido-pricing.service';
 import { PedidoSiteService } from './pedido-site.service';
 import { PedidoStatusBotModule } from './pedido-status-bot.module';
@@ -34,12 +35,20 @@ import { ErpWebhooksJob } from './erp-webhooks.job';
     PedidosService,
     AprovacoesService,
     PedidoPricingService,
+    PedidoComissoesService,
     PedidoErpSyncService,
     ErpSyncDiarioJob,
     ErpWebhooksJob,
     PedidoSiteService,
     SiteStatusService,
   ],
-  exports: [PedidosService, AprovacoesService, PedidoPricingService, PedidoErpSyncService],
+  exports: [
+    PedidosService,
+    AprovacoesService,
+    PedidoPricingService,
+    PedidoErpSyncService,
+    // O aceite da proposta também cria pedido — a comissão nasce lá junto.
+    PedidoComissoesService,
+  ],
 })
 export class PedidosModule {}

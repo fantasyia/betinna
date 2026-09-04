@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ClickSignService } from '@integrations/clicksign/clicksign.service';
 import { variaveisDoContrato } from './contrato-variaveis.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { PedidoComissoesService } from '@modules/pedidos/pedido-comissoes.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
@@ -78,6 +79,7 @@ export class PropostaAceiteService {
     private readonly pedidoPricing: PedidoPricingService,
     private readonly clicksign: ClickSignService,
     private readonly etapa: LeadEtapaSistemaService,
+    private readonly comissoes: PedidoComissoesService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -361,6 +363,7 @@ export class PropostaAceiteService {
       proposta.modalidade === 'LOCACAO' ? ('AGUARDANDO_LIBERACAO' as const) : statusPedido;
 
     let numeroPedido = '';
+    let pedidoCriadoId = '';
     await this.prisma.$transaction(async (tx) => {
       const claim = await tx.proposta.updateMany({
         where: { id: propostaId, aceiteToken: token, status: { notIn: ['ACEITA', 'RECUSADA'] } },
@@ -427,6 +430,7 @@ export class PropostaAceiteService {
         });
       }
       await tx.proposta.update({ where: { id: propostaId }, data: { pedidoId: ped.id } });
+      pedidoCriadoId = ped.id;
     });
 
     await this.notificarRep(
@@ -439,6 +443,9 @@ export class PropostaAceiteService {
     this.logger.log(
       `Proposta ${proposta.numero} ACEITA pelo cliente (ip ${ip ?? '?'}) → pedido ${numeroPedido}`,
     );
+
+    // A comissão do rep nasce com o pedido, amarrada a ele.
+    if (pedidoCriadoId) await this.comissoes.recalcular(pedidoCriadoId);
 
     // O cliente assinou a PROPOSTA. Sem tarefa e sem aviso de propósito: daqui
     // a assinatura eletrônica segue sozinha, e a etapa serve só pra enxergar

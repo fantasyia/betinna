@@ -328,7 +328,10 @@ export class UsersService {
           status: 'PENDENTE',
           regiao: dto.regiao,
           tetoDesconto: dto.tetoDesconto ?? (dto.role === 'REP' ? 5 : null),
-          comissaoPadrao: dto.comissaoPadrao ?? (dto.role === 'REP' ? 5 : null),
+          // As duas % nascem pra QUALQUER papel: quem entra vendendo ja tem a de
+          // rep, e a de canal fica em 0 ate alguem configurar.
+          comissaoPadrao: dto.comissaoPadrao ?? 10,
+          comissaoSite: dto.comissaoSite ?? 0,
           gerenteId: dto.role === 'REP' ? (dto.gerenteId ?? null) : null,
           empresas: {
             create: dto.empresaIds.map((empresaId) => ({ empresaId })),
@@ -562,7 +565,10 @@ export class UsersService {
       }
       await tx.usuario.update({
         where: { id },
-        data: { comissaoPadrao: dto.comissaoPadrao },
+        data: {
+          ...(dto.comissaoPadrao !== undefined ? { comissaoPadrao: dto.comissaoPadrao } : {}),
+          ...(dto.comissaoSite !== undefined ? { comissaoSite: dto.comissaoSite } : {}),
+        },
       });
     });
   }

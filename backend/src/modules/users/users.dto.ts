@@ -29,6 +29,8 @@ export const createUserSchema = z
     regiao: z.string().max(100).optional(),
     tetoDesconto: z.number().min(0).max(100).optional(),
     comissaoPadrao: z.number().min(0).max(100).optional(),
+    /** % sobre pedido que entra pelo SITE (canal). Default 0 — participa quem tem valor aqui. */
+    comissaoSite: z.number().min(0).max(100).optional(),
     empresaIds: z.array(z.string().cuid()).min(1, 'Pelo menos uma empresa é necessária'),
     /** Apenas para REP: id do GERENTE responsável pela carteira (opcional — sem gerente, DIRECTOR cuida). */
     gerenteId: usuarioIdSchema.nullable().optional(),
@@ -79,6 +81,7 @@ export const updateUserSchema = z.object({
   regiao: z.string().max(100).optional(),
   tetoDesconto: z.number().min(0).max(100).optional(),
   comissaoPadrao: z.number().min(0).max(100).optional(),
+  comissaoSite: z.number().min(0).max(100).optional(),
   empresaIds: z.array(z.string().cuid()).optional(),
   gerenteId: usuarioIdSchema.nullable().optional(),
 });
@@ -117,9 +120,19 @@ export const updateRepDiscountLimitSchema = z.object({
 });
 export type UpdateRepDiscountLimitDto = z.infer<typeof updateRepDiscountLimitSchema>;
 
-export const updateComissaoPercentualSchema = z.object({
-  comissaoPadrao: z.number().min(0).max(100),
-});
+/**
+ * As duas % de comissao da PESSOA. Sao independentes: `comissaoPadrao` e sobre
+ * o pedido que ela mesma vendeu, `comissaoSite` sobre a venda de canal, onde
+ * nao ha representante. Mandar so uma nao zera a outra.
+ */
+export const updateComissaoPercentualSchema = z
+  .object({
+    comissaoPadrao: z.number().min(0).max(100).optional(),
+    comissaoSite: z.number().min(0).max(100).optional(),
+  })
+  .refine((d) => d.comissaoPadrao !== undefined || d.comissaoSite !== undefined, {
+    message: 'Informe comissaoPadrao e/ou comissaoSite',
+  });
 export type UpdateComissaoPercentualDto = z.infer<typeof updateComissaoPercentualSchema>;
 
 /**

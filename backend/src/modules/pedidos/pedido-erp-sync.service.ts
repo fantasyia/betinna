@@ -10,6 +10,7 @@ import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
+import { PedidoComissoesService } from './pedido-comissoes.service';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { SiteStatusService } from './site-status.service';
 
@@ -125,6 +126,7 @@ export class PedidoErpSyncService {
     private readonly notificacoes: NotificacoesService,
     private readonly bus: FluxoEventBusService,
     private readonly etapa: LeadEtapaSistemaService,
+    private readonly comissoes: PedidoComissoesService,
   ) {}
 
   async sincronizar(
@@ -414,6 +416,8 @@ export class PedidoErpSyncService {
           motivo: `NF emitida no pedido ${existente.numero} (ERP ${numeroErp})`,
         });
       }
+      // Total, devolução ou dono podem ter mudado — a comissão acompanha.
+      await this.comissoes.recalcular(existente.id);
       if (viraEntregue) await this.dispararEntregue(empresaId, existente.id);
       if (ganhouRastreio) await this.dispararRastreio(empresaId, existente.id);
       // O site é dono da tela do cliente: sem este aviso, quem comprou lá fica
@@ -472,6 +476,7 @@ export class PedidoErpSyncService {
               : { representanteId: await this.resolverRepresentante(empresaId, d) }),
           },
         });
+        await this.comissoes.recalcular(travado.id);
         this.logger.log(
           `[erp] pedido ${travado.numero} LIBERADO no ERP (nº ${numeroErp}) — saiu de AGUARDANDO_LIBERACAO`,
         );
@@ -531,6 +536,7 @@ export class PedidoErpSyncService {
       },
       select: { id: true, numero: true },
     });
+    await this.comissoes.recalcular(criado.id);
     this.logger.log(`[erp] pedido ${criado.numero} importado do ERP (nº ${numeroErp})`);
     await this.tratarNaoEntregue(empresaId, d, {
       id: criado.id,
