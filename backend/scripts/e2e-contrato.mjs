@@ -305,6 +305,7 @@ if (acao === '--conferir') {
       signatarioEmail: true,
       prazoMeses: true,
       diaVencimento: true,
+      orcamentoErpId: true,
     },
   });
   if (!proposta) {
@@ -382,6 +383,16 @@ if (acao === '--conferir') {
     }
   }
 
+  // Depois de assinado o ciclo continua sozinho: a proposta sobe pro ERP como
+  // orçamento (é o que o Leandro revisa) e o pedido do aceite TRAVA.
+  if (contrato?.status === 'ASSINADO') {
+    registrar(
+      'proposta subiu pro ERP como orçamento',
+      Boolean(proposta.orcamentoErpId),
+      proposta.orcamentoErpId ?? 'ainda não',
+    );
+  }
+
   const lead = await prisma.lead.findFirst({
     where: { clienteId: proposta.clienteId },
     select: { id: true, funilEtapaId: true },
@@ -412,6 +423,13 @@ if (acao === '--conferir') {
     select: { numero: true, status: true, numeroErp: true, total: true, representanteId: true },
   });
   if (pedido) {
+    registrar(
+      'pedido travado esperando a liberação no ERP',
+      contrato?.status === 'ASSINADO'
+        ? pedido.status === 'AGUARDANDO_LIBERACAO'
+        : pedido.status === 'RASCUNHO',
+      pedido.status,
+    );
     console.log(
       `\n  pedido gerado no aceite: ${pedido.numero} · ${pedido.status} · R$ ${Number(pedido.total).toFixed(2)}` +
         ` · ERP ${pedido.numeroErp ?? '—'} · rep ${pedido.representanteId ? 'sim' : 'não'}`,
