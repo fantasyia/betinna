@@ -7,6 +7,9 @@ import { ProdutosModule } from '@modules/produtos/produtos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { TinyModule } from '@integrations/tiny/tiny.module';
 import { PropostaAceiteService } from './proposta-aceite.service';
+import { ContratoErpPendenteJob } from './contrato-erp-pendente.job';
+import { PropostaAnexosController } from './proposta-anexos.controller';
+import { PropostaAnexosService } from './proposta-anexos.service';
 import { PropostaErpService } from './proposta-erp.service';
 import { PropostaExportService } from './proposta-export.service';
 import { PropostasController } from './propostas.controller';
@@ -23,8 +26,16 @@ import { PropostasService } from './propostas.service';
     // Marcos do funil (proposta enviada / assinada) movem a etapa do lead.
     LeadsModule,
   ],
-  controllers: [PropostasController],
-  providers: [PropostasService, PropostaExportService, PropostaAceiteService, PropostaErpService],
+  controllers: [PropostasController, PropostaAnexosController],
+  providers: [
+    PropostasService,
+    PropostaExportService,
+    PropostaAceiteService,
+    PropostaErpService,
+    PropostaAnexosService,
+    // Rede pro envio automático: contrato assinado que não chegou no ERP.
+    ContratoErpPendenteJob,
+  ],
   // PropostaErpService sai porque quem sobe a proposta pro ERP agora é o
   // retorno da assinatura — o contrato assinado é que autoriza o envio.
   exports: [PropostasService, PropostaErpService],

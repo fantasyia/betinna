@@ -86,6 +86,27 @@ enum PropostaModalidade {
 
 /// Ciclo de vida do contrato de LOCAÇÃO (a venda do rep vira contrato recorrente
 /// no ERP, não pedido avulso — decisão do Léo em 31/08).
+/// O PROJETO do cliente anexado à proposta.
+///
+/// A proposta não vai pro cliente aprovar sem ele: o que se aprova é o projeto
+/// (onde entra cada equipamento, em qual quadro), e mandar só preço e prazo é
+/// pedir aprovação de meia informação. Arquivo no Storage; aqui fica o metadado.
+model PropostaAnexo {
+  id         String   @id @default(cuid())
+  propostaId String
+  nome       String
+  /// Caminho no bucket `proposta-anexos` (privado — link assinado na leitura).
+  url        String
+  mime       String
+  tamanho    Int
+  criadoPor  String?
+  criadoEm   DateTime @default(now())
+
+  proposta Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
+
+  @@index([propostaId])
+}
+
 enum ContratoStatus {
   RASCUNHO
   AGUARDANDO_ASSINATURA
@@ -1031,6 +1052,7 @@ model Proposta {
   atualizadoEm DateTime @updatedAt
 
   empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  anexos        PropostaAnexo[]
   cliente       Cliente        @relation(fields: [clienteId], references: [id])
   representante Usuario?       @relation(fields: [representanteId], references: [id], onDelete: SetNull)
   itens         PropostaItem[]

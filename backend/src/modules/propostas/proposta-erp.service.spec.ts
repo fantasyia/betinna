@@ -22,7 +22,13 @@ const PROPOSTA = {
   representante: { nome: 'Marcelo Harada', contatoErpId: '894881870' },
 };
 
-function build(opts: { proposta?: Record<string, unknown> | null; vendedor?: number | null } = {}) {
+function build(
+  opts: {
+    proposta?: Record<string, unknown> | null;
+    vendedor?: number | null;
+    contrato?: { status: string } | null;
+  } = {},
+) {
   const prisma = {
     proposta: {
       findFirst: vi.fn().mockResolvedValue(opts.proposta === undefined ? PROPOSTA : opts.proposta),
@@ -31,6 +37,9 @@ function build(opts: { proposta?: Record<string, unknown> | null; vendedor?: num
     produto: {
       findMany: vi.fn().mockResolvedValue([{ id: 'prod-1', sku: 'MB-01', nome: 'MB-01' }]),
     },
+    // Sem contrato = proposta de VENDA: sobe direto. Com contrato, a subida só
+    // acontece depois de assinado (caso próprio abaixo).
+    contrato: { findFirst: vi.fn().mockResolvedValue(opts.contrato ?? null) },
   };
   const orcamentos = { criar: vi.fn().mockResolvedValue({ id: 4242, numeroProposta: '12' }) };
   const contatos = {
@@ -121,5 +130,18 @@ describe('proposta → orçamento no ERP', () => {
     const { svc } = build({ proposta: { ...PROPOSTA, status: 'RASCUNHO' } });
 
     await expect(svc.enviar('p-1', 'emp-1')).rejects.toThrow(/rascunho/i);
+  });
+});
+
+describe('contrato assinado é a condição de subida', () => {
+  it('proposta com contrato AGUARDANDO_ASSINATURA não sobe — nem forçando', async () => {
+    const { svc } = build({ contrato: { status: 'AGUARDANDO_ASSINATURA' } });
+    await expect(svc.enviar('prop-1', 'emp-1')).rejects.toThrow(/ainda não assinado/i);
+  });
+
+  it('com o contrato ASSINADO, sobe normalmente', async () => {
+    const { svc, orcamentos } = build({ contrato: { status: 'ASSINADO' } });
+    await svc.enviar('prop-1', 'emp-1');
+    expect(orcamentos.criar).toHaveBeenCalledOnce();
   });
 });

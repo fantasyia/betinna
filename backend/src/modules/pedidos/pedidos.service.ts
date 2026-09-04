@@ -951,9 +951,21 @@ export class PedidosService {
     // Leandro revisa), não o pedido. Empurrar o pedido daqui criaria no ERP uma
     // venda que ninguém liberou.
     if (pedido.status === 'AGUARDANDO_LIBERACAO') {
+      // Dois momentos, o mesmo estado: antes da assinatura ele espera o
+      // cliente; depois, espera a liberação no ERP. A mensagem precisa dizer
+      // qual dos dois, senão vira "não pode" sem explicação.
+      const contrato = pedido.propostaNumero
+        ? await this.prisma.contrato.findFirst({
+            where: { empresaId: pedido.empresaId, proposta: { numero: pedido.propostaNumero } },
+            select: { status: true },
+          })
+        : null;
       throw new BusinessRuleException(
-        'Pedido travado pelo contrato assinado — a proposta já subiu pro ERP como orçamento. ' +
-          'A liberação é lá, e o pedido volta pra cá sozinho.',
+        contrato?.status === 'ASSINADO'
+          ? 'Pedido travado: o contrato foi assinado e a proposta já subiu pro ERP como ' +
+              'orçamento. A liberação é lá, e o pedido volta pra cá sozinho.'
+          : 'Pedido de locação só vai pro ERP DEPOIS que o cliente assinar o contrato — ' +
+              'e quem sobe é a proposta, virando orçamento. Aqui não há nada a enviar.',
       );
     }
     if (pedido.status !== 'RASCUNHO' && pedido.status !== 'AGUARDANDO_APROVACAO') {

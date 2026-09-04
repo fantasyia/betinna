@@ -63,6 +63,26 @@ export class PropostaErpService {
         'Proposta em rascunho — envie ou aprove antes de subir ao ERP',
       );
     }
+    // CONTRATO ASSINADO É A CONDIÇÃO DE SUBIDA.
+    //
+    // O que o Leandro analisa no ERP é o contrato já assinado pelo cliente —
+    // subir antes disso põe na mesa dele uma proposta que ninguém aceitou, e
+    // some a diferença entre "negócio fechado" e "negócio em conversa".
+    //
+    // A subida acontece sozinha no retorno da assinatura; este caminho manual
+    // existe só como FORÇAR, pra quando o envio automático falhar (ERP fora do
+    // ar, token vencido) — e é por isso que a regra vale nos dois: se o
+    // contrato não está assinado, não há o que forçar.
+    const contrato = await this.prisma.contrato.findFirst({
+      where: { propostaId },
+      select: { status: true },
+    });
+    if (contrato && contrato.status !== 'ASSINADO') {
+      throw new BusinessRuleException(
+        `Contrato ainda não assinado (${contrato.status}) — a proposta sobe pro ERP sozinha ` +
+          'assim que o cliente assinar. Só depois disso dá pra forçar por aqui.',
+      );
+    }
 
     const produtos = await this.prisma.produto.findMany({
       where: { id: { in: proposta.itens.map((i) => i.produtoId) } },

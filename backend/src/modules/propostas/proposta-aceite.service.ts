@@ -137,6 +137,17 @@ export class PropostaAceiteService {
         `Proposta em status ${statusAtual} não pode ser enviada pra aceite.`,
       );
     }
+    // O cliente aprova o PROJETO, não uma lista de preços. Regra do Léo
+    // (04/09): sem o projeto anexado a proposta não sai — e o gate fica AQUI,
+    // no ponto único por onde nasce o link, porque ele serve tanto o e-mail
+    // quanto o WhatsApp do rep. Barrar só num dos canais deixaria a porta
+    // aberta no outro.
+    const anexos = await this.prisma.propostaAnexo.count({ where: { propostaId } });
+    if (anexos === 0) {
+      throw new BusinessRuleException(
+        'Anexe o projeto do cliente antes de mandar a proposta — é o projeto que ele aprova.',
+      );
+    }
     const token = await new SignJWT({ pid: propostaId, eid: empresaId })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
@@ -340,6 +351,15 @@ export class PropostaAceiteService {
         tetoRep,
       });
 
+    // LOCAÇÃO nasce TRAVADA. O caminho dela pro ERP é o contrato assinado
+    // virando orçamento — não o pedido. Enquanto nascia RASCUNHO, o botão
+    // "enviar ao ERP" ficava disponível pro rep e a venda subia ANTES de o
+    // cliente assinar (aconteceu em 04/09, pedido ERP 22). Um estado não é
+    // regra: quem impede é o guard do envio, mas nascer travado deixa a tela
+    // dizendo a verdade desde o primeiro segundo.
+    const statusInicial =
+      proposta.modalidade === 'LOCACAO' ? ('AGUARDANDO_LIBERACAO' as const) : statusPedido;
+
     let numeroPedido = '';
     await this.prisma.$transaction(async (tx) => {
       const claim = await tx.proposta.updateMany({
@@ -369,7 +389,7 @@ export class PropostaAceiteService {
           clienteId: proposta.clienteId,
           representanteId: proposta.representanteId,
           origem: 'REP_APP',
-          status: statusPedido,
+          status: statusInicial,
           formaPagamento: proposta.formaPagamento,
           condicaoPagamento: proposta.condicaoPagamento,
           prazoEntrega: proposta.prazoEntrega,
