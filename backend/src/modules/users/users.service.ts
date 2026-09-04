@@ -546,8 +546,11 @@ export class UsersService {
     dto: UpdateComissaoPercentualDto,
   ): Promise<void> {
     const user = await this.loadAndAssertScope(caller, id);
-    if (user.role !== 'REP' && user.role !== 'GERENTE') {
-      throw new BusinessRuleException('Comissão configurável apenas para REP ou GERENTE');
+    // A % de CANAL (site) nao pressupoe carteira: quem recebe sobre a venda do
+    // site pode ser um diretor. So a de REP continua presa a quem tem carteira
+    // — GERENTE inclusive, que comissiona sobre os reps dele.
+    if (dto.comissaoPadrao !== undefined && user.role !== 'REP' && user.role !== 'GERENTE') {
+      throw new BusinessRuleException('Comissão de venda própria só para REP ou GERENTE');
     }
     // Re-verify scope inside transaction to close TOCTOU window.
     // Usuario has no empresaId column; scope is via UsuarioEmpresa join table.

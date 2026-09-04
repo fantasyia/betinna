@@ -976,6 +976,7 @@ function SetComissaoModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const temCarteira = user.role === "REP" || user.role === "GERENTE";
   const [com, setCom] = useState(user.comissaoPadrao ?? 0);
   const [site, setSite] = useState(user.comissaoSite ?? 0);
   const [busy, setBusy] = useState(false);
@@ -988,8 +989,11 @@ function SetComissaoModal({
       // O campo é `comissaoPadrao` — o mesmo nome do banco e do DTO. Enquanto
       // isto mandava `comissaoPercentual`, a API recusava por validação e a
       // tela só dizia "Falha": a % do rep não tinha como ser alterada.
+      //
+      // A % de venda própria só existe pra quem tem carteira — mandá-la pra um
+      // diretor faz a API recusar a chamada inteira, e a de site junto.
       await api.put(`/users/${user.id}/comissao`, {
-        comissaoPadrao: com,
+        ...(temCarteira ? { comissaoPadrao: com } : {}),
         comissaoSite: site,
       });
       onSaved();
@@ -1029,18 +1033,20 @@ function SetComissaoModal({
             ? "% de comissão do GERENTE sobre o total de vendas dos REPs sob a gerência dele."
             : "Este papel não vende com carteira própria — o que vale pra ele é a % de site."}
       </p>
-      <FormField label="Comissão (%)" htmlFor="com-input">
-        <Input
-          id="com-input"
-          data-testid="comissao-input"
-          type="number"
-          min={0}
-          max={100}
-          step="0.1"
-          value={com}
-          onChange={(e) => setCom(Number(e.target.value))}
-        />
-      </FormField>
+      {temCarteira && (
+        <FormField label="Comissão (%)" htmlFor="com-input">
+          <Input
+            id="com-input"
+            data-testid="comissao-input"
+            type="number"
+            min={0}
+            max={100}
+            step="0.1"
+            value={com}
+            onChange={(e) => setCom(Number(e.target.value))}
+          />
+        </FormField>
+      )}
       <FormField label="Comissão site (%)" htmlFor="com-site-input">
         <Input
           id="com-site-input"
