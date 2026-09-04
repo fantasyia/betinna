@@ -180,6 +180,10 @@ export class TinyPedidoPushService {
       // cabeçalho e na lista do painel. O de e-commerce só aparece na busca —
       // quem abre o pedido 40 lá precisa ver "SB239379" (ou "PED-0001") na cara.
       numeroOrdemCompra: pedido.numeroSite ?? pedido.numero,
+      // Data no fuso do Brasil. Sem este campo o Tiny aceitava o pedido com
+      // `data: ""` — e o painel, que lista por período, não mostrava NENHUM
+      // pedido vindo daqui. Existiam, em "preparando envio", invisíveis.
+      data: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()),
       ...(this.enderecoDe(pedido.cliente)
         ? { enderecoEntrega: this.enderecoDe(pedido.cliente)! }
         : {}),

@@ -23,6 +23,9 @@ export interface PedidoParaTiny {
   numeroPedidoEcommerce?: string;
   /** "Nº da ordem de compra" no painel — o campo que fica na cara do pedido. */
   numeroOrdemCompra?: string;
+  /** Data do pedido (YYYY-MM-DD). Sem ela o Tiny grava `data: ""` e o pedido
+   *  some do painel, que lista por período — existe, mas ninguém vê. */
+  data?: string;
   /** Id do e-commerce CADASTRADO no ERP (Integrações → e-commerce). Amarra o
    *  pedido ao canal, que é o que faz o ERP tratar a venda como "veio da loja"
    *  nos relatórios e na expedição. Sem ele o pedido entra sem canal. */
@@ -162,6 +165,7 @@ export class TinyPedidosService {
       ...(pedido.depositoId ? { deposito: { id: pedido.depositoId } } : {}),
       ...(pedido.vendedorId ? { vendedor: { id: pedido.vendedorId } } : {}),
       ...(pedido.numeroOrdemCompra ? { numeroOrdemCompra: pedido.numeroOrdemCompra } : {}),
+      ...(pedido.data ? { data: pedido.data } : {}),
       // ⚠️ Vai ANINHADO em `ecommerce`. Solto no topo, o Tiny aceita a
       // requisição e DESCARTA o campo em silêncio — o pedido nasce sem
       // número de e-commerce e ninguém acha pelo número que o cliente diz.
