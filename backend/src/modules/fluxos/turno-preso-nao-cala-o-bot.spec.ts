@@ -21,6 +21,8 @@ function build() {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     message: { findMany: vi.fn().mockResolvedValue([]) },
+    // A varredura resolve a conversa pelo lead quando o contexto não traz.
+    conversation: { findFirst: vi.fn().mockResolvedValue(null) },
   };
   const svc = new ConversarIaService(
     prisma as never,
@@ -118,7 +120,47 @@ describe('turno preso não pode calar o bot', () => {
     expect(await svc.varrerPendentesAposDestravar('exec-1')).toBe(false);
   });
 
-  it('sem conversationId no contexto, a varredura não tem onde procurar', async () => {
+  // Card 🔴 de 04/09: o processo morreu no deploy, o `finally` não rodou, e o
+  // reaper soltou o lock 11 minutos depois — mas a varredura de recuperação
+  // DESISTIU na primeira linha, porque o C1 (disparado por mudança de etapa) não
+  // tinha `conversationId` no contexto. O cliente seguiu sem resposta.
+  it('sem conversationId no contexto, a varredura RESOLVE a conversa pelo lead', async () => {
+    const { svc, prisma } = build();
+    prisma.fluxoExecucao.findFirst.mockResolvedValue({
+      id: 'exec-1',
+      empresaId: 'emp-1',
+      contexto: { leadId: 'lead-1' },
+      turnoIniciadoEm: new Date(),
+    });
+    prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-do-lead' });
+
+    expect(await svc.varrerPendentesAposDestravar('exec-1')).toBe(true);
+    expect(prisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ conversationId: 'conv-do-lead' }),
+      }),
+    );
+  });
+
+  it('a janela da varredura pega a mensagem que DISPAROU o turno', async () => {
+    // A mensagem engolida chega instantes ANTES do claim (medido: 0,6 s). Olhar
+    // só depois do claim é olhar para o lado errado do problema.
+    const { svc, prisma } = build();
+    const inicio = new Date('2026-09-04T20:04:18.658Z');
+    prisma.fluxoExecucao.findFirst.mockResolvedValue({
+      id: 'exec-1',
+      empresaId: 'emp-1',
+      contexto: { leadId: 'lead-1', conversationId: 'conv-1' },
+      turnoIniciadoEm: inicio,
+    });
+
+    await svc.varrerPendentesAposDestravar('exec-1');
+
+    const where = prisma.message.findMany.mock.calls[0]?.[0]?.where;
+    expect(where.criadoEm.gt.getTime()).toBeLessThan(inicio.getTime());
+  });
+
+  it('sem conversa nenhuma (nem no contexto, nem do lead), desiste — e avisa', async () => {
     const { svc, prisma } = build();
     prisma.fluxoExecucao.findFirst.mockResolvedValue({
       id: 'exec-1',

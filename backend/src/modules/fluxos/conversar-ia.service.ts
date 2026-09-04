@@ -539,6 +539,15 @@ export function mesclarHistorico(
  */
 const TTL_CLAIM_MS = 3 * 60 * 1000;
 
+/**
+ * Quanto antes do início do turno a varredura de recuperação olha.
+ *
+ * A mensagem que o cliente mandou chega instantes ANTES do claim (medido: 0,6 s).
+ * Sem essa folga, a recuperação procurava só depois do claim e não achava
+ * justamente a mensagem que se perdeu.
+ */
+const MARGEM_MSG_DO_TURNO_MS = 60 * 1000;
+
 /** Teto de um turno. Existe pra GARANTIR que o `finally` rode e solte o lock. */
 const TIMEOUT_TURNO_MS = 2 * 60 * 1000;
 
@@ -1717,13 +1726,47 @@ export class ConversarIaService {
     });
     if (!execucao?.empresaId) return false;
     const ctx = (execucao.contexto ?? {}) as ExecucaoContexto;
-    const conversationId = typeof ctx.conversationId === 'string' ? ctx.conversationId : null;
-    if (!conversationId) return false;
-    // Janela: desde o início do turno que travou — é exatamente o intervalo em
-    // que o cliente falou e ninguém respondeu.
-    const desde = execucao.turnoIniciadoEm ?? new Date(Date.now() - TTL_CLAIM_MS);
+    // A conversa pode não estar no contexto: fluxo disparado por evento de LEAD
+    // (mudança de etapa, tag, cron) nascia sem ela. Antes a varredura simplesmente
+    // DESISTIA aqui, calada — foi o que aconteceu em 04/09: o reaper soltou o
+    // lock às 20:15:19, chamou esta varredura, e ela voltou na primeira linha
+    // porque o C1 não tinha `conversationId`. O cliente seguiu sem resposta.
+    const conversationId =
+      typeof ctx.conversationId === 'string'
+        ? ctx.conversationId
+        : await this.conversaDoLead(execucao.empresaId, ctx);
+    if (!conversationId) {
+      this.logger.warn(
+        `CONVERSAR_IA: destravei a exec ${execucaoId} mas NÃO achei a conversa — ` +
+          'as mensagens do cliente ficam sem resposta até ele escrever de novo',
+      );
+      return false;
+    }
+    // Janela: um pouco ANTES do início do turno.
+    //
+    // A mensagem engolida é justamente a que DISPAROU o turno — ela chega, o
+    // claim é tomado meio segundo depois, e o turno morre. Procurar só o que
+    // veio DEPOIS do claim (que é o certo no fim de um turno bem-sucedido, onde
+    // essa mensagem já foi respondida) deixava de fora exatamente a mensagem
+    // perdida. Aqui o turno não terminou: ela precisa entrar.
+    const inicio = execucao.turnoIniciadoEm ?? new Date(Date.now() - TTL_CLAIM_MS);
+    const desde = new Date(inicio.getTime() - MARGEM_MSG_DO_TURNO_MS);
     await this.processarMensagensPerdidas(execucaoId, execucao.empresaId, conversationId, desde);
     return true;
+  }
+
+  /** Conversa de WhatsApp do lead — quando o contexto não traz a dele. */
+  private async conversaDoLead(empresaId: string, ctx: ExecucaoContexto): Promise<string | null> {
+    const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : null;
+    if (!leadId) return null;
+    const conversa = await this.prisma.conversation
+      .findFirst({
+        where: { empresaId, leadId, canal: 'WHATSAPP' },
+        orderBy: { ultimaMsgEm: 'desc' },
+        select: { id: true },
+      })
+      .catch(() => null);
+    return conversa?.id ?? null;
   }
 
   /**
