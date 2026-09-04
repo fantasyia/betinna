@@ -82,7 +82,13 @@ export class PedidoComissoesService {
     }
 
     // Líquido de devolução: é o que o rep e o canal realmente faturaram.
-    const base = Math.max(0, Number(pedido.total) - Number(pedido.valorDevolvido ?? 0));
+    // Em Decimal do começo ao fim: `50 × 7,25%` dá 3,625, e em float isso é
+    // 3,62499…, que arredonda pra BAIXO — meio centavo somindo em toda venda
+    // que cai na metade exata.
+    const base = Prisma.Decimal.max(
+      0,
+      new Prisma.Decimal(pedido.total).minus(pedido.valorDevolvido ?? 0),
+    );
 
     const linhas: Array<{ usuarioId: string; tipo: 'REP' | 'SITE'; percentual: number }> = [];
 
@@ -102,7 +108,10 @@ export class PedidoComissoesService {
       const doCanal = await this.prisma.usuario.findMany({
         where: {
           empresas: { some: { empresaId: pedido.empresaId } },
-          status: 'ATIVO',
+          // Quem PERDE a comissão é quem foi desligado. PENDENTE é gente
+          // convidada que ainda não fez o primeiro login — e a % dela já foi
+          // decidida por quem configurou; deixar de fora seria calote silencioso.
+          status: { not: 'INATIVO' },
           comissaoSite: { gt: 0 },
         },
         select: { id: true, comissaoSite: true },
@@ -121,7 +130,10 @@ export class PedidoComissoesService {
         },
       });
       for (const l of linhas) {
-        const valor = Math.round(base * (l.percentual / 100) * 100) / 100;
+        const valor = base
+          .mul(l.percentual)
+          .div(100)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
         await tx.pedidoComissao.upsert({
           where: {
             pedidoId_usuarioId_tipo: { pedidoId, usuarioId: l.usuarioId, tipo: l.tipo },
@@ -132,13 +144,13 @@ export class PedidoComissoesService {
             usuarioId: l.usuarioId,
             tipo: l.tipo,
             percentual: l.percentual,
-            base: new Prisma.Decimal(base),
-            valor: new Prisma.Decimal(valor),
+            base,
+            valor,
           },
           update: {
             percentual: l.percentual,
-            base: new Prisma.Decimal(base),
-            valor: new Prisma.Decimal(valor),
+            base,
+            valor,
           },
         });
       }
