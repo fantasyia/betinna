@@ -89,3 +89,36 @@ de tentar rota no chute, é lá que se procura.
 - **Variável com lixo vira 401 mudo.** O `ler()` do service limpa `NOME=`, aspas
   e `<>` — este último porque o token foi colado dentro do `<seu token>` da
   instrução e ficou com 38 caracteres.
+
+## O retorno: webhook, e só webhook
+
+A ClickSign **proíbe polling** em documentos ("Não é permitido realizar *polling*
+em documentos", sem autorização prévia do suporte). Então varredura de pendentes
+não é opção: se o webhook não chegar, o contrato é assinado lá e o app nunca
+fica sabendo.
+
+- **Endpoint:** `POST /api/v1/webhooks/clicksign` (público, HMAC).
+- **Assinatura:** header `Content-Hmac: sha256=<hex>` sobre o **corpo cru**.
+  Sem `CLICKSIGN_WEBHOOK_SECRET` o endpoint **recusa tudo** — aceitar sem
+  verificar deixaria qualquer um marcar contrato como assinado.
+- **Eventos assinados:** `document_closed`, `auto_close`, `refusal`, `deadline`.
+- **Resposta:** 200 imediato, trabalho em background (exigência deles; qualquer
+  coisa fora do 2xx conta como falha, inclusive redirecionamento — eles não
+  seguem redirect).
+- **IPs fixos** (se um dia entrar firewall): produção `34.204.113.69`,
+  sandbox `3.232.199.65`.
+
+Cadastro (uma vez por ambiente — o segredo nasce aqui):
+
+```bash
+node scripts/clicksign-webhook.mjs --listar
+node scripts/clicksign-webhook.mjs --criar https://<api>/api/v1/webhooks/clicksign
+```
+
+O script grava `CLICKSIGN_WEBHOOK_SECRET` no `.env.local` **sem imprimir o
+valor**; o mesmo valor tem que ir pro Railway (serviço `api`).
+
+Quando o documento fecha: contrato vira `ASSINADO`, o PDF assinado é baixado pro
+Storage (`contratos-assinados`, porque o link deles é temporário), o lead anda
+pro marco "contrato assinado" e o rep é avisado. Recusa vira `CANCELADO` com
+motivo — e o rep sabe no mesmo dia.
