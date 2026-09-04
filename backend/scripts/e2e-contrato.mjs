@@ -236,16 +236,18 @@ if (acao === '--preparar') {
     condicaoPagamento: '30dias',
     modalidade: 'LOCACAO',
     representanteId: rep?.id,
+    // 36 meses e vencimento no dia 5 são o que está no modelo de contrato do
+    // Léo. CARÊNCIA fica de fora: o período grátis é decisão comercial dele e
+    // ainda está em aberto (60 ou 90 dias) — o teste não inventa cláusula.
     prazoMeses: 36,
     diaVencimento: 5,
-    carenciaDias: 60,
     signatarioNome: NOME_SIGNATARIO,
     signatarioEmail: EMAIL_CLIENTE,
     observacoes: 'E2E do ciclo comercial — pode apagar.',
   });
   const propostaId = prop.corpo?.id;
   registrar(
-    'proposta de locação (2× MB-05, 36 meses, venc. dia 5)',
+    'proposta de locação (2× MB-05, 36 meses, venc. dia 5, sem carência)',
     prop.status === 201 && Boolean(propostaId),
     `${prop.corpo?.numero ?? ''} · rep ${rep?.nome ?? '—'} · ${JSON.stringify(prop.erro ?? '').slice(0, 120)}`,
   );

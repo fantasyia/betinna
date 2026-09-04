@@ -492,6 +492,22 @@ export class PropostaAceiteService {
       const telefoneBruto = p.signatarioTelefone?.trim() || p.cliente.telefone?.trim() || '';
       const so = telefoneBruto.replace(/\D/g, '');
       const telefoneAssinatura = so.length >= 12 ? so : so.length >= 10 ? `55${so}` : undefined;
+      // Prazo e dia de vencimento são TERMO COMERCIAL, não detalhe técnico —
+      // quem decide é quem fecha o negócio. Um valor padrão aqui sairia impresso
+      // num contrato que alguém vai assinar, e ninguém saberia que o número foi
+      // do sistema. Melhor não mandar o contrato e avisar.
+      if (!p.prazoMeses || !p.diaVencimento) {
+        this.logger.warn(
+          `Proposta ${p.numero} aceita, mas sem prazo/dia de vencimento — contrato não enviado.`,
+        );
+        await this.avisarFalhaContrato(
+          empresaId,
+          p.representanteId,
+          p.numero,
+          'faltam o prazo em meses e/ou o dia de vencimento na proposta',
+        );
+        return;
+      }
       if (!nome || !email) {
         this.logger.warn(
           `Proposta ${p.numero} aceita, mas sem signatário (nome/e-mail) — contrato não enviado.`,
@@ -541,8 +557,8 @@ export class PropostaAceiteService {
           representanteId: p.representanteId,
           status: 'AGUARDANDO_ASSINATURA',
           valorMensal: p.valor,
-          prazoMeses: p.prazoMeses ?? 36,
-          diaVencimento: p.diaVencimento ?? 5,
+          prazoMeses: p.prazoMeses,
+          diaVencimento: p.diaVencimento,
           assinaturaId: envelope.envelopeId,
           assinaturaDocumentoId: envelope.documentoId,
         },
