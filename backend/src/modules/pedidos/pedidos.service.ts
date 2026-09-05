@@ -561,7 +561,8 @@ export class PedidosService {
     const novo = await this.create(user, {
       clienteId: original.clienteId,
       itens,
-      formaPagamento: original.formaPagamento,
+      // Boleto saiu da operação: pedido antigo duplicado nasce em Pix.
+      formaPagamento: original.formaPagamento === 'BOLETO' ? 'PIX' : original.formaPagamento,
       condicaoPagamento:
         (original.condicaoPagamento as CreatePedidoDto['condicaoPagamento']) ?? '30dias',
       prazoEntrega: original.prazoEntrega ?? undefined,

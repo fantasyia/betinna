@@ -7,6 +7,7 @@
  */
 export const DIAS_POR_CONDICAO: Record<string, number[]> = {
   avista: [0],
+  '15dias': [15],
   '30dias': [30],
   '30_60': [30, 60],
   '30_60_90': [30, 60, 90],
@@ -28,8 +29,16 @@ export function dividirEmParcelas(total: number, condicao: string | null | undef
   return dias.map((d, i) => ({ dias: d, valor: (base + (i === n - 1 ? sobra : 0)) / 100 }));
 }
 
-/** Enum de forma de pagamento/recebimento do Tiny (o mesmo das contas). */
-export const FORMA_TINY: Record<string, number> = { PIX: 15, BOLETO: 5 };
+/**
+ * Enum de meio de pagamento do Tiny (o mesmo das contas). Só Pix e cartão de
+ * crédito existem na operação (decisão do Léo, 05/09); boleto fica pelo
+ * histórico de pedidos antigos.
+ */
+export const FORMA_TINY: Record<string, number> = { PIX: 15, CARTAO_CREDITO: 3, BOLETO: 5 };
 
 /** Nome da forma no cadastro do tenant (Configurações → Formas de recebimento). */
-export const NOME_FORMA: Record<string, string> = { PIX: 'Pix', BOLETO: 'Boleto' };
+export const NOME_FORMA: Record<string, string> = {
+  PIX: 'Pix',
+  CARTAO_CREDITO: 'Cartão de crédito',
+  BOLETO: 'Boleto',
+};

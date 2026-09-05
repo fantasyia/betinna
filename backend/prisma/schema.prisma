@@ -74,9 +74,12 @@ enum PedidoOrigem {
   FORMULARIO
 }
 
+/// Só PIX e CARTÃO DE CRÉDITO (decisão do Léo, 05/09/2026). BOLETO fica pelo
+/// histórico — DTO e telas não oferecem mais.
 enum PagamentoForma {
   BOLETO
   PIX
+  CARTAO_CREDITO
 }
 
 enum PropostaModalidade {
@@ -845,7 +848,7 @@ model Pedido {
 
   origem            PedidoOrigem   @default(REP_APP)
   status            PedidoStatus   @default(RASCUNHO)
-  formaPagamento    PagamentoForma @default(BOLETO)
+  formaPagamento    PagamentoForma @default(PIX)
   condicaoPagamento String? // "avista", "30dias", "30_60", "30_60_90"
   prazoEntrega      DateTime?
 
@@ -1005,7 +1008,7 @@ model Proposta {
   probabilidade Int                @default(50)
   validoAte     DateTime?
 
-  formaPagamento    PagamentoForma @default(BOLETO)
+  formaPagamento    PagamentoForma @default(PIX)
   condicaoPagamento String?
   prazoEntrega      DateTime?
 

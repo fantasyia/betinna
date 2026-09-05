@@ -1,4 +1,4 @@
-import { PagamentoForma, PropostaModalidade, PropostaStatus } from '@prisma/client';
+import { PropostaModalidade, PropostaStatus } from '@prisma/client';
 import { z } from 'zod';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
@@ -13,7 +13,8 @@ export type PropostaItemInputDto = z.infer<typeof propostaItemInputSchema>;
 export const createPropostaSchema = z.object({
   clienteId: z.string().cuid(),
   itens: z.array(propostaItemInputSchema).min(1),
-  formaPagamento: z.nativeEnum(PagamentoForma).default('BOLETO'),
+  // Só Pix e cartão de crédito (decisão do Léo). Boleto existe no enum só pelo histórico.
+  formaPagamento: z.enum(['PIX', 'CARTAO_CREDITO']).default('PIX'),
   condicaoPagamento: z.enum(['avista', '15dias', '30dias', '30_60', '30_60_90']).default('30dias'),
   prazoEntrega: z.coerce.date().optional(),
   descontoGeral: z.number().min(0).max(50).default(0),

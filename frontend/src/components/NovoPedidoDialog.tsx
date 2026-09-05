@@ -36,7 +36,8 @@ import { useEstoqueModo, textoMontagem } from '@/hooks/useEstoqueModo';
  * (com cliente pré-selecionado).
  */
 
-type PagamentoForma = 'BOLETO' | 'PIX' | 'TED' | 'CARTAO' | 'DINHEIRO';
+// Só Pix e cartão de crédito (decisão do Léo). É o que o backend aceita.
+type PagamentoForma = 'PIX' | 'CARTAO_CREDITO';
 type CondicaoPgto = 'avista' | '15dias' | '30dias' | '30_60' | '30_60_90';
 
 interface ClienteOpt {
@@ -120,7 +121,11 @@ export interface NovoPedidoInicial {
   observacoes?: string;
 }
 
-const FORMAS: PagamentoForma[] = ['BOLETO', 'PIX', 'TED', 'CARTAO', 'DINHEIRO'];
+const FORMAS: PagamentoForma[] = ['PIX', 'CARTAO_CREDITO'];
+const FORMA_LABEL: Record<PagamentoForma, string> = {
+  PIX: 'Pix',
+  CARTAO_CREDITO: 'Cartão de crédito',
+};
 const CONDICOES: { value: CondicaoPgto; label: string }[] = [
   { value: 'avista', label: 'À vista' },
   { value: '15dias', label: '15 dias' },
@@ -154,7 +159,7 @@ export function NovoPedidoDialog({
   const [cliente, setCliente] = useState<ClienteOpt | null>(clientePreSelecionado ?? null);
   const [itens, setItens] = useState<FormItem[]>(() => itensIniciais(inicial));
   const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>(
-    inicial?.formaPagamento ?? 'BOLETO',
+    inicial?.formaPagamento ?? 'PIX',
   );
   const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>(
     inicial?.condicaoPagamento ?? '30dias',
@@ -185,7 +190,7 @@ export function NovoPedidoDialog({
     abertoRef.current = true;
     setCliente(clientePreSelecionado ?? null);
     setItens(itensIniciais(inicial));
-    setFormaPagamento(inicial?.formaPagamento ?? 'BOLETO');
+    setFormaPagamento(inicial?.formaPagamento ?? 'PIX');
     setCondicaoPagamento(inicial?.condicaoPagamento ?? '30dias');
     setDescontoGeral(inicial?.descontoGeral ?? 0);
     setObservacoes(inicial?.observacoes ?? '');
@@ -480,7 +485,7 @@ export function NovoPedidoDialog({
               >
                 {FORMAS.map((f) => (
                   <option key={f} value={f}>
-                    {f}
+                    {FORMA_LABEL[f]}
                   </option>
                 ))}
               </Select>
