@@ -298,12 +298,16 @@ export class TinyPedidosService {
     let mapa = this.formasCache.get(empresaId);
     if (!mapa) {
       try {
-        const r = await this.client.get<{ itens?: Array<{ id: number; nome?: string }> }>(
-          empresaId,
-          '/formas-recebimento',
-          { limit: 100 },
+        const r = await this.client.get<{
+          itens?: Array<{ id: number; nome?: string; situacao?: string | number }>;
+        }>(empresaId, '/formas-recebimento', { limit: 100 });
+        // Só forma HABILITADA (situação 1). Mandar uma desabilitada faz o Tiny
+        // recusar o pedido inteiro ("Forma de recebimento não está habilitada").
+        mapa = new Map(
+          (r.itens ?? [])
+            .filter((f) => String(f.situacao ?? '1') === '1')
+            .map((f) => [chave(f.nome ?? ''), f.id]),
         );
-        mapa = new Map((r.itens ?? []).map((f) => [chave(f.nome ?? ''), f.id]));
         this.formasCache.set(empresaId, mapa);
       } catch (err) {
         this.logger.warn(
