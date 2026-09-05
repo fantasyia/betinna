@@ -353,8 +353,23 @@ const funilEtapasSchema = z
   .partial()
   .optional();
 
+/**
+ * Integração com o ERP (Tiny): o que o pedido leva ao subir.
+ * - ecommerceId: e-commerce cadastrado lá (amarra o pedido ao canal do site);
+ * - formaEnvioId/formaFreteId: transportadora padrão — sem ela o pedido nasce
+ *   "Forma de envio: Não definida" e a separação não manda pra expedição.
+ */
+const erpSchema = z
+  .object({
+    ecommerceId: z.number().int().positive().nullable().optional(),
+    formaEnvioId: z.number().int().positive().nullable().optional(),
+    formaFreteId: z.number().int().positive().nullable().optional(),
+  })
+  .strip();
+
 export const tenantConfigPatchSchema = z
   .object({
+    erp: erpSchema.nullable().optional(),
     // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
     // trata: null no topo apaga a chave; null numa sub-chave apaga só ela.
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).nullable().optional(),
