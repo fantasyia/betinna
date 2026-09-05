@@ -178,10 +178,11 @@ function ExtratoPorFase() {
   const { data, loading, error, refetch } = useApiQuery<Extrato>('/comissoes/meu-extrato');
   const [fase, setFase] = useState<FaseComissao | ''>('');
 
-  const linhas = useMemo(
-    () => (data?.linhas ?? []).filter((l) => !fase || l.fase === fase),
-    [data, fase],
-  );
+  // `?? []` em tudo: resposta parcial da API não pode derrubar a página. Foi
+  // isto que quebrou 7 testes — e em produção seria tela branca na comissão.
+  const todas = useMemo(() => data?.linhas ?? [], [data]);
+  const linhas = useMemo(() => todas.filter((l) => !fase || l.fase === fase), [todas, fase]);
+  const totais = data?.totais;
 
   const colunas: Column<LinhaComFase>[] = [
     {
@@ -255,31 +256,31 @@ function ExtratoPorFase() {
         loading={loading}
         error={error}
         onRetry={refetch}
-        empty={!data || data.linhas.length === 0}
+        empty={todas.length === 0}
         emptyMessage="Nenhuma comissão ainda. Assim que uma venda sua for expedida (ou uma mensalidade de locação entrar), ela aparece aqui."
       >
         <div className="grid gap-2 grid-cols-2 lg:grid-cols-4 mb-3">
           <StatBox
             label="A pagar"
-            value={fmtBRL(data?.totais.A_PAGAR ?? 0)}
+            value={fmtBRL(totais?.A_PAGAR ?? 0)}
             hint="conta já criada no ERP"
             color={COR_DA_FASE.A_PAGAR}
           />
           <StatBox
             label="Aguardando envio"
-            value={fmtBRL(data?.totais.AGUARDANDO_ENVIO ?? 0)}
+            value={fmtBRL(totais?.AGUARDANDO_ENVIO ?? 0)}
             hint="expedição ainda não saiu"
             color={COR_DA_FASE.AGUARDANDO_ENVIO}
           />
           <StatBox
             label="Aguardando mensalidade"
-            value={fmtBRL(data?.totais.AGUARDANDO_MENSALIDADE ?? 0)}
+            value={fmtBRL(totais?.AGUARDANDO_MENSALIDADE ?? 0)}
             hint="locação: o mês ainda não foi pago"
             color={COR_DA_FASE.AGUARDANDO_MENSALIDADE}
           />
           <StatBox
             label="Paga"
-            value={fmtBRL(data?.totais.PAGA ?? 0)}
+            value={fmtBRL(totais?.PAGA ?? 0)}
             hint="baixada pelo financeiro"
             color={COR_DA_FASE.PAGA}
           />

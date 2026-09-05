@@ -51,6 +51,47 @@ vi.mock('@/hooks/usePermission', () => ({
 
 vi.mock('@/hooks/useDebouncedValue', () => ({ useDebouncedValue: (v: unknown) => v }));
 
+const EXTRATO_PADRAO = {
+  totais: {
+    AGUARDANDO_ENVIO: 100.5,
+    AGUARDANDO_MENSALIDADE: 12.1,
+    A_PAGAR: 250,
+    PAGA: 999.99,
+    CANCELADA: 0,
+  },
+  linhas: [
+    {
+      id: 'pc-1',
+      tipo: 'VENDA',
+      referencia: 'PED-0057',
+      cliente: 'Indústria Alfa',
+      competencia: '2026-09',
+      base: 2500,
+      percentual: 10,
+      valor: 250,
+      fase: 'A_PAGAR',
+      faseRotulo: 'A pagar em 05/10',
+      previsaoPagamentoEm: '2026-10-05',
+      pagoEm: null,
+    },
+    {
+      id: 'cc-1',
+      tipo: 'LOCACAO',
+      referencia: 'PROP-0031 · 2026-10',
+      cliente: 'Frigorífico Beta',
+      competencia: '2026-10',
+      base: 121,
+      percentual: 10,
+      valor: 12.1,
+      fase: 'AGUARDANDO_MENSALIDADE',
+      faseRotulo: 'Aguardando mensalidade',
+      previsaoPagamentoEm: '2026-11-05',
+      pagoEm: null,
+    },
+  ],
+};
+let extratoMock: unknown = EXTRATO_PADRAO;
+
 vi.mock('@/hooks/useApiQuery', () => ({
   useApiQuery: (path: string | null) => {
     if (path === null) return { data: null, loading: false, error: null, refetch: vi.fn() };
@@ -119,6 +160,16 @@ vi.mock('@/hooks/useApiQuery', () => ({
     // API nunca devolveu) — e como o teste mockava o mesmo chute da tela, ele
     // passava enquanto a página quebrava na mão do rep. Mock de contrato tem
     // que copiar o backend, não a expectativa do front.
+    // `GET /comissoes/meu-extrato` — shape REAL do ComissaoRepVisaoService.
+    // Copiado do backend, não da expectativa da tela (o comentário abaixo conta
+    // por que esse cuidado existe).
+    if (path.includes('meu-extrato'))
+      return {
+        data: extratoMock,
+        loading: carregando,
+        error: erro,
+        refetch: vi.fn(),
+      };
     if (path.includes('meu-resumo'))
       return {
         data: {
@@ -244,6 +295,30 @@ describe('ComissoesPage — render de dinheiro', () => {
     render(<Pagina />);
     const texto = document.body.textContent ?? '';
     expect(texto).not.toMatch(/R\$\s?\d+\.\d{2}(\D|$)/);
+  });
+
+  it('extrato: mostra os totais por fase e as duas origens na lista', () => {
+    extratoMock = EXTRATO_PADRAO;
+    // O spec usa `container.textContent` (sem jest-dom) — mesma receita do resto.
+    const { container } = render(<Pagina />);
+    const texto = container.textContent ?? '';
+
+    // Venda e locação convivem — pro rep é tudo "o que eu tenho a receber".
+    expect(texto).toContain('PED-0057');
+    expect(texto).toContain('PROP-0031');
+    expect(texto).toContain('A pagar em 05/10');
+    expect(texto).toContain('Aguardando mensalidade');
+    // Totais por fase no topo, em pt-BR. O `Intl` separa "R$" do número com
+    // espaço NÃO SEPARÁVEL (U+00A0) — comparar com espaço comum falha aqui.
+    expect(texto).toMatch(/R\$\s?999,99/);
+  });
+
+  it('extrato: payload PARCIAL não derruba a tela', () => {
+    // Aconteceu de verdade: `data` truthy sem `linhas` fazia a página inteira
+    // quebrar — e comissão é a tela em que o rep confere o próprio dinheiro.
+    extratoMock = {};
+    expect(() => render(<Pagina />)).not.toThrow();
+    extratoMock = EXTRATO_PADRAO;
   });
 
   it('lista vazia não quebra', () => {
