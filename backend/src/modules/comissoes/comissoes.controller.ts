@@ -67,6 +67,14 @@ export class ComissoesController {
   }
 
   /** Extrato do que já foi pago, filtrado pela DATA DO PAGAMENTO. */
+  @Get('meu-extrato')
+  @ApiOperation({
+    summary: 'Comissões do usuário logado com a FASE de cada uma (venda e locação).',
+  })
+  meuExtrato(@CurrentUser() user: AuthenticatedUser) {
+    return this.visaoRep.extrato(user, this.empresaDe(user));
+  }
+
   @Get('minhas-recebidas')
   @RequirePermissions({ module: 'comissoes', action: 'view' })
   @ApiOperation({ summary: 'Comissões já recebidas, com filtro de período (data de pagamento).' })

@@ -63,6 +63,31 @@ export class TinyContasService {
    * existe DELETE, e o PUT recusa valor 0 ("deve ser maior que 0"). O marcador
    * é visível na lista do painel e é o sinal pra quem apaga à mão.
    */
+  /**
+   * Estado de uma conta a pagar no ERP. É como o app descobre que o financeiro
+   * BAIXOU a comissão — o pagamento acontece lá, não aqui.
+   *
+   * `situacao` ∈ aberto | cancelada | pago | parcial | prevista | atrasadas | emissao.
+   */
+  async obterContaPagar(
+    empresaId: string,
+    id: number,
+  ): Promise<{
+    id: number;
+    situacao?: string;
+    dataLiquidacao?: string;
+    valorPago?: number;
+  } | null> {
+    return this.client
+      .get<{
+        id: number;
+        situacao?: string;
+        dataLiquidacao?: string;
+        valorPago?: number;
+      }>(empresaId, `/contas-pagar/${id}`)
+      .catch(() => null);
+  }
+
   async marcarContaPagarCancelada(empresaId: string, id: number): Promise<void> {
     const atuais = await this.client
       .get<Array<{ descricao?: string }>>(empresaId, `/contas-pagar/${id}/marcadores`)

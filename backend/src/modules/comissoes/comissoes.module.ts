@@ -6,6 +6,8 @@ import { ComissoesFechamentoJob } from './comissoes-fechamento.job';
 import { ComissoesService } from './comissoes.service';
 import { ComissaoErpService } from './comissao-erp.service';
 import { ComissaoRepVisaoService } from './comissao-rep-visao.service';
+import { ContratoComissoesService } from './contrato-comissoes.service';
+import { ComissaoBaixaSyncService } from './comissao-baixa-sync.service';
 import { TinyModule } from '@integrations/tiny/tiny.module';
 
 @Module({
@@ -16,7 +18,14 @@ import { TinyModule } from '@integrations/tiny/tiny.module';
     ComissoesFechamentoJob,
     ComissaoErpService,
     ComissaoRepVisaoService,
+    ContratoComissoesService,
+    ComissaoBaixaSyncService,
   ],
-  exports: [ComissoesService, ComissaoErpService],
+  exports: [
+    ComissoesService,
+    ComissaoErpService,
+    ContratoComissoesService,
+    ComissaoBaixaSyncService,
+  ],
 })
 export class ComissoesModule {}

@@ -354,6 +354,7 @@ model Empresa {
   fluxos                Fluxo[]
   comissoes             Comissao[]
   comissoesPedido       PedidoComissao[]
+  comissoesContrato     ContratoComissao[]
   sequencias            EmpresaSequence[]
   programaFidelidade    ProgramaFidelidade?
   recompensasFidelidade RecompensaFidelidade[]
@@ -445,6 +446,7 @@ model Usuario {
   notasPrivadas             NotaPrivada[]
   comissoes                 Comissao[]
   comissoesPedido           PedidoComissao[]
+  comissoesContrato         ContratoComissao[]
   leads                     Lead[]                          @relation("LeadRep")
   ocorrenciasAtendidas      Ocorrencia[]                    @relation("OcorrenciaResp")
   ocorrenciasCriadas        Ocorrencia[]                    @relation("OcorrenciaCriador")
@@ -846,9 +848,12 @@ model Pedido {
   representanteId String?
   aprovadorId     String?
 
-  origem            PedidoOrigem   @default(REP_APP)
-  status            PedidoStatus   @default(RASCUNHO)
-  formaPagamento    PagamentoForma @default(PIX)
+  origem            PedidoOrigem       @default(REP_APP)
+  /// VENDA ou LOCAÇÃO — vem da proposta que originou o pedido. Locação NÃO
+  /// gera comissão de venda: ela comissiona por MÊS (ver `ContratoComissao`).
+  modalidade        PropostaModalidade @default(VENDA)
+  status            PedidoStatus       @default(RASCUNHO)
+  formaPagamento    PagamentoForma     @default(PIX)
   condicaoPagamento String? // "avista", "30dias", "30_60", "30_60_90"
   prazoEntrega      DateTime?
 
@@ -1132,10 +1137,11 @@ model Contrato {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  proposta      Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
-  cliente       Cliente  @relation(fields: [clienteId], references: [id])
-  representante Usuario? @relation(fields: [representanteId], references: [id], onDelete: SetNull)
+  empresa       Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  proposta      Proposta           @relation(fields: [propostaId], references: [id], onDelete: Cascade)
+  cliente       Cliente            @relation(fields: [clienteId], references: [id])
+  representante Usuario?           @relation(fields: [representanteId], references: [id], onDelete: SetNull)
+  comissoes     ContratoComissao[]
 
   @@index([empresaId, status])
   @@index([clienteId])
@@ -1681,23 +1687,61 @@ model ComissaoOriginacao {
 /// beneficiário, e some no agregado do mês. Com uma linha por pedido dá pra
 /// abrir a folha e ver de quais vendas ela veio, e pedido cancelado ou
 /// devolvido deixa de contar sem ninguém precisar lembrar.
-model PedidoComissao {
-  id         String       @id @default(cuid())
-  empresaId  String
-  pedidoId   String
-  usuarioId  String
-  /// REP = quem vendeu. SITE = quem recebe sobre venda de canal.
-  tipo       ComissaoTipo
+/// Comissão de LOCAÇÃO: uma linha por contrato × pessoa × MÊS.
+///
+/// Venda paga uma vez (ver `PedidoComissao`); locação paga enquanto o contrato
+/// viver, e o gatilho de cada mês é o RECEBIMENTO da mensalidade — não a
+/// instalação, não o vencimento (decisão do Léo, 05/09).
+model ContratoComissao {
+  id                    String       @id @default(cuid())
+  empresaId             String
+  contratoId            String
+  usuarioId             String
+  tipo                  ComissaoTipo
+  /// Mês da mensalidade (sempre dia 1, UTC).
+  competencia           DateTime
   /// Snapshot da % no momento do cálculo.
-  percentual Float
+  percentual            Float
+  /// Mensalidade do contrato naquele mês.
+  base                  Decimal      @db.Decimal(14, 2)
+  valor                 Decimal      @db.Decimal(14, 2)
+  /// Mensalidade daquele mês recebida do cliente. Null = ainda não entrou, e
+  /// sem ela a comissão do mês não vira conta a pagar.
+  mensalidadeRecebidaEm DateTime?
+  contaPagarErpId       String?
+  contaPagarValor       Decimal?     @db.Decimal(14, 2)
+  pagoEm                DateTime?
+  criadoEm              DateTime     @default(now())
+
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, usuarioId, tipo, competencia])
+  @@index([empresaId, competencia])
+  @@index([usuarioId])
+}
+
+model PedidoComissao {
+  id              String       @id @default(cuid())
+  empresaId       String
+  pedidoId        String
+  usuarioId       String
+  /// REP = quem vendeu. SITE = quem recebe sobre venda de canal.
+  tipo            ComissaoTipo
+  /// Snapshot da % no momento do cálculo.
+  percentual      Float
   /// Base usada (total do pedido líquido de devolução).
-  base       Decimal      @db.Decimal(14, 2)
-  valor      Decimal      @db.Decimal(14, 2)
+  base            Decimal      @db.Decimal(14, 2)
+  valor           Decimal      @db.Decimal(14, 2)
   /// Conta a pagar desta linha no ERP (uma por pedido/pessoa, criada quando a NF
   /// sai). Presença = já provisionada; `contaPagarValor` é o valor que está lá.
   contaPagarErpId String?
-  contaPagarValor Decimal? @db.Decimal(14, 2)
-  criadoEm   DateTime     @default(now())
+  contaPagarValor Decimal?     @db.Decimal(14, 2)
+  /// Quando o financeiro BAIXOU a conta no ERP. É o que separa "a pagar" de
+  /// "paga" na tela do rep — sem isto, comissão paga ficava eternamente "a pagar".
+  pagoEm          DateTime?
+  criadoEm        DateTime     @default(now())
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)

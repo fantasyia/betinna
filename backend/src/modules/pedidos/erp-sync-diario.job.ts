@@ -6,6 +6,7 @@ import { TinyProdutosSyncService } from '@integrations/tiny/tiny-produtos-sync.s
 import { TinyRepsSyncService } from '@integrations/tiny/tiny-reps-sync.service';
 import { TinyClientesSyncService } from '@integrations/tiny/tiny-clientes-sync.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
+import { ComissaoBaixaSyncService } from '@modules/comissoes/comissao-baixa-sync.service';
 import { ErpCancelamentosService } from './erp-cancelamentos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 
@@ -36,6 +37,7 @@ export class ErpSyncDiarioJob {
     private readonly clientes: TinyClientesSyncService,
     private readonly pedidos: PedidoErpSyncService,
     private readonly cancelamentos: ErpCancelamentosService,
+    private readonly baixas: ComissaoBaixaSyncService,
   ) {}
 
   @Cron('0 6 * * *', { name: 'erp-sync-diario', timeZone: 'UTC' })
@@ -64,10 +66,13 @@ export class ErpSyncDiarioJob {
         // Depois do sync (que traz o cancelamento feito no ERP pra cá): nota
         // fiscal pra estornar, pedido de venda ainda aberto lá, comissão viva.
         const canc = await this.cancelamentos.varrer(empresaId);
+        // Comissão que o financeiro já baixou no ERP vira "paga" na tela do rep.
+        // Sem esta leitura, quem recebeu via o mesmo "a pagar" de quem não recebeu.
+        const baixas = await this.baixas.varrer(empresaId);
         this.logger.log(
           `[erp] rodada diária empresa=${empresaId}: ` +
             `produtos ${cat.criados}+${cat.atualizados}, pedidos ${ped.criados}+${ped.atualizados}, ` +
-            `reps ${reps.criados} novo(s), ` +
+            `reps ${reps.criados} novo(s), comissões baixadas ${baixas.baixadas}/${baixas.conferidas}, ` +
             `clientes ${cli.atualizados} com status novo` +
             (cli.bloqueados ? ` (${cli.bloqueados} bloqueado(s))` : '') +
             (reps.semDocumento ? `, ${reps.semDocumento} sem CPF/CNPJ` : '') +

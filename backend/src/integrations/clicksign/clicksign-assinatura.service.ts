@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ContratoComissoesService } from '@modules/comissoes/contrato-comissoes.service';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
@@ -42,6 +43,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     private readonly notificacoes: NotificacoesService,
     private readonly etapa: LeadEtapaSistemaService,
     private readonly propostaErp: PropostaErpService,
+    private readonly comissoesContrato: ContratoComissoesService,
   ) {
     this.storage = createClient(
       this.env.get('SUPABASE_URL'),
@@ -89,6 +91,12 @@ export class ClickSignAssinaturaService implements OnModuleInit {
       `Contrato ${contrato.id} (proposta ${contrato.proposta.numero}) ASSINADO` +
         (caminho ? ' — PDF guardado' : ' — sem PDF'),
     );
+
+    // Cronograma de comissão do rep: uma linha por MÊS do contrato (locação
+    // paga todo mês, não uma vez). Nasce aqui, na assinatura, pra o rep já ver
+    // o que vem — cada mês só vira dinheiro quando a mensalidade daquele mês
+    // entrar. Best-effort por dentro: não derruba a assinatura.
+    await this.comissoesContrato.recalcular(contrato.id);
 
     // A etapa anda por conta do FATO, não do que vem depois dele. Se o envio
     // pro ERP falhar, o contrato continua assinado — condicionar o move ao

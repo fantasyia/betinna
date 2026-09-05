@@ -32,6 +32,7 @@ describe('PedidoComissoesService', () => {
     total: new Prisma.Decimal('50.00'),
     valorDevolvido: null,
     representanteId: null,
+    modalidade: 'VENDA',
     ...over,
   });
 
@@ -134,5 +135,75 @@ describe('PedidoComissoesService', () => {
   it('falha no cálculo não propaga — comissão errada se conserta recalculando', async () => {
     prisma.pedido.findUnique.mockRejectedValue(new Error('banco fora'));
     await expect(svc.recalcular('ped-1')).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * Locação comissiona por MÊS (decisão do Léo, 05/09) — o pedido de locação não
+ * pode pagar a % cheia sobre o total na instalação. Num contrato de 36 meses,
+ * isso transformava o valor de UM mês no de trinta e seis.
+ */
+describe('PedidoComissoesService — locação não comissiona como venda', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: PedidoComissoesService;
+
+  beforeEach(() => {
+    tx = {
+      pedidoComissao: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+        upsert: vi.fn(),
+      },
+    };
+    prisma = makePrisma();
+    svc = new PedidoComissoesService(prisma as never);
+  });
+
+  const locacao = (over: Record<string, unknown> = {}) => ({
+    id: 'ped-loc',
+    empresaId: 'emp-1',
+    origem: 'REP_APP',
+    status: 'AGUARDANDO_LIBERACAO',
+    total: new Prisma.Decimal('4350.00'),
+    frete: null,
+    valorDevolvido: null,
+    representanteId: 'rep-1',
+    modalidade: 'LOCACAO',
+    ...over,
+  });
+
+  it('NÃO cria linha de comissão pra pedido de locação, mesmo com rep e % configurados', async () => {
+    prisma.pedido.findUnique.mockResolvedValue(locacao());
+    prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 10 });
+
+    await svc.recalcular('ped-loc');
+
+    expect(tx.pedidoComissao.upsert).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('limpa linha de venda que já existia num pedido de locação (sem conta no ERP)', async () => {
+    prisma.pedido.findUnique.mockResolvedValue(locacao());
+    prisma.pedidoComissao.deleteMany.mockResolvedValue({ count: 1 });
+
+    await svc.recalcular('ped-loc');
+
+    expect(prisma.pedidoComissao.deleteMany).toHaveBeenCalledWith({
+      where: { pedidoId: 'ped-loc', contaPagarErpId: null },
+    });
+  });
+
+  it('venda segue comissionando normalmente (a mudança não vaza pro caminho antigo)', async () => {
+    prisma.pedido.findUnique.mockResolvedValue({
+      ...locacao(),
+      modalidade: 'VENDA',
+      origem: 'REP_APP',
+    });
+    prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 10 });
+
+    await svc.recalcular('ped-loc');
+
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(tx.pedidoComissao.upsert).toHaveBeenCalled();
   });
 });

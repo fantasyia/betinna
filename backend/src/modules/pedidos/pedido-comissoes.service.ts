@@ -74,6 +74,7 @@ export class PedidoComissoesService {
         id: true,
         empresaId: true,
         origem: true,
+        modalidade: true,
         status: true,
         total: true,
         frete: true,
@@ -82,6 +83,24 @@ export class PedidoComissoesService {
       },
     });
     if (!pedido) return;
+
+    // LOCAÇÃO não comissiona como venda. O rep recebe a cada mensalidade
+    // (decisão do Léo, 05/09) — uma linha por contrato × mês em
+    // `ContratoComissao`, atrelada ao RECEBIMENTO da mensalidade. Antes disto,
+    // o pedido de locação pagava a % cheia sobre o total na instalação: num
+    // contrato de 36 meses, o valor de um mês virava o de trinta e seis.
+    if (pedido.modalidade === 'LOCACAO') {
+      const { count } = await this.prisma.pedidoComissao.deleteMany({
+        where: { pedidoId, contaPagarErpId: null },
+      });
+      if (count > 0) {
+        this.logger.log(
+          `Pedido ${pedidoId} é LOCAÇÃO — ${count} comissão(ões) de venda removida(s); ` +
+            'a comissão de locação é mensal (ContratoComissao)',
+        );
+      }
+      return;
+    }
 
     if (SEM_COMISSAO.has(pedido.status)) {
       // Linha que já virou conta a pagar no ERP não pode sumir: fica ZERADA, e é

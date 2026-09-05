@@ -399,6 +399,10 @@ export class PropostaAceiteService {
           clienteId: proposta.clienteId,
           representanteId: proposta.representanteId,
           origem: 'REP_APP',
+          // A modalidade acompanha a proposta: é ela que decide COMO a venda
+          // comissiona. Locação paga por MÊS (ContratoComissao), então o
+          // pedido de locação não pode gerar comissão de venda sobre o total.
+          modalidade: proposta.modalidade,
           status: statusInicial,
           formaPagamento: proposta.formaPagamento,
           condicaoPagamento: proposta.condicaoPagamento,
