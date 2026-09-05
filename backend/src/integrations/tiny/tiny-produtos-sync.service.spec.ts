@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TinyProdutosSyncService } from './tiny-produtos-sync.service';
+import { TinyProdutosSyncService, htmlParaTexto } from './tiny-produtos-sync.service';
 
 /**
  * O sentido normal do dia a dia: o Tiny é a fonte da verdade e o app espelha.
@@ -382,5 +382,36 @@ describe('descrição do produto vinda do ERP', () => {
     expect(r.erros).toBe(0);
     const dados = prisma.produto.update.mock.calls[0][0].data;
     expect('descricao' in dados).toBe(false);
+  });
+});
+
+describe('htmlParaTexto — descrição rica do Tiny vira texto', () => {
+  it('<p> e <br> viram quebras de linha; tags somem; entidades decodificam', () => {
+    const html =
+      '<p>Corrente de carga do circuito (Ir): de 01-150A<br>Faixa de tens&atilde;o: 110 V a 1100 V<br>Icc: 32KA</p>';
+    expect(htmlParaTexto(html)).toBe(
+      'Corrente de carga do circuito (Ir): de 01-150A\nFaixa de tens&atilde;o: 110 V a 1100 V\nIcc: 32KA',
+    );
+  });
+
+  it('texto puro com quebras passa intacto (só apara espaços)', () => {
+    expect(htmlParaTexto('  Linha 1  \n\n  Linha 2 ')).toBe('Linha 1\nLinha 2');
+  });
+
+  it('só tags → vazio (vira null no sync)', () => {
+    expect(htmlParaTexto('<p><br></p>')).toBe('');
+  });
+
+  it('o sync grava o texto limpo, não o HTML', async () => {
+    const { svc, prisma, client } = build([MB]);
+    const original = client.get.getMockImplementation()!;
+    client.get.mockImplementation((e: string, caminho: string) => {
+      if (caminho === '/produtos/335240597') {
+        return Promise.resolve({ ...MB, descricaoComplementar: '<p>Um<br>Dois</p>' });
+      }
+      return original(e, caminho);
+    });
+    await svc.sync('emp-1');
+    expect(prisma.produto.create.mock.calls[0][0].data.descricao).toBe('Um\nDois');
   });
 });

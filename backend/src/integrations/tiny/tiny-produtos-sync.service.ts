@@ -4,6 +4,30 @@ import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { TinyClientService } from './tiny-client.service';
 
+/**
+ * O campo `descricaoComplementar` do Tiny é texto rico: alguns cadastros chegam
+ * como `<p>…<br>…</p>` (visto em produção no MB-01_D.S.), outros como texto
+ * puro com quebras de linha. O app guarda TEXTO — a tag crua saía impressa no
+ * PDF do catálogo. `<br>` e fim de `<p>`/`<div>`/`<li>` viram quebra de linha;
+ * o resto das tags cai; entidades comuns são decodificadas.
+ */
+export function htmlParaTexto(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .split('\n')
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l.length > 0)
+    .join('\n');
+}
+
 interface ProdutoTiny {
   id: number;
   sku?: string;
@@ -360,7 +384,7 @@ export class TinyProdutosSyncService {
       const d = await this.comRetry429(() =>
         this.client.get<ProdutoTiny>(empresaId, `/produtos/${p.id}`),
       );
-      const texto = (d?.descricaoComplementar ?? '').trim();
+      const texto = htmlParaTexto(d?.descricaoComplementar ?? '');
       return texto.length > 0 ? texto : null;
     } catch (err) {
       this.logger.warn(
