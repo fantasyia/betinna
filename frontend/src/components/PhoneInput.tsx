@@ -76,7 +76,11 @@ export function PhoneInput({
   }
 
   return (
-    <div className="flex gap-1.5">
+    // `flex-wrap` + `min-w` no número: em coluna estreita (grid de 3 no celular,
+    // ~100px) o input do número ficava com 22px — medido em /clientes/:id. Se
+    // não houver 96px do país + 140px do número na mesma linha, o número desce
+    // pra linha de baixo com a largura toda, em vez de sumir.
+    <div className="flex flex-wrap gap-1.5">
       <select
         data-testid={testId ? `${testId}-pais` : undefined}
         value={pais}
@@ -108,7 +112,7 @@ export function PhoneInput({
         placeholder="número"
         inputMode="tel"
         required={required}
-        className="flex-1"
+        className="flex-1 min-w-[140px]"
       />
     </div>
   );

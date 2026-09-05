@@ -433,7 +433,7 @@ function DadosTab({
             minLength={2}
           />
         </FormField>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FormField label="CNPJ">
             <Input
               value={form.cnpj}
@@ -1761,7 +1761,7 @@ function PrecoFormModal({
             onChange={setProduto}
           />
         </FormField>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FormField label="Preço especial (R$)" htmlFor="pe-val" required>
             <Input
               id="pe-val"
