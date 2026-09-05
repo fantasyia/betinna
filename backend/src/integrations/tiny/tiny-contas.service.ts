@@ -41,6 +41,9 @@ export interface LancamentoFinanceiro {
  *    as duas em 05/02 — vencimento é caixa, competência é resultado, e misturar
  *    os dois é o erro clássico.
  */
+/** Teto de itens por página no Tiny — acima disso a API devolve 400. */
+const LIMITE_PAGINA = 100;
+
 /** O que a LISTAGEM de contas a receber devolve por item. */
 export interface ContaReceberResumo {
   id: number;
@@ -141,19 +144,29 @@ export class TinyContasService {
    */
   async listarContasReceber(
     empresaId: string,
-    filtros: { de: string; ate: string; situacao?: string; limit?: number },
+    filtros: { de: string; ate: string; situacao?: string; maxPaginas?: number },
   ): Promise<ContaReceberResumo[]> {
-    const r = await this.client.get<{ itens?: ContaReceberResumo[] }>(
-      empresaId,
-      '/contas-receber',
-      {
-        dataInicialVencimento: filtros.de,
-        dataFinalVencimento: filtros.ate,
-        ...(filtros.situacao ? { situacao: filtros.situacao } : {}),
-        limit: filtros.limit ?? 100,
-      },
-    );
-    return r.itens ?? [];
+    const out: ContaReceberResumo[] = [];
+    const maxPaginas = filtros.maxPaginas ?? 5;
+    for (let pagina = 0; pagina < maxPaginas; pagina += 1) {
+      const r = await this.client.get<{ itens?: ContaReceberResumo[] }>(
+        empresaId,
+        '/contas-receber',
+        {
+          dataInicialVencimento: filtros.de,
+          dataFinalVencimento: filtros.ate,
+          ...(filtros.situacao ? { situacao: filtros.situacao } : {}),
+          // 100 é o TETO do Tiny: pedir 200 devolve HTTP 400 em `limit`, não
+          // uma lista cortada. Por isso a paginação, em vez de um número maior.
+          limit: LIMITE_PAGINA,
+          offset: pagina * LIMITE_PAGINA,
+        },
+      );
+      const itens = r.itens ?? [];
+      out.push(...itens);
+      if (itens.length < LIMITE_PAGINA) break;
+    }
+    return out;
   }
 
   /** Detalhe da conta a receber — é aqui que mora a `dataLiquidacao`. */

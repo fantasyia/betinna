@@ -81,7 +81,6 @@ export class ContratoMensalidadeSyncService {
       de: janela.de,
       ate: janela.ate,
       situacao: 'pago',
-      limit: 200,
     });
 
     for (const cobranca of cobrancas) {
