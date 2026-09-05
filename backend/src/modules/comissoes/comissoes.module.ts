@@ -7,6 +7,7 @@ import { ComissoesService } from './comissoes.service';
 import { ComissaoErpService } from './comissao-erp.service';
 import { ComissaoRepVisaoService } from './comissao-rep-visao.service';
 import { ContratoComissoesService } from './contrato-comissoes.service';
+import { ContratoComissaoErpService } from './contrato-comissao-erp.service';
 import { ComissaoBaixaSyncService } from './comissao-baixa-sync.service';
 import { TinyModule } from '@integrations/tiny/tiny.module';
 
@@ -19,12 +20,14 @@ import { TinyModule } from '@integrations/tiny/tiny.module';
     ComissaoErpService,
     ComissaoRepVisaoService,
     ContratoComissoesService,
+    ContratoComissaoErpService,
     ComissaoBaixaSyncService,
   ],
   exports: [
     ComissoesService,
     ComissaoErpService,
     ContratoComissoesService,
+    ContratoComissaoErpService,
     ComissaoBaixaSyncService,
   ],
 })

@@ -31,3 +31,18 @@ export const marcarPagoSchema = z.object({
   reciboUrl: z.string().url().optional(),
 });
 export type MarcarPagoDto = z.infer<typeof marcarPagoSchema>;
+
+/**
+ * "A mensalidade de MM/AAAA daquele contrato entrou."
+ *
+ * Competência é o MÊS da mensalidade (o que o cliente pagou), não a data do
+ * pagamento — mensalidade de setembro paga em outubro continua sendo setembro.
+ * `recebidaEm` é opcional porque o caso comum é registrar no dia; informar
+ * serve pra lançar atrasado sem mentir a data.
+ */
+export const mensalidadeRecebidaSchema = z.object({
+  contratoId: z.string().min(1),
+  competencia: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'competência no formato YYYY-MM'),
+  recebidaEm: z.coerce.date().optional(),
+});
+export type MensalidadeRecebidaDto = z.infer<typeof mensalidadeRecebidaSchema>;

@@ -10,13 +10,16 @@ import {
   type FecharMesDto,
   type ListComissoesDto,
   type MarcarPagoDto,
+  type MensalidadeRecebidaDto,
   fecharMesSchema,
   listComissoesSchema,
   marcarPagoSchema,
+  mensalidadeRecebidaSchema,
 } from './comissoes.dto';
 import { ComissoesService } from './comissoes.service';
 import { ComissaoErpService } from './comissao-erp.service';
 import { ComissaoRepVisaoService } from './comissao-rep-visao.service';
+import { ContratoComissaoErpService } from './contrato-comissao-erp.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
@@ -28,6 +31,7 @@ export class ComissoesController {
     private readonly comissoes: ComissoesService,
     private readonly erp: ComissaoErpService,
     private readonly visaoRep: ComissaoRepVisaoService,
+    private readonly erpLocacao: ContratoComissaoErpService,
   ) {}
 
   private empresaDe(user: AuthenticatedUser): string {
@@ -122,6 +126,52 @@ export class ComissoesController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.erp.provisionar(empresaId, dto.mes, dto.ano);
+  }
+
+  /**
+   * GATILHO DA LOCAÇÃO: a mensalidade daquele mês entrou.
+   *
+   * Entrada explícita, de propósito. O caminho automático é a baixa da conta a
+   * receber da mensalidade no Tiny, e ele depende do contrato existir lá — o
+   * que hoje não acontece (contrato é API v2, o app só fala v3). Enquanto isso,
+   * quem sabe que o dinheiro entrou é o financeiro, e é ele quem registra.
+   *
+   * Não existe adivinhação por cliente + mês: casar recebimento no chute paga
+   * comissão sobre dinheiro que não entrou. Quando o contrato subir pro ERP, o
+   * detector automático chama exatamente este mesmo ponto, com o id do contrato.
+   *
+   * Marca o mês e já cria a conta a pagar. Idempotente nas duas pontas.
+   */
+  @Post('locacao/mensalidade-recebida')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'mensalidade_recebida', resource: 'comissao' })
+  @ApiOperation({
+    summary: 'Registra a mensalidade recebida do mês e provisiona a comissão do rep.',
+  })
+  mensalidadeRecebida(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(mensalidadeRecebidaSchema)) dto: MensalidadeRecebidaDto,
+  ) {
+    const [ano, mes] = dto.competencia.split('-').map(Number);
+    return this.erpLocacao.mensalidadeRecebida(
+      this.empresaDe(user),
+      dto.contratoId,
+      new Date(Date.UTC(ano, mes - 1, 1)),
+      dto.recebidaEm,
+    );
+  }
+
+  /**
+   * Recupera o que ficou pra trás: mensalidade já marcada como recebida, mas
+   * sem conta a pagar no ERP (Tiny fora do ar, rep sem contato lá). A rodada
+   * diária faz isto sozinha; o botão existe para não ter que esperar 24h.
+   */
+  @Post('locacao/provisionar-erp')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'provisionar_erp_locacao', resource: 'comissao' })
+  @ApiOperation({ summary: 'Cria no ERP as contas a pagar de locação pendentes (idempotente).' })
+  provisionarLocacao(@CurrentUser() user: AuthenticatedUser) {
+    return this.erpLocacao.provisionar(this.empresaDe(user));
   }
 
   @Post('fechar-mes')

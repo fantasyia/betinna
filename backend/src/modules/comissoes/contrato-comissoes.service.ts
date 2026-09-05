@@ -91,7 +91,7 @@ export class ContratoComissoesService {
 
     for (const competencia of meses) {
       if (ate && competencia > ate) continue;
-      await this.prisma.contratoComissao.upsert({
+      const existente = await this.prisma.contratoComissao.findUnique({
         where: {
           contratoId_usuarioId_tipo_competencia: {
             contratoId,
@@ -100,20 +100,31 @@ export class ContratoComissoesService {
             competencia,
           },
         },
-        create: {
-          empresaId: contrato.empresaId,
-          contratoId,
-          usuarioId: contrato.representanteId,
-          tipo: 'REP',
-          competencia,
-          percentual: pct,
-          base,
-          valor,
-        },
-        // Só o que ainda não virou dinheiro: linha com conta no ERP não é
-        // reescrita por um recálculo (o valor de lá é o que o financeiro viu).
-        update: { percentual: pct, base, valor },
+        select: { id: true, contaPagarErpId: true },
       });
+      if (!existente) {
+        await this.prisma.contratoComissao.create({
+          data: {
+            empresaId: contrato.empresaId,
+            contratoId,
+            usuarioId: contrato.representanteId,
+            tipo: 'REP',
+            competencia,
+            percentual: pct,
+            base,
+            valor,
+          },
+        });
+      } else if (!existente.contaPagarErpId) {
+        await this.prisma.contratoComissao.update({
+          where: { id: existente.id },
+          data: { percentual: pct, base, valor },
+        });
+      }
+      // Linha que já virou conta no ERP não é reescrita por um recálculo: o
+      // valor de lá é o que o financeiro viu, e o `upsert` que estava aqui
+      // sobrescrevia sem olhar. Era inofensivo enquanto nada preenchia
+      // `contaPagarErpId` — deixa de ser agora que a locação provisiona.
     }
 
     if (ate) {

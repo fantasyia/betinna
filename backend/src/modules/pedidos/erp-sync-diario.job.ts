@@ -7,6 +7,7 @@ import { TinyRepsSyncService } from '@integrations/tiny/tiny-reps-sync.service';
 import { TinyClientesSyncService } from '@integrations/tiny/tiny-clientes-sync.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { ComissaoBaixaSyncService } from '@modules/comissoes/comissao-baixa-sync.service';
+import { ContratoComissaoErpService } from '@modules/comissoes/contrato-comissao-erp.service';
 import { ErpCancelamentosService } from './erp-cancelamentos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 
@@ -38,6 +39,7 @@ export class ErpSyncDiarioJob {
     private readonly pedidos: PedidoErpSyncService,
     private readonly cancelamentos: ErpCancelamentosService,
     private readonly baixas: ComissaoBaixaSyncService,
+    private readonly locacao: ContratoComissaoErpService,
   ) {}
 
   @Cron('0 6 * * *', { name: 'erp-sync-diario', timeZone: 'UTC' })
@@ -66,6 +68,10 @@ export class ErpSyncDiarioJob {
         // Depois do sync (que traz o cancelamento feito no ERP pra cá): nota
         // fiscal pra estornar, pedido de venda ainda aberto lá, comissão viva.
         const canc = await this.cancelamentos.varrer(empresaId);
+        // Locação: mensalidade já registrada como recebida vira conta a pagar.
+        // Antes das baixas, para que uma conta criada agora já possa ser
+        // conferida na mesma rodada se o financeiro tiver baixado no mesmo dia.
+        const loc = await this.locacao.provisionar(empresaId);
         // Comissão que o financeiro já baixou no ERP vira "paga" na tela do rep.
         // Sem esta leitura, quem recebeu via o mesmo "a pagar" de quem não recebeu.
         const baixas = await this.baixas.varrer(empresaId);
@@ -73,6 +79,7 @@ export class ErpSyncDiarioJob {
           `[erp] rodada diária empresa=${empresaId}: ` +
             `produtos ${cat.criados}+${cat.atualizados}, pedidos ${ped.criados}+${ped.atualizados}, ` +
             `reps ${reps.criados} novo(s), comissões baixadas ${baixas.baixadas}/${baixas.conferidas}, ` +
+            (loc.criadas ? `locação ${loc.criadas} conta(s) provisionada(s), ` : '') +
             `clientes ${cli.atualizados} com status novo` +
             (cli.bloqueados ? ` (${cli.bloqueados} bloqueado(s))` : '') +
             (reps.semDocumento ? `, ${reps.semDocumento} sem CPF/CNPJ` : '') +

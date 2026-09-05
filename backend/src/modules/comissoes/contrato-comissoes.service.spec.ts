@@ -6,7 +6,9 @@ const makePrisma = () => ({
   contrato: { findUnique: vi.fn() },
   usuario: { findUnique: vi.fn(async () => ({ comissaoPadrao: 10 })) },
   contratoComissao: {
-    upsert: vi.fn(async () => ({})),
+    findUnique: vi.fn(async () => null),
+    create: vi.fn(async () => ({})),
+    update: vi.fn(async () => ({})),
     updateMany: vi.fn(async () => ({ count: 0 })),
     deleteMany: vi.fn(async () => ({ count: 0 })),
   },
@@ -38,7 +40,7 @@ describe('ContratoComissoesService', () => {
 
     await svc.recalcular('ctr-1');
 
-    expect(prisma.contratoComissao.upsert).toHaveBeenCalledTimes(36);
+    expect(prisma.contratoComissao.create).toHaveBeenCalledTimes(36);
   });
 
   it('a comissão do mês é sobre a MENSALIDADE, não sobre o contrato inteiro', async () => {
@@ -48,12 +50,12 @@ describe('ContratoComissoesService', () => {
 
     await svc.recalcular('ctr-1');
 
-    const primeira = prisma.contratoComissao.upsert.mock.calls[0][0] as {
-      create: { base: Prisma.Decimal; valor: Prisma.Decimal; percentual: number };
+    const primeira = prisma.contratoComissao.create.mock.calls[0][0] as {
+      data: { base: Prisma.Decimal; valor: Prisma.Decimal; percentual: number };
     };
-    expect(Number(primeira.create.base)).toBe(121);
-    expect(Number(primeira.create.valor)).toBe(12.1);
-    expect(primeira.create.percentual).toBe(10);
+    expect(Number(primeira.data.base)).toBe(121);
+    expect(Number(primeira.data.valor)).toBe(12.1);
+    expect(primeira.data.percentual).toBe(10);
   });
 
   it('a 1ª competência é a PRIMEIRA COBRANÇA, não a assinatura (carência não paga)', async () => {
@@ -61,10 +63,10 @@ describe('ContratoComissoesService', () => {
 
     await svc.recalcular('ctr-1');
 
-    const primeira = prisma.contratoComissao.upsert.mock.calls[0][0] as {
-      create: { competencia: Date };
+    const primeira = prisma.contratoComissao.create.mock.calls[0][0] as {
+      data: { competencia: Date };
     };
-    expect(primeira.create.competencia.toISOString()).toBe('2026-10-01T00:00:00.000Z');
+    expect(primeira.data.competencia.toISOString()).toBe('2026-10-01T00:00:00.000Z');
   });
 
   it('contrato cancelado não gera nada e limpa o que havia', async () => {
@@ -72,7 +74,7 @@ describe('ContratoComissoesService', () => {
 
     await svc.recalcular('ctr-1');
 
-    expect(prisma.contratoComissao.upsert).not.toHaveBeenCalled();
+    expect(prisma.contratoComissao.create).not.toHaveBeenCalled();
     expect(prisma.contratoComissao.deleteMany).toHaveBeenCalledWith({
       where: { contratoId: 'ctr-1', contaPagarErpId: null },
     });
@@ -84,7 +86,36 @@ describe('ContratoComissoesService', () => {
 
     await svc.recalcular('ctr-1');
 
-    expect(prisma.contratoComissao.upsert).not.toHaveBeenCalled();
+    expect(prisma.contratoComissao.create).not.toHaveBeenCalled();
+  });
+
+  it('recálculo NÃO reescreve mês que já virou conta no ERP', async () => {
+    // O valor que está no ERP é o que o financeiro viu. Um recálculo (mudou a %
+    // do rep, por exemplo) pode corrigir o que ainda é promessa, nunca o que já
+    // virou conta a pagar — senão a tela e o ERP passam a discordar.
+    prisma.contrato.findUnique.mockResolvedValue(contrato({ prazoMeses: 1 }));
+    prisma.contratoComissao.findUnique.mockResolvedValue({
+      id: 'cc-1',
+      contaPagarErpId: '338205280',
+    });
+
+    await svc.recalcular('ctr-1');
+
+    expect(prisma.contratoComissao.create).not.toHaveBeenCalled();
+    expect(prisma.contratoComissao.update).not.toHaveBeenCalled();
+  });
+
+  it('recálculo reescreve mês que ainda não virou conta', async () => {
+    prisma.contrato.findUnique.mockResolvedValue(contrato({ prazoMeses: 1 }));
+    prisma.contratoComissao.findUnique.mockResolvedValue({ id: 'cc-1', contaPagarErpId: null });
+
+    await svc.recalcular('ctr-1');
+
+    expect(prisma.contratoComissao.create).not.toHaveBeenCalled();
+    expect(prisma.contratoComissao.update).toHaveBeenCalledWith({
+      where: { id: 'cc-1' },
+      data: expect.objectContaining({ percentual: 10 }),
+    });
   });
 
   it('encerrado: apaga os meses FUTUROS sem conta, preserva os que já viraram dinheiro', async () => {
