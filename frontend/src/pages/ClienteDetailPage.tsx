@@ -10,7 +10,13 @@ import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import { maskCNPJ, normalizeUF, formatMoeda as fmtBRL, formatNumero, formatPercent } from '@/lib/masks';
+import {
+  maskCNPJ,
+  normalizeUF,
+  formatMoeda as fmtBRL,
+  formatNumero,
+  formatPercent,
+} from '@/lib/masks';
 import { PhoneInput } from '@/components/PhoneInput';
 import { useRole } from '@/hooks/usePermission';
 import { cn } from '@/lib/cn';
@@ -178,9 +184,12 @@ export default function ClienteDetailPage() {
   const [tab, setTab] = useState<Tab>('dados');
   const [criarPedido, setCriarPedido] = useState(false);
 
-  const { data: cliente, loading, error, refetch } = useApiQuery<Cliente>(
-    id ? `/clientes/${id}` : null,
-  );
+  const {
+    data: cliente,
+    loading,
+    error,
+    refetch,
+  } = useApiQuery<Cliente>(id ? `/clientes/${id}` : null);
 
   if (!id) {
     return (
@@ -222,9 +231,7 @@ export default function ClienteDetailPage() {
               <span className={badgeCls} style={badgeStyle(ERP_COLOR[cliente.erpStatus])}>
                 ERP {cliente.erpStatus}
               </span>
-              {cliente.cnpj && (
-                <span className="text-[13px] text-muted">CNPJ {cliente.cnpj}</span>
-              )}
+              {cliente.cnpj && <span className="text-[13px] text-muted">CNPJ {cliente.cnpj}</span>}
               {cliente.representante?.nome && (
                 <span className="text-[13px] text-muted">
                   Representante: <strong>{cliente.representante.nome}</strong>
@@ -245,7 +252,13 @@ export default function ClienteDetailPage() {
               )}
             </div>
 
-            <div role="tablist" className="flex gap-0 border-b border-border mb-4">
+            {/* 8 abas não cabem em 390px: sem rolagem a página estourava 318px
+                pro lado (medido). Mesmo padrão do SubTabsBar; cada aba fica
+                inteira e numa linha só. */}
+            <div
+              role="tablist"
+              className="flex gap-0 border-b border-border mb-4 overflow-x-auto [scrollbar-width:thin] [&>button]:shrink-0 [&>button]:whitespace-nowrap"
+            >
               <TabButton current={tab} value="dados" onChange={setTab}>
                 Dados
               </TabButton>
@@ -466,9 +479,7 @@ function DadosTab({
           <FormField label="Status">
             <Select
               value={form.status}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, status: e.target.value as ClienteStatus }))
-              }
+              onChange={(e) => setForm((s) => ({ ...s, status: e.target.value as ClienteStatus }))}
             >
               <option value="ATIVO">Ativo</option>
               <option value="NOVO">Novo</option>
@@ -483,9 +494,7 @@ function DadosTab({
               value={form.erpStatus}
               disabled={!podeMudarERP}
               title={podeMudarERP ? undefined : 'Status ERP é alterado pela gestão'}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, erpStatus: e.target.value as ERPStatus }))
-              }
+              onChange={(e) => setForm((s) => ({ ...s, erpStatus: e.target.value as ERPStatus }))}
             >
               <option value="ATIVO">Ativo</option>
               <option value="BLOQUEADO">Bloqueado</option>
@@ -506,9 +515,7 @@ function DadosTab({
               min={0}
               max={180}
               value={form.prazoPagamento}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, prazoPagamento: Number(e.target.value) }))
-              }
+              onChange={(e) => setForm((s) => ({ ...s, prazoPagamento: Number(e.target.value) }))}
             />
           </FormField>
         </div>
@@ -598,9 +605,7 @@ function MetricasCard({ clienteId }: { clienteId: string }) {
       <MetricaItem
         label="Pedidos"
         value={formatNumero(data.pedidosCount)}
-        hint={
-          data.pedidosNoMes > 0 ? `${data.pedidosNoMes} no mês` : 'nenhum no mês'
-        }
+        hint={data.pedidosNoMes > 0 ? `${data.pedidosNoMes} no mês` : 'nenhum no mês'}
       />
       <MetricaItem
         label="Vendido no mês"
@@ -769,46 +774,42 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
         onRetry={refetch}
       >
         <div className="overflow-x-auto -mx-6 px-6">
-        <table className="w-full border-collapse text-[14px] mt-1">
-          <thead>
-            <tr>
-              <th className={pedidoThCls}>Número</th>
-              <th className={pedidoThCls}>Status</th>
-              <th className={cn(pedidoThCls, 'text-right')}>Total</th>
-              <th className={pedidoThCls}>Data</th>
-              <th className={pedidoThCls}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {pedidos.map((p) => (
-              <tr
-                key={p.id}
-                className="cursor-pointer"
-                onClick={() => navigate(`/pedidos/${p.id}`)}
-                data-testid={`cliente-pedido-row-${p.id}`}
-              >
-                <td className={pedidoTdCls}>
-                  <div className="font-semibold">#{p.numero}</div>
-                  {p.numeroErp && (
-                    <div className="text-[11px] text-muted">ERP {p.numeroErp}</div>
-                  )}
-                </td>
-                <td className={pedidoTdCls}>
-                  <span className={badgeCls} style={badgeStyle(PEDIDO_STATUS_COLOR[p.status])}>
-                    {PEDIDO_STATUS_LABEL[p.status]}
-                  </span>
-                </td>
-                <td className={cn(pedidoTdCls, 'text-right font-semibold')}>
-                  {fmtBRL(p.total)}
-                </td>
-                <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(p.criadoEm)}</td>
-                <td className={cn(pedidoTdCls, 'text-right')}>
-                  <span className="text-primary text-[12px]">abrir →</span>
-                </td>
+          <table className="w-full border-collapse text-[14px] mt-1">
+            <thead>
+              <tr>
+                <th className={pedidoThCls}>Número</th>
+                <th className={pedidoThCls}>Status</th>
+                <th className={cn(pedidoThCls, 'text-right')}>Total</th>
+                <th className={pedidoThCls}>Data</th>
+                <th className={pedidoThCls}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {pedidos.map((p) => (
+                <tr
+                  key={p.id}
+                  className="cursor-pointer"
+                  onClick={() => navigate(`/pedidos/${p.id}`)}
+                  data-testid={`cliente-pedido-row-${p.id}`}
+                >
+                  <td className={pedidoTdCls}>
+                    <div className="font-semibold">#{p.numero}</div>
+                    {p.numeroErp && <div className="text-[11px] text-muted">ERP {p.numeroErp}</div>}
+                  </td>
+                  <td className={pedidoTdCls}>
+                    <span className={badgeCls} style={badgeStyle(PEDIDO_STATUS_COLOR[p.status])}>
+                      {PEDIDO_STATUS_LABEL[p.status]}
+                    </span>
+                  </td>
+                  <td className={cn(pedidoTdCls, 'text-right font-semibold')}>{fmtBRL(p.total)}</td>
+                  <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(p.criadoEm)}</td>
+                  <td className={cn(pedidoTdCls, 'text-right')}>
+                    <span className="text-primary text-[12px]">abrir →</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </StateView>
     </div>
@@ -874,9 +875,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
         <h3 className="m-0 text-[15px]">
           Propostas deste cliente
           {propostas.length > 0 && (
-            <span className="text-[12px] text-muted ml-2 font-normal">
-              ({propostas.length})
-            </span>
+            <span className="text-[12px] text-muted ml-2 font-normal">({propostas.length})</span>
           )}
         </h3>
         <button
@@ -896,47 +895,43 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
         onRetry={refetch}
       >
         <div className="overflow-x-auto -mx-6 px-6">
-        <table className="w-full border-collapse text-[14px]">
-          <thead>
-            <tr>
-              <th className={pedidoThCls}>Número</th>
-              <th className={pedidoThCls}>Status</th>
-              <th className={cn(pedidoThCls, 'text-right')}>Valor</th>
-              <th className={cn(pedidoThCls, 'text-right')}>Prob.</th>
-              <th className={pedidoThCls}>Validade</th>
-              <th className={pedidoThCls}>Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            {propostas.map((p) => (
-              <tr
-                key={p.id}
-                className="cursor-pointer"
-                onClick={() => navigate(`/propostas?highlight=${p.id}`)}
-                data-testid={`cliente-proposta-row-${p.id}`}
-              >
-                <td className={pedidoTdCls}>
-                  <strong>#{p.numero}</strong>
-                </td>
-                <td className={pedidoTdCls}>
-                  <span className={badgeCls} style={badgeStyle(PROPOSTA_STATUS_COLOR[p.status])}>
-                    {PROPOSTA_STATUS_LABEL[p.status]}
-                  </span>
-                </td>
-                <td className={cn(pedidoTdCls, 'text-right font-semibold')}>
-                  {fmtBRL(p.valor)}
-                </td>
-                <td className={cn(pedidoTdCls, 'text-right text-muted')}>
-                  {p.probabilidade}%
-                </td>
-                <td className={cn(pedidoTdCls, 'text-muted')}>
-                  {p.validoAte ? fmtDateShort(p.validoAte) : '—'}
-                </td>
-                <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(p.criadoEm)}</td>
+          <table className="w-full border-collapse text-[14px]">
+            <thead>
+              <tr>
+                <th className={pedidoThCls}>Número</th>
+                <th className={pedidoThCls}>Status</th>
+                <th className={cn(pedidoThCls, 'text-right')}>Valor</th>
+                <th className={cn(pedidoThCls, 'text-right')}>Prob.</th>
+                <th className={pedidoThCls}>Validade</th>
+                <th className={pedidoThCls}>Data</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {propostas.map((p) => (
+                <tr
+                  key={p.id}
+                  className="cursor-pointer"
+                  onClick={() => navigate(`/propostas?highlight=${p.id}`)}
+                  data-testid={`cliente-proposta-row-${p.id}`}
+                >
+                  <td className={pedidoTdCls}>
+                    <strong>#{p.numero}</strong>
+                  </td>
+                  <td className={pedidoTdCls}>
+                    <span className={badgeCls} style={badgeStyle(PROPOSTA_STATUS_COLOR[p.status])}>
+                      {PROPOSTA_STATUS_LABEL[p.status]}
+                    </span>
+                  </td>
+                  <td className={cn(pedidoTdCls, 'text-right font-semibold')}>{fmtBRL(p.valor)}</td>
+                  <td className={cn(pedidoTdCls, 'text-right text-muted')}>{p.probabilidade}%</td>
+                  <td className={cn(pedidoTdCls, 'text-muted')}>
+                    {p.validoAte ? fmtDateShort(p.validoAte) : '—'}
+                  </td>
+                  <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(p.criadoEm)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </StateView>
     </div>
@@ -945,12 +940,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
 
 // ─── Tab Amostras ──────────────────────────────────────────────────
 
-type AmostraStatus =
-  | 'ENVIADA'
-  | 'AGUARDANDO_FOLLOWUP'
-  | 'CONVERTIDA'
-  | 'NAO_CONVERTEU'
-  | 'VENCIDA';
+type AmostraStatus = 'ENVIADA' | 'AGUARDANDO_FOLLOWUP' | 'CONVERTIDA' | 'NAO_CONVERTEU' | 'VENCIDA';
 
 interface AmostraLite {
   id: string;
@@ -991,9 +981,7 @@ function AmostrasTab({ clienteId }: { clienteId: string }) {
         <h3 className="m-0 text-[15px]">
           Amostras enviadas
           {amostras.length > 0 && (
-            <span className="text-[12px] text-muted ml-2 font-normal">
-              ({amostras.length})
-            </span>
+            <span className="text-[12px] text-muted ml-2 font-normal">({amostras.length})</span>
           )}
         </h3>
         <button
@@ -1032,18 +1020,14 @@ function AmostrasTab({ clienteId }: { clienteId: string }) {
               >
                 <td className={pedidoTdCls}>
                   <strong>{a.produtoNome}</strong>
-                  {a.notaFiscal && (
-                    <div className="text-[11px] text-muted">NF {a.notaFiscal}</div>
-                  )}
+                  {a.notaFiscal && <div className="text-[11px] text-muted">NF {a.notaFiscal}</div>}
                 </td>
                 <td className={pedidoTdCls}>
                   <span className={badgeCls} style={badgeStyle(AMOSTRA_STATUS_COLOR[a.status])}>
                     {AMOSTRA_STATUS_LABEL[a.status]}
                   </span>
                 </td>
-                <td className={cn(pedidoTdCls, 'text-right font-semibold')}>
-                  {fmtBRL(a.valor)}
-                </td>
+                <td className={cn(pedidoTdCls, 'text-right font-semibold')}>{fmtBRL(a.valor)}</td>
                 <td className={cn(pedidoTdCls, 'text-muted')}>
                   {a.enviadoEm ? fmtDateShort(a.enviadoEm) : '—'}
                 </td>
@@ -1108,9 +1092,7 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
         <h3 className="m-0 text-[15px]">
           Ocorrências
           {ocorrencias.length > 0 && (
-            <span className="text-[12px] text-muted ml-2 font-normal">
-              ({ocorrencias.length})
-            </span>
+            <span className="text-[12px] text-muted ml-2 font-normal">({ocorrencias.length})</span>
           )}
         </h3>
         <button
@@ -1130,63 +1112,63 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
         onRetry={refetch}
       >
         <div className="overflow-x-auto -mx-6 px-6">
-        <table className="w-full border-collapse text-[14px]">
-          <thead>
-            <tr>
-              <th className={pedidoThCls}>Número</th>
-              <th className={pedidoThCls}>Título</th>
-              <th className={pedidoThCls}>Severidade</th>
-              <th className={pedidoThCls}>Status</th>
-              <th className={pedidoThCls}>SLA</th>
-              <th className={pedidoThCls}>Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ocorrencias.map((o) => {
-              const slaVencido =
-                o.slaVenceEm &&
-                ['ABERTA', 'EM_ANDAMENTO'].includes(o.status) &&
-                new Date(o.slaVenceEm).getTime() < Date.now();
-              return (
-                <tr
-                  key={o.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/ocorrencias?highlight=${o.id}`)}
-                  data-testid={`cliente-ocorrencia-row-${o.id}`}
-                >
-                  <td className={pedidoTdCls}>
-                    <strong>#{o.numero}</strong>
-                  </td>
-                  <td className={pedidoTdCls}>{o.titulo}</td>
-                  <td className={pedidoTdCls}>
-                    <span className={badgeCls} style={badgeStyle(SEVERIDADE_COLOR[o.severidade])}>
-                      {o.severidade}
-                    </span>
-                  </td>
-                  <td className={pedidoTdCls}>
-                    <span
-                      className={badgeCls}
-                      style={badgeStyle(OCORRENCIA_STATUS_COLOR[o.status])}
-                    >
-                      {OCORRENCIA_STATUS_LABEL[o.status]}
-                    </span>
-                  </td>
-                  <td
-                    className={cn(
-                      pedidoTdCls,
-                      slaVencido ? 'text-danger font-semibold' : 'text-muted font-normal',
-                    )}
+          <table className="w-full border-collapse text-[14px]">
+            <thead>
+              <tr>
+                <th className={pedidoThCls}>Número</th>
+                <th className={pedidoThCls}>Título</th>
+                <th className={pedidoThCls}>Severidade</th>
+                <th className={pedidoThCls}>Status</th>
+                <th className={pedidoThCls}>SLA</th>
+                <th className={pedidoThCls}>Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ocorrencias.map((o) => {
+                const slaVencido =
+                  o.slaVenceEm &&
+                  ['ABERTA', 'EM_ANDAMENTO'].includes(o.status) &&
+                  new Date(o.slaVenceEm).getTime() < Date.now();
+                return (
+                  <tr
+                    key={o.id}
+                    className="cursor-pointer"
+                    onClick={() => navigate(`/ocorrencias?highlight=${o.id}`)}
+                    data-testid={`cliente-ocorrencia-row-${o.id}`}
                   >
-                    {o.slaVenceEm
-                      ? `${fmtDateShort(o.slaVenceEm)}${slaVencido ? ' (vencido)' : ''}`
-                      : '—'}
-                  </td>
-                  <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(o.criadoEm)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <td className={pedidoTdCls}>
+                      <strong>#{o.numero}</strong>
+                    </td>
+                    <td className={pedidoTdCls}>{o.titulo}</td>
+                    <td className={pedidoTdCls}>
+                      <span className={badgeCls} style={badgeStyle(SEVERIDADE_COLOR[o.severidade])}>
+                        {o.severidade}
+                      </span>
+                    </td>
+                    <td className={pedidoTdCls}>
+                      <span
+                        className={badgeCls}
+                        style={badgeStyle(OCORRENCIA_STATUS_COLOR[o.status])}
+                      >
+                        {OCORRENCIA_STATUS_LABEL[o.status]}
+                      </span>
+                    </td>
+                    <td
+                      className={cn(
+                        pedidoTdCls,
+                        slaVencido ? 'text-danger font-semibold' : 'text-muted font-normal',
+                      )}
+                    >
+                      {o.slaVenceEm
+                        ? `${fmtDateShort(o.slaVenceEm)}${slaVencido ? ' (vencido)' : ''}`
+                        : '—'}
+                    </td>
+                    <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(o.criadoEm)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </StateView>
     </div>
@@ -1275,10 +1257,7 @@ function NotasTab({ clienteId }: { clienteId: string }) {
       >
         <ul className="list-none p-0 m-0 flex flex-col gap-2">
           {notas.map((n) => (
-            <li
-              key={n.id}
-              className="bg-bg-alt border border-border rounded-md p-3"
-            >
+            <li key={n.id} className="bg-bg-alt border border-border rounded-md p-3">
               <header className="flex justify-between text-[12px] text-muted mb-1">
                 <strong>{n.autor?.nome ?? '—'}</strong>
                 <span>{fmtDate(n.criadoEm)}</span>
@@ -1467,7 +1446,9 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
 
   async function downloadDoc(docId: string) {
     try {
-      const r = await api.get<{ url: string }>(`/clientes/${clienteId}/documentos/${docId}/download`);
+      const r = await api.get<{ url: string }>(
+        `/clientes/${clienteId}/documentos/${docId}/download`,
+      );
       window.open(r.url, '_blank', 'noopener');
     } catch (err) {
       toast.error('Falha ao gerar link', err instanceof ApiError ? err.message : undefined);
@@ -1609,8 +1590,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
       </header>
 
       <p className="text-[12px] text-muted mt-0">
-        Preço acordado pra este cliente, sobrepõe a tabela. Sync ERP pode atualizar
-        automaticamente.
+        Preço acordado pra este cliente, sobrepõe a tabela. Sync ERP pode atualizar automaticamente.
       </p>
 
       <StateView
@@ -1621,48 +1601,52 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
         onRetry={refetch}
       >
         <div className="overflow-x-auto -mx-6 px-6">
-        <table className="w-full border-collapse text-[14px] mt-2">
-          <thead>
-            <tr>
-              <th className={thStyleCls}>Produto</th>
-              <th className={thStyleCls}>Preço tabela</th>
-              <th className={thStyleCls}>Preço especial</th>
-              <th className={thStyleCls}>Desconto base</th>
-              <th className={thStyleCls}>Válido até</th>
-              <th className={thStyleCls}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {precos.map((p) => (
-              <tr key={p.produtoId}>
-                <td className={tdStyleCls}>
-                  <div className="font-semibold">{p.produto?.nome ?? '—'}</div>
-                  {p.produto?.sku && (
-                    <div className="text-[11px] text-muted">{p.produto.sku}</div>
-                  )}
-                </td>
-                <td className={tdStyleCls}>{p.produto?.precoTabela !== undefined ? fmtBRL(p.produto.precoTabela) : '—'}</td>
-                <td className={tdStyleCls}>
-                  <strong>{fmtBRL(p.precoEspecial)}</strong>
-                </td>
-                <td className={tdStyleCls}>{p.descontoBase}%</td>
-                <td className={tdStyleCls}>{p.validoAte ? fmtDate(p.validoAte) : 'sem expiração'}</td>
-                <td className={tdStyleCls}>
-                  {podeEditarPrecos && (
-                    <button
-                      type="button"
-                      data-testid={`preco-del-${p.produtoId}`}
-                      onClick={() => delPreco(p.produtoId)}
-                      className={cn(btnDangerCls, 'px-2 py-0.5 text-[11px]')}
-                    >
-                      Remover
-                    </button>
-                  )}
-                </td>
+          <table className="w-full border-collapse text-[14px] mt-2">
+            <thead>
+              <tr>
+                <th className={thStyleCls}>Produto</th>
+                <th className={thStyleCls}>Preço tabela</th>
+                <th className={thStyleCls}>Preço especial</th>
+                <th className={thStyleCls}>Desconto base</th>
+                <th className={thStyleCls}>Válido até</th>
+                <th className={thStyleCls}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {precos.map((p) => (
+                <tr key={p.produtoId}>
+                  <td className={tdStyleCls}>
+                    <div className="font-semibold">{p.produto?.nome ?? '—'}</div>
+                    {p.produto?.sku && (
+                      <div className="text-[11px] text-muted">{p.produto.sku}</div>
+                    )}
+                  </td>
+                  <td className={tdStyleCls}>
+                    {p.produto?.precoTabela !== undefined ? fmtBRL(p.produto.precoTabela) : '—'}
+                  </td>
+                  <td className={tdStyleCls}>
+                    <strong>{fmtBRL(p.precoEspecial)}</strong>
+                  </td>
+                  <td className={tdStyleCls}>{p.descontoBase}%</td>
+                  <td className={tdStyleCls}>
+                    {p.validoAte ? fmtDate(p.validoAte) : 'sem expiração'}
+                  </td>
+                  <td className={tdStyleCls}>
+                    {podeEditarPrecos && (
+                      <button
+                        type="button"
+                        data-testid={`preco-del-${p.produtoId}`}
+                        onClick={() => delPreco(p.produtoId)}
+                        className={cn(btnDangerCls, 'px-2 py-0.5 text-[11px]')}
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </StateView>
 
