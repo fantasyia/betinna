@@ -80,6 +80,8 @@ function build(
     { mover: vi.fn(async () => 'nao-configurado' as const) } as never,
     // Comissão por pedido: tem teste próprio no serviço dela.
     { recalcular: vi.fn(async () => undefined) } as never,
+    // Conta a receber ao faturar: idem.
+    { lancarContasReceber: vi.fn(async () => ({ efeito: 'jaLancado' as const })) } as never,
   );
   return { svc, prisma, tiny, notificacoes, bus, sequence };
 }

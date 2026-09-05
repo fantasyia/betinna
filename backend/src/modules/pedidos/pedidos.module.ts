@@ -18,6 +18,7 @@ import { PedidosService } from './pedidos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { ErpCancelamentosService } from './erp-cancelamentos.service';
+import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
 import { ErpSyncDiarioJob } from './erp-sync-diario.job';
 import { ErpWebhooksJob } from './erp-webhooks.job';
 
@@ -43,6 +44,7 @@ import { ErpWebhooksJob } from './erp-webhooks.job';
     PedidoErpSyncService,
     ErpSyncDiarioJob,
     ErpCancelamentosService,
+    PedidoFinanceiroErpService,
     ErpWebhooksJob,
     PedidoSiteService,
     SiteStatusService,

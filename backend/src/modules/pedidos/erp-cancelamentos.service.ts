@@ -80,6 +80,7 @@ export class ErpCancelamentosService {
         numeroErp: true,
         enviadoErpEm: true,
         observacoes: true,
+        contasReceberErp: true,
       },
       take: 500,
     });
@@ -97,6 +98,13 @@ export class ErpCancelamentosService {
         );
       }
 
+      // Conta a receber já lançada no ERP: não existe DELETE — alguém baixa/estorna.
+      if (Array.isArray(p.contasReceberErp) && p.contasReceberErp.length > 0) {
+        const ids = (p.contasReceberErp as Array<{ id?: number }>).map((c) => c.id).filter(Boolean);
+        r.avisos.push(
+          `${p.numero}: conta(s) a receber ${ids.join(', ')} ficaram no ERP — estornar/baixar lá`,
+        );
+      }
       // A linha de comissão do pedido cancelado tem que sumir — o recálculo faz
       // isso — e o mês da folha entra na lista pra reprocessar.
       await this.comissoesPedido.recalcular(p.id);

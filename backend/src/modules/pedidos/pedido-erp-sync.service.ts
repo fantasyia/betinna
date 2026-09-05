@@ -11,6 +11,7 @@ import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { PedidoComissoesService } from './pedido-comissoes.service';
+import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { SiteStatusService } from './site-status.service';
 
@@ -127,6 +128,7 @@ export class PedidoErpSyncService {
     private readonly bus: FluxoEventBusService,
     private readonly etapa: LeadEtapaSistemaService,
     private readonly comissoes: PedidoComissoesService,
+    private readonly financeiro: PedidoFinanceiroErpService,
   ) {}
 
   async sincronizar(
@@ -387,6 +389,11 @@ export class PedidoErpSyncService {
       // sempre é o pedido. Trocar a % de alguém deixaria a linha velha de pé pra
       // sempre, porque o pedido continua idêntico e a varredura passa reto.
       await this.comissoes.recalcular(existente.id);
+      // NF autorizada → conta a receber no ERP. Antes do atalho, e idempotente:
+      // a nota pode ter saído num dia em que o pedido não mudou de mais nada.
+      if (d.situacao === SITUACAO_FATURADA && d.idNotaFiscal) {
+        await this.lancarFinanceiro(empresaId, existente.id, d.idNotaFiscal, r);
+      }
       if (!mudou) return naoEntregue || adotouRep ? 'atualizado' : 'semMudanca';
 
       const viraEntregue = status === 'ENTREGUE' && existente.status !== 'ENTREGUE';
@@ -548,6 +555,9 @@ export class PedidoErpSyncService {
       select: { id: true, numero: true },
     });
     await this.comissoes.recalcular(criado.id);
+    if (d.situacao === SITUACAO_FATURADA && d.idNotaFiscal) {
+      await this.lancarFinanceiro(empresaId, criado.id, d.idNotaFiscal, r);
+    }
     this.logger.log(`[erp] pedido ${criado.numero} importado do ERP (nº ${numeroErp})`);
     await this.tratarNaoEntregue(empresaId, d, {
       id: criado.id,
@@ -820,6 +830,33 @@ export class PedidoErpSyncService {
       select: { comissaoPadrao: true },
     });
     return rep?.comissaoPadrao ?? 0;
+  }
+
+  /**
+   * Conta a receber no ERP a partir da NF autorizada. Best-effort: o pedido já
+   * está espelhado; a conta que falhar entra no aviso e sai na próxima rodada.
+   */
+  private async lancarFinanceiro(
+    empresaId: string,
+    pedidoId: string,
+    idNota: number,
+    r: ResultadoSyncPedidos,
+  ): Promise<void> {
+    try {
+      const nota = await this.tiny.obterNota(empresaId, idNota).catch(() => null);
+      // Só nota que VALE gera conta: autorizada/emitida/registrada.
+      const sit = Number(nota?.situacao ?? 6);
+      if (![2, 6, 7, 8].includes(sit)) return;
+      const res = await this.financeiro.lancarContasReceber(empresaId, pedidoId, nota);
+      if (res.efeito === 'semContato') {
+        r.avisos.push(
+          `Pedido ${pedidoId}: cliente sem contato no ERP — conta a receber não lançada`,
+        );
+      }
+    } catch (err) {
+      r.erros += 1;
+      this.logger.warn(`[erp] conta a receber do pedido ${pedidoId} falhou: ${this.msg(err)}`);
+    }
   }
 
   // ─── Utilidades ─────────────────────────────────────────────────────────

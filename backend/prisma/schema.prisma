@@ -856,6 +856,9 @@ model Pedido {
   /// Frete que o CLIENTE pagou — está dentro de `total`, mas não é venda: fica
   /// fora da base de comissão (rep e site). Vem do checkout do site ou do ERP.
   frete             Decimal @default(0) @db.Decimal(14, 2)
+  /// Contas a receber lançadas no ERP quando a NF autorizou:
+  /// [{ id, parcela, valor, vencimento }]. Presença = já lançado (idempotência).
+  contasReceberErp  Json?
   comissao          Decimal @default(0) @db.Decimal(14, 2)
   /// Acumuladores de devolução APROVADA (estorno líquido no mês do pedido): o
   /// fecharMes desconta estes do total/comissão. Nunca mexe em folha já paga.
