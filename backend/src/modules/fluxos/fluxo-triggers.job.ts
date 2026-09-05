@@ -28,6 +28,9 @@ import { ehFeriadoNacional } from './feriados.util';
  *   processo morreu no meio do `retomar`. Saiu do `reconciliarClaims` de 15min —
  *   cada minuto ali era um minuto a mais de cliente sem resposta.
  */
+/** Teto de re-enfileiramentos por rodada — recuperação não pode virar enxurrada. */
+const MAX_REENFILEIRAR = 50;
+
 @Injectable()
 export class FluxoTriggersJob {
   private readonly logger = new Logger(FluxoTriggersJob.name);
@@ -148,13 +151,71 @@ export class FluxoTriggersJob {
           // pré-filtro barato — quem protege a espera longa é o job vivo.
           criadoEm: { lt: new Date(agora - 30 * 60 * 1000) },
         },
-        select: { id: true },
+        select: {
+          id: true,
+          fluxoId: true,
+          contexto: true,
+          _count: { select: { logs: true } },
+        },
         take: 200,
       });
-      const mortas = paradas.map((e) => e.id).filter((id) => !vivos.has(id));
-      if (mortas.length > 0) {
+      const mortas = paradas.filter((e) => !vivos.has(e.id));
+
+      // Execução com ZERO passos não produziu efeito colateral nenhum: nada foi
+      // enviado, nada foi gravado no lead. Reprocessar é seguro, e a mensagem
+      // que o lead mandou é atendida com atraso em vez de perdida — que é o que
+      // acontecia quando o worker caía num deploy (05/09: fila parada 35min).
+      //
+      // Com passos já rodados, NÃO: reprocessar do começo mandaria de novo o que
+      // já foi enviado. Essa continua virando FALHOU.
+      //
+      // Uma tentativa só, marcada no contexto: se o re-enfileiramento não
+      // resolveu, insistir a cada 15min viraria loop eterno.
+      const paraReprocessar = mortas.filter(
+        (e) =>
+          e._count.logs === 0 &&
+          !(e.contexto as Record<string, unknown> | null)?.['_reenfileiradoEm'],
+      );
+      let reenfileiradas = 0;
+      for (const e of paraReprocessar.slice(0, MAX_REENFILEIRAR)) {
+        const trigger = await this.prisma.fluxoNo.findFirst({
+          where: { fluxoId: e.fluxoId, tipo: 'TRIGGER' },
+          select: { id: true },
+        });
+        if (!trigger) continue;
+        try {
+          await this.prisma.fluxoExecucao.update({
+            where: { id: e.id },
+            data: {
+              contexto: {
+                ...((e.contexto as Record<string, unknown>) ?? {}),
+                _reenfileiradoEm: new Date().toISOString(),
+              },
+            },
+          });
+          await this.bus.dispararDireto(e.id, trigger.id);
+          reenfileiradas += 1;
+        } catch (err) {
+          this.logger.warn(
+            `Reconciliação: execução ${e.id} não pôde ser re-enfileirada — ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      if (reenfileiradas > 0) {
+        this.logger.log(
+          `Reconciliação: ${reenfileiradas} execução(ões) sem passos re-enfileirada(s) ` +
+            `(nada tinha sido enviado, então reprocessar não duplica nada)`,
+        );
+      }
+
+      const idsReenfileiradas = new Set(
+        paraReprocessar.slice(0, MAX_REENFILEIRAR).map((e) => e.id),
+      );
+      const paraFalhar = mortas.map((e) => e.id).filter((id) => !idsReenfileiradas.has(id));
+      if (paraFalhar.length > 0) {
         const r = await this.prisma.fluxoExecucao.updateMany({
-          where: { id: { in: mortas }, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
+          where: { id: { in: paraFalhar }, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
           data: {
             status: 'FALHOU',
             terminouEm: new Date(),
@@ -198,6 +259,37 @@ export class FluxoTriggersJob {
    * morto — antes eram 5min aqui e 3 lá, duas definições de "órfão". Turno
    * legítimo nunca passa de TIMEOUT_TURNO_MS (2min), então 3 é seguro.
    */
+  /**
+   * A FILA PAROU? — o alarme que faltava.
+   *
+   * Execução `PENDENTE` com ZERO passos criada há mais de 5 minutos é uma
+   * condição que **nunca** é normal: o job é enfileirado no mesmo instante em
+   * que a execução nasce. Se ela existe e não andou, ou o worker está fora, ou
+   * o processor não foi registrado no boot.
+   *
+   * Aconteceu em 05/09 e ninguém viu por ~35 minutos: a api respondia 200
+   * servindo o build antigo, o lead escrevia, a execução era criada — e nada
+   * acontecia, sem erro em lugar nenhum. Custa uma contagem a cada 5 min.
+   */
+  @Cron('*/5 * * * *', { name: 'fluxo-fila-parada', timeZone: 'UTC' })
+  async alarmeDeFilaParada(): Promise<void> {
+    if (this.env.get('NODE_ENV') === 'test') return;
+    const travadas = await this.prisma.fluxoExecucao.count({
+      where: {
+        status: 'PENDENTE',
+        criadoEm: { lt: new Date(Date.now() - 5 * 60 * 1000) },
+        logs: { none: {} },
+      },
+    });
+    if (travadas > 0) {
+      this.logger.error(
+        `[fila] ${travadas} execução(ões) PENDENTE com ZERO passos há mais de 5min — ` +
+          `a fila provavelmente parou de consumir (worker fora do ar ou processor não registrado). ` +
+          `Confira o worker antes de olhar qualquer fluxo.`,
+      );
+    }
+  }
+
   @Cron('*/2 * * * *', { name: 'fluxo-turno-orfao', timeZone: 'UTC' })
   async destravarTurnosOrfaos(): Promise<void> {
     if (this.env.get('NODE_ENV') === 'test') return;
