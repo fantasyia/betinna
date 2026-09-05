@@ -93,6 +93,8 @@ export interface NotaTinyCabecalho {
   situacao?: number | string;
   chaveAcesso?: string;
   valor?: number;
+  /** `YYYY-MM-DD`. É por ela que a locação sabe quando a cobrança começa. */
+  dataEmissao?: string;
 }
 
 export interface ResultadoPedido {

@@ -11,6 +11,7 @@ import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { PedidoComissoesService } from './pedido-comissoes.service';
+import { ContratoComodatoService } from '@modules/contratos/contrato-comodato.service';
 import { PedidoComissaoErpService } from './pedido-comissao-erp.service';
 import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
 import { SequenceService } from '@shared/utils/sequence.service';
@@ -141,6 +142,7 @@ export class PedidoErpSyncService {
     private readonly comissoes: PedidoComissoesService,
     private readonly financeiro: PedidoFinanceiroErpService,
     private readonly comissaoErp: PedidoComissaoErpService,
+    private readonly comodato: ContratoComodatoService,
   ) {}
 
   async sincronizar(
@@ -877,6 +879,15 @@ export class PedidoErpSyncService {
       // Só nota que VALE gera conta: autorizada/emitida/registrada.
       const sit = Number(nota?.situacao ?? 6);
       if (![2, 6, 7, 8].includes(sit)) return;
+      // Locação: a NF de COMODATO é o que dispara a cobrança mensal (regra do
+      // Léo, 05/09) — antes dela o equipamento nem saiu. Fora do try dos outros
+      // dois porque é independente: conta a receber travar não pode deixar o
+      // contrato sem data de início.
+      await this.comodato
+        .iniciarCobranca(empresaId, pedidoId, nota)
+        .catch((err) =>
+          this.logger.warn(`[erp] início da cobrança do comodato falhou: ${this.msg(err)}`),
+        );
       // Dois passos INDEPENDENTES: a conta a receber travar não pode segurar a
       // comissão (nem o contrário). Cada um conta o próprio erro.
       if (opcoes.receber) {

@@ -17,6 +17,7 @@ import { PedidosController } from './pedidos.controller';
 import { PedidosService } from './pedidos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
+import { ContratosModule } from '@modules/contratos/contratos.module';
 import { ErpCancelamentosService } from './erp-cancelamentos.service';
 import { PedidoComissaoErpService } from './pedido-comissao-erp.service';
 import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
@@ -35,6 +36,7 @@ import { ErpWebhooksJob } from './erp-webhooks.job';
     PedidoStatusBotModule,
     // A passada de cancelamentos reprocessa a folha do mês.
     ComissoesModule,
+    ContratosModule,
   ],
   controllers: [PedidosController, AprovacoesController, PedidoSiteController],
   providers: [

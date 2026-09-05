@@ -92,6 +92,8 @@ function build(
         erros: 0,
       })),
     } as never,
+    // Início da cobrança do comodato (locação): tem teste próprio no serviço.
+    { iniciarCobranca: vi.fn(async () => undefined) } as never,
   );
   return { svc, prisma, tiny, notificacoes, bus, sequence };
 }
