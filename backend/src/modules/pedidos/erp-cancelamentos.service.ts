@@ -100,12 +100,29 @@ export class ErpCancelamentosService {
         );
       }
 
-      // Conta a receber já lançada no ERP: não existe DELETE — alguém baixa/estorna.
+      // Contas a receber: as que o TINY gerou pela nota ele estorna; as que o
+      // app lançou à mão não têm DELETE — aviso.
       if (Array.isArray(p.contasReceberErp) && p.contasReceberErp.length > 0) {
-        const ids = (p.contasReceberErp as Array<{ id?: number }>).map((c) => c.id).filter(Boolean);
-        r.avisos.push(
-          `${p.numero}: conta(s) a receber ${ids.join(', ')} ficaram no ERP — estornar/baixar lá`,
+        const doTiny = (p.contasReceberErp as Array<{ origem?: string; idNota?: number }>).find(
+          (c) => c.origem === 'tiny' && c.idNota,
         );
+        if (doTiny?.idNota) {
+          try {
+            await this.tiny.estornarContasDaNota(empresaId, doTiny.idNota);
+            r.avisos.push(`${p.numero}: contas a receber da NF estornadas no ERP`);
+          } catch (err) {
+            r.avisos.push(
+              `${p.numero}: contas a receber da NF NÃO estornadas (${this.msg(err)}) — cancele a nota e estorne lá`,
+            );
+          }
+        } else {
+          const ids = (p.contasReceberErp as Array<{ id?: number }>)
+            .map((c) => c.id)
+            .filter(Boolean);
+          r.avisos.push(
+            `${p.numero}: conta(s) a receber ${ids.join(', ')} ficaram no ERP — estornar/baixar lá`,
+          );
+        }
       }
       // A linha de comissão do pedido cancelado tem que sumir — o recálculo faz
       // isso — e o mês da folha entra na lista pra reprocessar.

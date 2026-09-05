@@ -26,6 +26,7 @@ function build(
       .fn()
       .mockResolvedValue({ id: 77, numero: 12, serie: '3', situacao: 6, ...(opts.nota ?? {}) }),
     cancelar: vi.fn().mockResolvedValue(undefined),
+    estornarContasDaNota: vi.fn().mockResolvedValue(undefined),
   };
   const comissoesPedido = { recalcular: vi.fn().mockResolvedValue(undefined) };
   const comissoes = { fecharMes: vi.fn().mockResolvedValue({ ok: true }) };
@@ -161,6 +162,18 @@ describe('varredura diária de cancelamentos', () => {
 
     expect(comissoes.fecharMes).not.toHaveBeenCalled();
     expect(r.mesesReprocessados).toEqual([]);
+  });
+
+  it('contas a receber geradas pelo Tiny → estorna pela nota', async () => {
+    const { svc, tiny } = build({
+      cancelados: [{ ...CANCELADO, contasReceberErp: [{ origem: 'tiny', idNota: 77 }] }],
+      erp: { situacao: 2 },
+    });
+
+    const r = await svc.varrer('emp-1');
+
+    expect(tiny.estornarContasDaNota).toHaveBeenCalledWith('emp-1', 77);
+    expect(r.avisos).toContain('PED-0001: contas a receber da NF estornadas no ERP');
   });
 
   it('ERP fora do ar num pedido não derruba a passada', async () => {

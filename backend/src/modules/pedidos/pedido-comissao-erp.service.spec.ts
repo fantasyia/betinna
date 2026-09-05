@@ -11,6 +11,7 @@ function build(pedido: Record<string, unknown> | null) {
   const contas = {
     criarContaPagar: vi.fn().mockImplementation(async () => ++seq),
     atualizarContaPagar: vi.fn().mockResolvedValue(undefined),
+    marcarContaPagarCancelada: vi.fn().mockResolvedValue(undefined),
     acharCategoria: vi.fn().mockResolvedValue(335265865),
   };
   const svc = new PedidoComissaoErpService(prisma as never, contas as never);
@@ -104,6 +105,7 @@ describe('conta a pagar de comissão POR PEDIDO', () => {
 
     expect(r.paraApagar).toEqual(['conta 501 (Marcelo Harada, SB104321 / PED-0002 / ERP 42)']);
     expect(contas.atualizarContaPagar).not.toHaveBeenCalled();
+    expect(contas.marcarContaPagarCancelada).toHaveBeenCalledWith('emp-1', 501);
   });
 
   it('sem NF ainda (criar=false) → não cria conta nova', async () => {

@@ -109,6 +109,8 @@ export class PedidoComissaoErpService {
       try {
         if (l.contaPagarErpId) {
           if (valor <= 0) {
+            // A API não apaga nem zera: marca CANCELADA (visível no painel) e avisa.
+            await this.contas.marcarContaPagarCancelada(empresaId, Number(l.contaPagarErpId));
             r.paraApagar.push(`conta ${l.contaPagarErpId} (${nome}, ${rotulo})`);
             continue;
           }

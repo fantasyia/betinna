@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
+import { NOME_FORMA, dividirEmParcelas } from '@modules/pedidos/parcelas.util';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -145,6 +146,14 @@ export class TinyPedidoPushService {
       ecommerceId?: number;
     };
 
+    // Parcelas: é o que faz o Tiny gerar (e estornar) as contas a receber
+    // junto com a nota. Forma pelo cadastro do tenant; sem ela, só as parcelas.
+    const formaRecebimentoId = await this.pedidos.acharFormaRecebimento(
+      pedido.empresaId,
+      NOME_FORMA[pedido.formaPagamento] ?? 'Pix',
+    );
+    const parcelas = dividirEmParcelas(Number(pedido.total), pedido.condicaoPagamento);
+
     const r = await this.pedidos.criar(pedido.empresaId, {
       cliente: {
         nome: pedido.cliente.nome,
@@ -180,6 +189,10 @@ export class TinyPedidoPushService {
       // cabeçalho e na lista do painel. O de e-commerce só aparece na busca —
       // quem abre o pedido 40 lá precisa ver "SB239379" (ou "PED-0001") na cara.
       numeroOrdemCompra: pedido.numeroSite ?? pedido.numero,
+      pagamento: {
+        ...(formaRecebimentoId ? { formaRecebimentoId } : {}),
+        parcelas,
+      },
       // Data no fuso do Brasil. Sem este campo o Tiny aceitava o pedido com
       // `data: ""` — e o painel, que lista por período, não mostrava NENHUM
       // pedido vindo daqui. Existiam, em "preparando envio", invisíveis.

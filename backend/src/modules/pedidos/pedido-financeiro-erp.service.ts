@@ -2,19 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { TinyContasService } from '@integrations/tiny/tiny-contas.service';
+import { TinyPedidosService } from '@integrations/tiny/tiny-pedidos.service';
+import { FORMA_TINY, dividirEmParcelas } from './parcelas.util';
 
-/** Enum de forma de pagamento do Tiny (o mesmo das contas a pagar). */
-const FORMA_TINY: Record<string, number> = { PIX: 15, BOLETO: 5 };
 /** Categoria de receita padrão — só entra se existir no ERP com esse nome. */
 const CATEGORIA_RECEITA = 'Vendas';
-
-/** Dias de cada parcela, pela condição gravada no pedido. */
-const DIAS_POR_CONDICAO: Record<string, number[]> = {
-  avista: [0],
-  '30dias': [30],
-  '30_60': [30, 60],
-  '30_60_90': [30, 60, 90],
-};
 
 export interface ContaReceberLancada {
   id: number;
@@ -25,6 +17,8 @@ export interface ContaReceberLancada {
 
 export type ResultadoLancamento =
   | { efeito: 'lancado'; contas: ContaReceberLancada[] }
+  /** O Tiny gerou as contas a partir das parcelas da nota — ele estorna junto no cancelamento. */
+  | { efeito: 'lancadoPeloTiny'; idNota: number }
   | { efeito: 'jaLancado' }
   | { efeito: 'semContato' }
   | { efeito: 'semValor' };
@@ -49,12 +43,13 @@ export class PedidoFinanceiroErpService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contas: TinyContasService,
+    private readonly tiny: TinyPedidosService,
   ) {}
 
   async lancarContasReceber(
     empresaId: string,
     pedidoId: string,
-    nota: { numero?: number | string; serie?: number | string } | null,
+    nota: { id?: number; numero?: number | string; serie?: number | string } | null,
   ): Promise<ResultadoLancamento> {
     const p = await this.prisma.pedido.findFirst({
       where: { id: pedidoId, empresaId },
@@ -75,6 +70,33 @@ export class PedidoFinanceiroErpService {
     }
     const total = Math.round(Number(p.total) * 100) / 100;
     if (total <= 0) return { efeito: 'semValor' };
+
+    // Caminho preferido: o pedido subiu COM parcelas, então a nota tem
+    // parcelas e o Tiny gera as contas dele mesmo — e as estorna junto quando a
+    // nota é cancelada. Só cai no lançamento manual se o Tiny recusar (pedido
+    // antigo, sem parcelas).
+    if (nota?.id) {
+      try {
+        await this.tiny.lancarContasDaNota(empresaId, nota.id);
+        await this.prisma.pedido.update({
+          where: { id: pedidoId },
+          data: {
+            contasReceberErp: [
+              { origem: 'tiny', idNota: nota.id },
+            ] as unknown as Prisma.InputJsonValue,
+          },
+        });
+        this.logger.log(
+          `[erp] ${p.numero}: contas a receber geradas pelo Tiny a partir da NF ${nota.numero ?? nota.id}`,
+        );
+        return { efeito: 'lancadoPeloTiny', idNota: nota.id };
+      } catch (err) {
+        this.logger.warn(
+          `[erp] ${p.numero}: Tiny não gerou as contas da nota (${err instanceof Error ? err.message : String(err)}) — lançando pelo app`,
+        );
+      }
+    }
+
     const contato = Number(p.cliente?.codigoErp ?? 0);
     if (!contato) {
       this.logger.warn(
@@ -83,8 +105,9 @@ export class PedidoFinanceiroErpService {
       return { efeito: 'semContato' };
     }
 
-    const dias = DIAS_POR_CONDICAO[(p.condicaoPagamento ?? 'avista').trim()] ?? [0];
-    const valores = this.dividir(total, dias.length);
+    const parcelas = dividirEmParcelas(total, p.condicaoPagamento);
+    const dias = parcelas.map((x) => x.dias);
+    const valores = parcelas.map((x) => x.valor);
     const forma = FORMA_TINY[p.formaPagamento] ?? FORMA_TINY.PIX;
     const idCategoria =
       (await this.contas.acharCategoria(empresaId, CATEGORIA_RECEITA)) ?? undefined;
@@ -120,14 +143,6 @@ export class PedidoFinanceiroErpService {
       `[erp] ${p.numero}: ${contas.length} conta(s) a receber lançada(s) — ${contas.map((c) => `#${c.id} R$${c.valor.toFixed(2)} ${c.vencimento}`).join(', ')}`,
     );
     return { efeito: 'lancado', contas };
-  }
-
-  /** Divide em centavos exatos; a diferença de arredondamento vai na última. */
-  private dividir(total: number, n: number): number[] {
-    const centavos = Math.round(total * 100);
-    const base = Math.floor(centavos / n);
-    const sobra = centavos - base * n;
-    return Array.from({ length: n }, (_, i) => (base + (i === n - 1 ? sobra : 0)) / 100);
   }
 
   private hojeBrt(): string {

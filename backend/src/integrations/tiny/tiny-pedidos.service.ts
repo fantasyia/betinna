@@ -26,6 +26,16 @@ export interface PedidoParaTiny {
   /** Data do pedido (YYYY-MM-DD). Sem ela o Tiny grava `data: ""` e o pedido
    *  some do painel, que lista por período — existe, mas ninguém vê. */
   data?: string;
+  /**
+   * Parcelas do pedido. É o que faz o Tiny GERAR as contas a receber quando a
+   * nota sai — e ESTORNAR junto quando a nota/venda é cancelada. Sem parcelas
+   * a nota nasce sem financeiro e não há como lançar depois.
+   */
+  pagamento?: {
+    /** Id da forma no cadastro do tenant (`/formas-recebimento`). */
+    formaRecebimentoId?: number;
+    parcelas: Array<{ dias: number; valor: number }>;
+  };
   /** Id do e-commerce CADASTRADO no ERP (Integrações → e-commerce). Amarra o
    *  pedido ao canal, que é o que faz o ERP tratar a venda como "veio da loja"
    *  nos relatórios e na expedição. Sem ele o pedido entra sem canal. */
@@ -177,6 +187,19 @@ export class TinyPedidosService {
       ...(pedido.vendedorId ? { vendedor: { id: pedido.vendedorId } } : {}),
       ...(pedido.numeroOrdemCompra ? { numeroOrdemCompra: pedido.numeroOrdemCompra } : {}),
       ...(pedido.data ? { data: pedido.data } : {}),
+      ...(pedido.pagamento
+        ? {
+            pagamento: {
+              ...(pedido.pagamento.formaRecebimentoId
+                ? {
+                    formaRecebimento: { id: pedido.pagamento.formaRecebimentoId },
+                    meioPagamento: { id: pedido.pagamento.formaRecebimentoId },
+                  }
+                : {}),
+              parcelas: pedido.pagamento.parcelas.map((p) => ({ dias: p.dias, valor: p.valor })),
+            },
+          }
+        : {}),
       // ⚠️ Vai ANINHADO em `ecommerce`. Solto no topo, o Tiny aceita a
       // requisição e DESCARTA o campo em silêncio — o pedido nasce sem
       // número de e-commerce e ninguém acha pelo número que o cliente diz.
@@ -247,6 +270,49 @@ export class TinyPedidosService {
    */
   obterNota(empresaId: string, idNota: number): Promise<NotaTinyCabecalho> {
     return this.client.get<NotaTinyCabecalho>(empresaId, `/notas/${idNota}`);
+  }
+
+  /**
+   * Manda o Tiny gerar as contas a receber DA NOTA (a partir das parcelas do
+   * pedido). 400 quando a nota não tem parcelas ou as contas já existem.
+   */
+  async lancarContasDaNota(empresaId: string, idNota: number): Promise<void> {
+    await this.client.post(empresaId, `/notas/${idNota}/lancar-contas`, {});
+  }
+
+  /** Estorna as contas que a NOTA gerou — o caminho de volta do cancelamento. */
+  async estornarContasDaNota(empresaId: string, idNota: number): Promise<void> {
+    await this.client.post(empresaId, `/notas/${idNota}/estornar-contas`, {});
+  }
+
+  private formasCache = new Map<string, Map<string, number>>();
+
+  /** Id da forma de recebimento do tenant pelo nome ("Pix", "Boleto"), sem acento/caixa. */
+  async acharFormaRecebimento(empresaId: string, nome: string): Promise<number | null> {
+    const chave = (t: string) =>
+      t
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+    let mapa = this.formasCache.get(empresaId);
+    if (!mapa) {
+      try {
+        const r = await this.client.get<{ itens?: Array<{ id: number; nome?: string }> }>(
+          empresaId,
+          '/formas-recebimento',
+          { limit: 100 },
+        );
+        mapa = new Map((r.itens ?? []).map((f) => [chave(f.nome ?? ''), f.id]));
+        this.formasCache.set(empresaId, mapa);
+      } catch (err) {
+        this.logger.warn(
+          `[tiny] não consegui listar formas de recebimento: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return null;
+      }
+    }
+    return mapa.get(chave(nome)) ?? null;
   }
 
   /**

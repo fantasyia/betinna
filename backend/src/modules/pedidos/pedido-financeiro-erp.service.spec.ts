@@ -14,8 +14,9 @@ function build(pedido: Record<string, unknown> | null) {
     criarContaReceber: vi.fn().mockImplementation(async () => ++seq),
     acharCategoria: vi.fn().mockResolvedValue(null),
   };
-  const svc = new PedidoFinanceiroErpService(prisma as never, contas as never);
-  return { svc, prisma, contas };
+  const tiny = { lancarContasDaNota: vi.fn().mockRejectedValue(new Error('sem parcelas')) };
+  const svc = new PedidoFinanceiroErpService(prisma as never, contas as never, tiny as never);
+  return { svc, prisma, contas, tiny };
 }
 
 const PEDIDO = {
@@ -72,6 +73,20 @@ describe('conta a receber no ERP quando o pedido fatura', () => {
     expect(valores).toEqual([33.33, 33.33, 33.34]);
     expect(contas.criarContaReceber.mock.calls[0][1].formaPagamento).toBe(5);
     expect(contas.criarContaReceber.mock.calls[2][1].historico).toMatch(/parcela 3\/3$/);
+  });
+
+  it('nota COM parcelas → o Tiny gera as contas; o app só registra a origem', async () => {
+    const { svc, contas, tiny, prisma } = build(PEDIDO);
+    tiny.lancarContasDaNota.mockResolvedValueOnce(undefined);
+
+    const r = await svc.lancarContasReceber('emp-1', 'ped-1', { id: 77, numero: 3, serie: 3 });
+
+    expect(r).toEqual({ efeito: 'lancadoPeloTiny', idNota: 77 });
+    expect(tiny.lancarContasDaNota).toHaveBeenCalledWith('emp-1', 77);
+    expect(contas.criarContaReceber).not.toHaveBeenCalled();
+    expect(prisma.pedido.update.mock.calls[0][0].data.contasReceberErp).toEqual([
+      { origem: 'tiny', idNota: 77 },
+    ]);
   });
 
   it('já lançado → não lança de novo (a rodada diária passa todo dia)', async () => {

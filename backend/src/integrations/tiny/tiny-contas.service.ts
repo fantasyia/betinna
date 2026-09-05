@@ -58,6 +58,21 @@ export class TinyContasService {
     });
   }
 
+  /**
+   * Marca uma conta a pagar como CANCELADA. É o máximo que a API deixa: não
+   * existe DELETE, e o PUT recusa valor 0 ("deve ser maior que 0"). O marcador
+   * é visível na lista do painel e é o sinal pra quem apaga à mão.
+   */
+  async marcarContaPagarCancelada(empresaId: string, id: number): Promise<void> {
+    const atuais = await this.client
+      .get<Array<{ descricao?: string }>>(empresaId, `/contas-pagar/${id}/marcadores`)
+      .catch(() => [] as Array<{ descricao?: string }>);
+    if ((atuais ?? []).some((m) => (m.descricao ?? '').toUpperCase() === 'CANCELADA')) return;
+    await this.client.post(empresaId, `/contas-pagar/${id}/marcadores`, [
+      { descricao: 'CANCELADA' },
+    ]);
+  }
+
   async criarContaPagar(empresaId: string, l: LancamentoFinanceiro): Promise<number> {
     const r = await this.client.post<{ id: number }>(empresaId, '/contas-pagar', this.corpo(l));
     this.logger.log(
