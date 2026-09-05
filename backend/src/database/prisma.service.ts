@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 /**
@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client';
  * Gerencia ciclo de vida (connect/disconnect) automaticamente.
  */
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
@@ -28,7 +28,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     this.logger.log('Prisma conectado ao Postgres');
   }
 
-  async onModuleDestroy(): Promise<void> {
+  /**
+   * Fase 3 do shutdown, NÃO a 1 (`onModuleDestroy`). O `@nestjs/bullmq` só drena
+   * os workers em `onApplicationShutdown`; fechar aqui na fase 1 deixava o job de
+   * IA rodando com a conexão já morta — "Connection is closed." no meio do envio,
+   * passo FALHOU, re-execução no worker novo e o cliente recebendo a mensagem em
+   * dobro (medido em 05/09). Na mesma fase, este módulo (raiz) fecha por último.
+   */
+  async onApplicationShutdown(): Promise<void> {
     await this.$disconnect();
     this.logger.log('Prisma desconectado');
   }

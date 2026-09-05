@@ -12,6 +12,7 @@ import {
 } from './conversar-ia.service';
 
 const makePrisma = () => ({
+  $executeRaw: vi.fn().mockResolvedValue(1),
   // #4: cancelamento cross-fluxo das AGUARDANDO usa raw (o filtro JSON do
   // Prisma trata chave ausente como NULL — ver fluxo-event-bus).
   $executeRaw: vi.fn().mockResolvedValue(0),
@@ -20,7 +21,7 @@ const makePrisma = () => ({
     // Execução VIVA por padrão: antes de falar, o nó confere se não foi
     // cancelada no meio da chamada da IA (PAUSAR_IA). Mock devolvendo null
     // significaria "execução sumiu" e calaria o bot em todos os testes.
-    findUnique: vi.fn().mockResolvedValue({ status: 'EM_EXECUCAO' }),
+    findUnique: vi.fn().mockResolvedValue({ status: 'EM_EXECUCAO', contexto: {} }),
     findFirst: vi.fn(),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue({}),
@@ -306,6 +307,46 @@ describe('ConversarIaService', () => {
   const no = (config = {}) => ({ id: 'no-ia', config, acaoTipo: 'CONVERSAR_IA' });
 
   describe('iniciar', () => {
+    // Incidente de 05/09: SIGTERM no worker no meio do nó → passo FALHOU depois
+    // de enviar → BullMQ re-executou o nó no worker novo → resposta re-gerada →
+    // cliente leu a despedida duas vezes. Estes dois testes prendem o conserto.
+    it('após entregar os balões, marca o turno como entregue no contexto (jsonb_set)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá! Tudo bem?', modelo: 'gpt' });
+
+      await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+      // O marcador é gravado com jsonb_set (merge no banco), não com update do
+      // contexto inteiro — outros $executeRaw do turno não interessam aqui.
+      const marcacoes = prisma.$executeRaw.mock.calls
+        .map((c: unknown[]) => (c[0] as TemplateStringsArray).join('?'))
+        .filter((sql: string) => /_iaEntregue/.test(sql));
+      expect(marcacoes).toHaveLength(1);
+      expect(marcacoes[0]).toMatch(/jsonb_set/);
+    });
+
+    it('RE-EXECUÇÃO do nó com o turno já entregue NÃO reenvia — só termina o que faltou', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá de novo, diferente!', modelo: 'gpt' });
+      // O banco diz: este turno (chave do abridor) já chegou ao cliente.
+      prisma.fluxoExecucao.findUnique.mockResolvedValue({
+        status: 'EM_EXECUCAO',
+        contexto: { _iaEntregue: 'fx:exec-1:no-ia:opener' },
+      });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      // …mas a execução segue pro estado certo (AGUARDANDO), em vez de ficar presa.
+      expect(r.aguardando).toBe(true);
+    });
+
     it('envia 1ª msg e pausa (AGUARDANDO) quando aguardarResposta', async () => {
       prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
       muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá! Tudo bem?', modelo: 'gpt' });
@@ -322,7 +363,7 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Olá! Tudo bem?',
-        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0:[0-9a-f]{12}$/) },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0$/) },
       );
       expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1012,14 +1053,14 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'João, oi',
-        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0:[0-9a-f]{12}$/) },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0$/) },
       );
       expect(whatsapp.enviarTexto).toHaveBeenNthCalledWith(
         2,
         'emp-1',
         '11999990000@s.whatsapp.net',
         'tudo bem?',
-        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b1:[0-9a-f]{12}$/) },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b1$/) },
       );
     });
 
@@ -1418,7 +1459,7 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Show! Vou te conectar com a diretoria.',
-        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0:[0-9a-f]{12}$/) },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0$/) },
       );
       const upd = prisma.lead.update.mock.calls[0][0];
       expect(upd.data.variaveis).toMatchObject({
@@ -1552,7 +1593,7 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Legal! E há quanto tempo atua?',
-        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0:[0-9a-f]{12}$/) },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0$/) },
       );
       expect(bus.disparar).not.toHaveBeenCalled();
       expect(queue.add).not.toHaveBeenCalled();

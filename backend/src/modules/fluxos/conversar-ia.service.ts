@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { diaBrasilia, mesBrasilia } from '@shared/utils/data-brasilia.util';
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
@@ -134,6 +133,14 @@ const MARCADORES_EMPRESA =
  * Com rótulo E sem rótulo no mesmo nó o efeito era pior ainda: disparava os
  * dois ramos.
  */
+/**
+ * Chave de idempotência de um balão: turno + posição. Sem o texto de propósito —
+ * ver o comentário no `enviarWhatsapp`.
+ */
+export function chaveDoBalao(idemKey: string, posicao: number): string {
+  return `${idemKey}:b${posicao}`;
+}
+
 export function alvosDaSaida<T extends { label: string | null }>(
   arestas: T[],
   label: string,
@@ -1754,8 +1761,10 @@ export class ConversarIaService implements OnModuleDestroy {
           `CONVERSAR_IA: repetindo o turno da exec ${execucaoId} com a MESMA mensagem ` +
             '(2ª e última tentativa)',
         );
-        // A chave de idempotência do envio é por TURNO, então repetir não manda
-        // a mesma coisa duas vezes pro cliente.
+        // Repetir NÃO reenvia pro cliente: se a 1ª tentativa chegou a mandar os
+        // balões, o marcador `_iaEntregue` (gravado logo após o envio) faz a 2ª
+        // pular o envio e só refazer o que faltou; e o gate do provider dedupa por
+        // turno+posição, sem depender do texto re-gerado ser igual (nunca é).
         await this.retomar(execucaoId, conversationId, textoLead, imagemDataUrl, tentativa + 1);
         return;
       }
@@ -2803,12 +2812,28 @@ export class ConversarIaService implements OnModuleDestroy {
     // cancelado esta execução. Sem esta checagem o bot falava DEPOIS da pausa —
     // exatamente o que o T1.11 flagrou em 26/08, 14s após o RT pausar. Aqui é o
     // ponto único por onde TODA fala do nó de IA passa: opener, turno e aviso.
-    if (execucaoId && !(await this.execucaoViva(execucaoId))) {
-      this.logger.warn(
-        `CONVERSAR_IA: execução ${execucaoId} foi cancelada durante a chamada da IA — ` +
-          `envio ABORTADO (bot pausado no meio do turno)`,
-      );
-      return;
+    if (execucaoId) {
+      const viva = await this.execucaoVivaComContexto(execucaoId);
+      if (!viva.ok) {
+        this.logger.warn(
+          `CONVERSAR_IA: execução ${execucaoId} foi cancelada durante a chamada da IA — ` +
+            `envio ABORTADO (bot pausado no meio do turno)`,
+        );
+        return;
+      }
+      // JÁ ENTREGUE? Medido em produção (05/09): o worker recebeu SIGTERM no
+      // meio do nó, o passo falhou DEPOIS de mandar os balões, o BullMQ
+      // re-executou o nó no worker novo, o modelo gerou a resposta de novo e o
+      // cliente leu a mesma despedida duas vezes. A chave por hash do texto não
+      // segurava: resposta re-gerada nunca sai igual. O marcador é gravado logo
+      // após o envio (ver `marcarTurnoEntregue`) e lido AQUI, fresco do banco.
+      if (idemKey && viva.entregue === idemKey) {
+        this.logger.warn(
+          `CONVERSAR_IA: turno ${idemKey} JÁ foi entregue ao cliente numa tentativa ` +
+            `anterior — não reenvia (exec ${execucaoId})`,
+        );
+        return;
+      }
     }
     // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
     // `reativo` = resposta a quem escreveu (faixa rápida); opener = proativo (lento).
@@ -2834,16 +2859,16 @@ export class ConversarIaService implements OnModuleDestroy {
         delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
       },
       {
-        // Chave de idempotência por balão = posição + hash do CONTEÚDO. Retry com a mesma
-        // resposta → mesma chave → o gate da Evolution deduplica (lead não recebe 2×). Mas se
-        // o conteúdo do balão mudar entre tentativas (resposta re-gerada), a chave muda e o
-        // balão certo sai — antes a chave só-posicional poderia suprimir um balão diferente.
+        // Chave de idempotência por balão = TURNO + POSIÇÃO, sem o conteúdo. Havia um
+        // hash do texto aqui, com a ideia de "se a resposta re-gerada for diferente, o
+        // balão certo sai". Em campo foi o contrário: o modelo NUNCA re-gera igual, então
+        // toda re-execução tinha chave nova e o cliente recebia tudo de novo. O que se
+        // quer numa re-execução do MESMO turno é suprimir — o cliente já leu a resposta.
         enviar: (() => {
           let i = 0;
           return (balao: string) => {
-            const hash = createHash('sha1').update(balao).digest('hex').slice(0, 12);
             const ctx = {
-              ...(idemKey ? { idempotencyKey: `${idemKey}:b${i++}:${hash}` } : {}),
+              ...(idemKey ? { idempotencyKey: chaveDoBalao(idemKey, i++) } : {}),
               ...(proprietarioId ? { proprietarioId } : {}),
             };
             return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(async (r) => {
@@ -2889,6 +2914,52 @@ export class ConversarIaService implements OnModuleDestroy {
             .catch(() => undefined),
       },
     );
+    if (execucaoId && idemKey) await this.marcarTurnoEntregue(execucaoId, idemKey);
+  }
+
+  /**
+   * Status + marcador de entrega, lidos FRESCOS do banco. `ok=false` só quando
+   * a execução foi cancelada ou sumiu; erro de banco é fail-open (não cala o
+   * bot por infra) — igual ao `execucaoViva` que isto substitui no envio.
+   */
+  private async execucaoVivaComContexto(
+    execucaoId: string,
+  ): Promise<{ ok: boolean; entregue: string | null }> {
+    try {
+      const ex = await this.prisma.fluxoExecucao.findUnique({
+        where: { id: execucaoId },
+        select: { status: true, contexto: true },
+      });
+      if (!ex) return { ok: false, entregue: null };
+      const ctx = (ex.contexto ?? {}) as Record<string, unknown>;
+      return {
+        ok: ex.status !== 'CANCELADO',
+        entregue: typeof ctx._iaEntregue === 'string' ? ctx._iaEntregue : null,
+      };
+    } catch {
+      return { ok: true, entregue: null };
+    }
+  }
+
+  /**
+   * Registra que os balões DESTE turno chegaram ao cliente. `jsonb_set` no
+   * banco, não `update({ contexto: {...ctx} })`: quem grava o contexto inteiro
+   * a partir de uma cópia velha apagaria o marcador sem querer (e o turno
+   * escreve o contexto logo depois). Best-effort: se falhar, a camada de baixo
+   * (chave por posição no gate do provider) ainda segura a maior parte.
+   */
+  private async marcarTurnoEntregue(execucaoId: string, idemKey: string): Promise<void> {
+    try {
+      await this.prisma.$executeRaw`
+        UPDATE "FluxoExecucao"
+        SET contexto = jsonb_set(COALESCE(contexto, '{}'::jsonb), '{_iaEntregue}', to_jsonb(${idemKey}::text))
+        WHERE id = ${execucaoId}`;
+    } catch (err) {
+      this.logger.warn(
+        `CONVERSAR_IA: não marquei o turno ${idemKey} como entregue (exec ${execucaoId}): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // ─── Teto de tokens por prompt (Fase C — spec §7) ────────────────────

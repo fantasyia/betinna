@@ -1,4 +1,4 @@
-import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { type Redis } from 'ioredis';
 import { EnvService } from '@config/env.service';
 import { createIORedisClient } from './redis-options';
@@ -14,7 +14,7 @@ import { createIORedisClient } from './redis-options';
  *  - Sequências atômicas opcionais (seq:{empresaId}:{tipo})
  */
 @Injectable()
-export class RedisService implements OnModuleInit, OnModuleDestroy {
+export class RedisService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(RedisService.name);
   private clientInstance!: Redis;
   // Hotpatch 2026-05-20: log throttle pra evitar spam quando Redis está down.
@@ -40,7 +40,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
+  /**
+   * Fase 3 do shutdown, NÃO a 1 (`onModuleDestroy`). O `@nestjs/bullmq` só drena
+   * os workers em `onApplicationShutdown`; fechar aqui na fase 1 deixava o job de
+   * IA rodando com a conexão já morta — "Connection is closed." no meio do envio,
+   * passo FALHOU, re-execução no worker novo e o cliente recebendo a mensagem em
+   * dobro (medido em 05/09). Na mesma fase, este módulo (raiz) fecha por último.
+   */
+  async onApplicationShutdown(): Promise<void> {
     if (this.clientInstance) {
       await this.clientInstance.quit().catch(() => {
         /* já desconectado */
