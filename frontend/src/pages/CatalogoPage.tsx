@@ -361,7 +361,7 @@ export default function CatalogoPage() {
               className="m-6 border-0"
             />
           ) : (
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 p-4">
+            <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 p-4">
               {filtered.map((item) => (
                 <ProdutoCard
                   key={item.produtoId}
@@ -464,7 +464,10 @@ function ProdutoCard({
       )}
     >
       {/* Image (or placeholder) + stock badge sobreposto */}
-      <div className="aspect-[5/3] bg-bg-alt border-b border-border flex items-center justify-center overflow-hidden relative">
+      {/* Faixa baixa de propósito: sem foto cadastrada, o antigo aspect-[5/3]
+          era mais da metade do card só pra exibir um ícone. Com imagem, o
+          object-cover continua preenchendo. */}
+      <div className="h-14 bg-bg-alt border-b border-border flex items-center justify-center overflow-hidden relative">
         {item.produto?.imagem ? (
           <img
             src={item.produto.imagem}
@@ -472,7 +475,7 @@ function ProdutoCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <Package className="h-8 w-8 text-muted-light" />
+          <Package className="h-5 w-5 text-muted-light" />
         )}
         <StockBadge
           produto={item.produto}
@@ -482,9 +485,9 @@ function ProdutoCard({
       </div>
 
       {/* Header */}
-      <div className="p-3 flex flex-col gap-1 flex-1">
+      <div className="px-2.5 py-2 flex flex-col gap-0.5 flex-1">
         <h3
-          className="text-sm font-semibold text-text tracking-tight leading-tight line-clamp-2"
+          className="text-[13px] font-semibold text-text tracking-tight leading-tight line-clamp-2"
           title={item.produto?.nome}
         >
           {item.produto?.nome ?? '—'}
@@ -501,11 +504,11 @@ function ProdutoCard({
       </div>
 
       {/* Preço: mensalidade de locação (rep) ou preço de venda (gestão) */}
-      <div className="px-3 pb-3 border-t border-border pt-3 bg-bg-alt">
-        <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
+      <div className="px-2.5 py-2 border-t border-border bg-bg-alt">
+        <div className="text-[10px] uppercase tracking-wider text-muted">
           {venda == null ? 'Locação / mês' : 'Preço (tabela)'}
         </div>
-        <div className="text-lg font-bold text-text tabular tracking-tight">
+        <div className="text-[15px] font-bold text-text tabular tracking-tight">
           {venda != null ? fmtBRL(venda) : locacao != null ? fmtBRL(locacao) : '—'}
         </div>
       </div>
