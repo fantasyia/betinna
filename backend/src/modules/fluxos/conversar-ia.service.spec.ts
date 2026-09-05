@@ -1324,8 +1324,15 @@ describe('ConversarIaService', () => {
       status: 'AGUARDANDO',
       aguardandoNoId: 'no-ia',
       empresaId: 'emp-1',
-      contexto: { leadId: 'lead-1' },
+      contexto: { leadId: 'lead-1' } as Record<string, unknown>,
     };
+    // Contexto NOVO a cada teste. Em produção ele vem fresco do banco a cada
+    // leitura; aqui é um literal compartilhado, e o carimbo `_iaEntregue` de um
+    // teste vazava pro seguinte (que então via o turno como já entregue e não
+    // enviava). Mock com estado é o tipo de coisa que faz o teste mentir.
+    beforeEach(() => {
+      execAguardando.contexto = { leadId: 'lead-1' };
+    });
 
     it('claim perdido (count=0) → NÃO roda a IA nem envia (anti-turno-duplo)', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
@@ -1440,6 +1447,48 @@ describe('ConversarIaService', () => {
         'IA_CLASSIFICOU',
         expect.objectContaining({ classificacao: 'Forte Sinergia' }),
       );
+    });
+
+    // Medido em produção em 05/09: o marcador `_iaEntregue` sumia de TODA
+    // execução AGUARDANDO/CONCLUIDO — só sobrevivia onde o fluxo parava. Causa:
+    // a escrita seguinte do contexto espalha a cópia em memória lida ANTES do
+    // envio, e apaga o carimbo. Sem isto a 2ª defesa contra mensagem em dobro
+    // não existe na prática.
+    it('o marcador de entregue SOBREVIVE à escrita seguinte do contexto', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: '{"resposta":"Certo, sem questionário.","classificou":false}',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'oi');
+
+      const escritas = prisma.fluxoExecucao.updateMany.mock.calls
+        .map((c) => (c[0] as { data?: { contexto?: Record<string, unknown> } }).data?.contexto)
+        .filter((c): c is Record<string, unknown> => Boolean(c));
+      expect(escritas.length).toBeGreaterThan(0);
+      // A ÚLTIMA escrita do contexto tem que levar o marcador junto.
+      expect(escritas[escritas.length - 1]._iaEntregue).toBe('fx:exec-1:no-ia:t0');
+    });
+
+    it('execução já CONCLUIDA não envia — retry do job depois do fim não repete a fala', async () => {
+      // O nó que NÃO espera resposta vai a CONCLUIDO em segundos; foi num nó
+      // desses (C2-A) que o incidente das 15:45 aconteceu.
+      prisma.fluxoExecucao.findUnique
+        .mockResolvedValueOnce(execAguardando) // guard de status do retomar
+        .mockResolvedValue({ status: 'CONCLUIDO', contexto: {} }); // trava do envio
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: '{"resposta":"Já estou passando pro especialista.","classificou":false}',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'oi');
+
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
     });
 
     it('IA classificou → grava variáveis, dispara IA_CLASSIFICOU e avança', async () => {

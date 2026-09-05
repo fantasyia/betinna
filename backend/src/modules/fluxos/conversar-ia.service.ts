@@ -1293,6 +1293,7 @@ export class ConversarIaService implements OnModuleDestroy {
         this.donoDaConversa(ctx),
         execucaoId,
         cfg.maxBaloes,
+        ctx as Record<string, unknown>,
       );
     } catch (err) {
       // Janela/teto NÃO é falha de WhatsApp — é "ainda não" (auditoria 20/08).
@@ -2247,6 +2248,7 @@ export class ConversarIaService implements OnModuleDestroy {
         this.donoDaConversa(ctx),
         execucaoId,
         cfg.maxBaloes,
+        ctx as Record<string, unknown>,
       );
     } catch (err) {
       // Mesma regra do opener: porta fechada sobe pro executor (retry +
@@ -2805,6 +2807,15 @@ export class ConversarIaService implements OnModuleDestroy {
      * 1 = um balão só, mesmo que o texto passe do limite de tamanho.
      */
     maxBaloes?: number | null,
+    /**
+     * Contexto EM MEMÓRIA da execução (o mesmo objeto que o turno persiste
+     * depois). Recebe o carimbo de entregue junto com o banco — sem isto, a
+     * escrita seguinte (`contexto: toJsonInput({...ctx, …})`) espalha a cópia
+     * lida ANTES do envio e APAGA o marcador. Medido em produção em 05/09: o
+     * marcador só sobrevivia onde o fluxo parava (CANCELADO); em AGUARDANDO e
+     * CONCLUIDO ele sumia sempre, e a 2ª defesa não existia na prática.
+     */
+    ctxDaExecucao?: Record<string, unknown>,
   ): Promise<void> {
     if (!texto.trim()) return;
     // ÚLTIMA TRAVA antes de falar. A chamada ao modelo leva de 10 a 90s, e nesse
@@ -2816,8 +2827,8 @@ export class ConversarIaService implements OnModuleDestroy {
       const viva = await this.execucaoVivaComContexto(execucaoId);
       if (!viva.ok) {
         this.logger.warn(
-          `CONVERSAR_IA: execução ${execucaoId} foi cancelada durante a chamada da IA — ` +
-            `envio ABORTADO (bot pausado no meio do turno)`,
+          `CONVERSAR_IA: execução ${execucaoId} já encerrada (cancelada ou concluída) — ` +
+            `envio ABORTADO`,
         );
         return;
       }
@@ -2914,7 +2925,11 @@ export class ConversarIaService implements OnModuleDestroy {
             .catch(() => undefined),
       },
     );
-    if (execucaoId && idemKey) await this.marcarTurnoEntregue(execucaoId, idemKey);
+    if (execucaoId && idemKey) {
+      await this.marcarTurnoEntregue(execucaoId, idemKey);
+      // Banco E memória: quem persistir o contexto depois leva o marcador junto.
+      if (ctxDaExecucao) ctxDaExecucao._iaEntregue = idemKey;
+    }
   }
 
   /**
@@ -2933,7 +2948,12 @@ export class ConversarIaService implements OnModuleDestroy {
       if (!ex) return { ok: false, entregue: null };
       const ctx = (ex.contexto ?? {}) as Record<string, unknown>;
       return {
-        ok: ex.status !== 'CANCELADO',
+        // CONCLUIDO entra junto com CANCELADO: execução encerrada não fala
+        // mais. É a trava que sobra pro nó que NÃO espera resposta — ele vai a
+        // CONCLUIDO em segundos, e um retry do job depois disso re-executaria o
+        // nó e mandaria tudo de novo (foi num nó desses, o C2-A, que o
+        // incidente das 15:45 aconteceu).
+        ok: ex.status !== 'CANCELADO' && ex.status !== 'CONCLUIDO',
         entregue: typeof ctx._iaEntregue === 'string' ? ctx._iaEntregue : null,
       };
     } catch {
