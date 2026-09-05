@@ -46,8 +46,13 @@ const CINZA = '#666666';
 const ALTURA_LOGO = 34;
 
 const ALTURA_LINHA = 46;
-/** Espaço extra quando o produto tem descrição (duas linhas de 7,5pt). */
-const ALTURA_DESCRICAO = 20;
+/**
+ * Descrição: fonte 7,5pt, no máximo 4 linhas. A altura da linha do produto
+ * cresce só o que o texto precisar — 2 linhas fixas cortavam justamente o
+ * "Inclui IoT Data Sense" das variantes, que é o que explica o produto.
+ */
+const FONTE_DESCRICAO = 7.5;
+const MAX_LINHAS_DESCRICAO = 4;
 const LADO_FOTO = 34;
 /** Teto de imagens baixadas por PDF — catálogo grande não pode virar timeout. */
 const MAX_IMAGENS = 60;
@@ -110,8 +115,10 @@ export class CatalogoPdfService {
         this.cabecalhoDaTabela(doc, left, largura, y, rotulos);
         y += 18;
 
+        const larguraDescricao = largura - LADO_FOTO - 8;
         for (const item of data.itens) {
-          const altura = item.descricao ? ALTURA_LINHA + ALTURA_DESCRICAO : ALTURA_LINHA;
+          const alturaDesc = this.alturaDaDescricao(doc, item.descricao, larguraDescricao);
+          const altura = ALTURA_LINHA + alturaDesc;
           // Quebra de página ANTES de desenhar: linha cortada ao meio é o
           // defeito clássico de PDF montado por posição.
           if (y + altura > doc.page.height - doc.page.margins.bottom - 30) {
@@ -120,7 +127,16 @@ export class CatalogoPdfService {
             this.cabecalhoDaTabela(doc, left, largura, y, rotulos);
             y += 18;
           }
-          this.linha(doc, item, imagens.get(item.imagem ?? ''), left, largura, y, data.marca);
+          this.linha(
+            doc,
+            item,
+            imagens.get(item.imagem ?? ''),
+            left,
+            largura,
+            y,
+            data.marca,
+            alturaDesc,
+          );
           y += altura;
           doc
             .moveTo(left, y - 6)
@@ -216,6 +232,19 @@ export class CatalogoPdfService {
     });
   }
 
+  /** Altura que a descrição ocupa (0 sem texto; teto de MAX_LINHAS_DESCRICAO). */
+  private alturaDaDescricao(
+    doc: PDFKit.PDFDocument,
+    descricao: string | null | undefined,
+    largura: number,
+  ): number {
+    if (!descricao) return 0;
+    doc.fontSize(FONTE_DESCRICAO).font('Helvetica');
+    const linhaPt = doc.currentLineHeight(true);
+    const necessario = doc.heightOfString(compactar(descricao), { width: largura });
+    return Math.min(necessario, linhaPt * MAX_LINHAS_DESCRICAO) + 4;
+  }
+
   private linha(
     doc: PDFKit.PDFDocument,
     item: LinhaCatalogoPdf,
@@ -224,6 +253,7 @@ export class CatalogoPdfService {
     largura: number,
     y: number,
     marca?: MarcaTenant,
+    alturaDesc = 0,
   ): void {
     const primaria = marca?.primaria ?? BRAND_NAVY;
     const secundaria = marca?.secundaria ?? BRAND_CYAN;
@@ -254,11 +284,11 @@ export class CatalogoPdfService {
 
     // Descrição abaixo de tudo (nome, disponibilidade e preço ocupam até y+28),
     // então pode usar a largura inteira da linha. Duas linhas no máximo.
-    if (item.descricao) {
-      doc.fillColor('#444444').fontSize(7.5).font('Helvetica');
+    if (item.descricao && alturaDesc > 0) {
+      doc.fillColor('#444444').fontSize(FONTE_DESCRICAO).font('Helvetica');
       doc.text(compactar(item.descricao), textoX, y + 30, {
         width: left + largura - textoX,
-        height: ALTURA_DESCRICAO - 2,
+        height: alturaDesc - 2,
         ellipsis: true,
       });
     }
