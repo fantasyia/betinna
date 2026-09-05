@@ -20,7 +20,6 @@ import { ComissoesService } from './comissoes.service';
 import { ComissaoErpService } from './comissao-erp.service';
 import { ComissaoRepVisaoService } from './comissao-rep-visao.service';
 import { ContratoComissaoErpService } from './contrato-comissao-erp.service';
-import { ContratoMensalidadeSyncService } from '@modules/contratos/contrato-mensalidade-sync.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
@@ -33,7 +32,6 @@ export class ComissoesController {
     private readonly erp: ComissaoErpService,
     private readonly visaoRep: ComissaoRepVisaoService,
     private readonly erpLocacao: ContratoComissaoErpService,
-    private readonly mensalidades: ContratoMensalidadeSyncService,
   ) {}
 
   private empresaDe(user: AuthenticatedUser): string {
@@ -174,20 +172,6 @@ export class ComissoesController {
   @ApiOperation({ summary: 'Cria no ERP as contas a pagar de locação pendentes (idempotente).' })
   provisionarLocacao(@CurrentUser() user: AuthenticatedUser) {
     return this.erpLocacao.provisionar(this.empresaDe(user));
-  }
-
-  /**
-   * Lê no ERP quais mensalidades foram pagas e libera a comissão do mês.
-   *
-   * A rodada diária faz isto sozinha; o endpoint existe pra conferir na hora,
-   * logo depois de o financeiro baixar uma cobrança, sem esperar a madrugada.
-   */
-  @Post('locacao/sincronizar-mensalidades')
-  @Roles('ADMIN', 'DIRECTOR')
-  @Audit({ action: 'sincronizar_mensalidades', resource: 'comissao' })
-  @ApiOperation({ summary: 'Varre as cobranças de contrato pagas no ERP e libera as comissões.' })
-  sincronizarMensalidades(@CurrentUser() user: AuthenticatedUser) {
-    return this.mensalidades.varrer(this.empresaDe(user));
   }
 
   @Post('fechar-mes')

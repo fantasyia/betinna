@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { forwardRef } from '@nestjs/common';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { ContratosController } from './contratos.controller';
 import { ContratosService } from './contratos.service';
@@ -8,7 +7,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
 
 /** Leitura dos contratos de locação — quem os cria é o aceite da proposta. */
 @Module({
-  imports: [forwardRef(() => ComissoesModule)],
+  imports: [ComissoesModule],
   controllers: [ContratosController],
   providers: [ContratosService, ContratoComodatoService, ContratoMensalidadeSyncService],
   exports: [ContratosService, ContratoComodatoService, ContratoMensalidadeSyncService],
