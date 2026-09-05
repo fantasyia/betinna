@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
-import { NOME_FORMA, dividirEmParcelas } from '@modules/pedidos/parcelas.util';
+import { FORMA_TINY, NOME_FORMA, dividirEmParcelas } from '@modules/pedidos/parcelas.util';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -191,6 +191,7 @@ export class TinyPedidoPushService {
       numeroOrdemCompra: pedido.numeroSite ?? pedido.numero,
       pagamento: {
         ...(formaRecebimentoId ? { formaRecebimentoId } : {}),
+        meioPagamento: FORMA_TINY[pedido.formaPagamento] ?? FORMA_TINY.PIX,
         parcelas,
       },
       // Data no fuso do Brasil. Sem este campo o Tiny aceitava o pedido com

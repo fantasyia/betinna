@@ -34,6 +34,9 @@ export interface PedidoParaTiny {
   pagamento?: {
     /** Id da forma no cadastro do tenant (`/formas-recebimento`). */
     formaRecebimentoId?: number;
+    /** Enum do Tiny (15 = Pix, 5 = Boleto…) — o mesmo das contas. Sem ele o
+     *  Tiny recusa: "Meio de pagamento não encontrado". */
+    meioPagamento?: number;
     parcelas: Array<{ dias: number; valor: number }>;
   };
   /** Id do e-commerce CADASTRADO no ERP (Integrações → e-commerce). Amarra o
@@ -191,9 +194,12 @@ export class TinyPedidosService {
         ? {
             pagamento: {
               ...(pedido.pagamento.formaRecebimentoId
-                ? // Só a forma de recebimento. `meioPagamento` é outro cadastro
-                  // (o Tiny devolve "Meio de pagamento não encontrado" com este id).
-                  { formaRecebimento: { id: pedido.pagamento.formaRecebimentoId } }
+                ? { formaRecebimento: { id: pedido.pagamento.formaRecebimentoId } }
+                : {}),
+              // `meioPagamento` NÃO é o id do cadastro de formas — é o enum do
+              // Tiny (15 = Pix). Com o id do cadastro, ou sem nada, ele recusa.
+              ...(pedido.pagamento.meioPagamento
+                ? { meioPagamento: { id: pedido.pagamento.meioPagamento } }
                 : {}),
               parcelas: pedido.pagamento.parcelas.map((p) => ({ dias: p.dias, valor: p.valor })),
             },
