@@ -191,10 +191,9 @@ export class TinyPedidosService {
         ? {
             pagamento: {
               ...(pedido.pagamento.formaRecebimentoId
-                ? {
-                    formaRecebimento: { id: pedido.pagamento.formaRecebimentoId },
-                    meioPagamento: { id: pedido.pagamento.formaRecebimentoId },
-                  }
+                ? // Só a forma de recebimento. `meioPagamento` é outro cadastro
+                  // (o Tiny devolve "Meio de pagamento não encontrado" com este id).
+                  { formaRecebimento: { id: pedido.pagamento.formaRecebimentoId } }
                 : {}),
               parcelas: pedido.pagamento.parcelas.map((p) => ({ dias: p.dias, valor: p.valor })),
             },
