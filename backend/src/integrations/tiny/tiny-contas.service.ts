@@ -14,6 +14,10 @@ export interface LancamentoFinanceiro {
   idCategoria?: number;
   /** U = única (default), M = mensal… Usado pela locação recorrente. */
   ocorrencia?: 'U' | 'W' | 'Q' | 'M' | 'T' | 'S' | 'A' | 'P';
+  /** Enum do Tiny (15 = Pix, 5 = Boleto, 21 = transferência…). Sem ele a conta nasce "não definida". */
+  formaPagamento?: number;
+  /** Dia do vencimento (1–31). Sem ele o Tiny grava 0 — e 0 quebra a recorrência e alguns relatórios. */
+  diaVencimento?: number;
 }
 
 /**
@@ -78,11 +82,19 @@ export class TinyContasService {
       const r = await this.client.get<{ itens?: Array<{ id: number; descricao?: string }> }>(
         empresaId,
         '/categorias-receita-despesa',
-        { limit: 200 },
+        // ⚠️ limit acima de 100 → HTTP 400. Com 200 a busca falhava calada e TODA
+        // conta a pagar de comissão entrava sem categoria.
+        { limit: 100 },
       );
-      const alvo = (r.itens ?? []).find(
-        (c) => (c.descricao ?? '').trim().toLowerCase() === nome.trim().toLowerCase(),
-      );
+      // Sem acento e sem caixa: "Comissões sobre vendas" tem que bater com
+      // "comissoes sobre vendas" digitado no painel.
+      const chave = (t: string) =>
+        t
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+          .toLowerCase();
+      const alvo = (r.itens ?? []).find((c) => chave(c.descricao ?? '') === chave(nome));
       return alvo?.id ?? null;
     } catch (err) {
       this.logger.warn(
@@ -104,6 +116,9 @@ export class TinyContasService {
       ...(l.historico ? { historico: l.historico } : {}),
       ...(l.idCategoria ? { categoria: { id: l.idCategoria } } : {}),
       ...(l.ocorrencia ? { ocorrencia: l.ocorrencia } : {}),
+      ...(l.formaPagamento !== undefined ? { formaPagamento: l.formaPagamento } : {}),
+      // Dia do vencimento sempre preenchido: o do próprio vencimento quando não vier.
+      diaVencimento: l.diaVencimento ?? Number(l.dataVencimento.slice(-2)),
     };
   }
 }

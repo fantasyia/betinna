@@ -306,6 +306,8 @@ export class PedidosService {
       conds.push({
         OR: [
           { numero: { contains: params.search, mode: 'insensitive' } },
+          // O número que o cliente do SITE conhece (SB…) — é o que ele cita.
+          { numeroSite: { contains: params.search, mode: 'insensitive' } },
           { numeroErp: { contains: params.search } },
           { cliente: { nome: { contains: params.search, mode: 'insensitive' } } },
         ],

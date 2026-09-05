@@ -16,6 +16,10 @@ export interface ResultadoProvisionamento {
 
 /** Categoria padrão no ERP. Não existindo, o lançamento entra sem classificação. */
 const CATEGORIA = 'Comissões sobre vendas';
+/** Comissão é paga por Pix (enum do Tiny). */
+const FORMA_PAGAMENTO_PIX = 15;
+/** Dia 05: o mesmo do vencimento — evita o "dia 0" que o Tiny grava sem isto. */
+const DIA_VENCIMENTO = 5;
 
 /**
  * Config do tenant (`Empresa.config.comissaoOriginacao`).
@@ -104,6 +108,15 @@ export class ComissaoErpService {
 
     for (const c of comissoes) {
       const contato = Number(c.representante?.contatoErpId ?? 0);
+      // De QUAIS pedidos é esta comissão — é o que deixa achar o pedido a
+      // partir da conta, e conferir a conta a partir do pedido.
+      const pedidos = await this.pedidosDaComissao(empresaId, c, mes, ano);
+      const historico = [
+        `Comissão ${c.tipo} ${String(mes).padStart(2, '0')}/${ano} — ${c.representante?.nome ?? ''}`.trim(),
+        pedidos ? `pedidos: ${pedidos}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
       if (c.contaPagarErpId) {
         // Reprocessar a folha muda o valor aqui — a conta lá precisa acompanhar,
         // senão o financeiro paga o número velho. Idempotente: reescreve o mesmo.
@@ -116,8 +129,7 @@ export class ComissaoErpService {
               dataVencimento: vencimento,
               dataCompetencia: competencia,
               numeroDocumento: `COMISSAO ${String(mes).padStart(2, '0')}/${ano}`,
-              historico:
-                `Comissão ${c.tipo} ${String(mes).padStart(2, '0')}/${ano} — ${c.representante?.nome ?? ''}`.trim(),
+              historico,
               idCategoria,
             });
             r.atualizadas += 1;
@@ -146,9 +158,10 @@ export class ComissaoErpService {
           dataVencimento: vencimento,
           dataCompetencia: competencia,
           numeroDocumento: `COMISSAO ${String(mes).padStart(2, '0')}/${ano}`,
-          historico:
-            `Comissão ${c.tipo} ${String(mes).padStart(2, '0')}/${ano} — ${c.representante?.nome ?? ''}`.trim(),
+          historico,
           idCategoria,
+          formaPagamento: FORMA_PAGAMENTO_PIX,
+          diaVencimento: DIA_VENCIMENTO,
         });
         await this.prisma.comissao.update({
           where: { id: c.id },
@@ -328,6 +341,45 @@ export class ComissaoErpService {
    * Vencimento: dia 05 do mês SEGUINTE ao da competência. Regra fixa do Léo —
    * "nota faturada em qualquer dia do mês N vence dia 05 do mês N+1".
    */
+  /**
+   * "SB370658 / PED-0001 / ERP 41; …" — os pedidos que compõem a comissão.
+   *
+   * Vem das linhas por pedido (`PedidoComissao`) da pessoa no mês. GERENTE não
+   * tem linha (comissiona sobre os reps dele) e fica sem lista.
+   */
+  private async pedidosDaComissao(
+    empresaId: string,
+    c: { tipo: string; representante: { id: string } | null },
+    mes: number,
+    ano: number,
+  ): Promise<string> {
+    if (!c.representante || c.tipo === 'GERENTE') return '';
+    const OFFSET_BRT_H = 3;
+    const inicio = new Date(Date.UTC(ano, mes - 1, 1, OFFSET_BRT_H));
+    const fim = new Date(Date.UTC(ano, mes, 1, OFFSET_BRT_H));
+    const MAX = 15;
+    const linhas = await this.prisma.pedidoComissao.findMany({
+      where: {
+        empresaId,
+        usuarioId: c.representante.id,
+        tipo: c.tipo as never,
+        pedido: { enviadoErpEm: { gte: inicio, lt: fim } },
+      },
+      select: { pedido: { select: { numero: true, numeroSite: true, numeroErp: true } } },
+      orderBy: { criadoEm: 'asc' },
+      take: MAX + 1,
+    });
+    const nomes = linhas
+      .slice(0, MAX)
+      .map(({ pedido: p }) =>
+        [p.numeroSite, p.numero, p.numeroErp ? `ERP ${p.numeroErp}` : '']
+          .filter(Boolean)
+          .join(' / '),
+      );
+    if (linhas.length > MAX) nomes.push(`+${linhas.length - MAX}`);
+    return nomes.join('; ');
+  }
+
   private vencimentoDia5(mes: number, ano: number): string {
     const proximoMes = mes === 12 ? 1 : mes + 1;
     const anoDoVencimento = mes === 12 ? ano + 1 : ano;

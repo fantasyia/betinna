@@ -14,6 +14,7 @@ function build(
     originacao?: Record<string, unknown> | null;
     config?: Record<string, unknown> | null;
     pedidos?: Array<Record<string, unknown>>;
+    linhas?: Array<Record<string, unknown>>;
   } = {},
 ) {
   const prisma = {
@@ -29,6 +30,7 @@ function build(
       findUnique: vi.fn().mockResolvedValue({ config: opts.config ?? {} }),
     },
     pedido: { groupBy: vi.fn().mockResolvedValue(opts.pedidos ?? []) },
+    pedidoComissao: { findMany: vi.fn().mockResolvedValue(opts.linhas ?? []) },
     usuario: { findUnique: vi.fn().mockResolvedValue({ contatoErpId: '999' }) },
   };
   const contas = {
@@ -66,6 +68,24 @@ describe('folha de comissões no financeiro do ERP', () => {
     expect(lancamento.dataCompetencia).toBe('2026-07');
     expect(lancamento.valor).toBe(5000);
     expect(lancamento.idContato).toBe(894881870);
+  });
+
+  it('a conta nasce por Pix, vence dia 5 e o histórico diz de QUAIS pedidos é', async () => {
+    // Sem isto a conta entrava "forma não definida", "dia do vencimento 0" e um
+    // histórico que não deixava achar o pedido a partir do financeiro.
+    const { svc, contas } = build({
+      comissoes: [{ ...COMISSAO_REP, tipo: 'SITE' }],
+      linhas: [{ pedido: { numero: 'PED-0001', numeroSite: 'SB370658', numeroErp: '41' } }],
+    });
+
+    await svc.provisionar('emp-1', 9, 2026);
+
+    const l = contas.criarContaPagar.mock.calls[0][1];
+    expect(l.formaPagamento).toBe(15);
+    expect(l.diaVencimento).toBe(5);
+    expect(l.historico).toBe(
+      'Comissão SITE 09/2026 — Marcelo Harada · pedidos: SB370658 / PED-0001 / ERP 41',
+    );
   });
 
   it('folha reprocessada REESCREVE a conta que já existe no ERP (valor novo)', async () => {
