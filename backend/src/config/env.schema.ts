@@ -153,6 +153,21 @@ export const envSchema = z
     TINY_CLIENT_SECRET: z.string().optional().default(''),
     TINY_REDIRECT_URI: z.string().optional().default(''),
     /**
+     * Token da API **v2** (`https://api.tiny.com.br/api2/...`) — outro mundo do
+     * OAuth da v3 acima: é um token fixo por conta, gerado no painel do Tiny, e
+     * vai como parâmetro `token` no corpo de cada chamada.
+     *
+     * Existe por um motivo só: **CONTRATO não existe na v3**. Sondado contra a
+     * API real em 05/09 — `/contratos`, `/contrato`, `/recorrencias` devolvem
+     * 404 com o mesmo token que lê `/contas-receber` em 200, e a palavra
+     * "contrato" não aparece nas 127 rotas do spec. Na v2 existem
+     * `contratos.pesquisa.php`, `contrato.obter.php`, `contrato.incluir.php` e
+     * `contrato.alterar.php` (não existe excluir).
+     *
+     * Vazio = integração de contrato desligada; nada mais depende dela.
+     */
+    TINY_V2_TOKEN: z.string().optional().default(''),
+    /**
      * Segredo que vai NO CAMINHO da URL do webhook, não em header.
      *
      * O Tiny NÃO assina os webhooks — não há HMAC nem header de autenticação
