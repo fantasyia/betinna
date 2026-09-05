@@ -149,6 +149,10 @@ export class TinyPedidoPushService {
     });
     const erpCfg = ((empresa?.config as Record<string, unknown> | null)?.erp ?? {}) as {
       ecommerceId?: number;
+      /** Forma de envio padrão (`/formas-envio`, ex.: "JeT via Melhor Envio"). */
+      formaEnvioId?: number;
+      /** Forma de frete dentro dela (ex.: "Standard"). */
+      formaFreteId?: number;
     };
 
     // Parcelas: é o que faz o Tiny gerar (e estornar) as contas a receber
@@ -190,6 +194,18 @@ export class TinyPedidoPushService {
       // cabeçalho e na lista do painel. O de e-commerce só aparece na busca —
       // quem abre o pedido 40 lá precisa ver "SB239379" (ou "PED-0001") na cara.
       numeroOrdemCompra: pedido.numeroSite ?? pedido.numero,
+      // Transportadora padrão da empresa. Sem ela o pedido nasce "Forma de
+      // envio: Não definida" e não vai pra expedição. Frete por conta do
+      // REMETENTE: o cliente do site não paga frete (o custo é da Somatec).
+      ...(erpCfg.formaEnvioId
+        ? {
+            transportador: {
+              formaEnvioId: Number(erpCfg.formaEnvioId),
+              ...(erpCfg.formaFreteId ? { formaFreteId: Number(erpCfg.formaFreteId) } : {}),
+              fretePorConta: 'R' as const,
+            },
+          }
+        : {}),
       // Só as PARCELAS. Forma/meio de pagamento ficam de fora de propósito: no
       // Tiny a forma de recebimento precisa de um "meio" (conta/gateway) ligado
       // a ela, e sem isso o pedido inteiro volta 400 ("Meio de pagamento não
@@ -223,6 +239,20 @@ export class TinyPedidoPushService {
       );
       const { pagamento: _semUso, ...semPagamento } = corpo;
       r = await this.pedidos.criar(pedido.empresaId, semPagamento);
+    }
+
+    // Volumes: 1 por unidade vendida. O POST não tem o campo; sem volume a
+    // expedição não cota frete nem imprime etiqueta. Best-effort: o pedido já
+    // existe, e o volume dá pra ajustar no painel.
+    const volumes = pedido.itens.reduce((s, i) => s + Number(i.quantidade), 0);
+    if (volumes > 0) {
+      await this.pedidos
+        .informarVolumes(pedido.empresaId, r.id, { volumes })
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `[erp] ${pedido.numero}: volumes não informados (${err instanceof Error ? err.message : String(err)})`,
+          ),
+        );
     }
 
     const numeroErp = String(r.numeroPedido ?? r.id);

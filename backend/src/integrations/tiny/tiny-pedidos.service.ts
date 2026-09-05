@@ -31,6 +31,17 @@ export interface PedidoParaTiny {
    * nota sai — e ESTORNAR junto quando a nota/venda é cancelada. Sem parcelas
    * a nota nasce sem financeiro e não há como lançar depois.
    */
+  /**
+   * Transportadora/forma de envio (cadastro do tenant, `/formas-envio`). Sem
+   * isto o pedido nasce "Forma de envio: Não definida" e a separação não
+   * consegue mandar pra expedição — a etiqueta depende disto.
+   */
+  transportador?: {
+    formaEnvioId: number;
+    formaFreteId?: number;
+    /** R = remetente (frete grátis pro cliente), D = destinatário. */
+    fretePorConta: 'R' | 'D' | 'T' | 'S';
+  };
   pagamento?: {
     /** Id da forma no cadastro do tenant (`/formas-recebimento`). */
     formaRecebimentoId?: number;
@@ -190,6 +201,17 @@ export class TinyPedidosService {
       ...(pedido.vendedorId ? { vendedor: { id: pedido.vendedorId } } : {}),
       ...(pedido.numeroOrdemCompra ? { numeroOrdemCompra: pedido.numeroOrdemCompra } : {}),
       ...(pedido.data ? { data: pedido.data } : {}),
+      ...(pedido.transportador
+        ? {
+            transportador: {
+              formaEnvio: { id: pedido.transportador.formaEnvioId },
+              ...(pedido.transportador.formaFreteId
+                ? { formaFrete: { id: pedido.transportador.formaFreteId } }
+                : {}),
+              fretePorConta: pedido.transportador.fretePorConta,
+            },
+          }
+        : {}),
       ...(pedido.pagamento
         ? {
             pagamento: {
@@ -266,6 +288,21 @@ export class TinyPedidosService {
   /** Consulta um pedido — usado pelo webhook, que nunca acredita no payload. */
   obter(empresaId: string, idPedido: number): Promise<PedidoTinyDetalhe> {
     return this.client.get<PedidoTinyDetalhe>(empresaId, `/pedidos/${idPedido}`);
+  }
+
+  /**
+   * Volumes (e peso) do pedido. O POST de pedido não tem esse campo — só o
+   * `despacho` aceita — e sem volume a expedição não cota nem gera etiqueta.
+   */
+  async informarVolumes(
+    empresaId: string,
+    idPedido: number,
+    dados: { volumes: number; pesoBruto?: number },
+  ): Promise<void> {
+    await this.client.put(empresaId, `/pedidos/${idPedido}/despacho`, {
+      volumes: dados.volumes,
+      ...(dados.pesoBruto ? { pesoBruto: dados.pesoBruto } : {}),
+    });
   }
 
   /**
