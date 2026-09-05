@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
+import { TinyModule } from '@integrations/tiny/tiny.module';
 import { ContratosController } from './contratos.controller';
 import { ContratosService } from './contratos.service';
 import { ContratoComodatoService } from './contrato-comodato.service';
@@ -7,7 +8,10 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
 
 /** Leitura dos contratos de locação — quem os cria é o aceite da proposta. */
 @Module({
-  imports: [ComissoesModule],
+  // TinyModule explícito: o serviço de mensalidade injeta TinyContasService, e
+  // módulo importado não reexporta o que ELE importa — o ComissoesModule usar o
+  // Tiny não torna o Tiny visível aqui.
+  imports: [ComissoesModule, TinyModule],
   controllers: [ContratosController],
   providers: [ContratosService, ContratoComodatoService, ContratoMensalidadeSyncService],
   exports: [ContratosService, ContratoComodatoService, ContratoMensalidadeSyncService],
