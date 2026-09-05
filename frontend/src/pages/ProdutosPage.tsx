@@ -56,6 +56,9 @@ export default function ProdutosPage() {
   const [marca, setMarca] = useState('');
   const [ativo, setAtivo] = useState('');
   const [semEstoque, setSemEstoque] = useState('');
+  // Locação x venda: o catálogo tem os dois, e os Master Block base são as DUAS
+  // coisas — por isso cada opção filtra "dá pra oferecer assim", não "é disso".
+  const [modalidade, setModalidade] = useState('');
   // Volta pra página 1 quando a busca (já debounced) muda.
   useEffect(() => {
     setPage(1);
@@ -69,8 +72,9 @@ export default function ProdutosPage() {
     if (marca) qs.set('marca', marca);
     if (ativo) qs.set('ativo', ativo);
     if (semEstoque) qs.set('semEstoque', semEstoque);
+    if (modalidade) qs.set('modalidade', modalidade);
     return `/produtos?${qs.toString()}`;
-  }, [page, buscaDebounced, linha, categoria, marca, ativo, semEstoque]);
+  }, [page, buscaDebounced, linha, categoria, marca, ativo, semEstoque, modalidade]);
 
   const toast = useToast();
   const role = useRole();
@@ -79,7 +83,12 @@ export default function ProdutosPage() {
   // REP loca, não vende: a coluna de venda (e o custo dentro dela) não é dele.
   const podeVerVenda = role !== 'REP';
   const [sincronizandoErp, setSincronizandoErp] = useState(false);
-  const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Produto>>(listPath);
+  const {
+    data: pageResp,
+    loading,
+    error,
+    refetch,
+  } = useApiQuery<PaginatedResponse<Produto>>(listPath);
   const { data: facets } = useApiQuery<Facets>('/produtos/facets');
   // O catálogo do próprio usuário — serve pra marcar aqui o que já está lá e
   // não deixar ninguém "adicionar" o que já tem.
@@ -97,8 +106,7 @@ export default function ProdutosPage() {
 
   const daPagina = pageResp?.data ?? [];
   const selecionaveis = daPagina.filter((p) => !jaNoCatalogo.has(p.id));
-  const paginaToda =
-    selecionaveis.length > 0 && selecionaveis.every((p) => selecionados.has(p.id));
+  const paginaToda = selecionaveis.length > 0 && selecionaveis.every((p) => selecionados.has(p.id));
 
   function alternarProduto(id: string) {
     setSelecionados((atual) => {
@@ -246,9 +254,7 @@ export default function ProdutosPage() {
       header: 'Locação / mês',
       render: (p) => (
         <div>
-          <strong>
-            {p.precoLocacaoMensal != null ? fmtBRL(p.precoLocacaoMensal) : '—'}
-          </strong>
+          <strong>{p.precoLocacaoMensal != null ? fmtBRL(p.precoLocacaoMensal) : '—'}</strong>
           {p.precoLocacaoMensal == null && (
             <div className="text-[11px] text-muted">não cadastrado no ERP</div>
           )}
@@ -270,19 +276,19 @@ export default function ProdutosPage() {
             </span>
           </span>
         ) : (
-        <span
-          className="font-semibold"
-          style={{
-            color:
-              p.estoque === 0
-                ? 'var(--danger)'
-                : p.estoque < 10
-                ? 'var(--warning)'
-                : 'var(--text)',
-          }}
-        >
-          {p.estoque} {p.unidade ?? 'un'}
-        </span>
+          <span
+            className="font-semibold"
+            style={{
+              color:
+                p.estoque === 0
+                  ? 'var(--danger)'
+                  : p.estoque < 10
+                    ? 'var(--warning)'
+                    : 'var(--text)',
+            }}
+          >
+            {p.estoque} {p.unidade ?? 'un'}
+          </span>
         ),
     },
     {
@@ -396,6 +402,18 @@ export default function ProdutosPage() {
             ))}
           </Select>
           <Select
+            data-testid="filter-modalidade"
+            value={modalidade}
+            onChange={(e) => {
+              setModalidade(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Locação + venda</option>
+            <option value="locacao">Só o que é locado</option>
+            <option value="venda">Só o que é vendido</option>
+          </Select>
+          <Select
             data-testid="filter-ativo"
             value={ativo}
             onChange={(e) => {
@@ -442,9 +460,7 @@ export default function ProdutosPage() {
                 className="inline-flex items-center gap-1.5 rounded-md border-none bg-primary px-4 py-2 text-sm font-semibold text-white cursor-pointer disabled:opacity-60"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                {adicionando
-                  ? 'Adicionando…'
-                  : `Adicionar ${selecionados.size} ao meu catálogo`}
+                {adicionando ? 'Adicionando…' : `Adicionar ${selecionados.size} ao meu catálogo`}
               </button>
               <button
                 type="button"
@@ -472,7 +488,6 @@ export default function ProdutosPage() {
           )}
         </StateView>
       </div>
-
     </PageLayout>
   );
 }

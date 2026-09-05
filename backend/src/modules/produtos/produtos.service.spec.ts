@@ -171,6 +171,47 @@ describe('ProdutosService', () => {
       expect(conds).toEqual(expect.arrayContaining([{ precoTabela: { gte: 10 } }]));
       expect(conds).toEqual(expect.arrayContaining([{ precoTabela: { lte: 100 } }]));
     });
+
+    // Modalidade: locação e venda SE SOBREPÕEM de propósito. No catálogo real da
+    // Somatec são 24 produtos só de locação (variantes Data Sense / End Point),
+    // 12 que são as duas coisas (Master Block base) e 2 sem locação. Um filtro
+    // "ou um ou outro" mentiria justamente nos 12 que o rep mais oferece.
+    it('modalidade=locacao pega quem TEM mensalidade', async () => {
+      prisma.produto.count.mockResolvedValue(0);
+      prisma.produto.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), { ...baseParams, modalidade: 'locacao' });
+
+      const conds = prisma.produto.findMany.mock.calls[0][0].where.AND as Array<
+        Record<string, unknown>
+      >;
+      expect(conds).toEqual(expect.arrayContaining([{ precoLocacaoMensal: { not: null } }]));
+    });
+
+    it('modalidade=venda pega quem TEM preço de venda (0 = não se vende avulso)', async () => {
+      prisma.produto.count.mockResolvedValue(0);
+      prisma.produto.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), { ...baseParams, modalidade: 'venda' });
+
+      const conds = prisma.produto.findMany.mock.calls[0][0].where.AND as Array<
+        Record<string, unknown>
+      >;
+      expect(conds).toEqual(expect.arrayContaining([{ precoTabela: { gt: 0 } }]));
+    });
+
+    it('sem modalidade, nao filtra por nenhuma das duas', async () => {
+      prisma.produto.count.mockResolvedValue(0);
+      prisma.produto.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), { ...baseParams });
+
+      const conds = prisma.produto.findMany.mock.calls[0][0].where.AND as Array<
+        Record<string, unknown>
+      >;
+      expect(JSON.stringify(conds)).not.toContain('precoLocacaoMensal');
+      expect(JSON.stringify(conds)).not.toContain('"gt":0');
+    });
   });
 
   // -------------------------------------------------------------------------

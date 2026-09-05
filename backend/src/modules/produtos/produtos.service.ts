@@ -64,6 +64,11 @@ export class ProdutosService {
     if (params.marca) conditions.push({ marca: params.marca });
     if (params.ativo !== undefined) conditions.push({ ativo: params.ativo });
     if (params.semEstoque) conditions.push({ estoque: 0 });
+    // Modalidade: ver o docblock no DTO — locação e venda se sobrepõem de
+    // propósito (o Master Block base é as duas coisas), então cada opção
+    // pergunta "dá pra oferecer assim?", e não "é deste tipo?".
+    if (params.modalidade === 'locacao') conditions.push({ precoLocacaoMensal: { not: null } });
+    if (params.modalidade === 'venda') conditions.push({ precoTabela: { gt: 0 } });
     if (params.precoMin !== undefined) conditions.push({ precoTabela: { gte: params.precoMin } });
     if (params.precoMax !== undefined) conditions.push({ precoTabela: { lte: params.precoMax } });
 

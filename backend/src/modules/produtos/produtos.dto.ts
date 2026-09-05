@@ -40,6 +40,15 @@ export const listProdutosSchema = z.object({
   marca: z.string().optional(),
   ativo: boolQuery.optional(),
   semEstoque: boolQuery.optional(),
+  /**
+   * Modalidade comercial. NÃO são mutuamente exclusivas — o catálogo tem os três
+   * casos: só locação (as variantes Data Sense / End Point), só venda, e os
+   * Master Block base, que são as DUAS coisas. Por isso o filtro é "o que dá pra
+   * oferecer assim", não "o que este produto é":
+   *  - `locacao` → tem mensalidade definida (`precoLocacaoMensal`)
+   *  - `venda`   → tem preço de venda (`precoTabela > 0`; 0 = não se vende avulso)
+   */
+  modalidade: z.enum(['locacao', 'venda']).optional(),
   precoMin: z.coerce.number().min(0).optional(),
   precoMax: z.coerce.number().min(0).optional(),
 });
