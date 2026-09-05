@@ -81,6 +81,13 @@ function instrucaoQuebra(max: number): string {
   ].join('\n');
 }
 
+/**
+ * A OpenAI respondeu, mas sem conteúdo. Classe própria porque quem chama
+ * precisa distinguir: pro cliente é falha (nada de string de sistema no
+ * WhatsApp), pro diagnóstico da chave é sucesso (a chave vale).
+ */
+export class RespostaVaziaError extends IntegrationException {}
+
 @Injectable()
 export class MullerBotService {
   private readonly logger = new Logger(MullerBotService.name);
@@ -643,7 +650,16 @@ ${REGRAS_CATALOGO}`;
       };
     }
     try {
-      await this.chamarOpenAI({ apiKey: chave }, modelo, 'Responda só: ok', 'ping', 5, []);
+      // Orçamento de 5 tokens: o ping não quer a resposta, quer saber se a
+      // CHAVE vale. Em modelo de raciocínio esses 5 tokens nunca sobram pro
+      // texto, então `RespostaVaziaError` aqui é sucesso — a API respondeu
+      // sem erro de autenticação, que é a única coisa que este teste afere.
+      await this.chamarOpenAI({ apiKey: chave }, modelo, 'Responda só: ok', 'ping', 5, []).catch(
+        (e: unknown) => {
+          if (e instanceof RespostaVaziaError) return;
+          throw e;
+        },
+      );
       return {
         envKeyPresente: !!envKey,
         empresaKeyPresente,
@@ -960,7 +976,7 @@ ${REGRAS_CATALOGO}`;
     const usaMaxCompletion = /^(o\d|gpt-[5-9])/i.test(modelo);
     const enviar = (maxCompletion: boolean, comTemperatura: boolean) =>
       this.http.post<{
-        choices: Array<{ message?: { content?: string } }>;
+        choices: Array<{ message?: { content?: string }; finish_reason?: string }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       }>('https://api.openai.com/v1/chat/completions', {
         body: {
@@ -1009,9 +1025,31 @@ ${REGRAS_CATALOGO}`;
         }
         throw e;
       });
-      const texto = (res.data.choices?.[0]?.message?.content ?? '').trim();
+      const choice = res.data.choices?.[0];
+      const texto = (choice?.message?.content ?? '').trim();
+      if (!texto) {
+        // Isto aqui É o texto que sai pro cliente. O placeholder que havia
+        // ('(resposta vazia)') foi escrito pra log e acabou sendo entregue no
+        // WhatsApp — o cliente lia uma string de sistema e concluía que a
+        // empresa estava quebrada. Vazio agora é ERRO, e cai na saída `erro`
+        // dos nós de IA (texto fixo pro cliente + tarefa 🚨 pro time).
+        //
+        // `finish_reason` é logado porque sem ele cada ocorrência vira uma
+        // investigação do zero: em modelo de raciocínio os tokens de reasoning
+        // gastam o mesmo orçamento, e `length` aqui significa que o teto de
+        // saída acabou antes de sobrar espaço pra escrever a resposta.
+        this.logger.error(
+          `[openai] conteúdo vazio (modelo=${modelo}, ` +
+            `finish_reason=${choice?.finish_reason ?? 'desconhecido'}, ` +
+            `tokensOut=${res.data.usage?.completion_tokens ?? 0}, ` +
+            `maxOutputTokens=${maxOutputTokens})`,
+        );
+        throw new RespostaVaziaError(
+          `OpenAI devolveu resposta vazia (finish_reason=${choice?.finish_reason ?? 'desconhecido'})`,
+        );
+      }
       return {
-        texto: texto || '(resposta vazia)',
+        texto,
         tokensIn: res.data.usage?.prompt_tokens,
         tokensOut: res.data.usage?.completion_tokens,
       };

@@ -555,3 +555,76 @@ describe('MullerBotService.capHistorico — cap do histórico por orçamento de 
     expect(cap(svc, hist, 10_000)).toEqual(hist);
   });
 });
+
+describe('MullerBotService — resposta vazia da OpenAI nunca vira mensagem', () => {
+  /** Resposta 200 com `content` vazio — o caso real de 05/09 em produção. */
+  const httpVazio = (finishReason: string | null = 'length') => ({
+    post: vi.fn(async () => ({
+      status: 200,
+      ok: true,
+      headers: {},
+      data: {
+        choices: [
+          { message: { content: '' }, ...(finishReason ? { finish_reason: finishReason } : {}) },
+        ],
+        usage: { prompt_tokens: 9000, completion_tokens: 1024 },
+      },
+      attempts: 1,
+      durationMs: 5,
+    })),
+  });
+
+  const build = (http: { post: unknown }, envOver: Record<string, unknown> = {}) =>
+    new MullerBotService(
+      http as never,
+      makeEnv(envOver) as never,
+      makeUserIntegracoes() as never,
+      makeProdutoSearch() as never,
+      makeCache() as never,
+      makePersona() as never,
+      makeIntegracoes(async () => ({ credenciais: { apiKey: 'sk-empresa' } })) as never,
+      makeCusto() as never,
+      makeConhecimento() as never,
+    );
+
+  it('não entrega "(resposta vazia)" — lança, pra cair na saída de erro do nó', async () => {
+    // O bug: o placeholder era o retorno da função, e o retorno da função é o
+    // texto que sai no WhatsApp. O cliente recebeu literalmente "(resposta
+    // vazia)" e respondeu "como assim? nao entendi sua mensagem".
+    const svc = build(httpVazio());
+
+    await expect(svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 })).rejects.toThrow(
+      /resposta vazia/i,
+    );
+  });
+
+  it('o erro carrega o finish_reason — sem ele, a próxima vez é investigação do zero', async () => {
+    // `length` num modelo de raciocínio significa que os tokens de reasoning
+    // comeram o orçamento de saída inteiro e não sobrou nada pra escrever.
+    const svc = build(httpVazio('length'));
+
+    await expect(svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 })).rejects.toThrow(
+      /finish_reason=length/,
+    );
+  });
+
+  it('conteúdo vazio é erro mesmo quando a OpenAI não diz o motivo', async () => {
+    const svc = build(httpVazio(null));
+
+    await expect(svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 })).rejects.toThrow(
+      /finish_reason=desconhecido/,
+    );
+  });
+
+  it('diagnóstico da chave: ping vazio é SUCESSO — ele afere a chave, não a resposta', async () => {
+    // O ping usa 5 tokens de orçamento; em modelo de raciocínio isso nunca
+    // sobra pro texto. Sem esta distinção, uma chave boa apareceria quebrada
+    // na tela Persona Bot.
+    const svc = build(httpVazio(), { OPENAI_API_KEY: 'sk-do-servidor' });
+
+    const r = await svc.diagnosticarBot('emp-1');
+
+    expect(r.teste.ok).toBe(true);
+    expect(r.teste.erro).toBeUndefined();
+  });
+});

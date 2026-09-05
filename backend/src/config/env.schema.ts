@@ -99,8 +99,16 @@ export const envSchema = z
      * ~10-20 msgs. Modelos atuais (gpt-4o-mini = 128k contexto) comportam folgado.
      */
     MULLERBOT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(32000),
-    /** Limite de tokens da resposta. */
-    MULLERBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+    /**
+     * Limite de tokens da resposta.
+     *
+     * 3000, não 1024: em modelo de raciocínio (gpt-5.x) os tokens de reasoning
+     * saem deste mesmo orçamento, então 1024 podia acabar durante o raciocínio
+     * e devolver `content` vazio — que era entregue ao cliente como texto.
+     * Não encarece o uso médio: só se paga o que é gerado, e as mensagens do
+     * bot são curtas por desenho (balões de WhatsApp).
+     */
+    MULLERBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(3000),
     /**
      * Testes E2E / dev: quando `true`, o MullerBot devolve uma resposta fake
      * (de um conjunto de templates) em vez de chamar a OpenAI. Economiza custo e
