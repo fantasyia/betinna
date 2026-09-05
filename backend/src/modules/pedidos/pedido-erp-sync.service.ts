@@ -56,8 +56,14 @@ const STATUS_POR_SITUACAO: Record<number, string> = {
 const SITUACAO_FATURADA = 1;
 /** Situações em que a nota já existe (faturada, preparando, pronto, enviada, entregue). */
 const SITUACOES_POS_NF = new Set([1, 4, 7, 5, 6]);
-/** Expedição concluída: enviada / entregue. É quando a comissão nasce. */
-const SITUACOES_EXPEDIDO = new Set([5, 6]);
+/**
+ * Expedição CONCLUÍDA — é quando a comissão nasce.
+ *
+ * Inclui 7 ("pronto para envio"): é o estado em que o Tiny deixa o pedido
+ * assim que a expedição conclui e a etiqueta é comprada. Sem ele a comissão
+ * só saía quando alguém marcasse "enviado" na mão, que pode nunca acontecer.
+ */
+const SITUACOES_EXPEDIDO = new Set([5, 6, 7]);
 const SITUACAO_NAO_ENTREGUE = 9;
 const MARCA_NAO_ENTREGUE = '[ERP] entrega não realizada';
 
