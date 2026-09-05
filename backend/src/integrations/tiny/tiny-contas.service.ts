@@ -122,7 +122,11 @@ export class TinyContasService {
       ...(l.idCategoria ? { categoria: { id: l.idCategoria } } : {}),
       // Sempre explícito: única salvo quem pediu recorrência (locação).
       ocorrencia: l.ocorrencia ?? 'U',
-      ...(l.formaPagamento !== undefined ? { formaPagamento: l.formaPagamento } : {}),
+      // A pagar chama de `formaPagamento`; a receber, de `formaRecebimento` — o
+      // mesmo enum. Vai nos dois nomes: cada endpoint ignora o que não é dele.
+      ...(l.formaPagamento !== undefined
+        ? { formaPagamento: l.formaPagamento, formaRecebimento: l.formaPagamento }
+        : {}),
       // `diaVencimento` é da recorrência. Numa conta única ele não existe — e
       // mandar (ou deixar o Tiny inventar) é o que fazia a conta virar recorrente.
       ...(l.ocorrencia && l.ocorrencia !== 'U'
