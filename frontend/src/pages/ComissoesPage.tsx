@@ -48,6 +48,29 @@ interface Resumo {
   historico: Comissao[];
 }
 
+type FaseComissao =
+  'AGUARDANDO_ENVIO' | 'AGUARDANDO_MENSALIDADE' | 'A_PAGAR' | 'PAGA' | 'CANCELADA';
+
+/** `GET /comissoes/meu-extrato` — cada comissão e EM QUE PÉ ela está. */
+interface LinhaComFase {
+  id: string;
+  tipo: 'VENDA' | 'LOCACAO';
+  referencia: string;
+  cliente: string;
+  competencia: string;
+  base: number;
+  percentual: number;
+  valor: number;
+  fase: FaseComissao;
+  faseRotulo: string;
+  previsaoPagamentoEm: string;
+  pagoEm: string | null;
+}
+interface Extrato {
+  totais: Record<FaseComissao, number>;
+  linhas: LinhaComFase[];
+}
+
 /** `GET /comissoes/minha-previsao` — o "quanto vou receber, e quando". */
 interface Previsao {
   mes: number;
@@ -119,6 +142,7 @@ export default function ComissoesPage() {
   return (
     <PageLayout title="Comissões">
       <VendasTabs />
+      {canViewOwn && <ExtratoPorFase />}
       {canViewOwn && <ResumoPessoal />}
       {canViewAll && <ListaAdmin />}
       {!canViewOwn && !canViewAll && (
@@ -127,6 +151,142 @@ export default function ComissoesPage() {
         </div>
       )}
     </PageLayout>
+  );
+}
+
+// ─── Extrato por fase (REP) ────────────────────────────────────────────
+
+/** Cor por fase: dinheiro que já caiu é verde; o que caiu fora, apagado. */
+const COR_DA_FASE: Record<FaseComissao, string> = {
+  PAGA: 'var(--success)',
+  A_PAGAR: 'var(--info)',
+  AGUARDANDO_ENVIO: 'var(--warning)',
+  AGUARDANDO_MENSALIDADE: 'var(--warning)',
+  CANCELADA: 'var(--muted)',
+};
+
+/**
+ * Em que pé está cada comissão — a pergunta que o rep faz e que a tela antiga
+ * não respondia: ela mostrava só a folha fechada, então quem vendeu no dia 3
+ * não via nada e o número aparecia do nada no fechamento.
+ *
+ * Venda e locação na mesma lista de propósito: pro rep é tudo "o que eu tenho
+ * a receber". O que muda é a fase — locação espera a MENSALIDADE do mês entrar,
+ * venda espera a expedição sair.
+ */
+function ExtratoPorFase() {
+  const { data, loading, error, refetch } = useApiQuery<Extrato>('/comissoes/meu-extrato');
+  const [fase, setFase] = useState<FaseComissao | ''>('');
+
+  const linhas = useMemo(
+    () => (data?.linhas ?? []).filter((l) => !fase || l.fase === fase),
+    [data, fase],
+  );
+
+  const colunas: Column<LinhaComFase>[] = [
+    {
+      key: 'ref',
+      header: 'Origem',
+      render: (l) => (
+        <div>
+          <div className="font-semibold">{l.referencia}</div>
+          <div className="text-[11px] text-muted">
+            {l.tipo === 'LOCACAO' ? 'Locação · mensal' : 'Venda'} · {l.cliente}
+          </div>
+        </div>
+      ),
+    },
+    { key: 'comp', header: 'Competência', render: (l) => l.competencia },
+    {
+      key: 'base',
+      header: 'Base',
+      render: (l) => (
+        <span className="tabular">
+          {fmtBRL(l.base)}{' '}
+          <span className="text-[11px] text-muted">({formatPercent(l.percentual, 2)})</span>
+        </span>
+      ),
+    },
+    {
+      key: 'valor',
+      header: 'Comissão',
+      render: (l) => <strong className="tabular">{fmtBRL(l.valor)}</strong>,
+    },
+    {
+      key: 'fase',
+      header: 'Situação',
+      render: (l) => (
+        <span
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+          style={{ color: COR_DA_FASE[l.fase], background: 'var(--bg-alt)' }}
+          title={l.pagoEm ? `Pago em ${fmtData(l.pagoEm)}` : undefined}
+        >
+          {l.faseRotulo}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-4 mb-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+        <div>
+          <h2 className="text-[15px] font-bold">Minhas comissões</h2>
+          <p className="text-[12px] text-muted">
+            Venda paga uma vez; locação paga a cada mensalidade recebida.
+          </p>
+        </div>
+        <Select
+          data-testid="extrato-filtro-fase"
+          value={fase}
+          onChange={(e) => setFase(e.target.value as FaseComissao | '')}
+          className="w-[210px]"
+        >
+          <option value="">Todas as situações</option>
+          <option value="AGUARDANDO_ENVIO">Aguardando envio</option>
+          <option value="AGUARDANDO_MENSALIDADE">Aguardando mensalidade</option>
+          <option value="A_PAGAR">A pagar</option>
+          <option value="PAGA">Paga</option>
+          <option value="CANCELADA">Cancelada</option>
+        </Select>
+      </div>
+
+      <StateView
+        loading={loading}
+        error={error}
+        onRetry={refetch}
+        empty={!data || data.linhas.length === 0}
+        emptyMessage="Nenhuma comissão ainda. Assim que uma venda sua for expedida (ou uma mensalidade de locação entrar), ela aparece aqui."
+      >
+        <div className="grid gap-2 grid-cols-2 lg:grid-cols-4 mb-3">
+          <StatBox
+            label="A pagar"
+            value={fmtBRL(data?.totais.A_PAGAR ?? 0)}
+            hint="conta já criada no ERP"
+            color={COR_DA_FASE.A_PAGAR}
+          />
+          <StatBox
+            label="Aguardando envio"
+            value={fmtBRL(data?.totais.AGUARDANDO_ENVIO ?? 0)}
+            hint="expedição ainda não saiu"
+            color={COR_DA_FASE.AGUARDANDO_ENVIO}
+          />
+          <StatBox
+            label="Aguardando mensalidade"
+            value={fmtBRL(data?.totais.AGUARDANDO_MENSALIDADE ?? 0)}
+            hint="locação: o mês ainda não foi pago"
+            color={COR_DA_FASE.AGUARDANDO_MENSALIDADE}
+          />
+          <StatBox
+            label="Paga"
+            value={fmtBRL(data?.totais.PAGA ?? 0)}
+            hint="baixada pelo financeiro"
+            color={COR_DA_FASE.PAGA}
+          />
+        </div>
+        <Table data={linhas} columns={colunas} rowKey={(l) => l.id} />
+      </StateView>
+    </div>
   );
 }
 
