@@ -233,7 +233,7 @@ export default function CatalogoPage() {
           {podeEscolherTabela && (
             <Select
               data-testid="catalogo-tabela-precos"
-              aria-label="Tabela de preços do PDF"
+              aria-label="Tabela de preços (grade e PDF)"
               value={tabelaPrecos}
               onChange={(e) => setTabelaPrecos(e.target.value as TabelaDePrecos)}
               className="w-[168px]"
@@ -367,6 +367,7 @@ export default function CatalogoPage() {
                   key={item.produtoId}
                   item={item}
                   sobEncomenda={estoqueModo.sobEncomenda}
+                  tabela={podeEscolherTabela ? tabelaPrecos : 'locacao'}
                   onRemove={() => removeItem(item.produtoId)}
                 />
               ))}
@@ -442,10 +443,13 @@ function ProdutoCard({
   item,
   onRemove,
   sobEncomenda = false,
+  tabela = 'venda',
 }: {
   item: CatalogoItem;
   onRemove: () => void;
   sobEncomenda?: boolean;
+  /** Qual tabela o card exibe — o MESMO seletor que decide o PDF. */
+  tabela?: TabelaDePrecos;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   // O REP loca, não vende: o backend zera o preço de venda pra ele e manda a
@@ -453,7 +457,20 @@ function ProdutoCard({
   // mostra "—" em vez de cair pro valor de venda, que seria o número errado
   // na mão de quem negocia.
   const locacao = item.produto?.precoLocacaoMensal ?? null;
-  const venda = item.produto?.precoTabela ?? null;
+  // Zero não é preço. As 24 variantes Data Sense / End Point vêm com
+  // `precoTabela` 0 porque não se vendem avulsas — imprimir "R$ 0,00" afirma
+  // que o produto é de graça. Sem preço de venda é "—".
+  const vendaBruta = item.produto?.precoTabela ?? null;
+  const venda = vendaBruta != null && vendaBruta > 0 ? vendaBruta : null;
+  const linhas: Array<{ rotulo: string; valor: number | null }> =
+    tabela === 'ambos'
+      ? [
+          { rotulo: 'Preço (tabela)', valor: venda },
+          { rotulo: 'Locação / mês', valor: locacao },
+        ]
+      : tabela === 'locacao'
+        ? [{ rotulo: 'Locação / mês', valor: locacao }]
+        : [{ rotulo: 'Preço (tabela)', valor: venda }];
 
   return (
     <Card
@@ -505,12 +522,14 @@ function ProdutoCard({
 
       {/* Preço: mensalidade de locação (rep) ou preço de venda (gestão) */}
       <div className="px-2.5 py-2 border-t border-border bg-bg-alt">
-        <div className="text-[10px] uppercase tracking-wider text-muted">
-          {venda == null ? 'Locação / mês' : 'Preço (tabela)'}
-        </div>
-        <div className="text-[15px] font-bold text-text tabular tracking-tight">
-          {venda != null ? fmtBRL(venda) : locacao != null ? fmtBRL(locacao) : '—'}
-        </div>
+        {linhas.map((l) => (
+          <div key={l.rotulo}>
+            <div className="text-[10px] uppercase tracking-wider text-muted">{l.rotulo}</div>
+            <div className="text-[15px] font-bold text-text tabular tracking-tight">
+              {l.valor != null ? fmtBRL(l.valor) : '—'}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Delete confirm */}
