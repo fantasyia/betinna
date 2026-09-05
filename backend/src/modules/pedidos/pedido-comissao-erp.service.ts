@@ -16,11 +16,13 @@ export interface ResultadoProvisaoPedido {
 }
 
 /**
- * Conta a pagar de comissão POR PEDIDO — uma por beneficiário, quando a NF sai.
+ * Conta a pagar de comissão POR PEDIDO — uma por beneficiário, quando a
+ * EXPEDIÇÃO CONCLUI (pedido enviado/entregue no ERP).
  *
- * Decisão do Léo (05/09): a comissão não espera o fechamento do mês; cada
- * pedido faturado gera a sua conta a pagar no ERP, e o financeiro enxerga de
- * qual venda é cada centavo. O fechamento mensal continua existindo como
+ * Decisão do Léo (05/09): a comissão não espera o fechamento do mês, mas
+ * também não nasce antes de a venda sair — ninguém recebe pelo que ainda não
+ * foi entregue. Cada pedido expedido gera a sua conta a pagar no ERP, e o
+ * financeiro enxerga de qual venda é cada centavo. O fechamento mensal continua existindo como
  * FOLHA (o resumo por pessoa na tela), mas não provisiona mais REP/SITE — só
  * GERENTE, que não tem linha por pedido.
  *

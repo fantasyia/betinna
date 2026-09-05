@@ -54,6 +54,10 @@ const STATUS_POR_SITUACAO: Record<number, string> = {
 
 /** Situação do Tiny em que a NOTA FISCAL saiu. É o marco da instalação. */
 const SITUACAO_FATURADA = 1;
+/** Situações em que a nota já existe (faturada, preparando, pronto, enviada, entregue). */
+const SITUACOES_POS_NF = new Set([1, 4, 7, 5, 6]);
+/** Expedição concluída: enviada / entregue. É quando a comissão nasce. */
+const SITUACOES_EXPEDIDO = new Set([5, 6]);
 const SITUACAO_NAO_ENTREGUE = 9;
 const MARCA_NAO_ENTREGUE = '[ERP] entrega não realizada';
 
@@ -398,10 +402,16 @@ export class PedidoErpSyncService {
       });
       for (const c of ajuste.paraApagar)
         r.avisos.push(`Comissão zerada com conta no ERP — apagar: ${c}`);
-      // NF autorizada → conta a receber no ERP. Antes do atalho, e idempotente:
-      // a nota pode ter saído num dia em que o pedido não mudou de mais nada.
-      if (d.situacao === SITUACAO_FATURADA && d.idNotaFiscal) {
-        await this.lancarFinanceiro(empresaId, existente.id, d.idNotaFiscal, r);
+      // Financeiro, antes do atalho e idempotente (a nota/expedição podem ter
+      // saído num dia em que o pedido não mudou de mais nada):
+      //  - conta a receber: a partir da NF (qualquer situação pós-nota);
+      //  - comissão: só com a EXPEDIÇÃO CONCLUÍDA (enviado/entregue) — decisão
+      //    do Léo (05/09): ninguém recebe pelo que ainda não saiu.
+      if (d.idNotaFiscal) {
+        await this.lancarFinanceiro(empresaId, existente.id, d.idNotaFiscal, r, {
+          receber: SITUACOES_POS_NF.has(Number(d.situacao)),
+          comissao: SITUACOES_EXPEDIDO.has(Number(d.situacao)),
+        });
       }
       if (!mudou) return naoEntregue || adotouRep ? 'atualizado' : 'semMudanca';
 
@@ -564,8 +574,11 @@ export class PedidoErpSyncService {
       select: { id: true, numero: true },
     });
     await this.comissoes.recalcular(criado.id);
-    if (d.situacao === SITUACAO_FATURADA && d.idNotaFiscal) {
-      await this.lancarFinanceiro(empresaId, criado.id, d.idNotaFiscal, r);
+    if (d.idNotaFiscal) {
+      await this.lancarFinanceiro(empresaId, criado.id, d.idNotaFiscal, r, {
+        receber: SITUACOES_POS_NF.has(Number(d.situacao)),
+        comissao: SITUACOES_EXPEDIDO.has(Number(d.situacao)),
+      });
     }
     this.logger.log(`[erp] pedido ${criado.numero} importado do ERP (nº ${numeroErp})`);
     await this.tratarNaoEntregue(empresaId, d, {
@@ -850,7 +863,9 @@ export class PedidoErpSyncService {
     pedidoId: string,
     idNota: number,
     r: ResultadoSyncPedidos,
+    opcoes: { receber: boolean; comissao: boolean },
   ): Promise<void> {
+    if (!opcoes.receber && !opcoes.comissao) return;
     try {
       const nota = await this.tiny.obterNota(empresaId, idNota).catch(() => null);
       // Só nota que VALE gera conta: autorizada/emitida/registrada.
@@ -858,30 +873,35 @@ export class PedidoErpSyncService {
       if (![2, 6, 7, 8].includes(sit)) return;
       // Dois passos INDEPENDENTES: a conta a receber travar não pode segurar a
       // comissão (nem o contrário). Cada um conta o próprio erro.
-      try {
-        const res = await this.financeiro.lancarContasReceber(empresaId, pedidoId, nota);
-        if (res.efeito === 'semContato') {
-          r.avisos.push(
-            `Pedido ${pedidoId}: cliente sem contato no ERP — conta a receber não lançada`,
-          );
+      if (opcoes.receber) {
+        try {
+          const res = await this.financeiro.lancarContasReceber(empresaId, pedidoId, nota);
+          if (res.efeito === 'semContato') {
+            r.avisos.push(
+              `Pedido ${pedidoId}: cliente sem contato no ERP — conta a receber não lançada`,
+            );
+          }
+        } catch (err) {
+          r.erros += 1;
+          this.logger.warn(`[erp] conta a receber do pedido ${pedidoId} falhou: ${this.msg(err)}`);
         }
-      } catch (err) {
-        r.erros += 1;
-        this.logger.warn(`[erp] conta a receber do pedido ${pedidoId} falhou: ${this.msg(err)}`);
       }
-      // A comissão de cada pessoa vira conta a pagar no MESMO momento — por
-      // pedido, não no fim do mês (decisão do Léo, 05/09).
-      try {
-        const pv = await this.comissaoErp.provisionar(empresaId, pedidoId, nota, { criar: true });
-        for (const n of pv.semContato) {
-          r.avisos.push(`Pedido ${pedidoId}: ${n} sem contato no ERP — comissão não provisionada`);
+      // A comissão de cada pessoa vira conta a pagar POR PEDIDO, quando a
+      // expedição conclui (decisão do Léo, 05/09) — não no fim do mês.
+      if (opcoes.comissao)
+        try {
+          const pv = await this.comissaoErp.provisionar(empresaId, pedidoId, nota, { criar: true });
+          for (const n of pv.semContato) {
+            r.avisos.push(
+              `Pedido ${pedidoId}: ${n} sem contato no ERP — comissão não provisionada`,
+            );
+          }
+          for (const c of pv.paraApagar)
+            r.avisos.push(`Comissão zerada com conta no ERP — apagar: ${c}`);
+        } catch (err) {
+          r.erros += 1;
+          this.logger.warn(`[erp] comissão do pedido ${pedidoId} falhou: ${this.msg(err)}`);
         }
-        for (const c of pv.paraApagar)
-          r.avisos.push(`Comissão zerada com conta no ERP — apagar: ${c}`);
-      } catch (err) {
-        r.erros += 1;
-        this.logger.warn(`[erp] comissão do pedido ${pedidoId} falhou: ${this.msg(err)}`);
-      }
     } catch (err) {
       r.erros += 1;
       this.logger.warn(`[erp] financeiro do pedido ${pedidoId} falhou: ${this.msg(err)}`);
