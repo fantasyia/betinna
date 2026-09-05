@@ -10,6 +10,7 @@ const makePrismaMock = () => ({
     findFirst: vi.fn(),
     findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn(),
+    deleteMany: vi.fn(async () => ({ count: 0 })),
     upsert: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
@@ -369,6 +370,45 @@ describe('ComissoesService', () => {
         totalVendas: 50,
         totalComissao: 2.95,
         qtdPedidos: 2,
+      });
+    });
+
+    it('reprocessar remove da folha quem não tem mais venda (pedido cancelado)', async () => {
+      // Só o TESTE ainda tem linha; a do Harada (venda cancelada) tem que sair.
+      prisma.pedido.groupBy.mockResolvedValue([]);
+      prisma.usuario.findMany.mockResolvedValue([]);
+      prisma.pedidoComissao.groupBy.mockResolvedValue([
+        {
+          usuarioId: 'teste',
+          percentual: 7.25,
+          _sum: { base: new Prisma.Decimal('50'), valor: new Prisma.Decimal('3.63') },
+          _count: { _all: 1 },
+        },
+      ]);
+      prisma.pedidoComissao.findMany.mockResolvedValue([{ base: new Prisma.Decimal('50') }]);
+
+      await svc.fecharMes(fakeUser(), { mes: 9, ano: 2026, reprocessar: true });
+
+      expect(prisma.comissao.deleteMany).toHaveBeenCalledWith({
+        where: {
+          empresaId: 'emp-1',
+          mes: 9,
+          ano: 2026,
+          pago: false,
+          NOT: [{ representanteId: 'teste', tipo: 'SITE' }],
+        },
+      });
+    });
+
+    it('reprocessar um mês que ficou SEM venda zera a folha (menos o que já foi pago)', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([]);
+      prisma.pedidoComissao.groupBy.mockResolvedValue([]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 9, ano: 2026, reprocessar: true });
+
+      expect(out.site).toBe(0);
+      expect(prisma.comissao.deleteMany).toHaveBeenCalledWith({
+        where: { empresaId: 'emp-1', mes: 9, ano: 2026, pago: false },
       });
     });
 

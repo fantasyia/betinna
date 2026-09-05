@@ -217,6 +217,15 @@ export class ComissoesService {
       this.logger.warn(
         `Nenhum pedido comissionável encontrado para ${dto.mes}/${dto.ano} (empresa ${empresaId})`,
       );
+      // Reprocessar um mês que ficou SEM venda (cancelamentos) zera a folha: o
+      // que sobrou ali era de pedido que não existe mais. Paga não se mexe.
+      if (dto.reprocessar) {
+        const { count } = await this.prisma.comissao.deleteMany({
+          where: { empresaId, mes: dto.mes, ano: dto.ano, pago: false },
+        });
+        if (count > 0)
+          this.logger.log(`Folha ${dto.mes}/${dto.ano}: ${count} linha(s) sem venda removida(s)`);
+      }
       return {
         ok: true,
         mes: dto.mes,
@@ -548,6 +557,36 @@ export class ComissoesService {
 
     // Atômico: comissões de REP + GERENTE + SITE gravadas juntas (tudo-ou-nada).
     await this.prisma.$transaction([...repOps, ...gerenteOps, ...siteOps]);
+
+    // Amarração folha ↔ pedidos: quem não apareceu neste reprocessamento é
+    // porque a venda dele saiu (cancelou, trocou de dono). A linha não pode
+    // ficar dizendo um valor de pedido que não existe mais. Paga fica.
+    if (dto.reprocessar) {
+      const vivos = [
+        ...aggregated
+          .filter((r) => r.representanteId)
+          .map((r) => ({ representanteId: r.representanteId as string, tipo: 'REP' as const })),
+        ...Array.from(porPessoa.keys()).map((id) => ({
+          representanteId: id,
+          tipo: 'SITE' as const,
+        })),
+        ...Array.from(vendasPorGerente.keys()).map((id) => ({
+          representanteId: id,
+          tipo: 'GERENTE' as const,
+        })),
+      ];
+      const { count } = await this.prisma.comissao.deleteMany({
+        where: {
+          empresaId,
+          mes: dto.mes,
+          ano: dto.ano,
+          pago: false,
+          NOT: vivos,
+        },
+      });
+      if (count > 0)
+        this.logger.log(`Folha ${dto.mes}/${dto.ano}: ${count} linha(s) sem venda removida(s)`);
+    }
 
     addBreadcrumb('comissoes', 'fechamento-completo', {
       empresaId,
