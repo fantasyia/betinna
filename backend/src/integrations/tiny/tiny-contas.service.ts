@@ -117,6 +117,20 @@ export class TinyContasService {
     return r.itens ?? [];
   }
 
+  /**
+   * Marca uma conta a RECEBER como CANCELADA. Mesma limitação da conta a pagar:
+   * a API não apaga nem zera, e o estorno nem sempre remove o lançamento.
+   */
+  async marcarContaReceberCancelada(empresaId: string, id: number): Promise<void> {
+    const atuais = await this.client
+      .get<Array<{ descricao?: string }>>(empresaId, `/contas-receber/${id}/marcadores`)
+      .catch(() => [] as Array<{ descricao?: string }>);
+    if ((atuais ?? []).some((m) => (m.descricao ?? '').toUpperCase() === 'CANCELADA')) return;
+    await this.client.post(empresaId, `/contas-receber/${id}/marcadores`, [
+      { descricao: 'CANCELADA' },
+    ]);
+  }
+
   /** Só o que o PUT de conta a receber aceita: categoria (e datas). */
   async categorizarContaReceber(empresaId: string, id: number, idCategoria: number): Promise<void> {
     await this.client.put(empresaId, `/contas-receber/${id}`, { categoria: { id: idCategoria } });

@@ -327,6 +327,15 @@ export class TinyPedidosService {
     await this.client.post(empresaId, `/notas/${idNota}/estornar-contas`, {});
   }
 
+  /**
+   * Estorna as contas lançadas pela VENDA. O Tiny decide quem "lançou" a conta:
+   * mesmo saindo junto com a nota, ela costuma ficar amarrada ao pedido — e aí
+   * o estorno pela nota devolve "Conta foi lançada pela venda".
+   */
+  async estornarContasDoPedido(empresaId: string, idPedido: number): Promise<void> {
+    await this.client.post(empresaId, `/pedidos/${idPedido}/estornar-contas`, {});
+  }
+
   private formasCache = new Map<string, Map<string, number>>();
 
   /** Id da forma de recebimento do tenant pelo nome ("Pix", "Boleto"), sem acento/caixa. */

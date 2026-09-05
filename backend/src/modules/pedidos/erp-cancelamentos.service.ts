@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
+import { TinyContasService } from '@integrations/tiny/tiny-contas.service';
 import { TinyPedidosService } from '@integrations/tiny/tiny-pedidos.service';
 import { ComissoesService } from '@modules/comissoes/comissoes.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
@@ -54,6 +55,7 @@ export class ErpCancelamentosService {
     private readonly comissoes: ComissoesService,
     private readonly notificacoes: NotificacoesService,
     private readonly comissaoErp: PedidoComissaoErpService,
+    private readonly contas: TinyContasService,
   ) {}
 
   async varrer(empresaId: string, opcoes: { dias?: number } = {}): Promise<ResultadoCancelamentos> {
@@ -91,8 +93,12 @@ export class ErpCancelamentosService {
 
     for (const p of cancelados) {
       r.conferidos += 1;
+      let idErp: number | null = null;
+      let notaViva = false;
       try {
-        await this.conferirNoErp(empresaId, p, r);
+        const res = await this.conferirNoErp(empresaId, p, r);
+        idErp = res.idErp;
+        notaViva = res.notaViva;
       } catch (err) {
         r.erros += 1;
         this.logger.warn(
@@ -100,27 +106,46 @@ export class ErpCancelamentosService {
         );
       }
 
-      // Contas a receber: as que o TINY gerou pela nota ele estorna; as que o
-      // app lançou à mão não têm DELETE — aviso.
+      // Contas a receber — a ORDEM importa. Enquanto a nota estiver de pé, o
+      // Tiny recusa o estorno ("Conta foi lançada pela venda"): quem derruba a
+      // conta é o cancelamento DA NOTA, com a opção "estornar contas". Então
+      // aqui só se avisa. Depois que a nota cai, a varredura estorna o que
+      // sobrou (pela nota ou pela venda — o Tiny decide qual vale) e marca
+      // CANCELADA o que insistir em ficar, porque a API não apaga nem zera.
       if (Array.isArray(p.contasReceberErp) && p.contasReceberErp.length > 0) {
-        const doTiny = (p.contasReceberErp as Array<{ origem?: string; idNota?: number }>).find(
-          (c) => c.origem === 'tiny' && c.idNota,
-        );
-        if (doTiny?.idNota) {
-          try {
-            await this.tiny.estornarContasDaNota(empresaId, doTiny.idNota);
-            r.avisos.push(`${p.numero}: contas a receber da NF estornadas no ERP`);
-          } catch (err) {
-            r.avisos.push(
-              `${p.numero}: contas a receber da NF NÃO estornadas (${this.msg(err)}) — cancele a nota e estorne lá`,
-            );
-          }
-        } else {
-          const ids = (p.contasReceberErp as Array<{ id?: number }>)
-            .map((c) => c.id)
-            .filter(Boolean);
+        const bloco = p.contasReceberErp as Array<{
+          origem?: string;
+          idNota?: number;
+          ids?: number[];
+          id?: number;
+        }>;
+        const ids = bloco.flatMap((c) => c.ids ?? (c.id ? [c.id] : []));
+        if (notaViva) {
           r.avisos.push(
-            `${p.numero}: conta(s) a receber ${ids.join(', ')} ficaram no ERP — estornar/baixar lá`,
+            `${p.numero}: conta(s) a receber ${ids.join(', ')} seguem abertas — ` +
+              `cancele a NF marcando "estornar contas", que e o que baixa elas`,
+          );
+        } else {
+          const idNota = bloco.find((c) => c.idNota)?.idNota ?? null;
+          let estornou = false;
+          if (idNota) {
+            estornou = await this.tiny
+              .estornarContasDaNota(empresaId, idNota)
+              .then(() => true)
+              .catch(() => false);
+          }
+          if (!estornou && idErp) {
+            estornou = await this.tiny
+              .estornarContasDoPedido(empresaId, idErp)
+              .then(() => true)
+              .catch(() => false);
+          }
+          for (const id of ids) {
+            await this.contas.marcarContaReceberCancelada(empresaId, id).catch(() => undefined);
+          }
+          r.avisos.push(
+            `${p.numero}: conta(s) a receber ${ids.join(', ')} ` +
+              `${estornou ? 'estornada(s)' : 'sem estorno pela API'} e marcada(s) CANCELADA`,
           );
         }
       }
@@ -173,14 +198,15 @@ export class ErpCancelamentosService {
     empresaId: string,
     p: { numero: string; numeroSite: string | null; numeroErp: string | null },
     r: ResultadoCancelamentos,
-  ): Promise<void> {
-    if (!p.numeroErp) return;
+  ): Promise<{ idErp: number | null; notaViva: boolean }> {
+    if (!p.numeroErp) return { idErp: null, notaViva: false };
     const achado = await this.tiny.listar(empresaId, { numero: p.numeroErp, limit: 5 });
     const exato = achado.itens.find((i) => String(i.numeroPedido ?? i.id) === p.numeroErp);
     if (!exato?.id) {
       r.avisos.push(`${p.numero}: pedido ${p.numeroErp} não existe mais no ERP`);
-      return;
+      return { idErp: null, notaViva: false };
     }
+    let notaViva = false;
     const d = await this.tiny.obter(empresaId, exato.id);
     const rotulo = [p.numeroSite, p.numero, `ERP ${p.numeroErp}`].filter(Boolean).join(' / ');
 
@@ -190,6 +216,7 @@ export class ErpCancelamentosService {
       const nota = await this.tiny.obterNota(empresaId, d.idNotaFiscal);
       const sit = Number(nota.situacao ?? 0);
       if (NOTA_VIVA.has(sit)) {
+        notaViva = true;
         r.notasParaEstornar.push(
           `NF ${nota.numero ?? nota.id}${nota.serie ? ` série ${nota.serie}` : ''} do pedido ${rotulo}`,
         );
@@ -203,6 +230,7 @@ export class ErpCancelamentosService {
       r.canceladosNoErp += 1;
       this.logger.log(`[erp] ${rotulo}: estava aberto no ERP — cancelado agora`);
     }
+    return { idErp: exato.id, notaViva };
   }
 
   /**

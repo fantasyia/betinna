@@ -27,7 +27,9 @@ function build(
       .mockResolvedValue({ id: 77, numero: 12, serie: '3', situacao: 6, ...(opts.nota ?? {}) }),
     cancelar: vi.fn().mockResolvedValue(undefined),
     estornarContasDaNota: vi.fn().mockResolvedValue(undefined),
+    estornarContasDoPedido: vi.fn().mockResolvedValue(undefined),
   };
+  const contas = { marcarContaReceberCancelada: vi.fn().mockResolvedValue(undefined) };
   const comissoesPedido = { recalcular: vi.fn().mockResolvedValue(undefined) };
   const comissoes = { fecharMes: vi.fn().mockResolvedValue({ ok: true }) };
   const notificacoes = { criarParaRole: vi.fn().mockResolvedValue(1) };
@@ -43,8 +45,9 @@ function build(
     comissoes as never,
     notificacoes as never,
     comissaoErp as never,
+    contas as never,
   );
-  return { svc, prisma, tiny, comissoesPedido, comissoes, notificacoes };
+  return { svc, prisma, tiny, comissoesPedido, comissoes, notificacoes, contas };
 }
 
 const CANCELADO = {
@@ -164,16 +167,40 @@ describe('varredura diária de cancelamentos', () => {
     expect(r.mesesReprocessados).toEqual([]);
   });
 
-  it('contas a receber geradas pelo Tiny → estorna pela nota', async () => {
-    const { svc, tiny } = build({
-      cancelados: [{ ...CANCELADO, contasReceberErp: [{ origem: 'tiny', idNota: 77 }] }],
-      erp: { situacao: 2 },
+  it('NF ainda AUTORIZADA → não tenta estornar a conta a receber, manda cancelar a nota', async () => {
+    // Com a nota de pé o Tiny recusa o estorno; quem baixa a conta é o
+    // cancelamento da NF com "estornar contas".
+    const { svc, tiny, contas } = build({
+      cancelados: [
+        { ...CANCELADO, contasReceberErp: [{ origem: 'tiny', idNota: 77, ids: [900] }] },
+      ],
+      erp: { situacao: 2, idNotaFiscal: 77 },
+      nota: { situacao: 6 },
     });
 
     const r = await svc.varrer('emp-1');
 
-    expect(tiny.estornarContasDaNota).toHaveBeenCalledWith('emp-1', 77);
-    expect(r.avisos).toContain('PED-0001: contas a receber da NF estornadas no ERP');
+    expect(tiny.estornarContasDaNota).not.toHaveBeenCalled();
+    expect(tiny.estornarContasDoPedido).not.toHaveBeenCalled();
+    expect(contas.marcarContaReceberCancelada).not.toHaveBeenCalled();
+    expect(r.avisos.some((a) => a.includes('cancele a NF marcando'))).toBe(true);
+  });
+
+  it('NF já cancelada → estorna a conta a receber (nota, senão venda) e marca CANCELADA', async () => {
+    const { svc, tiny, contas } = build({
+      cancelados: [
+        { ...CANCELADO, contasReceberErp: [{ origem: 'tiny', idNota: 77, ids: [900] }] },
+      ],
+      erp: { situacao: 2, idNotaFiscal: 77 },
+      nota: { situacao: 3 },
+    });
+    tiny.estornarContasDaNota.mockRejectedValueOnce(new Error('Conta foi lançada pela venda'));
+
+    const r = await svc.varrer('emp-1');
+
+    expect(tiny.estornarContasDoPedido).toHaveBeenCalledWith('emp-1', 900);
+    expect(contas.marcarContaReceberCancelada).toHaveBeenCalledWith('emp-1', 900);
+    expect(r.avisos.some((a) => a.includes('marcada(s) CANCELADA'))).toBe(true);
   });
 
   it('ERP fora do ar num pedido não derruba a passada', async () => {
