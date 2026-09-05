@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { anexarDescricaoDoProduto } from './descricao-do-produto.util';
 import { createHash } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
@@ -58,6 +59,8 @@ export interface AceitePreview {
   jaRespondida: boolean; // true se status final (ACEITA/RECUSADA/EXPIRADA)
   itens: Array<{
     produtoNome: string;
+    /** Descrição vigente do produto (ERP) — o cliente lê o que está aceitando. */
+    descricao: string | null;
     quantidade: number;
     precoUnitario: number;
     desconto: number;
@@ -228,13 +231,17 @@ export class PropostaAceiteService {
       valor: Number(proposta.valor),
       observacoes: proposta.observacoes,
       jaRespondida,
-      itens: proposta.itens.map((i) => ({
-        produtoNome: i.produtoNome,
-        quantidade: i.quantidade,
-        precoUnitario: Number(i.precoUnitario), // #17 — Decimal→number
-        desconto: i.desconto, // %
-        total: Number(i.total), // #17 — Decimal→number
-      })),
+      itens: await anexarDescricaoDoProduto(
+        this.prisma,
+        proposta.itens.map((i) => ({
+          produtoId: i.produtoId,
+          produtoNome: i.produtoNome,
+          quantidade: i.quantidade,
+          precoUnitario: Number(i.precoUnitario), // #17 — Decimal→number
+          desconto: i.desconto, // %
+          total: Number(i.total), // #17 — Decimal→number
+        })),
+      ),
     };
   }
 

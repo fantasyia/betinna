@@ -15,6 +15,8 @@ import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 interface AceiteItem {
   produtoNome: string;
+  /** Descrição do produto vinda do ERP — o cliente lê o que está aceitando. */
+  descricao?: string | null;
   quantidade: number;
   precoUnitario: number;
   desconto: number;
@@ -79,11 +81,7 @@ export default function PropostaAceitePage() {
     setBusy(true);
     setError(null);
     try {
-      await api.post(
-        `/propostas/aceite/${token}/decidir`,
-        { decisao },
-        { skipAuth: true },
-      );
+      await api.post(`/propostas/aceite/${token}/decidir`, { decisao }, { skipAuth: true });
       setResultado(decisao);
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -127,9 +125,7 @@ export default function PropostaAceitePage() {
             boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
           }}
         >
-          {loading && (
-            <p style={{ textAlign: 'center', color: '#666' }}>Carregando proposta…</p>
-          )}
+          {loading && <p style={{ textAlign: 'center', color: '#666' }}>Carregando proposta…</p>}
 
           {!loading && error && !data && (
             <div style={{ textAlign: 'center', padding: '1rem' }}>
@@ -169,8 +165,8 @@ export default function PropostaAceitePage() {
                     fontSize: 13,
                   }}
                 >
-                  Esta proposta já foi respondida ou o link expirou. Caso precise, peça um
-                  novo link ao responsável.
+                  Esta proposta já foi respondida ou o link expirou. Caso precise, peça um novo link
+                  ao responsável.
                 </div>
               )}
 
@@ -195,12 +191,28 @@ export default function PropostaAceitePage() {
                   <tbody>
                     {data.itens.map((it, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #eee', color: '#1f2937' }}>
-                        <td style={{ padding: '0.5rem' }}>{it.produtoNome}</td>
+                        <td style={{ padding: '0.5rem' }}>
+                          {it.produtoNome}
+                          {it.descricao && (
+                            <div
+                              style={{
+                                fontSize: '0.8em',
+                                color: '#6b7280',
+                                marginTop: '0.15rem',
+                                whiteSpace: 'pre-line',
+                              }}
+                            >
+                              {it.descricao}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: '0.5rem', textAlign: 'right' }}>{it.quantidade}</td>
                         <td style={{ padding: '0.5rem', textAlign: 'right' }}>
                           {fmtBRL(it.precoUnitario)}
                         </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>{fmtBRL(it.total)}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>
+                          {fmtBRL(it.total)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -322,7 +334,14 @@ export default function PropostaAceitePage() {
           )}
         </div>
 
-        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: '1.5rem' }}>
+        <p
+          style={{
+            textAlign: 'center',
+            color: 'rgba(255,255,255,0.6)',
+            fontSize: 11,
+            marginTop: '1.5rem',
+          }}
+        >
           Powered by Betinna.ai
         </p>
       </div>

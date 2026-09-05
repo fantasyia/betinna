@@ -6,6 +6,12 @@ export interface LinhaCatalogoPdf {
   nome: string;
   /** SKU · marca · linha — o que couber numa linha só. */
   detalhe: string;
+  /**
+   * Descrição do produto (vem do ERP, `descricaoComplementar`). Até duas
+   * linhas sob o nome; a linha cresce só quando existe. É o "pra que serve"
+   * que o cliente lê no PDF — antes só saía o nome do modelo.
+   */
+  descricao?: string | null;
   /** URL da imagem do produto (do ERP). Best-effort: sem ela, entra o retângulo vazio. */
   imagem: string | null;
   /**
@@ -40,10 +46,20 @@ const CINZA = '#666666';
 const ALTURA_LOGO = 34;
 
 const ALTURA_LINHA = 46;
+/** Espaço extra quando o produto tem descrição (duas linhas de 7,5pt). */
+const ALTURA_DESCRICAO = 20;
 const LADO_FOTO = 34;
 /** Teto de imagens baixadas por PDF — catálogo grande não pode virar timeout. */
 const MAX_IMAGENS = 60;
 const TIMEOUT_IMAGEM_MS = 4000;
+
+/** Descrição do ERP vem com quebras de linha; no PDF vira uma frase corrida. */
+function compactar(texto: string): string {
+  return texto
+    .replace(/\r?\n+/g, ' · ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function fmtBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -95,16 +111,17 @@ export class CatalogoPdfService {
         y += 18;
 
         for (const item of data.itens) {
+          const altura = item.descricao ? ALTURA_LINHA + ALTURA_DESCRICAO : ALTURA_LINHA;
           // Quebra de página ANTES de desenhar: linha cortada ao meio é o
           // defeito clássico de PDF montado por posição.
-          if (y + ALTURA_LINHA > doc.page.height - doc.page.margins.bottom - 30) {
+          if (y + altura > doc.page.height - doc.page.margins.bottom - 30) {
             doc.addPage();
             y = doc.page.margins.top;
             this.cabecalhoDaTabela(doc, left, largura, y, rotulos);
             y += 18;
           }
           this.linha(doc, item, imagens.get(item.imagem ?? ''), left, largura, y, data.marca);
-          y += ALTURA_LINHA;
+          y += altura;
           doc
             .moveTo(left, y - 6)
             .lineTo(direita, y - 6)
@@ -234,6 +251,17 @@ export class CatalogoPdfService {
       ellipsis: true,
       lineBreak: false,
     });
+
+    // Descrição abaixo de tudo (nome, disponibilidade e preço ocupam até y+28),
+    // então pode usar a largura inteira da linha. Duas linhas no máximo.
+    if (item.descricao) {
+      doc.fillColor('#444444').fontSize(7.5).font('Helvetica');
+      doc.text(compactar(item.descricao), textoX, y + 30, {
+        width: left + largura - textoX,
+        height: ALTURA_DESCRICAO - 2,
+        ellipsis: true,
+      });
+    }
 
     doc.fillColor(CINZA).fontSize(8).font('Helvetica');
     doc.text(item.disponibilidade, colDisp, y + 10, { width: 120, ellipsis: true });

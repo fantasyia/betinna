@@ -8,6 +8,12 @@ interface ProdutoTiny {
   id: number;
   sku?: string;
   descricao?: string;
+  /**
+   * Texto livre do cadastro ("o que é / pra que serve"). Só vem no
+   * `GET /produtos/{id}` — a LISTAGEM não traz. É o campo que o Léo pediu pra
+   * ser a fonte da descrição que chega ao cliente (catálogo PDF e proposta).
+   */
+  descricaoComplementar?: string;
   situacao?: string;
   unidade?: string;
   dataAlteracao?: string;
@@ -114,7 +120,11 @@ export class TinyProdutosSyncService {
 
       for (const p of itens) {
         try {
-          const novo = await this.upsert(empresaId, p, locacao.get(p.id) ?? null);
+          // A listagem não traz a descrição; é uma chamada a mais por produto
+          // (mesmo padrão do estoque). Sem ela o app espelhava o ERP sem o
+          // texto que explica o produto — e o cliente recebia só o nome.
+          const descricao = await this.descricaoDoErp(empresaId, p);
+          const novo = await this.upsert(empresaId, p, locacao.get(p.id) ?? null, descricao);
           if (novo) r.criados += 1;
           else r.atualizados += 1;
           if (opcoes.comEstoque !== false) {
@@ -228,6 +238,8 @@ export class TinyProdutosSyncService {
     empresaId: string,
     p: ProdutoTiny,
     precoLocacao: number | null,
+    /** `undefined` = não conseguimos ler no ERP → não toca no que já está gravado. */
+    descricao?: string | null,
   ): Promise<boolean> {
     const codigoErp = String(p.id);
     const existente = await this.prisma.produto.findFirst({
@@ -253,6 +265,10 @@ export class TinyProdutosSyncService {
       // Null quando o produto não está na lista de locação. NÃO cai pro preço de
       // venda: o rep veria o número errado sem ninguém perceber.
       precoLocacaoMensal: precoLocacao != null ? new Prisma.Decimal(precoLocacao) : null,
+      // ERP é a fonte: texto de lá substitui o de cá, inclusive apagando (null)
+      // quando o campo foi esvaziado no Tiny. Só preserva o atual se a leitura
+      // FALHOU — aí não sabemos, e apagar seria inventar.
+      ...(descricao !== undefined ? { descricao } : {}),
     };
 
     if (existente) {
@@ -331,6 +347,30 @@ export class TinyProdutosSyncService {
    * 429 é "agora não", não "não". Sem isso, uma rajada de rate limit fazia o
    * sync pular estoque e imagem EM SILÊNCIO e ainda relatar "0 erros".
    */
+  /**
+   * `descricaoComplementar` do cadastro. Texto vazio vira `null` (o app mostra
+   * nada, não "—" fantasma). Falha de rede/429 esgotado devolve `undefined`:
+   * o chamador mantém o que já tinha em vez de apagar.
+   */
+  private async descricaoDoErp(
+    empresaId: string,
+    p: ProdutoTiny,
+  ): Promise<string | null | undefined> {
+    try {
+      const d = await this.comRetry429(() =>
+        this.client.get<ProdutoTiny>(empresaId, `/produtos/${p.id}`),
+      );
+      const texto = (d?.descricaoComplementar ?? '').trim();
+      return texto.length > 0 ? texto : null;
+    } catch (err) {
+      this.logger.warn(
+        `[tiny] descrição do produto ${p.sku ?? p.id} não lida (mantida a atual): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return undefined;
+    }
+  }
+
   private async comRetry429<T>(fn: () => Promise<T>): Promise<T> {
     for (let tentativa = 0; ; tentativa++) {
       try {

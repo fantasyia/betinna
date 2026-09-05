@@ -27,6 +27,8 @@ export interface PropostaExportData {
   cliente: { nome: string; cnpj: string | null; email: string | null };
   itens: Array<{
     produtoNome: string;
+    /** Descrição vigente do produto (ERP). Sai em cinza sob o nome. */
+    descricao?: string | null;
     quantidade: number;
     precoUnitario: number;
     desconto: number; // %
@@ -169,7 +171,22 @@ export class PropostaExportService {
           const y = doc.y;
           doc.fillColor('#222');
           doc.text(it.produtoNome, cols.produto + 4, y, { width: pageWidth * 0.46 });
-          const lineH = doc.y - y; // altura ocupada pelo nome (pode quebrar)
+          if (it.descricao) {
+            // O que o produto É, logo abaixo do nome — é o que o cliente lê
+            // pra entender o que está contratando. Volta a fonte depois.
+            doc.fontSize(7.5).fillColor('#666666');
+            doc.text(
+              it.descricao
+                .replace(/\r?\n+/g, ' · ')
+                .replace(/\s+/g, ' ')
+                .trim(),
+              cols.produto + 4,
+              doc.y,
+              { width: pageWidth * 0.46 },
+            );
+            doc.fontSize(9).fillColor('#222');
+          }
+          const lineH = doc.y - y; // altura ocupada por nome + descrição (pode quebrar)
           doc.text(String(it.quantidade), cols.qtd, y, { width: pageWidth * 0.1, align: 'right' });
           doc.text(fmtBRL(it.precoUnitario), cols.preco, y, {
             width: pageWidth * 0.14,

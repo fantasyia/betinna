@@ -325,3 +325,62 @@ describe('TinyProdutosSyncService — listas de locacao', () => {
     expect((chamada?.[0] as { data: { imagem: null } }).data.imagem).toBeNull();
   });
 });
+
+/**
+ * Descrição do produto: vem do ERP (`descricaoComplementar`), e só no
+ * `GET /produtos/{id}` — a listagem não traz. Pedido do Léo (05/09): o ERP é a
+ * fonte, e o texto tem que chegar ao cliente (PDF do catálogo e proposta).
+ */
+describe('descrição do produto vinda do ERP', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('lê descricaoComplementar no GET individual e grava em Produto.descricao', async () => {
+    const { svc, prisma, client } = build([MB]);
+    const original = client.get.getMockImplementation()!;
+    client.get.mockImplementation((e: string, caminho: string) => {
+      if (caminho === '/produtos/335240597') {
+        return Promise.resolve({
+          ...MB,
+          descricaoComplementar: 'Faixa de tensão: 110 V a 1100 V\nCorrente de carga: 01-150A',
+        });
+      }
+      return original(e, caminho);
+    });
+
+    await svc.sync('emp-1');
+
+    const dados = prisma.produto.create.mock.calls[0][0].data;
+    expect(dados.descricao).toBe('Faixa de tensão: 110 V a 1100 V\nCorrente de carga: 01-150A');
+  });
+
+  it('campo vazio no ERP vira null (o app não mostra descrição fantasma)', async () => {
+    const { svc, prisma, client } = build([MB]);
+    const original = client.get.getMockImplementation()!;
+    client.get.mockImplementation((e: string, caminho: string) => {
+      if (caminho === '/produtos/335240597') {
+        return Promise.resolve({ ...MB, descricaoComplementar: '   ' });
+      }
+      return original(e, caminho);
+    });
+
+    await svc.sync('emp-1');
+
+    expect(prisma.produto.create.mock.calls[0][0].data.descricao).toBeNull();
+  });
+
+  it('se o GET individual FALHA, não toca na descrição já gravada', async () => {
+    // Apagar por não conseguir ler seria inventar. O resto do produto sincroniza.
+    const { svc, prisma, client } = build([MB], { id: 'p1' });
+    const original = client.get.getMockImplementation()!;
+    client.get.mockImplementation((e: string, caminho: string) => {
+      if (caminho === '/produtos/335240597') return Promise.reject(new Error('HTTP 500'));
+      return original(e, caminho);
+    });
+
+    const r = await svc.sync('emp-1');
+
+    expect(r.erros).toBe(0);
+    const dados = prisma.produto.update.mock.calls[0][0].data;
+    expect('descricao' in dados).toBe(false);
+  });
+});

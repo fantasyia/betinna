@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { anexarDescricaoDoProduto } from './descricao-do-produto.util';
 import { Prisma, type PropostaModalidade } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { PricingService } from '@modules/produtos/pricing.service';
@@ -747,13 +748,17 @@ export class PropostasService {
         cnpj: clienteFull?.cnpj ?? proposta.cliente.cnpj,
         email: clienteFull?.email ?? null,
       },
-      itens: proposta.itens.map((i) => ({
-        produtoNome: i.produtoNome,
-        quantidade: i.quantidade,
-        precoUnitario: Number(i.precoUnitario), // #17 — Decimal→number
-        desconto: i.desconto, // %
-        total: Number(i.total), // #17 — Decimal→number
-      })),
+      itens: await anexarDescricaoDoProduto(
+        this.prisma,
+        proposta.itens.map((i) => ({
+          produtoId: i.produtoId,
+          produtoNome: i.produtoNome,
+          quantidade: i.quantidade,
+          precoUnitario: Number(i.precoUnitario), // #17 — Decimal→number
+          desconto: i.desconto, // %
+          total: Number(i.total), // #17 — Decimal→number
+        })),
+      ),
     };
   }
 

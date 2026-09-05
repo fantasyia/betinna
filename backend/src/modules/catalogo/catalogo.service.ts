@@ -29,6 +29,8 @@ export interface CatalogoItem {
   produto: {
     id: string;
     nome: string;
+    /** Descrição vinda do ERP (`descricaoComplementar`). Vai pro PDF e pra proposta. */
+    descricao: string | null;
     sku: string | null;
     marca: string | null;
     linha: string | null;
@@ -134,6 +136,7 @@ export class CatalogoService {
           select: {
             id: true,
             nome: true,
+            descricao: true,
             sku: true,
             marca: true,
             linha: true,
@@ -182,6 +185,7 @@ export class CatalogoService {
           select: {
             id: true,
             nome: true,
+            descricao: true,
             sku: true,
             marca: true,
             linha: true,
@@ -321,6 +325,7 @@ export class CatalogoService {
       nome: i.produto.nome,
       detalhe: [i.produto.sku, i.produto.marca, i.produto.linha].filter(Boolean).join(' · '),
       imagem: i.produto.imagem,
+      descricao: i.produto.descricao ?? null,
       precos: this.colunasDePreco(tabela, i),
       disponibilidade: this.textoDisponibilidade(i.produto.estoque, sobEncomenda, dias),
       negociado: i.precoNegociado,
