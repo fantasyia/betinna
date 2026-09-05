@@ -56,3 +56,18 @@ Coisas que a spec **não** diz e que só apareceram batendo na API de verdade:
   como se tivesse gravado. Confira lendo de volta.
 - **Rate limit é agressivo (429).** Toda varredura precisa de pausa + retry;
   sem isso o 429 se disfarça de "não existe" / "sem anexo".
+
+## PUT /produtos/{id} — o que a spec não conta (aprendido em 05/09/2026)
+
+- **O GET devolve `origem: ""` e o PUT exige inteiro.** Ecoar o objeto do GET de volta
+  cai com `400 "O tipo de dado 'string' não é válido para a propriedade 'origem'"` —
+  e aí NADA é gravado (bom: é tudo-ou-nada). Monte o corpo só com os campos que a
+  spec do PUT aceita (`sku, descricao, descricaoComplementar, unidade, unidadePorCaixa,
+  ncm, gtin, origem, garantia, observacoes, marca, categoria, precos, dimensoes,
+  tributacao, seo, fornecedores`) e **descarte `""`/`null`** antes de mandar.
+- **Nunca mande `estoque` por aqui.** O PUT aceita um `EstoqueProdutoRequestModel`;
+  saldo se mexe pelo endpoint de estoque, não junto com a ficha.
+- **Sucesso é `204` sem corpo.** Não espere JSON de volta; faça um GET depois e compare
+  campo a campo — foi assim que garantimos que só `descricaoComplementar` mudou.
+- `descricaoComplementar` é **texto rico**: alguns cadastros vêm como `<p>…<br>…</p>`,
+  outros como texto puro com quebras de linha. Quem consome (o sync do app) converte pra texto.
