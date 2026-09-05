@@ -481,25 +481,33 @@ function ProdutoCard({
       )}
     >
       {/* Image (or placeholder) + stock badge sobreposto */}
-      {/* Faixa baixa de propósito: sem foto cadastrada, o antigo aspect-[5/3]
-          era mais da metade do card só pra exibir um ícone. Com imagem, o
-          object-cover continua preenchendo. */}
-      <div className="h-14 bg-bg-alt border-b border-border flex items-center justify-center overflow-hidden relative">
-        {item.produto?.imagem ? (
+      {/* Com foto: faixa baixa (o antigo aspect-[5/3] era metade do card).
+          SEM foto: não existe faixa — só a linha do selo. O ícone genérico de
+          caixa saiu porque não informa nada repetido 36 vezes e, no card
+          estreito do mobile, ficava POR BAIXO do selo. */}
+      {item.produto?.imagem ? (
+        <div className="h-14 bg-bg-alt border-b border-border overflow-hidden relative">
           <img
             src={item.produto.imagem}
             alt={item.produto.nome}
             className="h-full w-full object-cover"
           />
-        ) : (
-          <Package className="h-5 w-5 text-muted-light" />
-        )}
-        <StockBadge
-          produto={item.produto}
-          sobEncomenda={sobEncomenda}
-          testId={`stock-${item.produtoId}`}
-        />
-      </div>
+          <StockBadge
+            produto={item.produto}
+            sobEncomenda={sobEncomenda}
+            testId={`stock-${item.produtoId}`}
+          />
+        </div>
+      ) : (
+        <div className="flex justify-end px-2 pt-2">
+          <StockBadge
+            produto={item.produto}
+            sobEncomenda={sobEncomenda}
+            testId={`stock-${item.produtoId}`}
+            inline
+          />
+        </div>
+      )}
 
       {/* Header */}
       <div className="px-2.5 py-2 flex flex-col gap-0.5 flex-1">
@@ -572,10 +580,13 @@ function StockBadge({
   produto,
   testId,
   sobEncomenda = false,
+  inline = false,
 }: {
   produto?: CatalogoItem['produto'];
   testId?: string;
   sobEncomenda?: boolean;
+  /** Fora da faixa de foto: entra no fluxo, sem `absolute`. */
+  inline?: boolean;
 }) {
   const tone = stockTone(produto?.estoque, sobEncomenda);
   const rel = fmtRelativo(produto?.estoqueAtualizadoEm);
@@ -591,7 +602,8 @@ function StockBadge({
   return (
     <div
       className={cn(
-        'absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border backdrop-blur-sm',
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border backdrop-blur-sm',
+        !inline && 'absolute top-2 right-2',
         colorClass,
       )}
       data-testid={testId}
