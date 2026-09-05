@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSensoresDnd } from '@/lib/dnd-sensors';
-import {
-  DndContext,
-  useDraggable,
-  useDroppable,
-  type DragEndEvent,
-} from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
 import { CalendarCheck, CalendarPlus, RefreshCw } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -150,12 +145,11 @@ function labelHorario(day: Date): string {
  */
 function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void }) {
   const toast = useToast();
-  const { data: conexoes, refetch } = useApiQuery<
-    Array<{ servico: string; ativo: boolean; contaEmail?: string | null }>
-  >('/usuario/integracoes');
-  const { data: cfg } = useApiQuery<{ configurado: boolean }>(
-    '/integracoes/google/oauth/status',
-  );
+  const { data: conexoes, refetch } =
+    useApiQuery<Array<{ servico: string; ativo: boolean; contaEmail?: string | null }>>(
+      '/usuario/integracoes',
+    );
+  const { data: cfg } = useApiQuery<{ configurado: boolean }>('/integracoes/google/oauth/status');
   const [busy, setBusy] = useState(false);
   const conexaoGoogle = (conexoes ?? []).find((c) => c.servico === 'google_calendar' && c.ativo);
   const conectado = Boolean(conexaoGoogle);
@@ -238,7 +232,9 @@ function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void })
 
   if (conectado) {
     return (
-      <div className="inline-flex items-center gap-2">
+      // `flex-wrap`: no celular (390px) o chip da conta + Sincronizar + Reconectar
+      // somavam 579px numa linha só e a página inteira estourava 204px pro lado.
+      <div className="inline-flex items-center gap-2 flex-wrap">
         <span
           data-testid="agenda-google-conectado"
           title={
@@ -249,7 +245,9 @@ function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void })
           className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[13px] font-medium text-success max-w-[260px]"
         >
           <CalendarCheck className="h-4 w-4 shrink-0" />
-          <span className="truncate">{contaEmail ? `Google: ${contaEmail}` : 'Google conectado'}</span>
+          <span className="truncate">
+            {contaEmail ? `Google: ${contaEmail}` : 'Google conectado'}
+          </span>
         </span>
         <button
           type="button"
@@ -331,7 +329,12 @@ function fmtMesAno(d: Date): string {
 }
 function fmtDiaCompleto(d: Date): string {
   return capitalizar(
-    d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+    d.toLocaleDateString('pt-BR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }),
   );
 }
 
@@ -527,12 +530,7 @@ export default function AgendaPage() {
     if (sameDay(dataAtual, novoDia)) return;
 
     // Mantém hora/minuto/segundo, troca dia/mes/ano
-    novoDia.setHours(
-      dataAtual.getHours(),
-      dataAtual.getMinutes(),
-      dataAtual.getSeconds(),
-      0,
-    );
+    novoDia.setHours(dataAtual.getHours(), dataAtual.getMinutes(), dataAtual.getSeconds(), 0);
     try {
       await api.patch(`/agenda/${itemId}`, { data: novoDia.toISOString() });
       toast.success(
@@ -552,7 +550,7 @@ export default function AgendaPage() {
     <PageLayout
       title="Agenda"
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <GoogleConexaoBotao
             onSincronizado={() => {
               // mão-dupla: recarrega itens da Betinna + overlay do Google (removidos somem)
@@ -574,7 +572,7 @@ export default function AgendaPage() {
       <div className="bg-surface border border-border rounded-[10px] p-6">
         <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           {/* Switcher de visão (Dia | Semana | Mês) + período atual sempre ao lado */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div
               role="group"
               aria-label="Visão da agenda"
@@ -598,7 +596,9 @@ export default function AgendaPage() {
               ))}
             </div>
             <div
-              className="text-[14px] font-semibold text-text whitespace-nowrap"
+              // Só não quebra em tela larga: no celular "Semana de 30/08/2026 a
+              // 05/09/2026" não cabe ao lado do Dia|Semana|Mês e cortava.
+              className="text-[14px] font-semibold text-text sm:whitespace-nowrap"
               data-testid="agenda-range-label"
             >
               {visao === 'dia' && fmtDiaCompleto(dataRef)}
@@ -611,14 +611,18 @@ export default function AgendaPage() {
               {visao === 'mes' && fmtMesAno(dataRef)}
             </div>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap">
             <button
               type="button"
               data-testid={visao === 'semana' ? 'agenda-prev-week' : `agenda-${visao}-prev`}
               onClick={() => navegar(-1)}
               className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
-              {visao === 'dia' ? '‹ Dia anterior' : visao === 'mes' ? '‹ Mês anterior' : '‹ Semana anterior'}
+              {visao === 'dia'
+                ? '‹ Dia anterior'
+                : visao === 'mes'
+                  ? '‹ Mês anterior'
+                  : '‹ Semana anterior'}
             </button>
             <button
               type="button"
@@ -634,7 +638,11 @@ export default function AgendaPage() {
               onClick={() => navegar(1)}
               className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
-              {visao === 'dia' ? 'Próximo dia ›' : visao === 'mes' ? 'Próximo mês ›' : 'Próxima semana ›'}
+              {visao === 'dia'
+                ? 'Próximo dia ›'
+                : visao === 'mes'
+                  ? 'Próximo mês ›'
+                  : 'Próxima semana ›'}
             </button>
           </div>
           <Select
@@ -766,11 +774,7 @@ function DayColumn({
           +
         </button>
       </header>
-      {items.length === 0 && (
-        <p className="text-[11px] text-muted m-0 text-center py-2">
-          Livre
-        </p>
-      )}
+      {items.length === 0 && <p className="text-[11px] text-muted m-0 text-center py-2">Livre</p>}
       <ul className="list-none p-0 m-0 flex flex-col gap-1">
         {items.map((it) => (
           <li key={it.id}>
@@ -787,13 +791,7 @@ function DayColumn({
  * PointerSensor com distance:8 garante que click-curto edita, drag-longo
  * move pra outro dia.
  */
-function DraggableItem({
-  item,
-  onClick,
-}: {
-  item: AgendaItem;
-  onClick: () => void;
-}) {
+function DraggableItem({ item, onClick }: { item: AgendaItem; onClick: () => void }) {
   const isGoogle = item.origem === 'google';
   // Evento do Google é read-only → não arrasta (disabled) e o clique abre no Google.
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -915,7 +913,11 @@ function VisaoDiaria({
               type="button"
               data-testid={`agenda-item-${it.id}`}
               onClick={() => onItemClick(it)}
-              title={it.origem === 'google' ? 'Evento do seu Google Calendar (abre no Google)' : undefined}
+              title={
+                it.origem === 'google'
+                  ? 'Evento do seu Google Calendar (abre no Google)'
+                  : undefined
+              }
               className="w-full text-left flex gap-3 items-start bg-surface border border-border rounded-md py-2.5 px-3 font-[inherit] text-text cursor-pointer"
               style={{ borderLeft: `3px solid ${corDe(it)}` }}
             >
@@ -954,7 +956,9 @@ function VisaoDiaria({
               </div>
               <span
                 className="text-[11px] shrink-0 pt-0.5"
-                style={{ color: it.origem === 'google' ? 'var(--secondary-hover)' : 'var(--muted)' }}
+                style={{
+                  color: it.origem === 'google' ? 'var(--secondary-hover)' : 'var(--muted)',
+                }}
               >
                 {it.origem === 'google' ? 'Google' : it.tipo}
               </span>
@@ -1119,7 +1123,9 @@ function AgendaFormModal({
 }) {
   const isEdit = Boolean(item);
   const [titulo, setTitulo] = useState(item?.titulo ?? '');
-  const [data, setData] = useState(toLocalIso(item ? new Date(item.data) : initialDate ?? new Date()));
+  const [data, setData] = useState(
+    toLocalIso(item ? new Date(item.data) : (initialDate ?? new Date())),
+  );
   const [duracao, setDuracao] = useState(item?.duracao ?? 60);
   const [tipo, setTipo] = useState<AgendaTipo>(item?.tipo ?? 'VISITA');
   const [observacao, setObservacao] = useState(item?.observacao ?? '');
@@ -1205,8 +1211,7 @@ function AgendaFormModal({
   }
 
   // v1.5.0 — Detecta se este item é parte de série recorrente (parent ou filho)
-  const isRecorrente =
-    item != null && (item.recorrencia ? item.recorrencia !== 'NENHUMA' : false);
+  const isRecorrente = item != null && (item.recorrencia ? item.recorrencia !== 'NENHUMA' : false);
 
   return (
     <Dialog
@@ -1302,7 +1307,11 @@ function AgendaFormModal({
             />
           </FormField>
           <FormField label="Tipo" htmlFor="ag-tipo">
-            <Select id="ag-tipo" value={tipo} onChange={(e) => setTipo(e.target.value as AgendaTipo)}>
+            <Select
+              id="ag-tipo"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value as AgendaTipo)}
+            >
               {TIPOS.map((t) => (
                 <option key={t} value={t}>
                   {TIPO_ICON[t]} {t}

@@ -29,8 +29,14 @@ interface BotPrompt {
 
 /** Variáveis disponíveis pra interpolar nos prompts/mensagens dos fluxos. */
 const VARIAVEIS_REF: { escopo: string; exemplos: string[] }[] = [
-  { escopo: 'Lead', exemplos: ['{{lead.nome}}', '{{lead.empresa}}', '{{lead.cidade}}', '{{lead.uf}}'] },
-  { escopo: 'Custom (IA/fluxos gravam)', exemplos: ['{{custom.classificacao_betinna}}', '{{custom.canal_dominante}}'] },
+  {
+    escopo: 'Lead',
+    exemplos: ['{{lead.nome}}', '{{lead.empresa}}', '{{lead.cidade}}', '{{lead.uf}}'],
+  },
+  {
+    escopo: 'Custom (IA/fluxos gravam)',
+    exemplos: ['{{custom.classificacao_betinna}}', '{{custom.canal_dominante}}'],
+  },
   { escopo: 'Sistema', exemplos: ['{{sistema.empresa_nome}}', '{{sistema.data_hoje}}'] },
 ];
 
@@ -255,9 +261,9 @@ function VersoesModal({
   onRestored: () => void;
 }) {
   const toast = useToast();
-  const { data, loading, error, refetch } = useApiQuery<
-    PromptVersao[] | { data: PromptVersao[] }
-  >(`/mullerbot/prompts/${prompt.id}/versoes`);
+  const { data, loading, error, refetch } = useApiQuery<PromptVersao[] | { data: PromptVersao[] }>(
+    `/mullerbot/prompts/${prompt.id}/versoes`,
+  );
   const versoes: PromptVersao[] = Array.isArray(data) ? data : (data?.data ?? []);
   const [restoring, setRestoring] = useState<number | null>(null);
 
@@ -329,9 +335,7 @@ function VersoesModal({
                   {new Date(v.criadoEm).toLocaleString('pt-BR')}
                 </span>
               )}
-              <pre
-                className='m-0 text-[11px] font-["Fira_Mono",monospace] text-text bg-surface-hover p-2 rounded-[8px] max-h-[120px] overflow-auto whitespace-pre-wrap [word-break:break-word]'
-              >
+              <pre className='m-0 text-[11px] font-["Fira_Mono",monospace] text-text bg-surface-hover p-2 rounded-[8px] max-h-[120px] overflow-auto whitespace-pre-wrap [word-break:break-word]'>
                 {v.texto}
               </pre>
             </div>
@@ -352,7 +356,9 @@ interface VarCustom {
 /** Editor de variáveis customizadas da empresa ({{custom.*}}) — Fase C. */
 function VariaveisCustomizadasSection() {
   const toast = useToast();
-  const { data, refetch } = useApiQuery<VarCustom[] | { data: VarCustom[] }>('/orquestracao/variaveis');
+  const { data, refetch } = useApiQuery<VarCustom[] | { data: VarCustom[] }>(
+    '/orquestracao/variaveis',
+  );
   const vars: VarCustom[] = Array.isArray(data) ? data : (data?.data ?? []);
   const [chave, setChave] = useState('');
   const [valor, setValor] = useState('');
@@ -397,7 +403,11 @@ function VariaveisCustomizadasSection() {
           value={chave}
           onChange={(e) => setChave(e.target.value)}
         />
-        <Input placeholder="valor padrão" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <Input
+          placeholder="valor padrão"
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+        />
         <button
           type="button"
           className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
@@ -409,11 +419,15 @@ function VariaveisCustomizadasSection() {
       </div>
       <div className="grid gap-1">
         {vars.map((v) => (
-          <div key={v.id} className="flex items-center gap-2 text-[13px]">
-            <code className="bg-bg-alt px-1.5 py-px rounded-md">
+          <div key={v.id} className="flex items-center gap-2 text-[13px] flex-wrap">
+            {/* `break-all`: chave longa ({{custom.oportunidade_concreta}}) num
+                <code> não quebra sozinha e estourava a tela do celular. */}
+            <code className="bg-bg-alt px-1.5 py-px rounded-md break-all">
               {`{{custom.${v.chave}}}`}
             </code>
-            <span className="flex-1 text-muted">{v.valorPadrao ?? '—'}</span>
+            <span className="flex-1 min-w-0 truncate text-muted" title={v.valorPadrao ?? ''}>
+              {v.valorPadrao ?? '—'}
+            </span>
             <button
               type="button"
               onClick={() => void remover(v.id)}
@@ -541,7 +555,11 @@ function PromptFormModal({
             autoFocus
           />
         </FormField>
-        <FormField label="Descrição" htmlFor="prompt-descricao" hint="Opcional — pra você se lembrar do uso">
+        <FormField
+          label="Descrição"
+          htmlFor="prompt-descricao"
+          hint="Opcional — pra você se lembrar do uso"
+        >
           <Input
             id="prompt-descricao"
             value={descricao}

@@ -139,7 +139,9 @@ export default function PermissoesPage() {
               <RoleTab key={r} role={r} active={r === role} onClick={() => setRole(r)} />
             ))}
             {/* ADMIN como info-only */}
-            <div className="py-2.5 px-4 text-[13px] text-muted ml-auto italic">
+            {/* Só em tela larga: no celular esta nota empurrava a fileira de
+                abas 47px pra fora — e o parágrafo acima já diz a mesma coisa. */}
+            <div className="hidden sm:block py-2.5 px-4 text-[13px] text-muted ml-auto italic">
               ADMIN tem acesso total automaticamente
             </div>
           </div>
@@ -186,15 +188,7 @@ function ModoTab({
   );
 }
 
-function RoleTab({
-  role,
-  active,
-  onClick,
-}: {
-  role: Role;
-  active: boolean;
-  onClick: () => void;
-}) {
+function RoleTab({ role, active, onClick }: { role: Role; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -204,7 +198,9 @@ function RoleTab({
       onClick={onClick}
       className={cn(
         'border-b-2 py-2.5 px-4 cursor-pointer text-base -mb-px',
-        active ? 'bg-surface font-semibold' : 'bg-transparent border-transparent font-medium text-muted',
+        active
+          ? 'bg-surface font-semibold'
+          : 'bg-transparent border-transparent font-medium text-muted',
       )}
       style={active ? { borderBottomColor: ROLE_COLOR[role], color: ROLE_COLOR[role] } : undefined}
     >
@@ -440,9 +436,7 @@ function PermissionMatrix({ role }: { role: Role }) {
     const prevMap = new Map(perms);
     setPerms(new Map(MODULES.map((m) => [m, { podeVer, podeEditar }])));
     try {
-      const results = await Promise.allSettled(
-        MODULES.map((m) => salvar(m, podeVer, podeEditar)),
-      );
+      const results = await Promise.allSettled(MODULES.map((m) => salvar(m, podeVer, podeEditar)));
       const falhas = results.filter((r) => r.status === 'rejected').length;
       if (falhas > 0) {
         setSaveError(`${falhas} módulo(s) falharam ao salvar — recarregando`);
@@ -527,8 +521,8 @@ function UserPermissions() {
           ))}
         </select>
         <p className="text-xs text-muted mt-1.5 m-0">
-          O usuário nasce com o padrão do papel. Toggles aqui criam <strong>exceções</strong> só
-          pra ele (marcadas na coluna Origem); “exceção” com <RotateCcw size={10} className="inline" />{' '}
+          O usuário nasce com o padrão do papel. Toggles aqui criam <strong>exceções</strong> só pra
+          ele (marcadas na coluna Origem); “exceção” com <RotateCcw size={10} className="inline" />{' '}
           volta ao padrão.
         </p>
       </div>

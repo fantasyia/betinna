@@ -43,10 +43,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
-import {
-  formatMoeda as fmtBRL,
-  formatMoedaCompacta as fmtBRLCompact,
-} from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
 import { rotuloFormulario, rotuloOrigem } from '@/lib/origem-lead';
 import { getSession } from '@/lib/auth-store';
 import { PhoneInput } from '@/components/PhoneInput';
@@ -249,15 +246,7 @@ const CANAL_LABEL: Record<CanalOrigem, string> = {
 };
 
 /** Chip de tag colorido (fundo translúcido na cor da tag). */
-function TagChip({
-  nome,
-  cor,
-  onRemove,
-}: {
-  nome: string;
-  cor: string;
-  onRemove?: () => void;
-}) {
+function TagChip({ nome, cor, onRemove }: { nome: string; cor: string; onRemove?: () => void }) {
   return (
     <span
       className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
@@ -337,7 +326,10 @@ export default function LeadsPage() {
     (acc, f) => {
       const t = totaisPorFunil[f.id];
       return t
-        ? { totalLeads: acc.totalLeads + t.totalLeads, totalAtivos: acc.totalAtivos + t.totalAtivos }
+        ? {
+            totalLeads: acc.totalLeads + t.totalLeads,
+            totalAtivos: acc.totalAtivos + t.totalAtivos,
+          }
         : acc;
     },
     { totalLeads: 0, totalAtivos: 0 },
@@ -363,7 +355,9 @@ export default function LeadsPage() {
         multi ? ` · ${funisVisiveis.length} funis` : ''
       }`}
       actions={
-        <div className="flex items-center gap-2">
+        // `flex-wrap`: no celular os 4 controles não cabem numa linha e o
+        // botão "Novo lead" ficava cortado fora da tela (+64px de estouro).
+        <div className="flex items-center gap-2 flex-wrap">
           {funis && funis.length > 1 && (
             <div className="relative">
               <Button
@@ -372,9 +366,7 @@ export default function LeadsPage() {
                 onClick={() => setMenuFunis((v) => !v)}
                 aria-expanded={menuFunis}
               >
-                {multi
-                  ? `${funisVisiveis.length} funis`
-                  : (primeiro?.nome ?? 'Funil')}
+                {multi ? `${funisVisiveis.length} funis` : (primeiro?.nome ?? 'Funil')}
                 <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
               </Button>
               {menuFunis && (
@@ -555,7 +547,11 @@ function FunilBoard({
   // (queryKey = URL), NUNCA cache-buster — ver memória de polling TanStack.
   useEffect(() => {
     function atualizar() {
-      if (document.visibilityState !== 'visible' || activeLeadRef.current || movendoRef.current > 0) {
+      if (
+        document.visibilityState !== 'visible' ||
+        activeLeadRef.current ||
+        movendoRef.current > 0
+      ) {
         return;
       }
       refetch();
@@ -698,7 +694,11 @@ function FunilBoard({
     <section data-testid={`funil-board-${funilId}`}>
       {mostrarTitulo && (
         <div className="flex items-center gap-2 mb-2">
-          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cor }} aria-hidden />
+          <span
+            className="h-2.5 w-2.5 rounded-full shrink-0"
+            style={{ background: cor }}
+            aria-hidden
+          />
           <h2 className="text-sm font-semibold text-text">{nome}</h2>
           <span className="text-[11px] text-muted tabular">
             {optimistic
@@ -716,8 +716,8 @@ function FunilBoard({
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <span>
               Alguma coluna passou de {KANBAN_CAP_POR_ETAPA} leads — o quadro mostra os mais
-              recentes de cada etapa. O número no topo da coluna é o total de verdade; pra
-              chegar nos demais, use os filtros ou a busca em Contatos.
+              recentes de cada etapa. O número no topo da coluna é o total de verdade; pra chegar
+              nos demais, use os filtros ou a busca em Contatos.
             </span>
           </div>
         )}
@@ -829,9 +829,7 @@ function KanbanColumn({
           <span
             className="text-[10px] text-muted tabular bg-surface px-1.5 py-0.5 rounded-full border border-border"
             title={
-              cortada
-                ? `Mostrando ${leads.length} dos ${totalReal} leads desta etapa`
-                : undefined
+              cortada ? `Mostrando ${leads.length} dos ${totalReal} leads desta etapa` : undefined
             }
           >
             {cortada ? `${leads.length} de ${totalReal}` : leads.length}
@@ -845,9 +843,7 @@ function KanbanColumn({
       {leads.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-6 text-center">
           <Target className="h-4 w-4 text-muted-light mb-1" />
-          <span className="text-[11px] text-muted-light">
-            Solte um lead aqui
-          </span>
+          <span className="text-[11px] text-muted-light">Solte um lead aqui</span>
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -923,12 +919,7 @@ function LeadCardInner({
   dragging?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        'relative',
-        dragging && 'shadow-xl',
-      )}
-    >
+    <div className={cn('relative', dragging && 'shadow-xl')}>
       {/* Botão "Abrir" no canto — único elemento que NÃO dispara drag */}
       {onOpenDetail && (
         <button
@@ -954,13 +945,9 @@ function LeadCardInner({
       <div className="flex items-start gap-2 mb-1.5 pr-5">
         <Avatar name={lead.nome} size="xs" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-text leading-tight truncate">
-            {lead.nome}
-          </div>
+          <div className="text-sm font-medium text-text leading-tight truncate">{lead.nome}</div>
           {lead.contatoNome && (
-            <div className="text-[10px] text-muted truncate">
-              {lead.contatoNome}
-            </div>
+            <div className="text-[10px] text-muted truncate">{lead.contatoNome}</div>
           )}
         </div>
       </div>
@@ -1286,7 +1273,9 @@ function LeadDetailDrawer({
         </section>
 
         {/* Mover para OUTRO funil (via PUT /etapa — dispara SLA + gatilho do funil destino) */}
-        {!fechado && <MoverFunilSection lead={lead} onChanged={onChanged} busyOther={busy !== null} />}
+        {!fechado && (
+          <MoverFunilSection lead={lead} onChanged={onChanged} busyOther={busy !== null} />
+        )}
 
         {/* F2 — Representante */}
         <section>
@@ -1671,10 +1660,7 @@ function LeadTagsSection({ lead, onMutated }: { lead: Lead; onMutated: () => voi
           </option>
         ))}
       </Select>
-      <Link
-        to="/tags"
-        className="text-[11px] text-primary hover:underline mt-1.5 inline-block"
-      >
+      <Link to="/tags" className="text-[11px] text-primary hover:underline mt-1.5 inline-block">
         Gerenciar tags →
       </Link>
     </section>
@@ -1867,12 +1853,7 @@ function LeadFormModal({
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button
-            type="submit"
-            form="lead-form"
-            data-testid="lead-save-btn"
-            loading={busy}
-          >
+          <Button type="submit" form="lead-form" data-testid="lead-save-btn" loading={busy}>
             Criar lead
           </Button>
         </>
@@ -1922,10 +1903,7 @@ function LeadFormModal({
             </Select>
           </Field>
           <Field label="Contato (nome)">
-            <Input
-              value={form.contatoNome}
-              onChange={(e) => setF('contatoNome', e.target.value)}
-            />
+            <Input value={form.contatoNome} onChange={(e) => setF('contatoNome', e.target.value)} />
           </Field>
           <Field label="Telefone">
             <PhoneInput
@@ -1965,10 +1943,7 @@ function LeadFormModal({
         </div>
 
         <Field label="Próxima ação" hint="Ex: ligar amanhã às 10h">
-          <Input
-            value={form.proximaAcao}
-            onChange={(e) => setF('proximaAcao', e.target.value)}
-          />
+          <Input value={form.proximaAcao} onChange={(e) => setF('proximaAcao', e.target.value)} />
         </Field>
         <Field label="Observações">
           <Textarea
