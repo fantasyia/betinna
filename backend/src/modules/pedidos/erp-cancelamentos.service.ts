@@ -140,12 +140,19 @@ export class ErpCancelamentosService {
               .then(() => true)
               .catch(() => false);
           }
+          // A conta pode já ter SUMIDO: cancelar a NF com "estornar contas"
+          // apaga o lançamento. Só sobra marcar a que ficou de pé.
+          const sobraram: number[] = [];
           for (const id of ids) {
+            if (!(await this.contas.contaReceberExiste(empresaId, id))) continue;
             await this.contas.marcarContaReceberCancelada(empresaId, id).catch(() => undefined);
+            sobraram.push(id);
           }
           r.avisos.push(
-            `${p.numero}: conta(s) a receber ${ids.join(', ')} ` +
-              `${estornou ? 'estornada(s)' : 'sem estorno pela API'} e marcada(s) CANCELADA`,
+            sobraram.length === 0
+              ? `${p.numero}: conta(s) a receber baixada(s) pelo cancelamento da NF`
+              : `${p.numero}: conta(s) a receber ${sobraram.join(', ')} ` +
+                  `${estornou ? 'estornada(s)' : 'sem estorno pela API'} e marcada(s) CANCELADA`,
           );
         }
       }

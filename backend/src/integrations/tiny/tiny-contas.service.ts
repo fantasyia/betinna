@@ -121,6 +121,14 @@ export class TinyContasService {
    * Marca uma conta a RECEBER como CANCELADA. Mesma limitação da conta a pagar:
    * a API não apaga nem zera, e o estorno nem sempre remove o lançamento.
    */
+  /** A conta a receber ainda existe? Cancelar a NF com "estornar contas" a APAGA. */
+  async contaReceberExiste(empresaId: string, id: number): Promise<boolean> {
+    return this.client
+      .get(empresaId, `/contas-receber/${id}`)
+      .then(() => true)
+      .catch(() => false);
+  }
+
   async marcarContaReceberCancelada(empresaId: string, id: number): Promise<void> {
     const atuais = await this.client
       .get<Array<{ descricao?: string }>>(empresaId, `/contas-receber/${id}/marcadores`)

@@ -29,7 +29,10 @@ function build(
     estornarContasDaNota: vi.fn().mockResolvedValue(undefined),
     estornarContasDoPedido: vi.fn().mockResolvedValue(undefined),
   };
-  const contas = { marcarContaReceberCancelada: vi.fn().mockResolvedValue(undefined) };
+  const contas = {
+    marcarContaReceberCancelada: vi.fn().mockResolvedValue(undefined),
+    contaReceberExiste: vi.fn().mockResolvedValue(true),
+  };
   const comissoesPedido = { recalcular: vi.fn().mockResolvedValue(undefined) };
   const comissoes = { fecharMes: vi.fn().mockResolvedValue({ ok: true }) };
   const notificacoes = { criarParaRole: vi.fn().mockResolvedValue(1) };
@@ -184,6 +187,22 @@ describe('varredura diária de cancelamentos', () => {
     expect(tiny.estornarContasDoPedido).not.toHaveBeenCalled();
     expect(contas.marcarContaReceberCancelada).not.toHaveBeenCalled();
     expect(r.avisos.some((a) => a.includes('cancele a NF marcando'))).toBe(true);
+  });
+
+  it('NF cancelada COM "estornar contas": a conta some e a varredura só confirma', async () => {
+    const { svc, contas } = build({
+      cancelados: [
+        { ...CANCELADO, contasReceberErp: [{ origem: 'tiny', idNota: 77, ids: [900] }] },
+      ],
+      erp: { situacao: 2, idNotaFiscal: 77 },
+      nota: { situacao: 3 },
+    });
+    contas.contaReceberExiste.mockResolvedValue(false);
+
+    const r = await svc.varrer('emp-1');
+
+    expect(contas.marcarContaReceberCancelada).not.toHaveBeenCalled();
+    expect(r.avisos).toContain('PED-0001: conta(s) a receber baixada(s) pelo cancelamento da NF');
   });
 
   it('NF já cancelada → estorna a conta a receber (nota, senão venda) e marca CANCELADA', async () => {
