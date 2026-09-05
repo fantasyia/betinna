@@ -11,6 +11,7 @@ import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { PedidoComissoesService } from './pedido-comissoes.service';
+import { PedidoComissaoErpService } from './pedido-comissao-erp.service';
 import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { SiteStatusService } from './site-status.service';
@@ -129,6 +130,7 @@ export class PedidoErpSyncService {
     private readonly etapa: LeadEtapaSistemaService,
     private readonly comissoes: PedidoComissoesService,
     private readonly financeiro: PedidoFinanceiroErpService,
+    private readonly comissaoErp: PedidoComissaoErpService,
   ) {}
 
   async sincronizar(
@@ -389,6 +391,13 @@ export class PedidoErpSyncService {
       // sempre é o pedido. Trocar a % de alguém deixaria a linha velha de pé pra
       // sempre, porque o pedido continua idêntico e a varredura passa reto.
       await this.comissoes.recalcular(existente.id);
+      // Conta de comissão que já existe no ERP acompanha o valor novo (ou vira
+      // aviso, se zerou). Não cria: criar é só quando a NF sai.
+      const ajuste = await this.comissaoErp.provisionar(empresaId, existente.id, null, {
+        criar: false,
+      });
+      for (const c of ajuste.paraApagar)
+        r.avisos.push(`Comissão zerada com conta no ERP — apagar: ${c}`);
       // NF autorizada → conta a receber no ERP. Antes do atalho, e idempotente:
       // a nota pode ter saído num dia em que o pedido não mudou de mais nada.
       if (d.situacao === SITUACAO_FATURADA && d.idNotaFiscal) {
@@ -853,6 +862,14 @@ export class PedidoErpSyncService {
           `Pedido ${pedidoId}: cliente sem contato no ERP — conta a receber não lançada`,
         );
       }
+      // A comissão de cada pessoa vira conta a pagar no MESMO momento — por
+      // pedido, não no fim do mês (decisão do Léo, 05/09).
+      const pv = await this.comissaoErp.provisionar(empresaId, pedidoId, nota, { criar: true });
+      for (const n of pv.semContato) {
+        r.avisos.push(`Pedido ${pedidoId}: ${n} sem contato no ERP — comissão não provisionada`);
+      }
+      for (const c of pv.paraApagar)
+        r.avisos.push(`Comissão zerada com conta no ERP — apagar: ${c}`);
     } catch (err) {
       r.erros += 1;
       this.logger.warn(`[erp] conta a receber do pedido ${pedidoId} falhou: ${this.msg(err)}`);

@@ -105,6 +105,10 @@ export class ComissaoErpService {
     const competencia = this.competencia(mes, ano);
 
     for (const c of comissoes) {
+      // REP e SITE viram conta a pagar POR PEDIDO, quando a NF sai
+      // (`PedidoComissaoErpService`). Provisionar de novo aqui pagaria em dobro.
+      // GERENTE não tem linha por pedido — segue pela folha.
+      if (c.tipo !== 'GERENTE') continue;
       const contato = Number(c.representante?.contatoErpId ?? 0);
       // De QUAIS pedidos é esta comissão — é o que deixa achar o pedido a
       // partir da conta, e conferir a conta a partir do pedido.

@@ -84,9 +84,20 @@ export class PedidoComissoesService {
     if (!pedido) return;
 
     if (SEM_COMISSAO.has(pedido.status)) {
-      const { count } = await this.prisma.pedidoComissao.deleteMany({ where: { pedidoId } });
-      if (count > 0)
-        this.logger.log(`Pedido ${pedidoId} cancelado — ${count} comissão(ões) removida(s)`);
+      // Linha que já virou conta a pagar no ERP não pode sumir: fica ZERADA, e é
+      // o zero com id de conta que faz a varredura avisar "apaga lá". Sem conta,
+      // some mesmo.
+      const zeradas = await this.prisma.pedidoComissao.updateMany({
+        where: { pedidoId, contaPagarErpId: { not: null } },
+        data: { valor: new Prisma.Decimal(0) },
+      });
+      const { count } = await this.prisma.pedidoComissao.deleteMany({
+        where: { pedidoId, contaPagarErpId: null },
+      });
+      if (count > 0 || zeradas.count > 0)
+        this.logger.log(
+          `Pedido ${pedidoId} cancelado — ${count} comissão(ões) removida(s), ${zeradas.count} zerada(s) (já tinham conta no ERP)`,
+        );
       return;
     }
 
@@ -136,8 +147,18 @@ export class PedidoComissoesService {
       await tx.pedidoComissao.deleteMany({
         where: {
           pedidoId,
+          contaPagarErpId: null,
           NOT: linhas.map((l) => ({ usuarioId: l.usuarioId, tipo: l.tipo })),
         },
+      });
+      // Quem tinha conta no ERP e saiu da lista (trocou de dono, % zerada): zera.
+      await tx.pedidoComissao.updateMany({
+        where: {
+          pedidoId,
+          contaPagarErpId: { not: null },
+          NOT: linhas.map((l) => ({ usuarioId: l.usuarioId, tipo: l.tipo })),
+        },
+        data: { valor: new Prisma.Decimal(0) },
       });
       for (const l of linhas) {
         const valor = base

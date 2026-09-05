@@ -5,11 +5,19 @@ import { PedidoComissoesService } from './pedido-comissoes.service';
 const makePrisma = () => ({
   pedido: { findUnique: vi.fn() },
   usuario: { findUnique: vi.fn(), findMany: vi.fn(async () => [] as unknown[]) },
-  pedidoComissao: { deleteMany: vi.fn(async () => ({ count: 0 })), upsert: vi.fn() },
+  pedidoComissao: {
+    deleteMany: vi.fn(async () => ({ count: 0 })),
+    updateMany: vi.fn(async () => ({ count: 0 })),
+    upsert: vi.fn(),
+  },
   $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)),
 });
 let tx: {
-  pedidoComissao: { deleteMany: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+  pedidoComissao: {
+    deleteMany: ReturnType<typeof vi.fn>;
+    updateMany: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
+  };
 };
 
 describe('PedidoComissoesService', () => {
@@ -29,7 +37,11 @@ describe('PedidoComissoesService', () => {
 
   beforeEach(() => {
     tx = {
-      pedidoComissao: { deleteMany: vi.fn(async () => ({ count: 0 })), upsert: vi.fn() },
+      pedidoComissao: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+        upsert: vi.fn(),
+      },
     };
     prisma = makePrisma();
     svc = new PedidoComissoesService(prisma as never);
@@ -108,7 +120,14 @@ describe('PedidoComissoesService', () => {
 
     await svc.recalcular('ped-1');
 
-    expect(prisma.pedidoComissao.deleteMany).toHaveBeenCalledWith({ where: { pedidoId: 'ped-1' } });
+    // Só some quem NÃO tem conta no ERP; quem tem, zera (vira aviso na varredura).
+    expect(prisma.pedidoComissao.deleteMany).toHaveBeenCalledWith({
+      where: { pedidoId: 'ped-1', contaPagarErpId: null },
+    });
+    expect(prisma.pedidoComissao.updateMany).toHaveBeenCalledWith({
+      where: { pedidoId: 'ped-1', contaPagarErpId: { not: null } },
+      data: { valor: new Prisma.Decimal(0) },
+    });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

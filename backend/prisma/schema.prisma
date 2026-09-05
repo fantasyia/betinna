@@ -1690,6 +1690,10 @@ model PedidoComissao {
   /// Base usada (total do pedido líquido de devolução).
   base       Decimal      @db.Decimal(14, 2)
   valor      Decimal      @db.Decimal(14, 2)
+  /// Conta a pagar desta linha no ERP (uma por pedido/pessoa, criada quando a NF
+  /// sai). Presença = já provisionada; `contaPagarValor` é o valor que está lá.
+  contaPagarErpId String?
+  contaPagarValor Decimal? @db.Decimal(14, 2)
   criadoEm   DateTime     @default(now())
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)

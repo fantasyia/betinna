@@ -30,12 +30,18 @@ function build(
   const comissoesPedido = { recalcular: vi.fn().mockResolvedValue(undefined) };
   const comissoes = { fecharMes: vi.fn().mockResolvedValue({ ok: true }) };
   const notificacoes = { criarParaRole: vi.fn().mockResolvedValue(1) };
+  const comissaoErp = {
+    provisionar: vi
+      .fn()
+      .mockResolvedValue({ criadas: 0, atualizadas: 0, semContato: [], paraApagar: [], erros: 0 }),
+  };
   const svc = new ErpCancelamentosService(
     prisma as never,
     tiny as never,
     comissoesPedido as never,
     comissoes as never,
     notificacoes as never,
+    comissaoErp as never,
   );
   return { svc, prisma, tiny, comissoesPedido, comissoes, notificacoes };
 }

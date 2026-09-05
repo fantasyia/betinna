@@ -4,6 +4,7 @@ import { TinyPedidosService } from '@integrations/tiny/tiny-pedidos.service';
 import { ComissoesService } from '@modules/comissoes/comissoes.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { PedidoComissaoErpService } from './pedido-comissao-erp.service';
 import { PedidoComissoesService } from './pedido-comissoes.service';
 
 export interface ResultadoCancelamentos {
@@ -52,6 +53,7 @@ export class ErpCancelamentosService {
     private readonly comissoesPedido: PedidoComissoesService,
     private readonly comissoes: ComissoesService,
     private readonly notificacoes: NotificacoesService,
+    private readonly comissaoErp: PedidoComissaoErpService,
   ) {}
 
   async varrer(empresaId: string, opcoes: { dias?: number } = {}): Promise<ResultadoCancelamentos> {
@@ -108,6 +110,10 @@ export class ErpCancelamentosService {
       // A linha de comissão do pedido cancelado tem que sumir — o recálculo faz
       // isso — e o mês da folha entra na lista pra reprocessar.
       await this.comissoesPedido.recalcular(p.id);
+      // Conta a pagar POR PEDIDO que ficou lá: a API não apaga — aviso.
+      const pv = await this.comissaoErp.provisionar(empresaId, p.id, null, { criar: false });
+      for (const c of pv.paraApagar)
+        r.avisos.push(`comissão do pedido cancelado — apagar no ERP: ${c}`);
       const ref = p.enviadoErpEm ?? null;
       if (ref) {
         const { mes, ano } = this.mesBrt(ref);

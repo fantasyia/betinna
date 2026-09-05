@@ -82,6 +82,16 @@ function build(
     { recalcular: vi.fn(async () => undefined) } as never,
     // Conta a receber ao faturar: idem.
     { lancarContasReceber: vi.fn(async () => ({ efeito: 'jaLancado' as const })) } as never,
+    // Conta a pagar de comissão por pedido: idem.
+    {
+      provisionar: vi.fn(async () => ({
+        criadas: 0,
+        atualizadas: 0,
+        semContato: [],
+        paraApagar: [],
+        erros: 0,
+      })),
+    } as never,
   );
   return { svc, prisma, tiny, notificacoes, bus, sequence };
 }

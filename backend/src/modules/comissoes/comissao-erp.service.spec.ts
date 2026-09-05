@@ -44,9 +44,10 @@ function build(
   return { svc, prisma, contas, contatos };
 }
 
+// GERENTE: é o único tipo que a folha MENSAL ainda provisiona (REP/SITE são por pedido).
 const COMISSAO_REP = {
   id: 'com-1',
-  tipo: 'REP',
+  tipo: 'GERENTE',
   totalVendas: 100000,
   totalComissao: 5000,
   contaPagarErpId: null,
@@ -70,13 +71,9 @@ describe('folha de comissões no financeiro do ERP', () => {
     expect(lancamento.idContato).toBe(894881870);
   });
 
-  it('a conta nasce por Pix, ÚNICA (não recorrente) e o histórico diz de QUAIS pedidos é', async () => {
-    // Sem isto a conta entrava "forma não definida", como RECORRENTE (o Tiny
-    // decidia) e com um histórico que não deixava achar o pedido.
-    const { svc, contas } = build({
-      comissoes: [{ ...COMISSAO_REP, tipo: 'SITE' }],
-      linhas: [{ pedido: { numero: 'PED-0001', numeroSite: 'SB370658', numeroErp: '41' } }],
-    });
+  it('a conta nasce por Pix e ÚNICA (não recorrente)', async () => {
+    // Sem isto a conta entrava "forma não definida" e como RECORRENTE (o Tiny decidia).
+    const { svc, contas } = build({ comissoes: [COMISSAO_REP] });
 
     await svc.provisionar('emp-1', 9, 2026);
 
@@ -84,9 +81,21 @@ describe('folha de comissões no financeiro do ERP', () => {
     expect(l.formaPagamento).toBe(15);
     expect(l.ocorrencia).toBe('U');
     expect(l.diaVencimento).toBeUndefined();
-    expect(l.historico).toBe(
-      'Comissão SITE 09/2026 — Marcelo Harada · pedidos: SB370658 / PED-0001 / ERP 41',
-    );
+    expect(l.historico).toBe('Comissão GERENTE 09/2026 — Marcelo Harada');
+  });
+
+  it('REP e SITE NÃO provisionam na folha — são conta por pedido, quando a NF sai', async () => {
+    const { svc, contas } = build({
+      comissoes: [
+        { ...COMISSAO_REP, id: 'c-rep', tipo: 'REP' },
+        { ...COMISSAO_REP, id: 'c-site', tipo: 'SITE' },
+      ],
+    });
+
+    const r = await svc.provisionar('emp-1', 9, 2026);
+
+    expect(contas.criarContaPagar).not.toHaveBeenCalled();
+    expect(r.provisionadas).toBe(0);
   });
 
   it('folha reprocessada REESCREVE a conta que já existe no ERP (valor novo)', async () => {
