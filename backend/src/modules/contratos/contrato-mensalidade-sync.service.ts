@@ -123,6 +123,15 @@ export class ContratoMensalidadeSyncService {
         );
         if (res.liberadas > 0) r.mensalidadesRegistradas += 1;
         r.comissoesProvisionadas += res.criadas;
+        // Sem isto, uma conta a pagar recusada pelo ERP sumia do resultado: a
+        // varredura dizia "1 mensalidade registrada, 0 comissões" e ninguém
+        // sabia por quê. Aconteceu de verdade (numeroDocumento > 20 chars).
+        if (res.erros > 0) {
+          r.avisos.push(
+            `Mensalidade de ${this.rotulo(competencia)} registrada, mas ${res.erros} ` +
+              `conta(s) a pagar de comissão falhou/falharam no ERP — ver log`,
+          );
+        }
         for (const nome of res.semContato) {
           r.avisos.push(
             `${nome} não tem contato no ERP — comissão de ${this.rotulo(competencia)} não provisionada`,

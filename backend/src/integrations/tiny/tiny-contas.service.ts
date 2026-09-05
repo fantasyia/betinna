@@ -41,6 +41,9 @@ export interface LancamentoFinanceiro {
  *    as duas em 05/02 — vencimento é caixa, competência é resultado, e misturar
  *    os dois é o erro clássico.
  */
+/** Teto de caracteres do `numeroDocumento` no Tiny — acima disso a API devolve 400. */
+const MAX_NUMERO_DOCUMENTO = 20;
+
 /** Teto de itens por página no Tiny — acima disso a API devolve 400. */
 const LIMITE_PAGINA = 100;
 
@@ -271,7 +274,12 @@ export class TinyContasService {
       valor: Math.round(l.valor * 100) / 100,
       dataVencimento: l.dataVencimento,
       ...(l.dataCompetencia ? { dataCompetencia: l.dataCompetencia } : {}),
-      ...(l.numeroDocumento ? { numeroDocumento: l.numeroDocumento } : {}),
+      // 20 caracteres é o TETO do Tiny — passar disso não trunca, devolve 400 e
+      // a conta não é criada. Corta aqui, no único lugar por onde todos passam,
+      // pra nenhum chamador precisar lembrar disso.
+      ...(l.numeroDocumento
+        ? { numeroDocumento: l.numeroDocumento.slice(0, MAX_NUMERO_DOCUMENTO) }
+        : {}),
       ...(l.historico ? { historico: l.historico } : {}),
       ...(l.idCategoria ? { categoria: { id: l.idCategoria } } : {}),
       // Sempre explícito: única salvo quem pediu recorrência (locação).

@@ -138,7 +138,9 @@ export class ContratoComissaoErpService {
           valor,
           dataVencimento: vencimentoDia5(mes, ano),
           dataCompetencia: competencia,
-          numeroDocumento: `${contratoRotulo}/${competencia}`,
+          // Reserva os 8 últimos para "/AAAA-MM": a competência é o que
+          // identifica o mês, e é ela que não pode ser cortada.
+          numeroDocumento: `${contratoRotulo.slice(0, 12)}/${competencia}`,
           historico:
             `Comissão ${l.tipo} ${l.percentual}% — ${nome} · locação ${contratoRotulo}` +
             `${l.contrato?.cliente?.nome ? ` (${l.contrato.cliente.nome})` : ''}` +
