@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -320,7 +321,7 @@ export default function ContatosPage() {
           )}
           {data && data.data.length > 0 && (
             <>
-              <div className="scroll-x-hint">
+              <ScrollX>
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
@@ -408,7 +409,7 @@ export default function ContatosPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ScrollX>
 
               {data.pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">

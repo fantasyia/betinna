@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
@@ -395,7 +396,7 @@ export function TabelaView({
         className="mb-3 w-full sm:w-64"
         data-testid="tabela-filtro"
       />
-      <div className="scroll-x-hint rounded-[10px] border border-border">
+      <ScrollX className="rounded-[10px] border border-border">
         <table className="w-full text-sm" data-testid="kanban-tabela">
           <thead className="bg-surface-elevated border-b border-border">
             <tr>
@@ -491,7 +492,7 @@ export function TabelaView({
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </StateView>
   );
 }

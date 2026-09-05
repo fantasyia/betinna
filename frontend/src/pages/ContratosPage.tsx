@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { Search, FileSignature, Download } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -130,7 +131,7 @@ export default function ContratosPage() {
             />
           )}
           {data && data.data.length > 0 && (
-            <div className="scroll-x-hint">
+            <ScrollX>
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border bg-bg-alt">
@@ -212,7 +213,7 @@ export default function ContratosPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           )}
         </StateView>
       </Card>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, CheckSquare, RotateCcw, Square, UserCog } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
@@ -294,7 +295,7 @@ function MatrixCore({
         </div>
       </header>
 
-      <div className="scroll-x-hint">
+      <ScrollX>
         <table className="w-full border-collapse text-base">
           <thead>
             <tr>
@@ -364,7 +365,7 @@ function MatrixCore({
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
 
       {saveError && (
         <p

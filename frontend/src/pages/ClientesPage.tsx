@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -428,7 +429,7 @@ export default function ClientesPage() {
           {page$ && page$.data.length > 0 && (
             <>
               {/* Tabela / cards */}
-              <div className="scroll-x-hint">
+              <ScrollX>
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
@@ -535,7 +536,7 @@ export default function ClientesPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ScrollX>
 
               {/* Pagination */}
               {page$.pagination.totalPages > 1 && (

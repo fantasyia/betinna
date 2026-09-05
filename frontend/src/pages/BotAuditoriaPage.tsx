@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { Link } from 'react-router-dom';
 import { Download, ExternalLink, Flag } from 'lucide-react';
 import { ApiError, downloadFile } from '@/lib/api';
@@ -160,7 +161,7 @@ export default function BotAuditoriaPage() {
         emptyMessage="Nenhuma resposta do bot ainda (ou nenhum resultado pro filtro)."
       >
         <Card padding="none">
-          <div className="scroll-x-hint">
+          <ScrollX>
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
@@ -221,7 +222,7 @@ export default function BotAuditoriaPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollX>
         </Card>
 
         {/* Paginação */}

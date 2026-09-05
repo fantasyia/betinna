@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { useToast } from '@/components/toast';
 import { toCsv, downloadCsv, type CsvColumn } from '@/lib/csv';
 import { svgParaPng } from '@/lib/grafico-export';
@@ -124,7 +125,7 @@ export function ChartCard<T>({
           {children}
         </div>
       ) : (
-        <div className="scroll-x-hint">
+        <ScrollX>
           <table className="w-full text-[12px] border-collapse">
             <thead>
               <tr>
@@ -150,7 +151,7 @@ export function ChartCard<T>({
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
     </div>
   );

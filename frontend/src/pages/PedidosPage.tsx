@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search,
@@ -647,7 +648,7 @@ export default function PedidosPage() {
           )}
           {pageResp && pageResp.data.length > 0 && (
             <>
-              <div className="scroll-x-hint">
+              <ScrollX>
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
@@ -779,7 +780,7 @@ export default function PedidosPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </ScrollX>
 
               {pageResp.pagination.totalPages > 1 && (
                 <PaginationBar
@@ -1213,7 +1214,7 @@ function PedidoDetailDrawer({
                 <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
                   Itens ({data.itens.length})
                 </h4>
-                <div className="rounded-md border border-border scroll-x-hint">
+                <ScrollX className="rounded-md border border-border">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border bg-bg-alt">
@@ -1255,7 +1256,7 @@ function PedidoDetailDrawer({
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ScrollX>
               </section>
             )}
 

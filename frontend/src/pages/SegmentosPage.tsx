@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import {
   Plus,
   Trash2,
@@ -322,51 +323,53 @@ function SegmentoViewer({ segmento, onClose }: { segmento: Segmento; onClose: ()
                 Mostrando primeiros {Math.min(data.clientes.length, 100)}
               </span>
             </div>
-            <Card padding="none" className="scroll-x-hint">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-bg-alt">
-                    <Th>Cliente</Th>
-                    <Th>Local</Th>
-                    <Th>Representante</Th>
-                    <Th>Status</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.clientes.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="border-b border-border last:border-b-0 hover:bg-surface-hover"
-                    >
-                      <Td>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Avatar name={c.nome} size="sm" />
-                          <div className="min-w-0">
-                            <div className="text-sm text-text truncate">{c.nome}</div>
-                            {c.cnpj && (
-                              <div className="text-[11px] text-muted tabular">{c.cnpj}</div>
-                            )}
-                          </div>
-                        </div>
-                      </Td>
-                      <Td>
-                        <span className="text-sm text-text-subtle">
-                          {c.cidade ?? '—'}
-                          {c.uf && <span className="text-muted">/{c.uf}</span>}
-                        </span>
-                      </Td>
-                      <Td>
-                        <span className="text-sm text-text-subtle">
-                          {c.representante?.nome ?? '—'}
-                        </span>
-                      </Td>
-                      <Td>
-                        <Badge variant="neutral">{c.status}</Badge>
-                      </Td>
+            <Card padding="none">
+              <ScrollX>
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-bg-alt">
+                      <Th>Cliente</Th>
+                      <Th>Local</Th>
+                      <Th>Representante</Th>
+                      <Th>Status</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.clientes.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="border-b border-border last:border-b-0 hover:bg-surface-hover"
+                      >
+                        <Td>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Avatar name={c.nome} size="sm" />
+                            <div className="min-w-0">
+                              <div className="text-sm text-text truncate">{c.nome}</div>
+                              {c.cnpj && (
+                                <div className="text-[11px] text-muted tabular">{c.cnpj}</div>
+                              )}
+                            </div>
+                          </div>
+                        </Td>
+                        <Td>
+                          <span className="text-sm text-text-subtle">
+                            {c.cidade ?? '—'}
+                            {c.uf && <span className="text-muted">/{c.uf}</span>}
+                          </span>
+                        </Td>
+                        <Td>
+                          <span className="text-sm text-text-subtle">
+                            {c.representante?.nome ?? '—'}
+                          </span>
+                        </Td>
+                        <Td>
+                          <Badge variant="neutral">{c.status}</Badge>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ScrollX>
             </Card>
           </>
         )}

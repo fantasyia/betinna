@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { cn } from '@/lib/cn';
 import { useIsMobile } from '@/components/PageLayout';
 
@@ -55,7 +56,7 @@ export function Table<T>({ data, columns, rowKey, onRowClick }: TableProps<T>) {
   }
 
   return (
-    <div className="scroll-x-hint">
+    <ScrollX>
       <table
         className="w-full border-separate border-spacing-0 text-[13px]"
         data-testid="data-table"
@@ -95,7 +96,7 @@ export function Table<T>({ data, columns, rowKey, onRowClick }: TableProps<T>) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 

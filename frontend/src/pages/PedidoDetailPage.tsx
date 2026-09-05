@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useRole } from '@/hooks/usePermission';
 import {
@@ -409,59 +410,61 @@ export default function PedidoDetailPage() {
                   <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
                     Itens ({data.itens.length})
                   </h4>
-                  <Card padding="none" className="scroll-x-hint">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-border bg-bg-alt">
-                          <Th>Produto</Th>
-                          <Th align="right">Qt</Th>
-                          <Th align="right">Unit</Th>
-                          <Th align="right">% desc</Th>
-                          <Th align="right">Total</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.itens.map((it) => (
-                          <tr key={it.id} className="border-b border-border last:border-b-0">
-                            <td className="px-3 py-2.5">
-                              <div className="text-sm text-text font-medium">
-                                {it.produto?.nome ?? '—'}
-                              </div>
-                              {it.produto?.sku && (
-                                <div className="text-[10px] text-muted tabular">
-                                  SKU {it.produto.sku}
+                  <Card padding="none">
+                    <ScrollX>
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border bg-bg-alt">
+                            <Th>Produto</Th>
+                            <Th align="right">Qt</Th>
+                            <Th align="right">Unit</Th>
+                            <Th align="right">% desc</Th>
+                            <Th align="right">Total</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.itens.map((it) => (
+                            <tr key={it.id} className="border-b border-border last:border-b-0">
+                              <td className="px-3 py-2.5">
+                                <div className="text-sm text-text font-medium">
+                                  {it.produto?.nome ?? '—'}
                                 </div>
-                              )}
+                                {it.produto?.sku && (
+                                  <div className="text-[10px] text-muted tabular">
+                                    SKU {it.produto.sku}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-sm text-text tabular">
+                                {it.quantidade}
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-sm text-text-subtle tabular">
+                                {fmtBRL(it.precoUnitario)}
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-sm text-text-subtle tabular">
+                                {it.desconto > 0 ? formatPercent(it.desconto, 1) : '—'}
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-sm font-semibold text-text tabular">
+                                {fmtBRL(it.total)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-bg-alt border-t-2 border-primary/30">
+                            <td
+                              colSpan={4}
+                              className="px-3 py-2.5 text-right text-sm font-semibold text-text"
+                            >
+                              Total
                             </td>
-                            <td className="px-3 py-2.5 text-right text-sm text-text tabular">
-                              {it.quantidade}
-                            </td>
-                            <td className="px-3 py-2.5 text-right text-sm text-text-subtle tabular">
-                              {fmtBRL(it.precoUnitario)}
-                            </td>
-                            <td className="px-3 py-2.5 text-right text-sm text-text-subtle tabular">
-                              {it.desconto > 0 ? formatPercent(it.desconto, 1) : '—'}
-                            </td>
-                            <td className="px-3 py-2.5 text-right text-sm font-semibold text-text tabular">
-                              {fmtBRL(it.total)}
+                            <td className="px-3 py-2.5 text-right text-md font-bold text-primary tabular">
+                              {fmtBRL(data.total)}
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-bg-alt border-t-2 border-primary/30">
-                          <td
-                            colSpan={4}
-                            className="px-3 py-2.5 text-right text-sm font-semibold text-text"
-                          >
-                            Total
-                          </td>
-                          <td className="px-3 py-2.5 text-right text-md font-bold text-primary tabular">
-                            {fmtBRL(data.total)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                        </tfoot>
+                      </table>
+                    </ScrollX>
                   </Card>
                 </section>
               )}

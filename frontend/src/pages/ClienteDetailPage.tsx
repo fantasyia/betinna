@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -773,7 +774,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem pedidos pra este cliente ainda."
         onRetry={refetch}
       >
-        <div className="scroll-x-hint -mx-6 px-6">
+        <ScrollX className="-mx-6 px-6">
           <table className="w-full border-collapse text-[14px] mt-1">
             <thead>
               <tr>
@@ -810,7 +811,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </StateView>
     </div>
   );
@@ -894,7 +895,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem propostas pra este cliente."
         onRetry={refetch}
       >
-        <div className="scroll-x-hint -mx-6 px-6">
+        <ScrollX className="-mx-6 px-6">
           <table className="w-full border-collapse text-[14px]">
             <thead>
               <tr>
@@ -932,7 +933,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </StateView>
     </div>
   );
@@ -1111,7 +1112,7 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Nenhuma ocorrência aberta pra este cliente."
         onRetry={refetch}
       >
-        <div className="scroll-x-hint -mx-6 px-6">
+        <ScrollX className="-mx-6 px-6">
           <table className="w-full border-collapse text-[14px]">
             <thead>
               <tr>
@@ -1169,7 +1170,7 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
               })}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </StateView>
     </div>
   );
@@ -1600,7 +1601,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem preços especiais ainda. Adicione o primeiro."
         onRetry={refetch}
       >
-        <div className="scroll-x-hint -mx-6 px-6">
+        <ScrollX className="-mx-6 px-6">
           <table className="w-full border-collapse text-[14px] mt-2">
             <thead>
               <tr>
@@ -1647,7 +1648,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       </StateView>
 
       {adding && (

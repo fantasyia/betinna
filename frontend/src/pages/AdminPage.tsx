@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -421,7 +422,7 @@ function DbHealthSection() {
                 </div>
               )}
             </div>
-            <div className="scroll-x-hint">
+            <ScrollX>
               <table className="w-full border-collapse text-[12px]">
                 <thead>
                   <tr className="border-b border-border text-left">
@@ -454,7 +455,7 @@ function DbHealthSection() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ScrollX>
           </>
         )}
       </StateView>
