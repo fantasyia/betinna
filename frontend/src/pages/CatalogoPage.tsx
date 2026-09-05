@@ -153,7 +153,7 @@ export default function CatalogoPage() {
     '/catalogo',
   );
   const itens: CatalogoItem[] = useMemo(
-    () => (Array.isArray(data) ? data : data?.data ?? []),
+    () => (Array.isArray(data) ? data : (data?.data ?? [])),
     [data],
   );
 
@@ -307,9 +307,12 @@ export default function CatalogoPage() {
         )}
       </div>
 
-      {/* Banner de sync (mostra "atualizado há X" + alerta de stale) */}
-      {itens.length > 0 && (
-        <SyncBanner oldestSync={stats.oldestSync} sobEncomenda={estoqueModo.sobEncomenda} />
+      {/* Banner de sync: só onde o saldo DECIDE venda. Sob encomenda ele nunca
+          vira alerta (a regra exigia `!sobEncomenda`), então era faixa fixa sobre
+          um número que ninguém usa pra decidir — e o Stat "Entrega" acima já
+          explica o modelo. */}
+      {itens.length > 0 && !estoqueModo.sobEncomenda && (
+        <SyncBanner oldestSync={stats.oldestSync} />
       )}
 
       {/* Toolbar */}
@@ -339,11 +342,7 @@ export default function CatalogoPage() {
           {filtered.length === 0 ? (
             <EmptyState
               icon={<Package />}
-              title={
-                search.trim()
-                  ? 'Nenhum produto bate com a busca'
-                  : 'Catálogo vazio'
-              }
+              title={search.trim() ? 'Nenhum produto bate com a busca' : 'Catálogo vazio'}
               description={
                 search.trim()
                   ? 'Tente ajustar a busca.'
@@ -351,7 +350,10 @@ export default function CatalogoPage() {
               }
               action={
                 !search.trim() ? (
-                  <Button onClick={() => setAdding(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                  <Button
+                    onClick={() => setAdding(true)}
+                    leftIcon={<Plus className="h-3.5 w-3.5" />}
+                  >
                     Adicionar produtos
                   </Button>
                 ) : undefined
@@ -409,17 +411,9 @@ export default function CatalogoPage() {
 
 // ─── Sync banner ───────────────────────────────────────────────
 
-function SyncBanner({
-  oldestSync,
-  sobEncomenda = false,
-}: {
-  oldestSync: string | null;
-  sobEncomenda?: boolean;
-}) {
+function SyncBanner({ oldestSync }: { oldestSync: string | null }) {
   const rel = fmtRelativo(oldestSync);
-  // Sob encomenda o saldo nao decide venda nenhuma — avisar que ele "pode estar
-  // desatualizado" e assustar com um numero que ninguem usa pra decidir.
-  const alerta = rel.stale && !sobEncomenda;
+  const alerta = rel.stale;
   return (
     <div
       className={cn(
@@ -434,7 +428,6 @@ function SyncBanner({
       <span className="flex-1">
         Estoque sincronizado do ERP <strong className="font-semibold">{rel.label}</strong>
         {alerta && ' — pode estar desatualizado'}
-        {sobEncomenda && ' — produtos sob encomenda, o saldo não trava venda'}
       </span>
       <span className="text-[10px] uppercase tracking-wider text-muted">
         1 sync por dia + botão
@@ -481,7 +474,11 @@ function ProdutoCard({
         ) : (
           <Package className="h-8 w-8 text-muted-light" />
         )}
-        <StockBadge produto={item.produto} sobEncomenda={sobEncomenda} testId={`stock-${item.produtoId}`} />
+        <StockBadge
+          produto={item.produto}
+          sobEncomenda={sobEncomenda}
+          testId={`stock-${item.produtoId}`}
+        />
       </div>
 
       {/* Header */}
@@ -598,13 +595,13 @@ function PreviewClienteDialog({
   const toast = useToast();
   const role = useRole();
   const podeEscolherTabela = role !== 'REP';
-  const [tabela, setTabela] = useState<TabelaDePrecos>(
-    podeEscolherTabela ? 'venda' : 'locacao',
-  );
+  const [tabela, setTabela] = useState<TabelaDePrecos>(podeEscolherTabela ? 'venda' : 'locacao');
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
   const [baixando, setBaixando] = useState(false);
   const previewPath = cliente ? `/catalogo/preview?clienteId=${cliente.id}` : null;
-  const { data, loading, error } = useApiQuery<PreviewItem[] | { data: PreviewItem[] }>(previewPath);
+  const { data, loading, error } = useApiQuery<PreviewItem[] | { data: PreviewItem[] }>(
+    previewPath,
+  );
   const itens: PreviewItem[] = Array.isArray(data) ? data : (data?.data ?? []);
 
   async function baixarPdf() {
@@ -651,7 +648,11 @@ function PreviewClienteDialog({
             data-testid="preview-pdf"
             onClick={baixarPdf}
             loading={baixando}
-            title={!cliente ? 'Escolha um cliente primeiro' : 'Baixa o catálogo com o preço deste cliente'}
+            title={
+              !cliente
+                ? 'Escolha um cliente primeiro'
+                : 'Baixa o catálogo com o preço deste cliente'
+            }
             disabled={!cliente || itens.length === 0}
             leftIcon={<Download className="h-3.5 w-3.5" />}
           >
@@ -945,11 +946,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
             </Select>
           </Field>
           <Field label="Validade" hint="Opcional — quando o preço expira">
-            <Input
-              type="date"
-              value={validoAte}
-              onChange={(e) => setValidoAte(e.target.value)}
-            />
+            <Input type="date" value={validoAte} onChange={(e) => setValidoAte(e.target.value)} />
           </Field>
           {error && (
             <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
@@ -1039,4 +1036,3 @@ function ClearDialog({ onClose, onDone }: { onClose: () => void; onDone: () => v
     </Dialog>
   );
 }
-
