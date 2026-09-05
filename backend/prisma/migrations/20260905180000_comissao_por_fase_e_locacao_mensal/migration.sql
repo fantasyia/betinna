@@ -26,13 +26,13 @@ CREATE TABLE "ContratoComissao" (
   "contratoId"  TEXT NOT NULL,
   "usuarioId"   TEXT NOT NULL,
   "tipo"        "ComissaoTipo" NOT NULL,
-  /// Mês da mensalidade (sempre dia 1, UTC).
+  -- Mês da mensalidade (sempre dia 1, UTC).
   "competencia" TIMESTAMP(3) NOT NULL,
   "percentual"  DOUBLE PRECISION NOT NULL,
   "base"        DECIMAL(14,2) NOT NULL,
   "valor"       DECIMAL(14,2) NOT NULL,
-  /// Preenchido quando a mensalidade DAQUELE mês foi recebida do cliente — é o
-  /// gatilho da comissão de locação (não a instalação, não o vencimento).
+  -- Preenchido quando a mensalidade DAQUELE mês foi recebida do cliente — é o
+  -- gatilho da comissão de locação (não a instalação, não o vencimento).
   "mensalidadeRecebidaEm" TIMESTAMP(3),
   "contaPagarErpId" TEXT,
   "contaPagarValor" DECIMAL(14,2),
