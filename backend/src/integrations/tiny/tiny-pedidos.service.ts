@@ -62,6 +62,15 @@ export interface EnderecoEntregaTiny {
   tipoPessoa?: 'F' | 'J';
 }
 
+export interface NotaTinyCabecalho {
+  id: number;
+  numero?: number | string;
+  serie?: string | number;
+  situacao?: number | string;
+  chaveAcesso?: string;
+  valor?: number;
+}
+
 export interface ResultadoPedido {
   id: number;
   numeroPedido?: string | number;
@@ -76,6 +85,8 @@ export interface PedidoTinyResumo {
    *  9 não entregue. */
   situacao?: number;
   dataCriacao?: string;
+  /** Id da nota fiscal gerada a partir do pedido (0/ausente = sem nota). */
+  idNotaFiscal?: number;
 }
 
 /** `GET /pedidos/{id}` — o cabeçalho acima MAIS itens, valores e transportador. */
@@ -227,6 +238,15 @@ export class TinyPedidosService {
   /** Consulta um pedido — usado pelo webhook, que nunca acredita no payload. */
   obter(empresaId: string, idPedido: number): Promise<PedidoTinyDetalhe> {
     return this.client.get<PedidoTinyDetalhe>(empresaId, `/pedidos/${idPedido}`);
+  }
+
+  /**
+   * Cabeçalho de uma nota fiscal. Situação (Tiny): 1 pendente, 2 emitida,
+   * 3 cancelada, 4 aguardando recibo, 5 rejeitada, 6 autorizada, 7 emitida
+   * DANFE, 8 registrada, 9 aguardando protocolo, 10 denegada.
+   */
+  obterNota(empresaId: string, idNota: number): Promise<NotaTinyCabecalho> {
+    return this.client.get<NotaTinyCabecalho>(empresaId, `/notas/${idNota}`);
   }
 
   /**

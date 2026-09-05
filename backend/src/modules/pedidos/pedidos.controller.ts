@@ -31,6 +31,7 @@ import {
   updatePedidoSchema,
 } from './pedidos.dto';
 import { PedidosService } from './pedidos.service';
+import { ErpCancelamentosService } from './erp-cancelamentos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 import { TinyRepsSyncService } from '@integrations/tiny/tiny-reps-sync.service';
 
@@ -41,6 +42,7 @@ export class PedidosController {
   constructor(
     private readonly pedidos: PedidosService,
     private readonly erpSync: PedidoErpSyncService,
+    private readonly cancelamentos: ErpCancelamentosService,
     private readonly repsSync: TinyRepsSyncService,
   ) {}
 
@@ -68,6 +70,28 @@ export class PedidosController {
    * ADMIN/DIRECTOR: puxar do ERP mexe no catálogo de pedidos do tenant inteiro,
    * e o rep não tem por que disparar isso.
    */
+  /**
+   * A passada de cancelamentos, na hora. É a mesma da rodada diária: nota
+   * fiscal viva em pedido cancelado, pedido de venda ainda aberto no ERP,
+   * comissão que precisa sair da folha.
+   */
+  @Post('varrer-cancelamentos')
+  @Roles('ADMIN', 'DIRECTOR')
+  @RequirePermissions({ module: 'pedidos', action: 'view' })
+  @Audit({ action: 'varrer_cancelamentos', resource: 'pedido' })
+  @ApiOperation({
+    summary: 'Confere no ERP as consequências dos pedidos cancelados (NF, venda aberta, comissão).',
+  })
+  async varrerCancelamentos(@CurrentUser() user: AuthenticatedUser, @Query('dias') dias?: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    const janela = Number(dias);
+    return this.cancelamentos.varrer(user.empresaIdAtiva, {
+      dias: Number.isFinite(janela) && janela > 0 ? janela : undefined,
+    });
+  }
+
   @Post('sync-erp')
   @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'pedidos', action: 'view' })

@@ -16,6 +16,8 @@ import { LeadsModule } from '@modules/leads/leads.module';
 import { PedidosController } from './pedidos.controller';
 import { PedidosService } from './pedidos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
+import { ComissoesModule } from '@modules/comissoes/comissoes.module';
+import { ErpCancelamentosService } from './erp-cancelamentos.service';
 import { ErpSyncDiarioJob } from './erp-sync-diario.job';
 import { ErpWebhooksJob } from './erp-webhooks.job';
 
@@ -29,6 +31,8 @@ import { ErpWebhooksJob } from './erp-webhooks.job';
     // O receptor do checkout usa a MESMA chave de API do formulário de leads.
     LeadsModule,
     PedidoStatusBotModule,
+    // A passada de cancelamentos reprocessa a folha do mês.
+    ComissoesModule,
   ],
   controllers: [PedidosController, AprovacoesController, PedidoSiteController],
   providers: [
@@ -38,6 +42,7 @@ import { ErpWebhooksJob } from './erp-webhooks.job';
     PedidoComissoesService,
     PedidoErpSyncService,
     ErpSyncDiarioJob,
+    ErpCancelamentosService,
     ErpWebhooksJob,
     PedidoSiteService,
     SiteStatusService,
