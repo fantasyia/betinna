@@ -12,11 +12,16 @@ export interface LancamentoFinanceiro {
   numeroDocumento?: string;
   historico?: string;
   idCategoria?: number;
-  /** U = única (default), M = mensal… Usado pela locação recorrente. */
+  /**
+   * U = única (DEFAULT — e é sempre enviado). Recorrente (M = mensal…) é SÓ a
+   * mensalidade de locação do representante; comissão e venda do site são
+   * lançamento único. Omitir o campo deixava o Tiny decidir — e ele criou
+   * comissão como conta recorrente.
+   */
   ocorrencia?: 'U' | 'W' | 'Q' | 'M' | 'T' | 'S' | 'A' | 'P';
   /** Enum do Tiny (15 = Pix, 5 = Boleto, 21 = transferência…). Sem ele a conta nasce "não definida". */
   formaPagamento?: number;
-  /** Dia do vencimento (1–31). Sem ele o Tiny grava 0 — e 0 quebra a recorrência e alguns relatórios. */
+  /** Dia do vencimento (1–31) — campo DA RECORRÊNCIA; só vai quando a ocorrência não é única. */
   diaVencimento?: number;
 }
 
@@ -115,10 +120,14 @@ export class TinyContasService {
       ...(l.numeroDocumento ? { numeroDocumento: l.numeroDocumento } : {}),
       ...(l.historico ? { historico: l.historico } : {}),
       ...(l.idCategoria ? { categoria: { id: l.idCategoria } } : {}),
-      ...(l.ocorrencia ? { ocorrencia: l.ocorrencia } : {}),
+      // Sempre explícito: única salvo quem pediu recorrência (locação).
+      ocorrencia: l.ocorrencia ?? 'U',
       ...(l.formaPagamento !== undefined ? { formaPagamento: l.formaPagamento } : {}),
-      // Dia do vencimento sempre preenchido: o do próprio vencimento quando não vier.
-      diaVencimento: l.diaVencimento ?? Number(l.dataVencimento.slice(-2)),
+      // `diaVencimento` é da recorrência. Numa conta única ele não existe — e
+      // mandar (ou deixar o Tiny inventar) é o que fazia a conta virar recorrente.
+      ...(l.ocorrencia && l.ocorrencia !== 'U'
+        ? { diaVencimento: l.diaVencimento ?? Number(l.dataVencimento.slice(-2)) }
+        : {}),
     };
   }
 }

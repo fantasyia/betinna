@@ -18,8 +18,6 @@ export interface ResultadoProvisionamento {
 const CATEGORIA = 'Comissões sobre vendas';
 /** Comissão é paga por Pix (enum do Tiny). */
 const FORMA_PAGAMENTO_PIX = 15;
-/** Dia 05: o mesmo do vencimento — evita o "dia 0" que o Tiny grava sem isto. */
-const DIA_VENCIMENTO = 5;
 
 /**
  * Config do tenant (`Empresa.config.comissaoOriginacao`).
@@ -161,7 +159,9 @@ export class ComissaoErpService {
           historico,
           idCategoria,
           formaPagamento: FORMA_PAGAMENTO_PIX,
-          diaVencimento: DIA_VENCIMENTO,
+          // Comissão é lançamento ÚNICO. Recorrência é só da mensalidade de
+          // locação do representante — nunca de comissão nem de venda do site.
+          ocorrencia: 'U',
         });
         await this.prisma.comissao.update({
           where: { id: c.id },

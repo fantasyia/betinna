@@ -70,9 +70,9 @@ describe('folha de comissões no financeiro do ERP', () => {
     expect(lancamento.idContato).toBe(894881870);
   });
 
-  it('a conta nasce por Pix, vence dia 5 e o histórico diz de QUAIS pedidos é', async () => {
-    // Sem isto a conta entrava "forma não definida", "dia do vencimento 0" e um
-    // histórico que não deixava achar o pedido a partir do financeiro.
+  it('a conta nasce por Pix, ÚNICA (não recorrente) e o histórico diz de QUAIS pedidos é', async () => {
+    // Sem isto a conta entrava "forma não definida", como RECORRENTE (o Tiny
+    // decidia) e com um histórico que não deixava achar o pedido.
     const { svc, contas } = build({
       comissoes: [{ ...COMISSAO_REP, tipo: 'SITE' }],
       linhas: [{ pedido: { numero: 'PED-0001', numeroSite: 'SB370658', numeroErp: '41' } }],
@@ -82,7 +82,8 @@ describe('folha de comissões no financeiro do ERP', () => {
 
     const l = contas.criarContaPagar.mock.calls[0][1];
     expect(l.formaPagamento).toBe(15);
-    expect(l.diaVencimento).toBe(5);
+    expect(l.ocorrencia).toBe('U');
+    expect(l.diaVencimento).toBeUndefined();
     expect(l.historico).toBe(
       'Comissão SITE 09/2026 — Marcelo Harada · pedidos: SB370658 / PED-0001 / ERP 41',
     );
