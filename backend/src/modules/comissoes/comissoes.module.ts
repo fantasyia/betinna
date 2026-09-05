@@ -10,9 +10,14 @@ import { ContratoComissoesService } from './contrato-comissoes.service';
 import { ContratoComissaoErpService } from './contrato-comissao-erp.service';
 import { ComissaoBaixaSyncService } from './comissao-baixa-sync.service';
 import { TinyModule } from '@integrations/tiny/tiny.module';
+import { forwardRef } from '@nestjs/common';
+import { ContratosModule } from '@modules/contratos/contratos.module';
 
 @Module({
-  imports: [NotificacoesModule, EmailModule, TinyModule],
+  // forwardRef porque ContratosModule também importa este (o serviço de
+  // mensalidade usa a comissão de locação, e o controller de comissões expõe a
+  // varredura). É ciclo de módulo, não de dependência real.
+  imports: [NotificacoesModule, EmailModule, TinyModule, forwardRef(() => ContratosModule)],
   controllers: [ComissoesController],
   providers: [
     ComissoesService,

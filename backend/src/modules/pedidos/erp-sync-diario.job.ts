@@ -8,6 +8,7 @@ import { TinyClientesSyncService } from '@integrations/tiny/tiny-clientes-sync.s
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { ComissaoBaixaSyncService } from '@modules/comissoes/comissao-baixa-sync.service';
 import { ContratoComissaoErpService } from '@modules/comissoes/contrato-comissao-erp.service';
+import { ContratoMensalidadeSyncService } from '@modules/contratos/contrato-mensalidade-sync.service';
 import { ErpCancelamentosService } from './erp-cancelamentos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 
@@ -40,6 +41,7 @@ export class ErpSyncDiarioJob {
     private readonly cancelamentos: ErpCancelamentosService,
     private readonly baixas: ComissaoBaixaSyncService,
     private readonly locacao: ContratoComissaoErpService,
+    private readonly mensalidades: ContratoMensalidadeSyncService,
   ) {}
 
   @Cron('0 6 * * *', { name: 'erp-sync-diario', timeZone: 'UTC' })
@@ -68,9 +70,13 @@ export class ErpSyncDiarioJob {
         // Depois do sync (que traz o cancelamento feito no ERP pra cá): nota
         // fiscal pra estornar, pedido de venda ainda aberto lá, comissão viva.
         const canc = await this.cancelamentos.varrer(empresaId);
-        // Locação: mensalidade já registrada como recebida vira conta a pagar.
-        // Antes das baixas, para que uma conta criada agora já possa ser
-        // conferida na mesma rodada se o financeiro tiver baixado no mesmo dia.
+        // Locação, parte 1: mensalidade PAGA no ERP vira mês recebido (e já
+        // provisiona a comissão daquele mês). Quem gera a cobrança é o
+        // faturamento de contratos no painel; aqui só se lê o que foi pago.
+        const mens = await this.mensalidades.varrer(empresaId);
+        // Locação, parte 2: recupera mês já marcado como recebido que ficou sem
+        // conta a pagar (ERP fora do ar, rep sem contato lá). Antes das baixas,
+        // para que uma conta criada agora já possa ser conferida na mesma rodada.
         const loc = await this.locacao.provisionar(empresaId);
         // Comissão que o financeiro já baixou no ERP vira "paga" na tela do rep.
         // Sem esta leitura, quem recebeu via o mesmo "a pagar" de quem não recebeu.
@@ -79,6 +85,9 @@ export class ErpSyncDiarioJob {
           `[erp] rodada diária empresa=${empresaId}: ` +
             `produtos ${cat.criados}+${cat.atualizados}, pedidos ${ped.criados}+${ped.atualizados}, ` +
             `reps ${reps.criados} novo(s), comissões baixadas ${baixas.baixadas}/${baixas.conferidas}, ` +
+            (mens.mensalidadesRegistradas
+              ? `locação ${mens.mensalidadesRegistradas} mensalidade(s) recebida(s), `
+              : '') +
             (loc.criadas ? `locação ${loc.criadas} conta(s) provisionada(s), ` : '') +
             `clientes ${cli.atualizados} com status novo` +
             (cli.bloqueados ? ` (${cli.bloqueados} bloqueado(s))` : '') +
@@ -91,6 +100,7 @@ export class ErpSyncDiarioJob {
         );
         for (const aviso of ped.avisos) this.logger.warn(`[erp] ${aviso}`);
         for (const aviso of canc.avisos) this.logger.warn(`[erp] ${aviso}`);
+        for (const aviso of mens.avisos) this.logger.warn(`[locação] ${aviso}`);
       } catch (err) {
         // Isolamento por empresa: um tenant com token vencido não pode impedir
         // o sync dos outros.

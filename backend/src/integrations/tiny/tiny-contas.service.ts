@@ -41,6 +41,19 @@ export interface LancamentoFinanceiro {
  *    as duas em 05/02 — vencimento é caixa, competência é resultado, e misturar
  *    os dois é o erro clássico.
  */
+/** O que a LISTAGEM de contas a receber devolve por item. */
+export interface ContaReceberResumo {
+  id: number;
+  situacao?: string;
+  dataVencimento?: string;
+  historico?: string;
+  valor?: number;
+  numeroDocumento?: string;
+  /** "D" = cobrança de contrato; NF usa a série da nota. */
+  serieDocumento?: string;
+  cliente?: { id?: number; nome?: string };
+}
+
 @Injectable()
 export class TinyContasService {
   private readonly logger = new Logger(TinyContasService.name);
@@ -121,6 +134,42 @@ export class TinyContasService {
    * Marca uma conta a RECEBER como CANCELADA. Mesma limitação da conta a pagar:
    * a API não apaga nem zera, e o estorno nem sempre remove o lançamento.
    */
+  /**
+   * Contas a receber numa janela de vencimento, opcionalmente só as de uma
+   * situação. Devolve o item da LISTAGEM, que já traz tudo o que a locação
+   * precisa (série, histórico, valor, cliente) — sem abrir conta por conta.
+   */
+  async listarContasReceber(
+    empresaId: string,
+    filtros: { de: string; ate: string; situacao?: string; limit?: number },
+  ): Promise<ContaReceberResumo[]> {
+    const r = await this.client.get<{ itens?: ContaReceberResumo[] }>(
+      empresaId,
+      '/contas-receber',
+      {
+        dataInicialVencimento: filtros.de,
+        dataFinalVencimento: filtros.ate,
+        ...(filtros.situacao ? { situacao: filtros.situacao } : {}),
+        limit: filtros.limit ?? 100,
+      },
+    );
+    return r.itens ?? [];
+  }
+
+  /** Detalhe da conta a receber — é aqui que mora a `dataLiquidacao`. */
+  async obterContaReceber(
+    empresaId: string,
+    id: number,
+  ): Promise<{ situacao?: string; dataLiquidacao?: string; dataCompetencia?: string } | null> {
+    return this.client
+      .get<{
+        situacao?: string;
+        dataLiquidacao?: string;
+        dataCompetencia?: string;
+      }>(empresaId, `/contas-receber/${id}`)
+      .catch(() => null);
+  }
+
   /** A conta a receber ainda existe? Cancelar a NF com "estornar contas" a APAGA. */
   async contaReceberExiste(empresaId: string, id: number): Promise<boolean> {
     return this.client
