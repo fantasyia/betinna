@@ -139,9 +139,23 @@ export class TinyContasService {
     ]);
   }
 
-  /** Só o que o PUT de conta a receber aceita: categoria (e datas). */
+  /**
+   * Põe a categoria numa conta a receber — o Tiny cria a dele SEM categoria.
+   *
+   * O PUT é REPLACE, não merge: mandando só a categoria ele devolve 400
+   * ("dataVencimento: este valor não deve ser nulo"). Por isso a data da conta
+   * vai junto, lida na hora.
+   */
   async categorizarContaReceber(empresaId: string, id: number, idCategoria: number): Promise<void> {
-    await this.client.put(empresaId, `/contas-receber/${id}`, { categoria: { id: idCategoria } });
+    const atual = await this.client.get<{ dataVencimento?: string; dataCompetencia?: string }>(
+      empresaId,
+      `/contas-receber/${id}`,
+    );
+    await this.client.put(empresaId, `/contas-receber/${id}`, {
+      categoria: { id: idCategoria },
+      dataVencimento: atual?.dataVencimento,
+      ...(atual?.dataCompetencia ? { dataCompetencia: atual.dataCompetencia } : {}),
+    });
   }
 
   async criarContaReceber(empresaId: string, l: LancamentoFinanceiro): Promise<number> {

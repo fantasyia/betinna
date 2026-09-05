@@ -97,7 +97,11 @@ export class PedidoFinanceiroErpService {
           for (const c of doTiny) {
             await this.contas
               .categorizarContaReceber(empresaId, c.id, idCategoria)
-              .catch(() => undefined);
+              .catch((err: unknown) =>
+                this.logger.warn(
+                  `[erp] conta a receber ${c.id} sem categoria: ${err instanceof Error ? err.message : String(err)}`,
+                ),
+              );
           }
         }
         await this.prisma.pedido.update({

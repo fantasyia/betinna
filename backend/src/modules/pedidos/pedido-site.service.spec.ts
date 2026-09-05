@@ -62,12 +62,13 @@ const PEDIDO = {
 describe('pedido do site', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('pedido do site nasce Pix à vista — é o que vira a conta a receber no ERP', async () => {
+  it('pedido do site nasce Pix, vencimento 30 dias — é o que vira a conta a receber no ERP', async () => {
     const { svc, prisma } = build();
     await svc.receber('emp-1', PEDIDO as never);
     const data = prisma.pedido.create.mock.calls[0][0].data;
     expect(data.formaPagamento).toBe('PIX');
-    expect(data.condicaoPagamento).toBe('avista');
+    // Provisório até o gateway (Asaas) carimbar a data real.
+    expect(data.condicaoPagamento).toBe('30dias');
   });
 
   it('cria o pedido como venda de CANAL e sobe pro ERP', async () => {

@@ -106,10 +106,15 @@ export class PedidoSiteService {
         representanteId: null,
         origem: 'SITE',
         status: 'RASCUNHO',
-        // Venda do site é paga no checkout (Pix, à vista). É isto que decide a
-        // conta a receber no ERP — o default do app (boleto) é do pedido de rep.
+        // Venda do site é Pix. É isto que decide a conta a receber no ERP — o
+        // default do app (boleto) é do pedido de rep.
+        //
+        // PROVISÓRIO (Léo, 05/09): vencimento em 30 dias. O certo é "à vista",
+        // porque o site cobra no checkout — mas quem vai carimbar a data real
+        // é o gateway (Asaas), e até lá 30 dias evita conta a receber vencendo
+        // no mesmo dia em que nasce.
         formaPagamento: 'PIX',
-        condicaoPagamento: 'avista',
+        condicaoPagamento: '30dias',
         subtotal: new Prisma.Decimal(subtotal),
         total: new Prisma.Decimal(total),
         // Frete em coluna própria: entra no total, mas fica FORA da comissão.
