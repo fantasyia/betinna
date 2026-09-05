@@ -81,6 +81,22 @@ export class TinyContasService {
     return r.id;
   }
 
+  /** Contas a receber que a NOTA gerou (o Tiny cria sozinho quando a nota tem parcelas). */
+  async listarContasReceberDaNota(
+    empresaId: string,
+    idNota: number,
+  ): Promise<Array<{ id: number; valor?: number; dataVencimento?: string }>> {
+    const r = await this.client.get<{
+      itens?: Array<{ id: number; valor?: number; dataVencimento?: string }>;
+    }>(empresaId, '/contas-receber', { idNota, limit: 50 });
+    return r.itens ?? [];
+  }
+
+  /** Só o que o PUT de conta a receber aceita: categoria (e datas). */
+  async categorizarContaReceber(empresaId: string, id: number, idCategoria: number): Promise<void> {
+    await this.client.put(empresaId, `/contas-receber/${id}`, { categoria: { id: idCategoria } });
+  }
+
   async criarContaReceber(empresaId: string, l: LancamentoFinanceiro): Promise<number> {
     const r = await this.client.post<{ id: number }>(empresaId, '/contas-receber', this.corpo(l));
     this.logger.log(

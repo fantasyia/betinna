@@ -856,23 +856,35 @@ export class PedidoErpSyncService {
       // Só nota que VALE gera conta: autorizada/emitida/registrada.
       const sit = Number(nota?.situacao ?? 6);
       if (![2, 6, 7, 8].includes(sit)) return;
-      const res = await this.financeiro.lancarContasReceber(empresaId, pedidoId, nota);
-      if (res.efeito === 'semContato') {
-        r.avisos.push(
-          `Pedido ${pedidoId}: cliente sem contato no ERP — conta a receber não lançada`,
-        );
+      // Dois passos INDEPENDENTES: a conta a receber travar não pode segurar a
+      // comissão (nem o contrário). Cada um conta o próprio erro.
+      try {
+        const res = await this.financeiro.lancarContasReceber(empresaId, pedidoId, nota);
+        if (res.efeito === 'semContato') {
+          r.avisos.push(
+            `Pedido ${pedidoId}: cliente sem contato no ERP — conta a receber não lançada`,
+          );
+        }
+      } catch (err) {
+        r.erros += 1;
+        this.logger.warn(`[erp] conta a receber do pedido ${pedidoId} falhou: ${this.msg(err)}`);
       }
       // A comissão de cada pessoa vira conta a pagar no MESMO momento — por
       // pedido, não no fim do mês (decisão do Léo, 05/09).
-      const pv = await this.comissaoErp.provisionar(empresaId, pedidoId, nota, { criar: true });
-      for (const n of pv.semContato) {
-        r.avisos.push(`Pedido ${pedidoId}: ${n} sem contato no ERP — comissão não provisionada`);
+      try {
+        const pv = await this.comissaoErp.provisionar(empresaId, pedidoId, nota, { criar: true });
+        for (const n of pv.semContato) {
+          r.avisos.push(`Pedido ${pedidoId}: ${n} sem contato no ERP — comissão não provisionada`);
+        }
+        for (const c of pv.paraApagar)
+          r.avisos.push(`Comissão zerada com conta no ERP — apagar: ${c}`);
+      } catch (err) {
+        r.erros += 1;
+        this.logger.warn(`[erp] comissão do pedido ${pedidoId} falhou: ${this.msg(err)}`);
       }
-      for (const c of pv.paraApagar)
-        r.avisos.push(`Comissão zerada com conta no ERP — apagar: ${c}`);
     } catch (err) {
       r.erros += 1;
-      this.logger.warn(`[erp] conta a receber do pedido ${pedidoId} falhou: ${this.msg(err)}`);
+      this.logger.warn(`[erp] financeiro do pedido ${pedidoId} falhou: ${this.msg(err)}`);
     }
   }
 

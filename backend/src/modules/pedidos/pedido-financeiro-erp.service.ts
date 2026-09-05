@@ -76,25 +76,46 @@ export class PedidoFinanceiroErpService {
     // nota é cancelada. Só cai no lançamento manual se o Tiny recusar (pedido
     // antigo, sem parcelas).
     if (nota?.id) {
+      // O Tiny costuma gerar as contas SOZINHO na autorização da nota; aí o
+      // `lancar-contas` volta 400 "Já existem contas lançadas" — isso é
+      // sucesso, não falha. O que decide é a lista de contas da nota.
       try {
         await this.tiny.lancarContasDaNota(empresaId, nota.id);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/j[aá] existem/i.test(msg)) {
+          this.logger.warn(`[erp] ${p.numero}: Tiny não gerou as contas da nota (${msg})`);
+        }
+      }
+      const doTiny = await this.contas
+        .listarContasReceberDaNota(empresaId, nota.id)
+        .catch(() => [] as Array<{ id: number }>);
+      if (doTiny.length > 0) {
+        // Categoria "Vendas": o Tiny cria a conta sem categoria; o PUT aceita.
+        const idCategoria = await this.contas.acharCategoria(empresaId, CATEGORIA_RECEITA);
+        if (idCategoria) {
+          for (const c of doTiny) {
+            await this.contas
+              .categorizarContaReceber(empresaId, c.id, idCategoria)
+              .catch(() => undefined);
+          }
+        }
         await this.prisma.pedido.update({
           where: { id: pedidoId },
           data: {
             contasReceberErp: [
-              { origem: 'tiny', idNota: nota.id },
+              { origem: 'tiny', idNota: nota.id, ids: doTiny.map((c) => c.id) },
             ] as unknown as Prisma.InputJsonValue,
           },
         });
         this.logger.log(
-          `[erp] ${p.numero}: contas a receber geradas pelo Tiny a partir da NF ${nota.numero ?? nota.id}`,
+          `[erp] ${p.numero}: ${doTiny.length} conta(s) a receber geradas pelo Tiny a partir da NF ${nota.numero ?? nota.id}`,
         );
         return { efeito: 'lancadoPeloTiny', idNota: nota.id };
-      } catch (err) {
-        this.logger.warn(
-          `[erp] ${p.numero}: Tiny não gerou as contas da nota (${err instanceof Error ? err.message : String(err)}) — lançando pelo app`,
-        );
       }
+      this.logger.warn(
+        `[erp] ${p.numero}: a NF ${nota.numero ?? nota.id} não gerou contas no Tiny — lançando pelo app`,
+      );
     }
 
     const contato = Number(p.cliente?.codigoErp ?? 0);

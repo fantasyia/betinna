@@ -13,6 +13,8 @@ function build(pedido: Record<string, unknown> | null) {
   const contas = {
     criarContaReceber: vi.fn().mockImplementation(async () => ++seq),
     acharCategoria: vi.fn().mockResolvedValue(null),
+    listarContasReceberDaNota: vi.fn().mockResolvedValue([]),
+    categorizarContaReceber: vi.fn().mockResolvedValue(undefined),
   };
   const tiny = { lancarContasDaNota: vi.fn().mockRejectedValue(new Error('sem parcelas')) };
   const svc = new PedidoFinanceiroErpService(prisma as never, contas as never, tiny as never);
@@ -75,18 +77,33 @@ describe('conta a receber no ERP quando o pedido fatura', () => {
     expect(contas.criarContaReceber.mock.calls[2][1].historico).toMatch(/parcela 3\/3$/);
   });
 
-  it('nota COM parcelas → o Tiny gera as contas; o app só registra a origem', async () => {
+  it('o Tiny já gerou as contas da nota ("Já existem") → é sucesso: registra, categoriza, não duplica', async () => {
     const { svc, contas, tiny, prisma } = build(PEDIDO);
-    tiny.lancarContasDaNota.mockResolvedValueOnce(undefined);
+    tiny.lancarContasDaNota.mockRejectedValueOnce(
+      new Error('Tiny POST HTTP 400: Já existem contas lançadas para esta nota fiscal'),
+    );
+    contas.listarContasReceberDaNota.mockResolvedValueOnce([{ id: 900, valor: 50 }]);
+    contas.acharCategoria.mockResolvedValueOnce(4242);
 
     const r = await svc.lancarContasReceber('emp-1', 'ped-1', { id: 77, numero: 3, serie: 3 });
 
     expect(r).toEqual({ efeito: 'lancadoPeloTiny', idNota: 77 });
-    expect(tiny.lancarContasDaNota).toHaveBeenCalledWith('emp-1', 77);
+    expect(contas.listarContasReceberDaNota).toHaveBeenCalledWith('emp-1', 77);
+    expect(contas.categorizarContaReceber).toHaveBeenCalledWith('emp-1', 900, 4242);
     expect(contas.criarContaReceber).not.toHaveBeenCalled();
     expect(prisma.pedido.update.mock.calls[0][0].data.contasReceberErp).toEqual([
-      { origem: 'tiny', idNota: 77 },
+      { origem: 'tiny', idNota: 77, ids: [900] },
     ]);
+  });
+
+  it('nota SEM contas no Tiny (pedido antigo, sem parcelas) → o app lança', async () => {
+    const { svc, contas, tiny } = build(PEDIDO);
+    tiny.lancarContasDaNota.mockRejectedValueOnce(new Error('Não existem parcelas cadastradas!'));
+
+    const r = await svc.lancarContasReceber('emp-1', 'ped-1', { id: 77, numero: 3, serie: 3 });
+
+    expect(r.efeito).toBe('lancado');
+    expect(contas.criarContaReceber).toHaveBeenCalledTimes(1);
   });
 
   it('já lançado → não lança de novo (a rodada diária passa todo dia)', async () => {
