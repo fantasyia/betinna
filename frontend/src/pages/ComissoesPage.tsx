@@ -367,7 +367,7 @@ function Recebimentos() {
             {data.itens.length === 0 ? (
               <p className="text-[13px] text-muted mt-4 mb-0">Nenhuma comissão paga no período.</p>
             ) : (
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-4 scroll-x-hint">
                 <table className="w-full text-[13px] border-collapse">
                   <thead>
                     <tr className="text-muted text-[11px] uppercase tracking-wide">

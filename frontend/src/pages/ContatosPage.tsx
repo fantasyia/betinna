@@ -170,22 +170,12 @@ export default function ContatosPage() {
     if (origemKey) qs.set('origem', origemKey);
     if (formularioKey) qs.set('formulario', formularioKey);
     return `/contatos?${qs.toString()}`;
-  }, [
-    page,
-    buscaDebounced,
-    tipo,
-    tagFiltroKey,
-    ufKey,
-    cidadeDebounced,
-    origemKey,
-    formularioKey,
-  ]);
+  }, [page, buscaDebounced, tipo, tagFiltroKey, ufKey, cidadeDebounced, origemKey, formularioKey]);
 
   const { data, loading, error, refetch } = useApiQuery<ContatosResp>(listPath);
   // Tags disponíveis pro filtro (chips clicáveis).
-  const { data: tagsDisponiveis } = useApiQuery<Array<{ id: string; nome: string; cor: string }>>(
-    '/tags',
-  );
+  const { data: tagsDisponiveis } =
+    useApiQuery<Array<{ id: string; nome: string; cor: string }>>('/tags');
   function toggleTagFiltro(id: string) {
     setTagFiltro((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
   }
@@ -314,7 +304,8 @@ export default function ContatosPage() {
         {data?.truncado && (
           <div className="flex items-center gap-2 px-4 py-2 bg-warning/12 border-b border-warning/19 text-[13px] text-warning">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            Muitos contatos — mostrando uma parte. Refine pela busca pra encontrar alguém específico.
+            Muitos contatos — mostrando uma parte. Refine pela busca pra encontrar alguém
+            específico.
           </div>
         )}
 
@@ -329,7 +320,7 @@ export default function ContatosPage() {
           )}
           {data && data.data.length > 0 && (
             <>
-              <div className="overflow-x-auto">
+              <div className="scroll-x-hint">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
@@ -360,10 +351,7 @@ export default function ContatosPage() {
                       >
                         {canEdit && (
                           <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={selected.has(c.chave)}
-                              onChange={() => toggle(c)}
-                            />
+                            <Checkbox checked={selected.has(c.chave)} onChange={() => toggle(c)} />
                           </td>
                         )}
                         <Td>
@@ -395,10 +383,7 @@ export default function ContatosPage() {
                           </div>
                         </Td>
                         <Td>
-                          <OrigemCell
-                            origem={c.origemCadastro}
-                            formulario={c.formularioOrigem}
-                          />
+                          <OrigemCell origem={c.origemCadastro} formulario={c.formularioOrigem} />
                         </Td>
                         <Td>
                           <span className="text-sm text-text-subtle">
@@ -561,7 +546,9 @@ export default function ContatosPage() {
         </div>
       )}
 
-      {bulk === 'tag' && <BulkTagModal ids={ids} onClose={() => setBulk(null)} onDone={afterAcao} />}
+      {bulk === 'tag' && (
+        <BulkTagModal ids={ids} onClose={() => setBulk(null)} onDone={afterAcao} />
+      )}
       {bulk === 'mover' && (
         <BulkMoveModal
           leadIds={ids.leadIds}
@@ -729,7 +716,13 @@ function Th({ children }: { children: ReactNode }) {
   );
 }
 
-function Td({ children, onClick }: { children: ReactNode; onClick?: (e: React.MouseEvent) => void }) {
+function Td({
+  children,
+  onClick,
+}: {
+  children: ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
+}) {
   return (
     <td onClick={onClick} className="px-4 py-2.5 align-middle">
       {children}
@@ -770,7 +763,11 @@ function TagFilterSelect({
   const n = selecionadas.length;
   // Sem acento e sem caixa: "maquina" acha "Máquinas e Equipamentos".
   const norm = (s: string) =>
-    s.trim().toLowerCase().normalize('NFKD').replace(/\p{Diacritic}/gu, '');
+    s
+      .trim()
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/\p{Diacritic}/gu, '');
   const visiveis = useMemo(() => {
     const q = norm(busca);
     return q ? tags.filter((t) => norm(t.nome).includes(q)) : tags;
@@ -941,7 +938,9 @@ function OrigemFilterSelect({
             onToggleOrigem('outbound'),
           )}
 
-          <p className="m-0 px-2 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">Outros</p>
+          <p className="m-0 px-2 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">
+            Outros
+          </p>
           {ORIGENS_SEM_GRUPO.map((o) =>
             opcao(o, ROTULO_ORIGEM[o] ?? o, origens.includes(o), () => onToggleOrigem(o)),
           )}
@@ -950,11 +949,8 @@ function OrigemFilterSelect({
             Formulário que converteu
           </p>
           {FORMULARIOS_ORIGEM.map((f) =>
-            opcao(
-              `form-${f}`,
-              rotuloFormulario(f) ?? f,
-              formularios.includes(f),
-              () => onToggleFormulario(f),
+            opcao(`form-${f}`, rotuloFormulario(f) ?? f, formularios.includes(f), () =>
+              onToggleFormulario(f),
             ),
           )}
 
@@ -997,7 +993,8 @@ function UfFilterSelect({
   }, [aberto]);
 
   const n = selecionadas.length;
-  const rotulo = n === 0 ? 'Estados' : n <= 3 ? [...selecionadas].sort().join(', ') : `${n} estados`;
+  const rotulo =
+    n === 0 ? 'Estados' : n <= 3 ? [...selecionadas].sort().join(', ') : `${n} estados`;
 
   return (
     <div className="relative" ref={ref}>
@@ -1072,7 +1069,15 @@ function DetailRow({ label, value }: { label: string; value: string | null }) {
 type Ids = { leadIds: string[]; clienteIds: string[]; conversaIds: string[] };
 type AcaoResult = { afetados: number; falhas: Array<{ id: string; erro: string }> };
 
-function BulkTagModal({ ids, onClose, onDone }: { ids: Ids; onClose: () => void; onDone: () => void }) {
+function BulkTagModal({
+  ids,
+  onClose,
+  onDone,
+}: {
+  ids: Ids;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const toast = useToast();
   const { data: tags } = useApiQuery<Array<{ id: string; nome: string; cor: string }>>('/tags');
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -1092,7 +1097,7 @@ function BulkTagModal({ ids, onClose, onDone }: { ids: Ids; onClose: () => void;
         tagIds: [...picked],
         modo,
       });
-      toast.success('Tags aplicadas', `${(r.afetados ?? 0)} contato(s)`);
+      toast.success('Tags aplicadas', `${r.afetados ?? 0} contato(s)`);
       onDone();
     } catch (err) {
       toast.error('Falha ao aplicar tags', apiErrorMessage(err));
@@ -1153,7 +1158,9 @@ function BulkTagModal({ ids, onClose, onDone }: { ids: Ids; onClose: () => void;
               );
             })}
             {(tags ?? []).length === 0 && (
-              <span className="text-sm text-muted">Nenhuma tag cadastrada (crie em CRM → Tags).</span>
+              <span className="text-sm text-muted">
+                Nenhuma tag cadastrada (crie em CRM → Tags).
+              </span>
             )}
           </div>
         </Field>
@@ -1177,9 +1184,10 @@ function BulkMoveModal({
   onDone: () => void;
 }) {
   const toast = useToast();
-  const { data: funis } = useApiQuery<
-    Array<{ id: string; nome: string; etapas: Array<{ id: string; nome: string; tipo: string }> }>
-  >('/funis');
+  const { data: funis } =
+    useApiQuery<
+      Array<{ id: string; nome: string; etapas: Array<{ id: string; nome: string; tipo: string }> }>
+    >('/funis');
   const [funilId, setFunilId] = useState('');
   const [etapaId, setEtapaId] = useState('');
   const [motivo, setMotivo] = useState('');
@@ -1207,7 +1215,7 @@ function BulkMoveModal({
       });
       toast.success(
         'Leads movidos',
-        `${(r.afetados ?? 0)} de ${leadIds.length}${(r.falhas?.length ?? 0) ? ` · ${(r.falhas?.length ?? 0)} falha(s)` : ''}`,
+        `${r.afetados ?? 0} de ${leadIds.length}${(r.falhas?.length ?? 0) ? ` · ${r.falhas?.length ?? 0} falha(s)` : ''}`,
       );
       onDone();
     } catch (err) {
@@ -1311,11 +1319,11 @@ function BulkAddFunilModal({
           representanteId: c.representante?.id,
         })),
       });
-      const ja = (r.jaEramLead ?? 0) ? ` · ${(r.jaEramLead ?? 0)} já era(m) lead` : '';
-      const falhou = (r.falhas?.length ?? 0) ? ` · ${(r.falhas?.length ?? 0)} falha(s)` : '';
+      const ja = (r.jaEramLead ?? 0) ? ` · ${r.jaEramLead ?? 0} já era(m) lead` : '';
+      const falhou = (r.falhas?.length ?? 0) ? ` · ${r.falhas?.length ?? 0} falha(s)` : '';
       toast.success(
         'Contatos adicionados ao funil',
-        `${(r.afetados ?? 0)} de ${contatos.length} criado(s)${ja}${falhou}`,
+        `${r.afetados ?? 0} de ${contatos.length} criado(s)${ja}${falhou}`,
       );
       onDone();
     } catch (err) {
@@ -1370,8 +1378,8 @@ function BulkAddFunilModal({
           </Select>
         </Field>
         <p className="text-xs text-muted">
-          Cria um lead pra cada contato que ainda não é lead. Quem já tem lead com o mesmo telefone é
-          pulado.
+          Cria um lead pra cada contato que ainda não é lead. Quem já tem lead com o mesmo telefone
+          é pulado.
         </p>
       </div>
     </Dialog>
@@ -1403,7 +1411,7 @@ function BulkDeleteModal({
       });
       toast.success(
         'Excluídos',
-        `${(r.afetados ?? 0)} registro(s)${(r.falhas?.length ?? 0) ? ` · ${(r.falhas?.length ?? 0)} não puderam ser excluídos` : ''}`,
+        `${r.afetados ?? 0} registro(s)${(r.falhas?.length ?? 0) ? ` · ${r.falhas?.length ?? 0} não puderam ser excluídos` : ''}`,
       );
       onDone();
     } catch (err) {
@@ -1432,8 +1440,8 @@ function BulkDeleteModal({
     >
       <p className="text-sm text-text-subtle">
         Apaga os registros subjacentes (Lead, Cliente e/ou Conversa) de cada contato selecionado.
-        Clientes com pedidos/propostas não podem ser excluídos (serão reportados). Esta ação não pode
-        ser desfeita.
+        Clientes com pedidos/propostas não podem ser excluídos (serão reportados). Esta ação não
+        pode ser desfeita.
       </p>
     </Dialog>
   );

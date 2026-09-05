@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -18,16 +18,16 @@ import {
   FileSpreadsheet,
   Mail,
   Upload,
-} from "lucide-react";
-import { api, ApiError } from "@/lib/api";
-import { useRole } from "@/hooks/usePermission";
-import { useApiQuery, type PaginatedResponse } from "@/hooks/useApiQuery";
-import { useEmpresaConfig, descontoAVistaPct } from "@/hooks/useEmpresaConfig";
-import { useToast } from "@/components/toast";
-import { PageLayout } from "@/components/PageLayout";
-import { VendasTabs } from "@/components/VendasTabs";
-import { StateView } from "@/components/StateView";
-import { AsyncCombobox } from "@/components/AsyncCombobox";
+} from 'lucide-react';
+import { api, ApiError } from '@/lib/api';
+import { useRole } from '@/hooks/usePermission';
+import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useEmpresaConfig, descontoAVistaPct } from '@/hooks/useEmpresaConfig';
+import { useToast } from '@/components/toast';
+import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
+import { StateView } from '@/components/StateView';
+import { AsyncCombobox } from '@/components/AsyncCombobox';
 import {
   Avatar,
   Badge,
@@ -41,13 +41,9 @@ import {
   Input,
   Select,
   Textarea,
-} from "@/components/ui";
-import { cn } from "@/lib/cn";
-import {
-  formatMoeda as fmtBRL,
-  formatNumero,
-  formatPercent,
-} from "@/lib/masks";
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL, formatNumero, formatPercent } from '@/lib/masks';
 
 /**
  * PropostasPage v2 — design system dark, drawer detail + transitions visuais.
@@ -58,17 +54,17 @@ import {
  */
 
 type PropostaStatus =
-  | "RASCUNHO"
-  | "ENVIADA"
-  | "NEGOCIACAO"
-  | "AGUARDANDO_ASSINATURA"
-  | "ACEITA"
-  | "RECUSADA"
-  | "EXPIRADA";
+  | 'RASCUNHO'
+  | 'ENVIADA'
+  | 'NEGOCIACAO'
+  | 'AGUARDANDO_ASSINATURA'
+  | 'ACEITA'
+  | 'RECUSADA'
+  | 'EXPIRADA';
 
 // Só Pix e cartão de crédito (decisão do Léo). É o que o backend aceita.
-type PagamentoForma = "PIX" | "CARTAO_CREDITO";
-type CondicaoPgto = "avista" | "15dias" | "30dias" | "30_60" | "30_60_90";
+type PagamentoForma = 'PIX' | 'CARTAO_CREDITO';
+type CondicaoPgto = 'avista' | '15dias' | '30dias' | '30_60' | '30_60_90';
 
 interface Proposta {
   id: string;
@@ -82,7 +78,7 @@ interface Proposta {
   criadoEm: string;
   pedidoId?: string | null;
   orcamentoErpId?: string | null;
-  modalidade?: "VENDA" | "LOCACAO";
+  modalidade?: 'VENDA' | 'LOCACAO';
 }
 
 interface PropostaItemDetail {
@@ -130,68 +126,62 @@ interface ProdutoOpt {
 
 const STATUS_VARIANT: Record<
   PropostaStatus,
-  "neutral" | "info" | "warning" | "primary" | "success" | "danger"
+  'neutral' | 'info' | 'warning' | 'primary' | 'success' | 'danger'
 > = {
-  RASCUNHO: "neutral",
-  ENVIADA: "info",
-  NEGOCIACAO: "warning",
-  AGUARDANDO_ASSINATURA: "primary",
-  ACEITA: "success",
-  RECUSADA: "danger",
-  EXPIRADA: "neutral",
+  RASCUNHO: 'neutral',
+  ENVIADA: 'info',
+  NEGOCIACAO: 'warning',
+  AGUARDANDO_ASSINATURA: 'primary',
+  ACEITA: 'success',
+  RECUSADA: 'danger',
+  EXPIRADA: 'neutral',
 };
 
 const STATUS_LABEL: Record<PropostaStatus, string> = {
-  RASCUNHO: "Rascunho",
-  ENVIADA: "Enviada",
-  NEGOCIACAO: "Em negociação",
-  AGUARDANDO_ASSINATURA: "Aguard. assinatura",
-  ACEITA: "Aceita",
-  RECUSADA: "Recusada",
-  EXPIRADA: "Expirada",
+  RASCUNHO: 'Rascunho',
+  ENVIADA: 'Enviada',
+  NEGOCIACAO: 'Em negociação',
+  AGUARDANDO_ASSINATURA: 'Aguard. assinatura',
+  ACEITA: 'Aceita',
+  RECUSADA: 'Recusada',
+  EXPIRADA: 'Expirada',
 };
 
 const STATUS_LIST: PropostaStatus[] = [
-  "RASCUNHO",
-  "ENVIADA",
-  "NEGOCIACAO",
-  "AGUARDANDO_ASSINATURA",
-  "ACEITA",
-  "RECUSADA",
-  "EXPIRADA",
+  'RASCUNHO',
+  'ENVIADA',
+  'NEGOCIACAO',
+  'AGUARDANDO_ASSINATURA',
+  'ACEITA',
+  'RECUSADA',
+  'EXPIRADA',
 ];
 
 const CONDICOES: { value: CondicaoPgto; label: string }[] = [
-  { value: "avista", label: "À vista" },
-  { value: "15dias", label: "15 dias" },
-  { value: "30dias", label: "30 dias" },
-  { value: "30_60", label: "30/60" },
-  { value: "30_60_90", label: "30/60/90" },
+  { value: 'avista', label: 'À vista' },
+  { value: '15dias', label: '15 dias' },
+  { value: '30dias', label: '30 dias' },
+  { value: '30_60', label: '30/60' },
+  { value: '30_60_90', label: '30/60/90' },
 ];
 
-const FORMAS: PagamentoForma[] = ["PIX", "CARTAO_CREDITO"];
+const FORMAS: PagamentoForma[] = ['PIX', 'CARTAO_CREDITO'];
 const FORMA_LABEL: Record<PagamentoForma, string> = {
-  PIX: "Pix",
-  CARTAO_CREDITO: "Cartão de crédito",
+  PIX: 'Pix',
+  CARTAO_CREDITO: 'Cartão de crédito',
 };
 
 const TRANSITIONS: Partial<Record<PropostaStatus, PropostaStatus[]>> = {
-  RASCUNHO: ["ENVIADA", "EXPIRADA"],
-  ENVIADA: [
-    "NEGOCIACAO",
-    "AGUARDANDO_ASSINATURA",
-    "ACEITA",
-    "RECUSADA",
-    "EXPIRADA",
-  ],
-  NEGOCIACAO: ["AGUARDANDO_ASSINATURA", "ACEITA", "RECUSADA", "EXPIRADA"],
-  AGUARDANDO_ASSINATURA: ["ACEITA", "RECUSADA", "EXPIRADA"],
+  RASCUNHO: ['ENVIADA', 'EXPIRADA'],
+  ENVIADA: ['NEGOCIACAO', 'AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
+  NEGOCIACAO: ['AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
+  AGUARDANDO_ASSINATURA: ['ACEITA', 'RECUSADA', 'EXPIRADA'],
 };
 
 function fmtDate(d: string | null | undefined) {
-  if (!d) return "—";
+  if (!d) return '—';
   try {
-    return new Date(d).toLocaleDateString("pt-BR");
+    return new Date(d).toLocaleDateString('pt-BR');
   } catch {
     return d;
   }
@@ -202,40 +192,40 @@ function fmtDate(d: string | null | undefined) {
 export default function PropostasPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   // ?nova=1 — vem do botão "Nova proposta" da aba de Pedidos, que é o caminho
   // de venda do rep. Sem isto ele cairia na lista e teria que achar o botão.
   useEffect(() => {
-    if (searchParams.get("nova") !== "1") return;
+    if (searchParams.get('nova') !== '1') return;
     setCreating(true);
     const next = new URLSearchParams(searchParams);
-    next.delete("nova");
+    next.delete('nova');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   // Auto-abre drawer quando vem com ?highlight=ID
   useEffect(() => {
-    const highlight = searchParams.get("highlight");
+    const highlight = searchParams.get('highlight');
     if (highlight && highlight !== selected) {
       setSelected(highlight);
       const next = new URLSearchParams(searchParams);
-      next.delete("highlight");
+      next.delete('highlight');
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const clienteIdFilter = searchParams.get("clienteId") || "";
+  const clienteIdFilter = searchParams.get('clienteId') || '';
 
   const listPath = useMemo(() => {
-    const qs = new URLSearchParams({ page: String(page), limit: "20" });
-    if (search.trim()) qs.set("search", search.trim());
-    if (status) qs.set("status", status);
-    if (clienteIdFilter) qs.set("clienteId", clienteIdFilter);
+    const qs = new URLSearchParams({ page: String(page), limit: '20' });
+    if (search.trim()) qs.set('search', search.trim());
+    if (status) qs.set('status', status);
+    if (clienteIdFilter) qs.set('clienteId', clienteIdFilter);
     return `/propostas?${qs.toString()}`;
   }, [page, search, status, clienteIdFilter]);
 
@@ -271,15 +261,13 @@ export default function PropostasPage() {
           data-testid="propostas-cliente-filter-banner"
           className="mb-3 px-3 py-2 rounded-md bg-info/10 border border-info/30 text-sm flex items-center gap-2"
         >
-          <span className="flex-1 text-text">
-            Filtrando propostas de um cliente específico.
-          </span>
+          <span className="flex-1 text-text">Filtrando propostas de um cliente específico.</span>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               const next = new URLSearchParams(searchParams);
-              next.delete("clienteId");
+              next.delete('clienteId');
               setSearchParams(next, { replace: true });
             }}
           >
@@ -320,8 +308,8 @@ export default function PropostasPage() {
               size="sm"
               leftIcon={<XIcon className="h-3 w-3" />}
               onClick={() => {
-                setSearch("");
-                setStatus("");
+                setSearch('');
+                setStatus('');
                 setPage(1);
               }}
             >
@@ -337,8 +325,8 @@ export default function PropostasPage() {
               title="Nenhuma proposta encontrada"
               description={
                 filtersActive
-                  ? "Ajuste os filtros pra ver mais resultados."
-                  : "Crie a primeira proposta pra começar."
+                  ? 'Ajuste os filtros pra ver mais resultados.'
+                  : 'Crie a primeira proposta pra começar.'
               }
               action={
                 !filtersActive ? (
@@ -355,7 +343,7 @@ export default function PropostasPage() {
           )}
           {pageResp && pageResp.data.length > 0 && (
             <>
-              <div className="overflow-x-auto">
+              <div className="scroll-x-hint">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
@@ -374,25 +362,17 @@ export default function PropostasPage() {
                       <tr
                         key={p.id}
                         className={cn(
-                          "border-b border-border last:border-b-0 cursor-pointer transition-colors",
-                          p.id === selected
-                            ? "bg-surface-hover"
-                            : "hover:bg-surface-hover/60",
+                          'border-b border-border last:border-b-0 cursor-pointer transition-colors',
+                          p.id === selected ? 'bg-surface-hover' : 'hover:bg-surface-hover/60',
                         )}
                         onClick={() => setSelected(p.id)}
                         data-testid={`proposta-row-${p.id}`}
                       >
                         <Td>
                           <div className="flex flex-col">
-                            <strong className="text-sm text-text tabular">
-                              #{p.numero}
-                            </strong>
+                            <strong className="text-sm text-text tabular">#{p.numero}</strong>
                             {p.pedidoId && (
-                              <Badge
-                                variant="success"
-                                size="sm"
-                                className="w-fit mt-0.5"
-                              >
+                              <Badge variant="success" size="sm" className="w-fit mt-0.5">
                                 Pedido gerado
                               </Badge>
                             )}
@@ -402,14 +382,10 @@ export default function PropostasPage() {
                           {p.cliente ? (
                             <div className="flex items-center gap-2 min-w-0">
                               <Avatar name={p.cliente.nome} size="sm" />
-                              <span className="text-sm text-text truncate">
-                                {p.cliente.nome}
-                              </span>
+                              <span className="text-sm text-text truncate">{p.cliente.nome}</span>
                             </div>
                           ) : (
-                            <span className="text-muted-light italic text-sm">
-                              —
-                            </span>
+                            <span className="text-muted-light italic text-sm">—</span>
                           )}
                         </Td>
                         <Td>
@@ -421,9 +397,7 @@ export default function PropostasPage() {
                               </span>
                             </div>
                           ) : (
-                            <span className="text-muted-light italic text-sm">
-                              —
-                            </span>
+                            <span className="text-muted-light italic text-sm">—</span>
                           )}
                         </Td>
                         <Td align="right">
@@ -435,9 +409,7 @@ export default function PropostasPage() {
                           <ProbabilityPill prob={p.probabilidade} />
                         </Td>
                         <Td>
-                          <Badge variant={STATUS_VARIANT[p.status]}>
-                            {STATUS_LABEL[p.status]}
-                          </Badge>
+                          <Badge variant={STATUS_VARIANT[p.status]}>{STATUS_LABEL[p.status]}</Badge>
                         </Td>
                         <Td>
                           <span className="text-sm text-text-subtle tabular">
@@ -491,18 +463,12 @@ export default function PropostasPage() {
 
 // ─── Helpers locais ────────────────────────────────────────────
 
-function Th({
-  children,
-  align,
-}: {
-  children: ReactNode;
-  align?: "left" | "right";
-}) {
+function Th({ children, align }: { children: ReactNode; align?: 'left' | 'right' }) {
   return (
     <th
       className={cn(
-        "px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted",
-        align === "right" ? "text-right" : "text-left",
+        'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted',
+        align === 'right' ? 'text-right' : 'text-left',
       )}
     >
       {children}
@@ -516,16 +482,13 @@ function Td({
   onClick,
 }: {
   children: ReactNode;
-  align?: "left" | "right";
+  align?: 'left' | 'right';
   onClick?: (e: React.MouseEvent) => void;
 }) {
   return (
     <td
       onClick={onClick}
-      className={cn(
-        "px-4 py-2.5 align-middle",
-        align === "right" ? "text-right" : "text-left",
-      )}
+      className={cn('px-4 py-2.5 align-middle', align === 'right' ? 'text-right' : 'text-left')}
     >
       {children}
     </td>
@@ -533,24 +496,14 @@ function Td({
 }
 
 function ProbabilityPill({ prob }: { prob: number }) {
-  const tone = prob >= 70 ? "success" : prob >= 30 ? "warning" : "danger";
-  const color =
-    tone === "success"
-      ? "bg-success"
-      : tone === "warning"
-        ? "bg-warning"
-        : "bg-danger";
+  const tone = prob >= 70 ? 'success' : prob >= 30 ? 'warning' : 'danger';
+  const color = tone === 'success' ? 'bg-success' : tone === 'warning' ? 'bg-warning' : 'bg-danger';
   return (
     <div className="flex items-center gap-2 min-w-[100px]">
       <div className="flex-1 h-1.5 rounded-full bg-surface-hover overflow-hidden">
-        <div
-          className={cn("h-full rounded-full", color)}
-          style={{ width: `${prob}%` }}
-        />
+        <div className={cn('h-full rounded-full', color)} style={{ width: `${prob}%` }} />
       </div>
-      <span className="text-xs tabular text-text-subtle min-w-[32px] text-right">
-        {prob}%
-      </span>
+      <span className="text-xs tabular text-text-subtle min-w-[32px] text-right">{prob}%</span>
     </div>
   );
 }
@@ -607,14 +560,12 @@ function PropostaDetailDrawer({
   const toast = useToast();
   const role = useRole();
   // Aprovar é o passo que ATRIBUI a venda ao rep — por isso é da gestão, não dele.
-  const podeAprovar = role === "ADMIN" || role === "DIRECTOR";
-  const { data, loading, error, refetch } = useApiQuery<PropostaDetail>(
-    `/propostas/${id}`,
-  );
+  const podeAprovar = role === 'ADMIN' || role === 'DIRECTOR';
+  const { data, loading, error, refetch } = useApiQuery<PropostaDetail>(`/propostas/${id}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [transition, setTransition] = useState<PropostaStatus | null>(null);
-  const [motivo, setMotivo] = useState("");
+  const [motivo, setMotivo] = useState('');
 
   async function doTransition() {
     if (!transition) return;
@@ -626,9 +577,7 @@ function PropostaDetailDrawer({
       await api.put(`/propostas/${id}/status`, payload);
       onChanged();
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.message : "Falha ao mudar status",
-      );
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao mudar status');
       refetch();
     } finally {
       setBusy(false);
@@ -643,21 +592,17 @@ function PropostaDetailDrawer({
    * segunda proposta pro mesmo negócio.
    */
   async function enviarErp() {
-    setExportBusy("erp");
+    setExportBusy('erp');
     setActionError(null);
     try {
       const r = await api.post<{
         numeroProposta?: string;
         orcamentoErpId: string;
       }>(`/propostas/${id}/enviar-erp`);
-      toast.success(
-        `Proposta no ERP (orçamento ${r.numeroProposta ?? r.orcamentoErpId})`,
-      );
+      toast.success(`Proposta no ERP (orçamento ${r.numeroProposta ?? r.orcamentoErpId})`);
       onChanged();
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.message : "Falha ao enviar pro ERP",
-      );
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar pro ERP');
     } finally {
       setExportBusy(null);
     }
@@ -670,9 +615,7 @@ function PropostaDetailDrawer({
       await api.post(`/propostas/${id}/converter-em-pedido`);
       onChanged();
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.message : "Falha ao converter",
-      );
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao converter');
       refetch();
     } finally {
       setBusy(false);
@@ -680,9 +623,9 @@ function PropostaDetailDrawer({
   }
 
   // ─── C2 — Exportar / enviar ──────────────────────────────────────────
-  const [exportBusy, setExportBusy] = useState<
-    "pdf" | "excel" | "email" | "aceite" | "erp" | null
-  >(null);
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'aceite' | 'erp' | null>(
+    null,
+  );
   // C3 — link de aceite externo gerado
   const [aceiteLink, setAceiteLink] = useState<string | null>(null);
 
@@ -693,7 +636,7 @@ function PropostaDetailDrawer({
     for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
     const blob = new Blob([arr], { type: mime });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
@@ -702,42 +645,33 @@ function PropostaDetailDrawer({
     URL.revokeObjectURL(url);
   }
 
-  async function exportar(tipo: "pdf" | "excel") {
+  async function exportar(tipo: 'pdf' | 'excel') {
     setExportBusy(tipo);
     setActionError(null);
     try {
-      const res = await api.get<{ filename: string; base64: string }>(
-        `/propostas/${id}/${tipo}`,
-      );
+      const res = await api.get<{ filename: string; base64: string }>(`/propostas/${id}/${tipo}`);
       const mime =
-        tipo === "pdf"
-          ? "application/pdf"
-          : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        tipo === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       baixarBase64(res.base64, res.filename, mime);
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.message : `Falha ao gerar ${tipo}`,
-      );
+      setActionError(err instanceof ApiError ? err.message : `Falha ao gerar ${tipo}`);
     } finally {
       setExportBusy(null);
     }
   }
 
   async function enviarEmail() {
-    setExportBusy("email");
+    setExportBusy('email');
     setActionError(null);
     try {
       const res = await api.post<{ ok: boolean; enviadoPara: string }>(
         `/propostas/${id}/enviar-email`,
       );
-      toast.success(
-        "Proposta enviada",
-        `E-mail enviado pra ${res.enviadoPara}`,
-      );
+      toast.success('Proposta enviada', `E-mail enviado pra ${res.enviadoPara}`);
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.message : "Falha ao enviar e-mail",
-      );
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar e-mail');
     } finally {
       setExportBusy(null);
     }
@@ -745,7 +679,7 @@ function PropostaDetailDrawer({
 
   // C3 — gera link de aceite externo pra enviar ao cliente
   async function gerarAceite() {
-    setExportBusy("aceite");
+    setExportBusy('aceite');
     setActionError(null);
     try {
       const res = await api.post<{ url: string; expiraEm: string }>(
@@ -754,26 +688,24 @@ function PropostaDetailDrawer({
       setAceiteLink(res.url);
       onChanged(); // status virou AGUARDANDO_ASSINATURA — atualiza lista
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.message : "Falha ao gerar link de aceite",
-      );
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao gerar link de aceite');
     } finally {
       setExportBusy(null);
     }
   }
 
   const allowed = data ? (TRANSITIONS[data.status] ?? []) : [];
-  const exigeMotivo = transition === "RECUSADA";
+  const exigeMotivo = transition === 'RECUSADA';
 
   return (
     <Drawer
       open
       onClose={onClose}
-      title={data ? `Proposta #${data.numero}` : "Proposta"}
+      title={data ? `Proposta #${data.numero}` : 'Proposta'}
       description={data?.cliente?.nome}
       width="lg"
       footer={
-        data?.status === "ACEITA" && !data.pedidoId ? (
+        data?.status === 'ACEITA' && !data.pedidoId ? (
           <Button
             data-testid="proposta-converter"
             onClick={doConverter}
@@ -790,7 +722,7 @@ function PropostaDetailDrawer({
           <div className="flex flex-col gap-5">
             <ProjetoAnexos
               propostaId={data.id}
-              bloqueado={data.status === "ACEITA" || data.status === "RECUSADA"}
+              bloqueado={data.status === 'ACEITA' || data.status === 'RECUSADA'}
             />
             {/* C2 — Barra de exportação/envio */}
             <div className="flex flex-wrap gap-2">
@@ -798,9 +730,9 @@ function PropostaDetailDrawer({
                 variant="secondary"
                 size="sm"
                 data-testid="proposta-export-pdf"
-                loading={exportBusy === "pdf"}
+                loading={exportBusy === 'pdf'}
                 disabled={exportBusy !== null}
-                onClick={() => void exportar("pdf")}
+                onClick={() => void exportar('pdf')}
                 leftIcon={<FileText className="h-3.5 w-3.5" />}
               >
                 PDF
@@ -809,9 +741,9 @@ function PropostaDetailDrawer({
                 variant="secondary"
                 size="sm"
                 data-testid="proposta-export-excel"
-                loading={exportBusy === "excel"}
+                loading={exportBusy === 'excel'}
                 disabled={exportBusy !== null}
-                onClick={() => void exportar("excel")}
+                onClick={() => void exportar('excel')}
                 leftIcon={<FileSpreadsheet className="h-3.5 w-3.5" />}
               >
                 Excel
@@ -820,19 +752,19 @@ function PropostaDetailDrawer({
                 variant="secondary"
                 size="sm"
                 data-testid="proposta-enviar-email"
-                loading={exportBusy === "email"}
+                loading={exportBusy === 'email'}
                 disabled={exportBusy !== null}
                 onClick={() => void enviarEmail()}
                 leftIcon={<Mail className="h-3.5 w-3.5" />}
               >
                 Enviar por e-mail
               </Button>
-              {data.status !== "RASCUNHO" && !data.orcamentoErpId && (
+              {data.status !== 'RASCUNHO' && !data.orcamentoErpId && (
                 <Button
                   variant="secondary"
                   size="sm"
                   data-testid="proposta-enviar-erp"
-                  loading={exportBusy === "erp"}
+                  loading={exportBusy === 'erp'}
                   disabled={exportBusy !== null}
                   onClick={() => void enviarErp()}
                   leftIcon={<Upload className="h-3.5 w-3.5" />}
@@ -846,19 +778,17 @@ function PropostaDetailDrawer({
                   data-testid="proposta-erp-ok"
                   title="A aprovação é feita no Tiny: ao aprovar, o diretor atribui o vendedor e o orçamento vira pedido de venda, que volta pro app."
                 >
-                  No ERP · orçamento {data.orcamentoErpId} ·{" "}
-                  {podeAprovar
-                    ? "aprove no Tiny"
-                    : "aguardando aprovação da gestão"}
+                  No ERP · orçamento {data.orcamentoErpId} ·{' '}
+                  {podeAprovar ? 'aprove no Tiny' : 'aguardando aprovação da gestão'}
                 </span>
               )}
               {/* C3 — link de aceite externo (oculto pra propostas já aceitas/recusadas) */}
-              {data.status !== "ACEITA" && data.status !== "RECUSADA" && (
+              {data.status !== 'ACEITA' && data.status !== 'RECUSADA' && (
                 <Button
                   variant="primary"
                   size="sm"
                   data-testid="proposta-enviar-aceite"
-                  loading={exportBusy === "aceite"}
+                  loading={exportBusy === 'aceite'}
                   disabled={exportBusy !== null}
                   onClick={() => void gerarAceite()}
                   leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
@@ -889,16 +819,15 @@ function PropostaDetailDrawer({
                     size="sm"
                     onClick={() => {
                       void navigator.clipboard.writeText(aceiteLink);
-                      toast.success("Link copiado");
+                      toast.success('Link copiado');
                     }}
                   >
                     Copiar
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted m-0 mt-1.5">
-                  O cliente abre o link, vê a proposta e aceita/recusa. Ao
-                  aceitar, um pedido é criado automaticamente. Link válido por 7
-                  dias.
+                  O cliente abre o link, vê a proposta e aceita/recusa. Ao aceitar, um pedido é
+                  criado automaticamente. Link válido por 7 dias.
                 </p>
               </div>
             )}
@@ -907,16 +836,12 @@ function PropostaDetailDrawer({
             <Card variant="outline" padding="md" className="bg-bg-alt">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-[11px] uppercase tracking-wider text-muted mb-1">
-                    Valor
-                  </div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Valor</div>
                   <div className="text-3xl font-bold text-text tabular tracking-tight">
                     {fmtBRL(data.valor)}
                   </div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <Badge variant={STATUS_VARIANT[data.status]}>
-                      {STATUS_LABEL[data.status]}
-                    </Badge>
+                    <Badge variant={STATUS_VARIANT[data.status]}>{STATUS_LABEL[data.status]}</Badge>
                     {data.pedidoId && (
                       <Badge variant="success" size="sm">
                         Pedido gerado
@@ -928,9 +853,7 @@ function PropostaDetailDrawer({
                   <div className="text-[11px] uppercase tracking-wider text-muted mb-1">
                     Probabilidade
                   </div>
-                  <div className="text-2xl font-bold tabular text-text">
-                    {data.probabilidade}%
-                  </div>
+                  <div className="text-2xl font-bold tabular text-text">{data.probabilidade}%</div>
                 </div>
               </div>
             </Card>
@@ -941,22 +864,14 @@ function PropostaDetailDrawer({
                 Resumo
               </h4>
               <div className="grid grid-cols-2 gap-2">
-                <InfoCell
-                  icon={<Calendar />}
-                  label="Criada em"
-                  value={fmtDate(data.criadoEm)}
-                />
-                <InfoCell
-                  icon={<Calendar />}
-                  label="Validade"
-                  value={fmtDate(data.validoAte)}
-                />
+                <InfoCell icon={<Calendar />} label="Criada em" value={fmtDate(data.criadoEm)} />
+                <InfoCell icon={<Calendar />} label="Validade" value={fmtDate(data.validoAte)} />
                 <InfoCell
                   icon={<CreditCard />}
                   label="Pagamento"
                   value={
                     data.formaPagamento || data.condicaoPagamento
-                      ? `${data.formaPagamento ?? "—"} · ${data.condicaoPagamento ?? "—"}`
+                      ? `${data.formaPagamento ?? '—'} · ${data.condicaoPagamento ?? '—'}`
                       : null
                   }
                 />
@@ -972,19 +887,13 @@ function PropostaDetailDrawer({
                 <InfoCell
                   icon={<TrendingUp />}
                   label="Subtotal"
-                  value={
-                    data.subtotal !== undefined ? fmtBRL(data.subtotal) : null
-                  }
+                  value={data.subtotal !== undefined ? fmtBRL(data.subtotal) : null}
                   mono
                 />
                 <InfoCell
                   icon={<TrendingUp />}
                   label="Desconto total"
-                  value={
-                    data.descontoTotal !== undefined
-                      ? fmtBRL(data.descontoTotal)
-                      : null
-                  }
+                  value={data.descontoTotal !== undefined ? fmtBRL(data.descontoTotal) : null}
                   mono
                 />
               </div>
@@ -996,7 +905,7 @@ function PropostaDetailDrawer({
                 <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
                   Itens ({data.itens.length})
                 </h4>
-                <div className="rounded-md border border-border overflow-hidden">
+                <div className="rounded-md border border-border scroll-x-hint">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border bg-bg-alt">
@@ -1019,14 +928,9 @@ function PropostaDetailDrawer({
                     </thead>
                     <tbody>
                       {data.itens.map((it) => (
-                        <tr
-                          key={it.id}
-                          className="border-b border-border last:border-b-0"
-                        >
+                        <tr key={it.id} className="border-b border-border last:border-b-0">
                           <td className="px-3 py-2">
-                            <div className="text-sm text-text">
-                              {it.produto?.nome ?? "—"}
-                            </div>
+                            <div className="text-sm text-text">{it.produto?.nome ?? '—'}</div>
                             {it.produto?.sku && (
                               <div className="text-[10px] text-muted tabular">
                                 SKU {it.produto.sku}
@@ -1040,9 +944,7 @@ function PropostaDetailDrawer({
                             {fmtBRL(it.precoUnitario)}
                           </td>
                           <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
-                            {it.desconto > 0
-                              ? formatPercent(it.desconto, 1)
-                              : "—"}
+                            {it.desconto > 0 ? formatPercent(it.desconto, 1) : '—'}
                           </td>
                           <td className="px-3 py-2 text-right text-sm font-semibold text-text tabular">
                             {fmtBRL(it.total)}
@@ -1080,11 +982,11 @@ function PropostaDetailDrawer({
                       data-testid={`proposta-status-${s}`}
                       onClick={() => setTransition(s)}
                       className={cn(
-                        "flex items-center gap-1.5 h-7 px-3 rounded-md text-xs font-medium",
-                        "border transition-colors duration-100",
+                        'flex items-center gap-1.5 h-7 px-3 rounded-md text-xs font-medium',
+                        'border transition-colors duration-100',
                         transition === s
-                          ? "bg-primary/15 border-primary/40 text-primary"
-                          : "bg-surface border-border text-text-subtle hover:bg-surface-hover hover:border-border-strong hover:text-text",
+                          ? 'bg-primary/15 border-primary/40 text-primary'
+                          : 'bg-surface border-border text-text-subtle hover:bg-surface-hover hover:border-border-strong hover:text-text',
                       )}
                     >
                       <ArrowRight className="h-3 w-3" />
@@ -1098,11 +1000,7 @@ function PropostaDetailDrawer({
                       Mudar pra <strong>{STATUS_LABEL[transition]}</strong>?
                     </p>
                     {exigeMotivo && (
-                      <Field
-                        label="Motivo"
-                        required
-                        hint="Obrigatório ao recusar"
-                      >
+                      <Field label="Motivo" required hint="Obrigatório ao recusar">
                         <Textarea
                           data-testid="proposta-motivo-input"
                           value={motivo}
@@ -1113,11 +1011,7 @@ function PropostaDetailDrawer({
                       </Field>
                     )}
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setTransition(null)}
-                      >
+                      <Button variant="secondary" size="sm" onClick={() => setTransition(null)}>
                         Cancelar
                       </Button>
                       <Button
@@ -1180,9 +1074,7 @@ function InfoCell({
         {icon}
         <span>{label}</span>
       </div>
-      <div className={cn("text-sm text-text truncate", mono && "tabular")}>
-        {value}
-      </div>
+      <div className={cn('text-sm text-text truncate', mono && 'tabular')}>{value}</div>
     </div>
   );
 }
@@ -1209,51 +1101,41 @@ function newFormItem(): FormItem {
     produto: null,
     quantidade: 1,
     desconto: 0,
-    precoUnitarioOverride: "",
+    precoUnitarioOverride: '',
   };
 }
 
-function PropostaFormDialog({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function PropostaFormDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
   // De quem é a venda. O rep é sempre ele mesmo; a gestão escolhe — proposta da
   // gestão sem dono viraria orçamento sem vendedor, e o ERP recusa.
   const roleForm = useRole();
-  const gestao = roleForm !== "REP";
+  const gestao = roleForm !== 'REP';
   const [representante, setRepresentante] = useState<RepOpt | null>(null);
   // O rep vende LOCAÇÃO; a gestão apresenta as duas modalidades. O preço do
   // item vem do produto conforme esta escolha — venda usa a tabela, locação usa
   // a mensalidade.
-  const [modalidade, setModalidade] = useState<"VENDA" | "LOCACAO">("VENDA");
+  const [modalidade, setModalidade] = useState<'VENDA' | 'LOCACAO'>('VENDA');
   // Termos do CONTRATO. Locação vira contrato recorrente no ERP, e sem prazo,
   // dia de vencimento e carência não há contrato pra criar. Ficam vazios de
   // propósito: prazo e vencimento padrão são decisão comercial, não default meu.
-  const [prazoMeses, setPrazoMeses] = useState("");
-  const [diaVencimento, setDiaVencimento] = useState("");
-  const [carenciaDias, setCarenciaDias] = useState("");
+  const [prazoMeses, setPrazoMeses] = useState('');
+  const [diaVencimento, setDiaVencimento] = useState('');
+  const [carenciaDias, setCarenciaDias] = useState('');
   // O REP vende locação sempre — a modalidade dele nem aparece na tela.
-  const ehLocacao = !gestao || modalidade === "LOCACAO";
+  const ehLocacao = !gestao || modalidade === 'LOCACAO';
   const [itens, setItens] = useState<FormItem[]>([newFormItem()]);
-  const [formaPagamento, setFormaPagamento] =
-    useState<PagamentoForma>("PIX");
-  const [condicaoPagamento, setCondicaoPagamento] =
-    useState<CondicaoPgto>("30dias");
+  const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>('PIX');
+  const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>('30dias');
   const [descontoGeral, setDescontoGeral] = useState(0);
   const [probabilidade, setProbabilidade] = useState(50);
-  const [validoAte, setValidoAte] = useState("");
-  const [observacoes, setObservacoes] = useState("");
+  const [validoAte, setValidoAte] = useState('');
+  const [observacoes, setObservacoes] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function setItem(idx: number, patch: Partial<FormItem>) {
-    setItens((arr) =>
-      arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
-    );
+    setItens((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   }
   function removeItem(idx: number) {
     setItens((arr) => (arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr));
@@ -1264,11 +1146,7 @@ function PropostaFormDialog({
 
   // B1 — desconto à vista da empresa (pra preview)
   const { data: empresaCfg } = useEmpresaConfig();
-  const descAVistaPctPreview = descontoAVistaPct(
-    empresaCfg,
-    formaPagamento,
-    condicaoPagamento,
-  );
+  const descAVistaPctPreview = descontoAVistaPct(empresaCfg, formaPagamento, condicaoPagamento);
 
   const subtotal = itens.reduce((acc, it) => {
     if (!it.produto) return acc;
@@ -1286,11 +1164,11 @@ function PropostaFormDialog({
     e.preventDefault();
     // Validação client-side com feedback claro
     if (!cliente) {
-      setError("Selecione um cliente antes de criar a proposta.");
+      setError('Selecione um cliente antes de criar a proposta.');
       return;
     }
     if (itens.length === 0) {
-      setError("Adicione ao menos um item.");
+      setError('Adicione ao menos um item.');
       return;
     }
     const semProduto = itens.findIndex((it) => !it.produto);
@@ -1300,9 +1178,7 @@ function PropostaFormDialog({
     }
     const qtInvalida = itens.findIndex((it) => it.quantidade < 1);
     if (qtInvalida !== -1) {
-      setError(
-        `Quantidade do item ${qtInvalida + 1} precisa ser pelo menos 1.`,
-      );
+      setError(`Quantidade do item ${qtInvalida + 1} precisa ser pelo menos 1.`);
       return;
     }
     setBusy(true);
@@ -1336,12 +1212,10 @@ function PropostaFormDialog({
     }
 
     try {
-      await api.post("/propostas", payload);
+      await api.post('/propostas', payload);
       onSaved();
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Falha ao criar proposta",
-      );
+      setError(err instanceof ApiError ? err.message : 'Falha ao criar proposta');
     } finally {
       setBusy(false);
     }
@@ -1370,11 +1244,7 @@ function PropostaFormDialog({
         </>
       }
     >
-      <form
-        id="proposta-form"
-        onSubmit={submit}
-        className="flex flex-col gap-4"
-      >
+      <form id="proposta-form" onSubmit={submit} className="flex flex-col gap-4">
         <Field label="Cliente" required>
           <AsyncCombobox<ClienteOpt>
             testId="cliente-picker"
@@ -1393,9 +1263,7 @@ function PropostaFormDialog({
             <Select
               data-testid="proposta-modalidade"
               value={modalidade}
-              onChange={(e) =>
-                setModalidade(e.target.value as "VENDA" | "LOCACAO")
-              }
+              onChange={(e) => setModalidade(e.target.value as 'VENDA' | 'LOCACAO')}
             >
               <option value="VENDA">Venda</option>
               <option value="LOCACAO">Locação (mensalidade)</option>
@@ -1442,10 +1310,9 @@ function PropostaFormDialog({
         )}
         {ehLocacao && (
           <p className="text-[11px] text-muted -mt-1">
-            Locação vira <strong>contrato recorrente</strong> no ERP. O dia do
-            vencimento para em 28 porque 29, 30 e 31 não existem em todo mês. A
-            carência é o período de avaliação grátis — a 1ª cobrança cai depois
-            dela.
+            Locação vira <strong>contrato recorrente</strong> no ERP. O dia do vencimento para em 28
+            porque 29, 30 e 31 não existem em todo mês. A carência é o período de avaliação grátis —
+            a 1ª cobrança cai depois dela.
           </p>
         )}
 
@@ -1460,7 +1327,7 @@ function PropostaFormDialog({
               getId={(r) => r.id}
               value={representante}
               onChange={setRepresentante}
-              extraQuery={{ role: "REP" }}
+              extraQuery={{ role: 'REP' }}
             />
           </Field>
         )}
@@ -1515,9 +1382,7 @@ function PropostaFormDialog({
             <Field label="Forma de pagamento">
               <Select
                 value={formaPagamento}
-                onChange={(e) =>
-                  setFormaPagamento(e.target.value as PagamentoForma)
-                }
+                onChange={(e) => setFormaPagamento(e.target.value as PagamentoForma)}
               >
                 {FORMAS.map((f) => (
                   <option key={f} value={f}>
@@ -1529,9 +1394,7 @@ function PropostaFormDialog({
             <Field label="Condição">
               <Select
                 value={condicaoPagamento}
-                onChange={(e) =>
-                  setCondicaoPagamento(e.target.value as CondicaoPgto)
-                }
+                onChange={(e) => setCondicaoPagamento(e.target.value as CondicaoPgto)}
               >
                 {CONDICOES.map((c) => (
                   <option key={c.value} value={c.value}>
@@ -1541,11 +1404,7 @@ function PropostaFormDialog({
               </Select>
             </Field>
             <Field label="Validade">
-              <Input
-                type="date"
-                value={validoAte}
-                onChange={(e) => setValidoAte(e.target.value)}
-              />
+              <Input type="date" value={validoAte} onChange={(e) => setValidoAte(e.target.value)} />
             </Field>
             <Field label="Desconto geral (%)">
               <Input
@@ -1570,24 +1429,14 @@ function PropostaFormDialog({
         </section>
 
         <Field label="Observações" hint="Notas internas, prazos especiais…">
-          <Textarea
-            value={observacoes}
-            onChange={(e) => setObservacoes(e.target.value)}
-            rows={3}
-          />
+          <Textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} />
         </Field>
 
         {/* Total preview */}
-        <Card
-          variant="outline"
-          padding="md"
-          className="bg-primary/5 border-primary/30"
-        >
+        <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-muted">
-                Total estimado
-              </div>
+              <div className="text-[11px] uppercase tracking-wider text-muted">Total estimado</div>
               <div className="text-2xl font-bold text-text tabular tracking-tight">
                 {fmtBRL(totalComDescGeral)}
               </div>
@@ -1596,13 +1445,9 @@ function PropostaFormDialog({
               <div>Subtotal: {fmtBRL(subtotal)}</div>
               {descontoGeral > 0 && <div>Desconto geral: {descontoGeral}%</div>}
               {descAVistaPctPreview > 0 && (
-                <div className="text-success">
-                  Desconto à vista: {descAVistaPctPreview}%
-                </div>
+                <div className="text-success">Desconto à vista: {descAVistaPctPreview}%</div>
               )}
-              <div className="text-muted-light mt-1">
-                Backend recalcula no save.
-              </div>
+              <div className="text-muted-light mt-1">Backend recalcula no save.</div>
             </div>
           </div>
         </Card>
@@ -1648,7 +1493,7 @@ function ItemRow({
         getSubLabel={(p) =>
           [p.sku, p.precoTabela !== undefined ? fmtBRL(p.precoTabela) : null]
             .filter(Boolean)
-            .join(" · ")
+            .join(' · ')
         }
         getId={(p) => p.id}
         value={item.produto}
@@ -1661,9 +1506,7 @@ function ItemRow({
             min={1}
             value={item.quantidade}
             // `|| 1` evita NaN (texto não-numérico → Math.max(1, NaN) seria NaN).
-            onChange={(e) =>
-              onChange({ quantidade: Math.max(1, Number(e.target.value) || 1) })
-            }
+            onChange={(e) => onChange({ quantidade: Math.max(1, Number(e.target.value) || 1) })}
             data-testid={`${testId}-qt`}
             aria-label="Quantidade"
             className="flex-1 min-w-0"
@@ -1674,7 +1517,7 @@ function ItemRow({
             data-testid={`${testId}-unidade`}
             title="Unidade de medida (vem do ERP)"
           >
-            {item.produto?.unidade ?? "un"}
+            {item.produto?.unidade ?? 'un'}
           </span>
         </div>
         <Input
@@ -1700,8 +1543,8 @@ function ItemRow({
           step="0.01"
           value={item.precoUnitarioOverride}
           onChange={(e) => {
-            const v = e.target.value.replace(",", ".");
-            if (v === "" || /^\d*\.?\d*$/.test(v)) {
+            const v = e.target.value.replace(',', '.');
+            if (v === '' || /^\d*\.?\d*$/.test(v)) {
               onChange({ precoUnitarioOverride: v });
             }
           }}
@@ -1755,18 +1598,16 @@ function ProjetoAnexos({
     setEnviando(true);
     try {
       const form = new FormData();
-      form.append("file", arquivo);
+      form.append('file', arquivo);
       await api.upload(`/propostas/${propostaId}/anexos`, form);
-      toast.success("Projeto anexado");
+      toast.success('Projeto anexado');
       refetch();
       onMudou?.();
     } catch (e) {
-      toast.error(
-        e instanceof ApiError ? e.message : "Não consegui anexar o arquivo.",
-      );
+      toast.error(e instanceof ApiError ? e.message : 'Não consegui anexar o arquivo.');
     } finally {
       setEnviando(false);
-      if (inputRef.current) inputRef.current.value = "";
+      if (inputRef.current) inputRef.current.value = '';
     }
   }
 
@@ -1775,11 +1616,9 @@ function ProjetoAnexos({
       const r = await api.get<{ url: string }>(
         `/propostas/${propostaId}/anexos/${anexoId}/download`,
       );
-      window.open(r.url, "_blank", "noopener");
+      window.open(r.url, '_blank', 'noopener');
     } catch (e) {
-      toast.error(
-        e instanceof ApiError ? e.message : "Não consegui abrir o arquivo.",
-      );
+      toast.error(e instanceof ApiError ? e.message : 'Não consegui abrir o arquivo.');
     }
   }
 
@@ -1789,9 +1628,7 @@ function ProjetoAnexos({
       refetch();
       onMudou?.();
     } catch (e) {
-      toast.error(
-        e instanceof ApiError ? e.message : "Não consegui remover o arquivo.",
-      );
+      toast.error(e instanceof ApiError ? e.message : 'Não consegui remover o arquivo.');
     }
   }
 
@@ -1800,20 +1637,18 @@ function ProjetoAnexos({
   return (
     <div
       className={cn(
-        "rounded-md border p-3",
-        vazio ? "border-warning/40 bg-warning/5" : "border-border bg-surface",
+        'rounded-md border p-3',
+        vazio ? 'border-warning/40 bg-warning/5' : 'border-border bg-surface',
       )}
       data-testid="proposta-projeto"
     >
       <div className="flex items-center justify-between gap-2 mb-2">
         <div>
-          <p className="m-0 text-sm font-medium text-text">
-            Projeto do cliente
-          </p>
+          <p className="m-0 text-sm font-medium text-text">Projeto do cliente</p>
           <p className="m-0 text-[11px] text-muted">
             {vazio
-              ? "Sem o projeto anexado a proposta não vai pro cliente aprovar."
-              : "É o que o cliente aprova junto com o preço."}
+              ? 'Sem o projeto anexado a proposta não vai pro cliente aprovar.'
+              : 'É o que o cliente aprova junto com o preço.'}
           </p>
         </div>
         {!bloqueado && (

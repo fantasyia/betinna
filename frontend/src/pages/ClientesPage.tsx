@@ -106,7 +106,10 @@ interface Lista {
 }
 
 // Mapping status → Badge variant (semântico, sem hex)
-const STATUS_VARIANT: Record<ClienteStatus, 'success' | 'info' | 'primary' | 'warning' | 'danger' | 'neutral'> = {
+const STATUS_VARIANT: Record<
+  ClienteStatus,
+  'success' | 'info' | 'primary' | 'warning' | 'danger' | 'neutral'
+> = {
   ATIVO: 'success',
   NOVO: 'info',
   PROSPECT: 'primary',
@@ -137,7 +140,9 @@ export default function ClientesPage() {
   const isMobile = useIsMobile();
 
   const [exporting, setExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState<{ page: number; total: number } | null>(null);
+  const [exportProgress, setExportProgress] = useState<{ page: number; total: number } | null>(
+    null,
+  );
   const [importOpen, setImportOpen] = useState(false);
 
   // Filtros / paginação
@@ -292,14 +297,12 @@ export default function ClientesPage() {
   return (
     <PageLayout
       title="Clientes"
-      description={page$?.pagination ? `${formatNumero(page$.pagination.total)} clientes no total` : undefined}
+      description={
+        page$?.pagination ? `${formatNumero(page$.pagination.total)} clientes no total` : undefined
+      }
       actions={
         <>
-          <ExportMenu
-            exporting={exporting}
-            progress={exportProgress}
-            onExport={handleExport}
-          />
+          <ExportMenu exporting={exporting} progress={exportProgress} onExport={handleExport} />
           {canEdit && (
             <Button
               variant="secondary"
@@ -411,7 +414,10 @@ export default function ClientesPage() {
               }
               action={
                 canEdit && !filtersActive ? (
-                  <Button onClick={() => setCreating(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                  <Button
+                    onClick={() => setCreating(true)}
+                    leftIcon={<Plus className="h-3.5 w-3.5" />}
+                  >
                     Novo cliente
                   </Button>
                 ) : undefined
@@ -422,7 +428,7 @@ export default function ClientesPage() {
           {page$ && page$.data.length > 0 && (
             <>
               {/* Tabela / cards */}
-              <div className="overflow-x-auto">
+              <div className="scroll-x-hint">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
@@ -505,7 +511,9 @@ export default function ClientesPage() {
                             )}
                           </Td>
                           <Td>
-                            <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
+                            <Badge variant={STATUS_VARIANT[c.status]}>
+                              {STATUS_LABEL[c.status]}
+                            </Badge>
                           </Td>
                           <Td>
                             <Badge variant={ERP_VARIANT[c.erpStatus]} size="sm">
@@ -556,8 +564,8 @@ export default function ClientesPage() {
           )}
         >
           <span data-testid="bulk-count" className="text-sm text-text pl-2">
-            <strong className="text-primary">{selectedIds.size}</strong>{' '}
-            cliente{selectedIds.size === 1 ? '' : 's'} selecionado
+            <strong className="text-primary">{selectedIds.size}</strong> cliente
+            {selectedIds.size === 1 ? '' : 's'} selecionado
             {selectedIds.size === 1 ? '' : 's'}
           </span>
           <Button
@@ -638,7 +646,12 @@ export default function ClientesPage() {
       />
 
       {creating && (
-        <ClienteFormModal open cliente={null} onClose={() => setCreating(false)} onSaved={onSaved} />
+        <ClienteFormModal
+          open
+          cliente={null}
+          onClose={() => setCreating(false)}
+          onSaved={onSaved}
+        />
       )}
       {importOpen && (
         <ImportClientesModal
@@ -729,10 +742,7 @@ function Td({
   return (
     <td
       onClick={onClick}
-      className={cn(
-        'px-4 py-2.5 align-middle',
-        align === 'right' ? 'text-right' : 'text-left',
-      )}
+      className={cn('px-4 py-2.5 align-middle', align === 'right' ? 'text-right' : 'text-left')}
     >
       {children}
     </td>
@@ -972,11 +982,7 @@ function ClienteDetailDrawer({
           </DetailSection>
 
           <DetailSection title="Endereço">
-            <DetailRow
-              icon={<MapPin />}
-              label="Endereço"
-              value={fmtEndereco(data)}
-            />
+            <DetailRow icon={<MapPin />} label="Endereço" value={fmtEndereco(data)} />
             <DetailRow icon={<MapPin />} label="Bairro" value={data.bairro} />
             <DetailRow
               icon={<MapPin />}
@@ -1052,9 +1058,7 @@ function DetailRow({
     <div className="flex items-start gap-2.5 text-sm">
       <span className="shrink-0 w-4 h-4 text-muted mt-0.5 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
       <span className="text-muted w-20 shrink-0">{label}:</span>
-      <span className={cn('text-text flex-1 min-w-0 break-words', mono && 'tabular')}>
-        {value}
-      </span>
+      <span className={cn('text-text flex-1 min-w-0 break-words', mono && 'tabular')}>{value}</span>
     </div>
   );
 }
@@ -1109,18 +1113,18 @@ function BulkAssignModal({
       open
       onClose={onClose}
       title={`Atribuir representante em ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}`}
-      description={removeRep ? 'Vai remover o representante atual de todos.' : 'Cada selecionado vai ficar com este representante.'}
+      description={
+        removeRep
+          ? 'Vai remover o representante atual de todos.'
+          : 'Cada selecionado vai ficar com este representante.'
+      }
       size="sm"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button
-            data-testid="bulk-confirm"
-            onClick={submit}
-            loading={busy}
-          >
+          <Button data-testid="bulk-confirm" onClick={submit} loading={busy}>
             {removeRep ? 'Remover representante' : 'Atribuir'}
           </Button>
         </>
@@ -1212,7 +1216,7 @@ function BulkTagsModal({
       });
       toast.success(
         modo === 'adicionar' ? 'Tags aplicadas' : 'Tags removidas',
-        `${(res.afetados ?? 0)} cliente${(res.afetados ?? 0) === 1 ? '' : 's'} atualizado${(res.afetados ?? 0) === 1 ? '' : 's'}`,
+        `${res.afetados ?? 0} cliente${(res.afetados ?? 0) === 1 ? '' : 's'} atualizado${(res.afetados ?? 0) === 1 ? '' : 's'}`,
       );
       onDone();
     } catch (err) {
@@ -1306,7 +1310,7 @@ function BulkStatusModal({
       });
       toast.success(
         'Status atualizado',
-        `${(res.afetados ?? 0)} cliente${(res.afetados ?? 0) === 1 ? '' : 's'} agora ${STATUS_LABEL[status]}`,
+        `${res.afetados ?? 0} cliente${(res.afetados ?? 0) === 1 ? '' : 's'} agora ${STATUS_LABEL[status]}`,
       );
       onDone();
     } catch (err) {
@@ -1384,7 +1388,9 @@ function BulkDeleteModal({
         falhas: Array<{ id: string; erro: string }>;
       }>('/clientes/excluir-massa', { clienteIds });
       if ((res.falhas?.length ?? 0) === 0) {
-        toast.success(`${res.excluidos} cliente${res.excluidos === 1 ? '' : 's'} excluído${res.excluidos === 1 ? '' : 's'}`);
+        toast.success(
+          `${res.excluidos} cliente${res.excluidos === 1 ? '' : 's'} excluído${res.excluidos === 1 ? '' : 's'}`,
+        );
         onDone();
       } else {
         // Parcial: mostra o que falhou e atualiza a lista por trás
@@ -1411,7 +1417,12 @@ function BulkDeleteModal({
             <Button variant="secondary" onClick={onClose}>
               Cancelar
             </Button>
-            <Button variant="danger" data-testid="bulk-delete-confirm" onClick={submit} loading={busy}>
+            <Button
+              variant="danger"
+              data-testid="bulk-delete-confirm"
+              onClick={submit}
+              loading={busy}
+            >
               Sim, excluir
             </Button>
           </>
@@ -1431,8 +1442,9 @@ function BulkDeleteModal({
           {(result.falhas?.length ?? 0) > 0 && (
             <div>
               <p className="text-warning font-medium mb-1">
-                {(result.falhas?.length ?? 0)} não pôde{(result.falhas?.length ?? 0) === 1 ? '' : 'ram'} ser
-                excluído{(result.falhas?.length ?? 0) === 1 ? '' : 's'}:
+                {result.falhas?.length ?? 0} não pôde
+                {(result.falhas?.length ?? 0) === 1 ? '' : 'ram'} ser excluído
+                {(result.falhas?.length ?? 0) === 1 ? '' : 's'}:
               </p>
               <ul className="list-disc pl-5 text-muted text-xs max-h-40 overflow-y-auto">
                 {result.falhas.map((f) => (
@@ -1926,13 +1938,7 @@ function DeleteClienteButton({ id, onDeleted }: { id: string; onDeleted: () => v
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-sm text-danger">Confirmar exclusão?</span>
-      <Button
-        variant="danger"
-        size="sm"
-        disabled={busy}
-        loading={busy}
-        onClick={doDelete}
-      >
+      <Button variant="danger" size="sm" disabled={busy} loading={busy} onClick={doDelete}>
         Sim, excluir
       </Button>
       <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>

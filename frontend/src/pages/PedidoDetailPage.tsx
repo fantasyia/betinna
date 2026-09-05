@@ -26,15 +26,7 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { NovoPedidoDialog, type NovoPedidoInicial } from '@/components/NovoPedidoDialog';
-import {
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  Dialog,
-  Field,
-  Textarea,
-} from '@/components/ui';
+import { Avatar, Badge, Button, Card, Dialog, Field, Textarea } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 
@@ -171,9 +163,7 @@ function fmtDateTime(d: string | null | undefined) {
 export default function PedidoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data, loading, error, refetch } = useApiQuery<PedidoDetail>(
-    id ? `/pedidos/${id}` : null,
-  );
+  const { data, loading, error, refetch } = useApiQuery<PedidoDetail>(id ? `/pedidos/${id}` : null);
 
   const role = useRole();
   // Cancelamento direto é @Roles('ADMIN','DIRECTOR') no backend (P6).
@@ -197,10 +187,8 @@ export default function PedidoDetailPage() {
     }
   }
 
-  const enviarErp = () =>
-    callAction('enviar', () => api.post(`/pedidos/${id}/enviar-erp`));
-  const avancar = () =>
-    callAction('avancar', () => api.post(`/pedidos/${id}/avancar-status`));
+  const enviarErp = () => callAction('enviar', () => api.post(`/pedidos/${id}/enviar-erp`));
+  const avancar = () => callAction('avancar', () => api.post(`/pedidos/${id}/avancar-status`));
   // DIRECTOR/ADMIN cancelam direto; REP/GERENTE SOLICITAM (P6.2) — o backend
   // recusa o cancelamento direto pra eles. Antes o botão era o mesmo pra todos:
   // o rep tomava 403 e ficava sem caminho nenhum pra pedir o cancelamento.
@@ -272,9 +260,7 @@ export default function PedidoDetailPage() {
   return (
     <PageLayout
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
-      description={
-        data?.numeroErp ? `ERP ${data.numeroErp}` : data?.cliente?.nome ?? undefined
-      }
+      description={data?.numeroErp ? `ERP ${data.numeroErp}` : (data?.cliente?.nome ?? undefined)}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -326,17 +312,16 @@ export default function PedidoDetailPage() {
               Enviar pro ERP
             </Button>
           )}
-          {data &&
-            ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
-              <Button
-                data-testid="pedido-page-avancar"
-                onClick={avancar}
-                loading={busy === 'avancar'}
-                rightIcon={<ArrowRight className="h-3.5 w-3.5" />}
-              >
-                Avançar status
-              </Button>
-            )}
+          {data && ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
+            <Button
+              data-testid="pedido-page-avancar"
+              onClick={avancar}
+              loading={busy === 'avancar'}
+              rightIcon={<ArrowRight className="h-3.5 w-3.5" />}
+            >
+              Avançar status
+            </Button>
+          )}
           {data && data.status !== 'CANCELADO' && data.status !== 'ENTREGUE' && (
             <Button
               variant="danger"
@@ -403,9 +388,7 @@ export default function PedidoDetailPage() {
                     </div>
                   </div>
                   <div className="text-right text-[11px] text-muted tabular">
-                    {data.subtotal !== undefined && (
-                      <div>Subtotal: {fmtBRL(data.subtotal)}</div>
-                    )}
+                    {data.subtotal !== undefined && <div>Subtotal: {fmtBRL(data.subtotal)}</div>}
                     {data.descontoGeral !== undefined && data.descontoGeral > 0 && (
                       <div>Desconto geral: {data.descontoGeral}%</div>
                     )}
@@ -426,7 +409,7 @@ export default function PedidoDetailPage() {
                   <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
                     Itens ({data.itens.length})
                   </h4>
-                  <Card padding="none" className="overflow-x-auto">
+                  <Card padding="none" className="scroll-x-hint">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-border bg-bg-alt">
@@ -467,7 +450,10 @@ export default function PedidoDetailPage() {
                       </tbody>
                       <tfoot>
                         <tr className="bg-bg-alt border-t-2 border-primary/30">
-                          <td colSpan={4} className="px-3 py-2.5 text-right text-sm font-semibold text-text">
+                          <td
+                            colSpan={4}
+                            className="px-3 py-2.5 text-right text-sm font-semibold text-text"
+                          >
                             Total
                           </td>
                           <td className="px-3 py-2.5 text-right text-md font-bold text-primary tabular">
@@ -516,17 +502,12 @@ export default function PedidoDetailPage() {
                       <Avatar name={data.cliente.nome} size="lg" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-text truncate">
-                          <Link
-                            to={`/clientes/${data.cliente.id}`}
-                            className="hover:text-primary"
-                          >
+                          <Link to={`/clientes/${data.cliente.id}`} className="hover:text-primary">
                             {data.cliente.nome}
                           </Link>
                         </div>
                         {data.cliente.cnpj && (
-                          <div className="text-[11px] text-muted tabular">
-                            {data.cliente.cnpj}
-                          </div>
+                          <div className="text-[11px] text-muted tabular">{data.cliente.cnpj}</div>
                         )}
                       </div>
                     </div>
@@ -544,9 +525,7 @@ export default function PedidoDetailPage() {
                   <Card variant="outline" padding="md">
                     <div className="flex items-center gap-2">
                       <Avatar name={data.representante.nome} size="sm" />
-                      <span className="text-sm text-text truncate">
-                        {data.representante.nome}
-                      </span>
+                      <span className="text-sm text-text truncate">{data.representante.nome}</span>
                     </div>
                   </Card>
                 </section>
@@ -557,7 +536,11 @@ export default function PedidoDetailPage() {
                   Detalhes
                 </h4>
                 <div className="grid grid-cols-1 gap-2">
-                  <InfoCell icon={<Calendar />} label="Criado em" value={fmtDateTime(data.criadoEm)} />
+                  <InfoCell
+                    icon={<Calendar />}
+                    label="Criado em"
+                    value={fmtDateTime(data.criadoEm)}
+                  />
                   {data.numeroErp && (
                     <InfoCell icon={<Hash />} label="ERP" value={data.numeroErp} mono />
                   )}
@@ -753,9 +736,7 @@ function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
                     )}
                   </div>
                   {dateField && (
-                    <span className="text-[11px] text-muted tabular">
-                      {fmtDateTime(dateField)}
-                    </span>
+                    <span className="text-[11px] text-muted tabular">{fmtDateTime(dateField)}</span>
                   )}
                 </div>
               </li>
@@ -774,14 +755,10 @@ function CanceledNote({ pedido }: { pedido: PedidoDetail }) {
         <XCircle className="h-4 w-4 text-danger" />
         <strong className="text-sm text-danger">Pedido cancelado</strong>
         {pedido.canceladoEm && (
-          <span className="text-[11px] text-muted tabular">
-            {fmtDateTime(pedido.canceladoEm)}
-          </span>
+          <span className="text-[11px] text-muted tabular">{fmtDateTime(pedido.canceladoEm)}</span>
         )}
       </div>
-      {pedido.cancelMotivo && (
-        <p className="text-sm text-text-subtle m-0">{pedido.cancelMotivo}</p>
-      )}
+      {pedido.cancelMotivo && <p className="text-sm text-text-subtle m-0">{pedido.cancelMotivo}</p>}
     </div>
   );
 }

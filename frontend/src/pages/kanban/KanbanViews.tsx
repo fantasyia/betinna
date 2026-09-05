@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import {
-  DndContext,
-  useDraggable,
-  useDroppable,
-  type DragEndEvent,
-} from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { StateView } from '@/components/StateView';
 import { Avatar, Input } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { statusPrazo, type KBoardCompleto, type KEtiqueta, type KUsuarioResumo } from './kanban-types';
+import {
+  statusPrazo,
+  type KBoardCompleto,
+  type KEtiqueta,
+  type KUsuarioResumo,
+} from './kanban-types';
 
 // ─── ★ Calendário ───────────────────────────────────────────────────────
 
@@ -395,7 +395,7 @@ export function TabelaView({
         className="mb-3 w-full sm:w-64"
         data-testid="tabela-filtro"
       />
-      <div className="overflow-x-auto rounded-[10px] border border-border">
+      <div className="scroll-x-hint rounded-[10px] border border-border">
         <table className="w-full text-sm" data-testid="kanban-tabela">
           <thead className="bg-surface-elevated border-b border-border">
             <tr>
@@ -429,7 +429,12 @@ export function TabelaView({
                   <td className="px-3 py-2">
                     <span className="flex -space-x-1.5">
                       {r.membros.slice(0, 4).map(({ usuario }) => (
-                        <Avatar key={usuario.id} name={usuario.nome} src={usuario.avatar} size="xs" />
+                        <Avatar
+                          key={usuario.id}
+                          name={usuario.nome}
+                          src={usuario.avatar}
+                          size="xs"
+                        />
                       ))}
                     </span>
                   </td>
@@ -517,7 +522,11 @@ export function DashboardView({ board }: { board: KBoardCompleto }) {
     refetch();
   }, [refetch]);
   if (!data) {
-    return <StateView loading={loading} error={error} onRetry={refetch}>{null}</StateView>;
+    return (
+      <StateView loading={loading} error={error} onRetry={refetch}>
+        {null}
+      </StateView>
+    );
   }
 
   const venc = [
@@ -537,13 +546,25 @@ export function DashboardView({ board }: { board: KBoardCompleto }) {
       <GraficoBarras
         titulo="Cards por membro"
         dados={[
-          ...data.porMembro.map((m) => ({ id: m.id, nome: m.nome, total: m.total, cor: '#2bcae5' })),
-          ...(data.semMembro > 0 ? [{ nome: 'Sem membro', total: data.semMembro, cor: '#838C91' }] : []),
+          ...data.porMembro.map((m) => ({
+            id: m.id,
+            nome: m.nome,
+            total: m.total,
+            cor: '#2bcae5',
+          })),
+          ...(data.semMembro > 0
+            ? [{ nome: 'Sem membro', total: data.semMembro, cor: '#838C91' }]
+            : []),
         ]}
       />
       <GraficoBarras
         titulo="Cards por etiqueta"
-        dados={data.porEtiqueta.map((e) => ({ id: e.id, nome: e.nome || e.cor, total: e.total, cor: e.cor }))}
+        dados={data.porEtiqueta.map((e) => ({
+          id: e.id,
+          nome: e.nome || e.cor,
+          total: e.total,
+          cor: e.cor,
+        }))}
         vazio="Nenhuma etiqueta aplicada"
       />
       <GraficoBarras titulo="Cards por vencimento" dados={venc.filter((v) => v.total > 0)} />

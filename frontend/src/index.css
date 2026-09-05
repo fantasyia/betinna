@@ -18,10 +18,12 @@
 /* ─── LIGHT THEME (default) ───────────────────────────────────── */
 :root {
   /* Backgrounds (escala light) */
-  --bg: #F8F7F2;
+  --bg: #f8f7f2;
   --bg-alt: #f3f0e8;
   --surface: #ffffff;
   --surface-hover: #f0ecfa;
+  /* Sombra da pista de rolagem horizontal (tabelas largas no celular). */
+  --scroll-hint: rgba(32, 21, 84, 0.22);
   --surface-elevated: #ffffff;
 
   /* Borders */
@@ -49,7 +51,7 @@
   --magenta-hover: #a01aa1;
   --magenta-light: #fae6fa;
 
-  --blue: #5C88DA;
+  --blue: #5c88da;
   --blue-light: #eaf0fb;
 
   --navy: #201554;
@@ -65,7 +67,7 @@
      ok/erro = teal × vermelho-alaranjado (distinguíveis sob CVD, ao contrário
      do par verde/vermelho puro). NÃO reusar como cor de status de UI. */
   --chart-linha: #201554;
-  --chart-barra: #5C88DA;
+  --chart-barra: #5c88da;
   --chart-ok: #0e7a6a;
   --chart-erro: #d1582f;
   --chart-grade: #eceaf4;
@@ -106,6 +108,7 @@ html.dark {
   --bg-alt: #1a0c47;
   --surface: #201554;
   --surface-hover: #2a1b6a;
+  --scroll-hint: rgba(0, 0, 0, 0.55);
   --surface-elevated: #2e1f74;
 
   /* Borders */
@@ -436,4 +439,30 @@ button:focus-visible {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+}
+
+/*
+ * Pista de rolagem horizontal — tabela larga no celular rola dentro do card, mas
+ * sem isto nada dizia que havia coluna à direita (auditoria mobile de 05/09).
+ * Só CSS: duas camadas com `background-attachment: local` acompanham o conteúdo
+ * e COBREM as sombras quando a borda correspondente já está visível; as sombras
+ * (`scroll`) ficam presas nas bordas do contêiner. Resultado: sombra só do lado
+ * que ainda tem conteúdo escondido. Cabeçalho com fundo opaco cobre a sombra
+ * naquela faixa — aceitável; o corpo da tabela mostra.
+ */
+.scroll-x-hint {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--surface) 40%, rgba(255, 255, 255, 0)),
+    linear-gradient(to left, var(--surface) 40%, rgba(255, 255, 255, 0)) 100% 0,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-hint), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-hint), rgba(0, 0, 0, 0)) 100% 0;
+  background-color: var(--surface);
+  background-repeat: no-repeat;
+  background-size:
+    48px 100%,
+    48px 100%,
+    16px 100%,
+    16px 100%;
+  background-attachment: local, local, scroll, scroll;
 }

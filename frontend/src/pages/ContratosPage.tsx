@@ -1,30 +1,17 @@
-import { useState, type ReactNode } from "react";
-import { Search, FileSignature, Download } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
-import { useApiQuery, type PaginatedResponse } from "@/hooks/useApiQuery";
-import { useToast } from "@/components/toast";
-import { PageLayout } from "@/components/PageLayout";
-import { VendasTabs } from "@/components/VendasTabs";
-import { StateView } from "@/components/StateView";
-import {
-  Avatar,
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  Select,
-} from "@/components/ui";
-import { cn } from "@/lib/cn";
-import { formatMoeda, formatNumero } from "@/lib/masks";
+import { useState, type ReactNode } from 'react';
+import { Search, FileSignature, Download } from 'lucide-react';
+import { api, ApiError } from '@/lib/api';
+import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useToast } from '@/components/toast';
+import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
+import { StateView } from '@/components/StateView';
+import { Avatar, Badge, Button, Card, EmptyState, Input, Select } from '@/components/ui';
+import { cn } from '@/lib/cn';
+import { formatMoeda, formatNumero } from '@/lib/masks';
 
 type ContratoStatus =
-  | "RASCUNHO"
-  | "AGUARDANDO_ASSINATURA"
-  | "ASSINADO"
-  | "ATIVO"
-  | "ENCERRADO"
-  | "CANCELADO";
+  'RASCUNHO' | 'AGUARDANDO_ASSINATURA' | 'ASSINADO' | 'ATIVO' | 'ENCERRADO' | 'CANCELADO';
 
 interface Contrato {
   id: string;
@@ -42,28 +29,25 @@ interface Contrato {
 }
 
 const LABEL: Record<ContratoStatus, string> = {
-  RASCUNHO: "Rascunho",
-  AGUARDANDO_ASSINATURA: "Aguardando assinatura",
-  ASSINADO: "Assinado",
-  ATIVO: "Ativo",
-  ENCERRADO: "Encerrado",
-  CANCELADO: "Cancelado",
+  RASCUNHO: 'Rascunho',
+  AGUARDANDO_ASSINATURA: 'Aguardando assinatura',
+  ASSINADO: 'Assinado',
+  ATIVO: 'Ativo',
+  ENCERRADO: 'Encerrado',
+  CANCELADO: 'Cancelado',
 };
-const VARIANT: Record<
-  ContratoStatus,
-  "neutral" | "success" | "warning" | "danger" | "info"
-> = {
-  RASCUNHO: "neutral",
-  AGUARDANDO_ASSINATURA: "warning",
-  ASSINADO: "success",
-  ATIVO: "success",
-  ENCERRADO: "neutral",
-  CANCELADO: "danger",
+const VARIANT: Record<ContratoStatus, 'neutral' | 'success' | 'warning' | 'danger' | 'info'> = {
+  RASCUNHO: 'neutral',
+  AGUARDANDO_ASSINATURA: 'warning',
+  ASSINADO: 'success',
+  ATIVO: 'success',
+  ENCERRADO: 'neutral',
+  CANCELADO: 'danger',
 };
 
 function fmtData(d: string | null) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("pt-BR");
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('pt-BR');
 }
 
 /**
@@ -75,17 +59,17 @@ function fmtData(d: string | null) {
  * dele assinou**, sem pedir pra ninguém.
  */
 export default function ContratosPage() {
-  const [status, setStatus] = useState("");
-  const [busca, setBusca] = useState("");
+  const [status, setStatus] = useState('');
+  const [busca, setBusca] = useState('');
   const [baixando, setBaixando] = useState<string | null>(null);
   const toast = useToast();
 
-  const params = new URLSearchParams({ page: "1", limit: "50" });
-  if (status) params.set("status", status);
-  if (busca.trim()) params.set("search", busca.trim());
-  const { data, loading, error, refetch } = useApiQuery<
-    PaginatedResponse<Contrato>
-  >(`/contratos?${params.toString()}`);
+  const params = new URLSearchParams({ page: '1', limit: '50' });
+  if (status) params.set('status', status);
+  if (busca.trim()) params.set('search', busca.trim());
+  const { data, loading, error, refetch } = useApiQuery<PaginatedResponse<Contrato>>(
+    `/contratos?${params.toString()}`,
+  );
 
   async function baixar(c: Contrato) {
     setBaixando(c.id);
@@ -93,11 +77,9 @@ export default function ContratosPage() {
       // O bucket é privado: o backend devolve uma URL assinada de 1h, e o
       // navegador abre ela. Guardar esse link não adianta — e é essa a ideia.
       const r = await api.get<{ url: string }>(`/contratos/${c.id}/pdf`);
-      window.open(r.url, "_blank", "noopener");
+      window.open(r.url, '_blank', 'noopener');
     } catch (e) {
-      toast.error(
-        e instanceof ApiError ? e.message : "Não consegui abrir o contrato.",
-      );
+      toast.error(e instanceof ApiError ? e.message : 'Não consegui abrir o contrato.');
     } finally {
       setBaixando(null);
     }
@@ -107,9 +89,7 @@ export default function ContratosPage() {
     <PageLayout
       title="Contratos"
       description={
-        data?.pagination
-          ? `${formatNumero(data.pagination.total)} contratos`
-          : undefined
+        data?.pagination ? `${formatNumero(data.pagination.total)} contratos` : undefined
       }
     >
       <VendasTabs />
@@ -150,7 +130,7 @@ export default function ContratosPage() {
             />
           )}
           {data && data.data.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="scroll-x-hint">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border bg-bg-alt">
@@ -173,22 +153,20 @@ export default function ContratosPage() {
                     >
                       <Td>
                         <div className="flex items-center gap-2 min-w-0">
-                          <Avatar name={c.cliente?.nome ?? "—"} size="sm" />
+                          <Avatar name={c.cliente?.nome ?? '—'} size="sm" />
                           <div className="min-w-0">
                             <div className="truncate text-sm text-text">
-                              {c.cliente?.nome ?? "—"}
+                              {c.cliente?.nome ?? '—'}
                             </div>
                             {c.cliente?.cnpj && (
-                              <div className="text-xs text-muted tabular">
-                                {c.cliente.cnpj}
-                              </div>
+                              <div className="text-xs text-muted tabular">{c.cliente.cnpj}</div>
                             )}
                           </div>
                         </div>
                       </Td>
                       <Td>
                         <span className="text-sm tabular text-text-subtle">
-                          {c.proposta?.numero ?? "—"}
+                          {c.proposta?.numero ?? '—'}
                         </span>
                       </Td>
                       <Td align="right">
@@ -202,9 +180,7 @@ export default function ContratosPage() {
                         </span>
                       </Td>
                       <Td>
-                        <Badge variant={VARIANT[c.status]}>
-                          {LABEL[c.status]}
-                        </Badge>
+                        <Badge variant={VARIANT[c.status]}>{LABEL[c.status]}</Badge>
                       </Td>
                       <Td>
                         <span className="text-sm tabular text-text-subtle">
@@ -213,7 +189,7 @@ export default function ContratosPage() {
                       </Td>
                       <Td>
                         <span className="text-sm text-text-subtle">
-                          {c.representante?.nome ?? "—"}
+                          {c.representante?.nome ?? '—'}
                         </span>
                       </Td>
                       <Td align="right">
@@ -229,9 +205,7 @@ export default function ContratosPage() {
                             Contrato
                           </Button>
                         ) : (
-                          <span className="text-xs text-muted-light italic">
-                            sem PDF
-                          </span>
+                          <span className="text-xs text-muted-light italic">sem PDF</span>
                         )}
                       </Td>
                     </tr>
@@ -246,18 +220,12 @@ export default function ContratosPage() {
   );
 }
 
-function Th({
-  children,
-  align,
-}: {
-  children: ReactNode;
-  align?: "left" | "right";
-}) {
+function Th({ children, align }: { children: ReactNode; align?: 'left' | 'right' }) {
   return (
     <th
       className={cn(
-        "px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted",
-        align === "right" ? "text-right" : "text-left",
+        'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted',
+        align === 'right' ? 'text-right' : 'text-left',
       )}
     >
       {children}
@@ -265,20 +233,9 @@ function Th({
   );
 }
 
-function Td({
-  children,
-  align,
-}: {
-  children: ReactNode;
-  align?: "left" | "right";
-}) {
+function Td({ children, align }: { children: ReactNode; align?: 'left' | 'right' }) {
   return (
-    <td
-      className={cn(
-        "px-4 py-2.5 align-middle",
-        align === "right" ? "text-right" : "text-left",
-      )}
-    >
+    <td className={cn('px-4 py-2.5 align-middle', align === 'right' ? 'text-right' : 'text-left')}>
       {children}
     </td>
   );

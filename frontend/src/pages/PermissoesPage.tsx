@@ -294,7 +294,7 @@ function MatrixCore({
         </div>
       </header>
 
-      <div className="overflow-x-auto">
+      <div className="scroll-x-hint">
         <table className="w-full border-collapse text-base">
           <thead>
             <tr>

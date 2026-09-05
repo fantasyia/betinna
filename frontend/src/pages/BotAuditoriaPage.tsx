@@ -34,7 +34,10 @@ interface ListaResp {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-const STATUS_META: Record<StatusBot, { label: string; variant: 'success' | 'warning' | 'neutral' }> = {
+const STATUS_META: Record<
+  StatusBot,
+  { label: string; variant: 'success' | 'warning' | 'neutral' }
+> = {
   OK: { label: 'Respondido', variant: 'success' },
   FALLBACK: { label: 'Fallback', variant: 'warning' },
   SEM_RESPOSTA: { label: 'Sem resposta', variant: 'neutral' },
@@ -77,7 +80,10 @@ export default function BotAuditoriaPage() {
   async function exportar() {
     setExporting(true);
     try {
-      await downloadFile(`/mullerbot/auditoria/export${filtrosQs ? `?${filtrosQs}` : ''}`, 'auditoria-bot.csv');
+      await downloadFile(
+        `/mullerbot/auditoria/export${filtrosQs ? `?${filtrosQs}` : ''}`,
+        'auditoria-bot.csv',
+      );
     } catch (err) {
       toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
     } finally {
@@ -154,7 +160,7 @@ export default function BotAuditoriaPage() {
         emptyMessage="Nenhuma resposta do bot ainda (ou nenhum resultado pro filtro)."
       >
         <Card padding="none">
-          <div className="overflow-x-auto">
+          <div className="scroll-x-hint">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-border text-left text-muted">

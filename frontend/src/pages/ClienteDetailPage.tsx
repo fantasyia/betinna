@@ -773,7 +773,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem pedidos pra este cliente ainda."
         onRetry={refetch}
       >
-        <div className="overflow-x-auto -mx-6 px-6">
+        <div className="scroll-x-hint -mx-6 px-6">
           <table className="w-full border-collapse text-[14px] mt-1">
             <thead>
               <tr>
@@ -894,7 +894,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem propostas pra este cliente."
         onRetry={refetch}
       >
-        <div className="overflow-x-auto -mx-6 px-6">
+        <div className="scroll-x-hint -mx-6 px-6">
           <table className="w-full border-collapse text-[14px]">
             <thead>
               <tr>
@@ -1111,7 +1111,7 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Nenhuma ocorrência aberta pra este cliente."
         onRetry={refetch}
       >
-        <div className="overflow-x-auto -mx-6 px-6">
+        <div className="scroll-x-hint -mx-6 px-6">
           <table className="w-full border-collapse text-[14px]">
             <thead>
               <tr>
@@ -1600,7 +1600,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem preços especiais ainda. Adicione o primeiro."
         onRetry={refetch}
       >
-        <div className="overflow-x-auto -mx-6 px-6">
+        <div className="scroll-x-hint -mx-6 px-6">
           <table className="w-full border-collapse text-[14px] mt-2">
             <thead>
               <tr>

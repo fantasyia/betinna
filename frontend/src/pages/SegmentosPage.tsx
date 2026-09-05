@@ -263,11 +263,22 @@ function SegmentoCard({
       </div>
 
       <footer className="flex items-center justify-between pt-3 border-t border-border">
-        <Button variant="secondary" size="sm" onClick={onView} leftIcon={<Users className="h-3 w-3" />}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onView}
+          leftIcon={<Users className="h-3 w-3" />}
+        >
           Ver clientes
         </Button>
         <div className="flex items-center gap-1">
-          <IconButton aria-label="Editar" variant="ghost" size="sm" icon={<Edit3 />} onClick={onEdit} />
+          <IconButton
+            aria-label="Editar"
+            variant="ghost"
+            size="sm"
+            icon={<Edit3 />}
+            onClick={onEdit}
+          />
           <IconButton
             aria-label="Excluir"
             variant="ghost"
@@ -283,21 +294,21 @@ function SegmentoCard({
 
 // ─── Viewer (lista clientes do segmento) ───────────────
 
-function SegmentoViewer({
-  segmento,
-  onClose,
-}: {
-  segmento: Segmento;
-  onClose: () => void;
-}) {
-  const { data, loading, error } = useApiQuery<PreviewResult>(`/segmentos/${segmento.id}/clientes?limit=100`);
+function SegmentoViewer({ segmento, onClose }: { segmento: Segmento; onClose: () => void }) {
+  const { data, loading, error } = useApiQuery<PreviewResult>(
+    `/segmentos/${segmento.id}/clientes?limit=100`,
+  );
 
   return (
     <PageLayout
       title={segmento.nome}
       description={segmento.descricao ?? undefined}
       actions={
-        <Button variant="secondary" onClick={onClose} leftIcon={<ArrowLeft className="h-3.5 w-3.5" />}>
+        <Button
+          variant="secondary"
+          onClick={onClose}
+          leftIcon={<ArrowLeft className="h-3.5 w-3.5" />}
+        >
           Voltar
         </Button>
       }
@@ -311,7 +322,7 @@ function SegmentoViewer({
                 Mostrando primeiros {Math.min(data.clientes.length, 100)}
               </span>
             </div>
-            <Card padding="none" className="overflow-hidden">
+            <Card padding="none" className="scroll-x-hint">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border bg-bg-alt">
@@ -323,7 +334,10 @@ function SegmentoViewer({
                 </thead>
                 <tbody>
                   {data.clientes.map((c) => (
-                    <tr key={c.id} className="border-b border-border last:border-b-0 hover:bg-surface-hover">
+                    <tr
+                      key={c.id}
+                      className="border-b border-border last:border-b-0 hover:bg-surface-hover"
+                    >
                       <Td>
                         <div className="flex items-center gap-2 min-w-0">
                           <Avatar name={c.nome} size="sm" />
@@ -376,9 +390,7 @@ function Th({ children, align }: { children: React.ReactNode; align?: 'left' | '
 
 function Td({ children, align }: { children: React.ReactNode; align?: 'left' | 'right' }) {
   return (
-    <td
-      className={cn('px-4 py-2.5 align-middle', align === 'right' ? 'text-right' : 'text-left')}
-    >
+    <td className={cn('px-4 py-2.5 align-middle', align === 'right' ? 'text-right' : 'text-left')}>
       {children}
     </td>
   );
@@ -527,7 +539,11 @@ function SegmentoBuilder({
                 </div>
                 <div className="flex items-center gap-1.5 text-xs">
                   <span className="text-muted">Combinar com:</span>
-                  <Select size="sm" value={logic} onChange={(e) => setLogic(e.target.value as Logic)}>
+                  <Select
+                    size="sm"
+                    value={logic}
+                    onChange={(e) => setLogic(e.target.value as Logic)}
+                  >
                     <option value="AND">TODAS (E)</option>
                     <option value="OR">QUALQUER UMA (OU)</option>
                   </Select>
@@ -689,7 +705,12 @@ function ConditionRow({
         onChange={(e) => {
           // Pra `in`, usa lista separada por vírgula
           if (condition.op === 'in') {
-            onChange({ valor: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) });
+            onChange({
+              valor: e.target.value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+            });
           } else {
             // Tenta converter pra número se campo é numérico
             const numCampos = ['prazoPagamento', 'limiteCredito'];

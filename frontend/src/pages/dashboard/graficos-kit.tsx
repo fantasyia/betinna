@@ -94,10 +94,20 @@ export function ChartCard<T>({
               </button>
             ))}
           </div>
-          <button type="button" className={btn} onClick={exportarPng} data-testid={`${filename}-png`}>
+          <button
+            type="button"
+            className={btn}
+            onClick={exportarPng}
+            data-testid={`${filename}-png`}
+          >
             PNG
           </button>
-          <button type="button" className={btn} onClick={exportarCsv} data-testid={`${filename}-csv`}>
+          <button
+            type="button"
+            className={btn}
+            onClick={exportarCsv}
+            data-testid={`${filename}-csv`}
+          >
             CSV
           </button>
         </div>
@@ -114,7 +124,7 @@ export function ChartCard<T>({
           {children}
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="scroll-x-hint">
           <table className="w-full text-[12px] border-collapse">
             <thead>
               <tr>
@@ -210,7 +220,14 @@ export function GraficoLinha({
       >
         {yTicks.map((t) => (
           <g key={t}>
-            <line x1={M.left} x2={W - M.right} y1={py(t)} y2={py(t)} stroke="var(--chart-grade)" strokeWidth={1} />
+            <line
+              x1={M.left}
+              x2={W - M.right}
+              y1={py(t)}
+              y2={py(t)}
+              stroke="var(--chart-grade)"
+              strokeWidth={1}
+            />
             <text x={M.left - 6} y={py(t) + 3} textAnchor="end" fontSize={10} fill="var(--muted)">
               {formatNumero(t)}
             </text>
@@ -218,7 +235,14 @@ export function GraficoLinha({
         ))}
         {pontos.map((p, i) =>
           i % xStep === 0 ? (
-            <text key={p.dia} x={px(i)} y={H - 6} textAnchor="middle" fontSize={10} fill="var(--muted)">
+            <text
+              key={p.dia}
+              x={px(i)}
+              y={H - 6}
+              textAnchor="middle"
+              fontSize={10}
+              fill="var(--muted)"
+            >
               {diaCurto(p.dia)}
             </text>
           ) : null,
@@ -234,18 +258,47 @@ export function GraficoLinha({
             strokeDasharray="3 3"
           />
         )}
-        <path d={path} fill="none" stroke="var(--chart-linha)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <path
+          d={path}
+          fill="none"
+          stroke="var(--chart-linha)"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
         {hover !== null && (
-          <circle cx={px(hover)} cy={py(pontos[hover].total)} r={4.5} fill="var(--chart-linha)" stroke="var(--surface)" strokeWidth={2} />
+          <circle
+            cx={px(hover)}
+            cy={py(pontos[hover].total)}
+            r={4.5}
+            fill="var(--chart-linha)"
+            stroke="var(--surface)"
+            strokeWidth={2}
+          />
         )}
         {ultimo && (
-          <text x={px(pontos.length - 1) + 8} y={py(ultimo.total) + 4} fontSize={11} fontWeight={600} fill="var(--text)">
+          <text
+            x={px(pontos.length - 1) + 8}
+            y={py(ultimo.total) + 4}
+            fontSize={11}
+            fontWeight={600}
+            fill="var(--text)"
+          >
             {rotuloSerie} · {formatNumero(ultimo.total)}
           </text>
         )}
       </svg>
       {hover !== null && (
-        <TooltipRelativo idx={hover} n={pontos.length} m={M} w={W} linhas={[diaCurto(pontos[hover].dia), `${formatNumero(pontos[hover].total)} lead${pontos[hover].total === 1 ? '' : 's'}`]} />
+        <TooltipRelativo
+          idx={hover}
+          n={pontos.length}
+          m={M}
+          w={W}
+          linhas={[
+            diaCurto(pontos[hover].dia),
+            `${formatNumero(pontos[hover].total)} lead${pontos[hover].total === 1 ? '' : 's'}`,
+          ]}
+        />
       )}
     </div>
   );
@@ -301,7 +354,12 @@ export function GraficoBarrasH({
 
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" style={{ fontFamily: 'var(--font-ui)' }} role="img">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto block"
+        style={{ fontFamily: 'var(--font-ui)' }}
+        role="img"
+      >
         {dados.map((d, i) => {
           const bw = Math.max((d.valor / max) * iw, d.valor > 0 ? 6 : 0);
           const y = i * rowH + 5;
@@ -320,7 +378,13 @@ export function GraficoBarrasH({
               <text x={LBL - 8} y={y + 11} textAnchor="end" fontSize={12} fill="var(--text)">
                 {d.label.length > 24 ? `${d.label.slice(0, 23)}…` : d.label}
               </text>
-              {bw > 0 && <path d={path} fill={d.cor ?? corPadrao} opacity={hover === null || hover === i ? 1 : 0.55} />}
+              {bw > 0 && (
+                <path
+                  d={path}
+                  fill={d.cor ?? corPadrao}
+                  opacity={hover === null || hover === i ? 1 : 0.55}
+                />
+              )}
               <text x={LBL + bw + 8} y={y + 11} fontSize={12} fontWeight={600} fill="var(--text)">
                 {formatValor(d.valor)}
               </text>
@@ -369,7 +433,12 @@ export function GraficoEmpilhadoDiario({
 
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" style={{ fontFamily: 'var(--font-ui)' }} role="img">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto block"
+        style={{ fontFamily: 'var(--font-ui)' }}
+        role="img"
+      >
         {/* Legenda (2 séries): chip + nome — identidade nunca só pela cor */}
         <g fontSize={11}>
           <rect x={M.left} y={6} width={10} height={10} rx={2} fill="var(--chart-ok)" />
@@ -385,7 +454,14 @@ export function GraficoEmpilhadoDiario({
           const y = M.top + ih - (t / max) * ih;
           return (
             <g key={t}>
-              <line x1={M.left} x2={W - M.right} y1={y} y2={y} stroke="var(--chart-grade)" strokeWidth={1} />
+              <line
+                x1={M.left}
+                x2={W - M.right}
+                y1={y}
+                y2={y}
+                stroke="var(--chart-grade)"
+                strokeWidth={1}
+              />
               <text x={M.left - 6} y={y + 3} textAnchor="end" fontSize={10} fill="var(--muted)">
                 {formatNumero(t)}
               </text>
@@ -401,14 +477,36 @@ export function GraficoEmpilhadoDiario({
             <g key={d.dia} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
               <rect x={M.left + i * slot} y={M.top} width={slot} height={ih} fill="transparent" />
               {d.ok > 0 && (
-                <rect x={x} y={base - hOk} width={bw} height={hOk} rx={2} fill="var(--chart-ok)" opacity={hover === null || hover === i ? 1 : 0.55} />
+                <rect
+                  x={x}
+                  y={base - hOk}
+                  width={bw}
+                  height={hOk}
+                  rx={2}
+                  fill="var(--chart-ok)"
+                  opacity={hover === null || hover === i ? 1 : 0.55}
+                />
               )}
               {d.erro > 0 && (
                 // 2px de respiro entre os segmentos da pilha
-                <rect x={x} y={base - hOk - (d.ok > 0 ? 2 : 0) - hErro} width={bw} height={hErro} rx={2} fill="var(--chart-erro)" opacity={hover === null || hover === i ? 1 : 0.55} />
+                <rect
+                  x={x}
+                  y={base - hOk - (d.ok > 0 ? 2 : 0) - hErro}
+                  width={bw}
+                  height={hErro}
+                  rx={2}
+                  fill="var(--chart-erro)"
+                  opacity={hover === null || hover === i ? 1 : 0.55}
+                />
               )}
               {i % xStep === 0 && (
-                <text x={M.left + i * slot + slot / 2} y={H - 6} textAnchor="middle" fontSize={10} fill="var(--muted)">
+                <text
+                  x={M.left + i * slot + slot / 2}
+                  y={H - 6}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill="var(--muted)"
+                >
                   {diaCurto(d.dia)}
                 </text>
               )}
@@ -422,7 +520,11 @@ export function GraficoEmpilhadoDiario({
           n={dados.length}
           m={M}
           w={W}
-          linhas={[diaCurto(dados[hover].dia), `OK: ${formatNumero(dados[hover].ok)}`, `Erro: ${formatNumero(dados[hover].erro)}`]}
+          linhas={[
+            diaCurto(dados[hover].dia),
+            `OK: ${formatNumero(dados[hover].ok)}`,
+            `Erro: ${formatNumero(dados[hover].erro)}`,
+          ]}
         />
       )}
     </div>
@@ -434,7 +536,13 @@ export function GraficoEmpilhadoDiario({
 export function GraficoConversao({
   etapas,
 }: {
-  etapas: Array<{ id: string; nome: string; cor: string; entradas: number; taxaAvanco: number | null }>;
+  etapas: Array<{
+    id: string;
+    nome: string;
+    cor: string;
+    entradas: number;
+    taxaAvanco: number | null;
+  }>;
 }) {
   if (etapas.length === 0) {
     return <p className="text-[13px] text-muted m-0">Sem etapas no funil.</p>;
@@ -456,7 +564,12 @@ export function GraficoConversao({
   const H = acc + 4;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" style={{ fontFamily: 'var(--font-ui)' }} role="img">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full h-auto block"
+      style={{ fontFamily: 'var(--font-ui)' }}
+      role="img"
+    >
       {etapas.map((et, i) => {
         const y = ys[i];
         const bw = Math.max((et.entradas / max) * iw, et.entradas > 0 ? 6 : 0);

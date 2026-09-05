@@ -55,7 +55,7 @@ export function Table<T>({ data, columns, rowKey, onRowClick }: TableProps<T>) {
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="scroll-x-hint">
       <table
         className="w-full border-separate border-spacing-0 text-[13px]"
         data-testid="data-table"
@@ -122,7 +122,8 @@ export function Pagination({
       className="flex items-center justify-between py-3 text-[13px] text-muted"
     >
       <span>
-        Página {page} de {Math.max(1, totalPages)} · {total} {total === 1 ? 'registro' : 'registros'}
+        Página {page} de {Math.max(1, totalPages)} · {total}{' '}
+        {total === 1 ? 'registro' : 'registros'}
       </span>
       <div style={{ display: 'flex', gap: 4 }}>
         <button

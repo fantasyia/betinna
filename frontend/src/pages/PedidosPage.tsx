@@ -61,10 +61,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import {
-  formatMoeda as fmtBRL,
-  formatNumero,
-} from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatNumero } from '@/lib/masks';
 
 /**
  * PedidosPage v2 — design system dark, timeline visual de status.
@@ -246,7 +243,12 @@ export default function PedidosPage() {
     return `/pedidos?${qs.toString()}`;
   }, [page, filtrosQuery]);
 
-  const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
+  const {
+    data: pageResp,
+    loading,
+    error,
+    refetch,
+  } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
 
   // Puxar do ERP é do admin/diretor: mexe nos pedidos do tenant inteiro.
   const podeSincronizarErp = role === 'ADMIN' || role === 'DIRECTOR';
@@ -304,7 +306,12 @@ export default function PedidosPage() {
       if (formato === 'csv') {
         ({ count } = await exportToCsv<Pedido>({ endpoint: '/pedidos', query, filename, columns }));
       } else if (formato === 'xlsx') {
-        ({ count } = await exportToXlsx<Pedido>({ endpoint: '/pedidos', query, filename, columns }));
+        ({ count } = await exportToXlsx<Pedido>({
+          endpoint: '/pedidos',
+          query,
+          filename,
+          columns,
+        }));
       } else if (formato === 'docx') {
         ({ count } = await exportToDocx<Pedido>({
           endpoint: '/pedidos',
@@ -335,11 +342,7 @@ export default function PedidosPage() {
 
   const [creating, setCreating] = useState(false);
   const filtersActive =
-    !!status ||
-    !!search.trim() ||
-    periodo !== 'todos' ||
-    !!dataInicioCustom ||
-    !!dataFimCustom;
+    !!status || !!search.trim() || periodo !== 'todos' || !!dataInicioCustom || !!dataFimCustom;
 
   // ─── B2 — Seleção múltipla + ações em massa ──────────────────────────
   const rows = pageResp?.data ?? [];
@@ -363,10 +366,7 @@ export default function PedidosPage() {
     setSelectedIds(new Set());
   }
 
-  async function runBulk(
-    tipo: 'erp' | 'cancelar',
-    motivo?: string,
-  ): Promise<void> {
+  async function runBulk(tipo: 'erp' | 'cancelar', motivo?: string): Promise<void> {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     setBulkBusy(tipo);
@@ -647,7 +647,7 @@ export default function PedidosPage() {
           )}
           {pageResp && pageResp.data.length > 0 && (
             <>
-              <div className="overflow-x-auto">
+              <div className="scroll-x-hint">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
@@ -691,10 +691,7 @@ export default function PedidosPage() {
                           onClick={() => setSelected(p.id)}
                           data-testid={`pedido-row-${p.id}`}
                         >
-                          <td
-                            className="w-10 px-3 py-2.5"
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                          <td className="w-10 px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               data-testid={`bulk-select-${p.id}`}
@@ -725,9 +722,7 @@ export default function PedidosPage() {
                             {p.cliente ? (
                               <div className="flex items-center gap-2 min-w-0">
                                 <Avatar name={p.cliente.nome} size="sm" />
-                                <span className="text-sm text-text truncate">
-                                  {p.cliente.nome}
-                                </span>
+                                <span className="text-sm text-text truncate">{p.cliente.nome}</span>
                               </div>
                             ) : (
                               <span className="text-muted-light italic text-sm">—</span>
@@ -874,7 +869,12 @@ function PaginationBar({
         Página {current} de {total} · {formatNumero(totalItems)} no total
       </span>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="sm" disabled={current <= 1} onClick={() => onChange(current - 1)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={current <= 1}
+          onClick={() => onChange(current - 1)}
+        >
           Anterior
         </Button>
         <Button
@@ -921,10 +921,41 @@ function ExportMenu({
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
           <div className="absolute right-0 top-full mt-1 z-40 min-w-[160px] bg-surface-elevated border border-border-strong rounded-md shadow-lg flex flex-col p-1 animate-fade-in">
-            <ExportItem icon={<FileText className="h-3.5 w-3.5" />} label="CSV" onClick={() => { setOpen(false); onExport('csv'); }} />
-            <ExportItem icon={<FileSpreadsheet className="h-3.5 w-3.5" />} label="Excel (XLSX)" testId="pedido-export-xlsx-btn" onClick={() => { setOpen(false); onExport('xlsx'); }} />
-            <ExportItem icon={<File className="h-3.5 w-3.5" />} label="Word (DOCX)" testId="pedido-export-docx-btn" onClick={() => { setOpen(false); onExport('docx'); }} />
-            <ExportItem icon={<File className="h-3.5 w-3.5" />} label="PDF" testId="pedido-export-pdf-btn" onClick={() => { setOpen(false); onExport('pdf'); }} />
+            <ExportItem
+              icon={<FileText className="h-3.5 w-3.5" />}
+              label="CSV"
+              onClick={() => {
+                setOpen(false);
+                onExport('csv');
+              }}
+            />
+            <ExportItem
+              icon={<FileSpreadsheet className="h-3.5 w-3.5" />}
+              label="Excel (XLSX)"
+              testId="pedido-export-xlsx-btn"
+              onClick={() => {
+                setOpen(false);
+                onExport('xlsx');
+              }}
+            />
+            <ExportItem
+              icon={<File className="h-3.5 w-3.5" />}
+              label="Word (DOCX)"
+              testId="pedido-export-docx-btn"
+              onClick={() => {
+                setOpen(false);
+                onExport('docx');
+              }}
+            />
+            <ExportItem
+              icon={<File className="h-3.5 w-3.5" />}
+              label="PDF"
+              testId="pedido-export-pdf-btn"
+              onClick={() => {
+                setOpen(false);
+                onExport('pdf');
+              }}
+            />
           </div>
         </>
       )}
@@ -1023,7 +1054,10 @@ function PedidoDetailDrawer({
       onClose={onClose}
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
       description={
-        [data?.numeroSite ? `Site ${data.numeroSite}` : '', data?.numeroErp ? `ERP ${data.numeroErp}` : '']
+        [
+          data?.numeroSite ? `Site ${data.numeroSite}` : '',
+          data?.numeroErp ? `ERP ${data.numeroErp}` : '',
+        ]
           .filter(Boolean)
           .join(' · ') || undefined
       }
@@ -1179,7 +1213,7 @@ function PedidoDetailDrawer({
                 <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
                   Itens ({data.itens.length})
                 </h4>
-                <div className="rounded-md border border-border overflow-hidden">
+                <div className="rounded-md border border-border scroll-x-hint">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border bg-bg-alt">
@@ -1386,7 +1420,11 @@ function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
                   isFuture && 'bg-bg border-border text-muted-light',
                 )}
               >
-                {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Icon className="h-3.5 w-3.5" />}
+                {isDone ? (
+                  <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                ) : (
+                  <Icon className="h-3.5 w-3.5" />
+                )}
               </div>
               {/* Content */}
               <div className={cn('flex-1 pb-5', idx === FLOW_STEPS.length - 1 && 'pb-0')}>
@@ -1429,9 +1467,7 @@ function CanceledNote({ pedido }: { pedido: PedidoDetail }) {
           <span className="text-[11px] text-muted tabular">{fmtDateTime(pedido.canceladoEm)}</span>
         )}
       </div>
-      {pedido.cancelMotivo && (
-        <p className="text-sm text-text-subtle m-0">{pedido.cancelMotivo}</p>
-      )}
+      {pedido.cancelMotivo && <p className="text-sm text-text-subtle m-0">{pedido.cancelMotivo}</p>}
     </div>
   );
 }

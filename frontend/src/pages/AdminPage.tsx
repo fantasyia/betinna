@@ -199,14 +199,12 @@ function CronLatencySection() {
         )}
       </header>
       <p className="text-[11px] text-muted mt-0 mb-3">
-        Atraso entre o horário agendado e o disparo real, nas últimas{' '}
-        {data?.amostras ?? 0} execuções.
+        Atraso entre o horário agendado e o disparo real, nas últimas {data?.amostras ?? 0}{' '}
+        execuções.
       </p>
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && data.amostras === 0 ? (
-          <p className="text-[13px] text-muted m-0">
-            Nenhuma execução de cron registrada ainda.
-          </p>
+          <p className="text-[13px] text-muted m-0">Nenhuma execução de cron registrada ainda.</p>
         ) : data ? (
           <div
             className="grid gap-3"
@@ -232,10 +230,10 @@ function CronLatencySection() {
 
 function DeadLetterSection() {
   const toast = useToast();
-  const { data, loading, error, refetch } = useApiQuery<DeadLetterJob[] | { data: DeadLetterJob[] }>(
-    '/admin/dead-letter',
-  );
-  const jobs: DeadLetterJob[] = Array.isArray(data) ? data : data?.data ?? [];
+  const { data, loading, error, refetch } = useApiQuery<
+    DeadLetterJob[] | { data: DeadLetterJob[] }
+  >('/admin/dead-letter');
+  const jobs: DeadLetterJob[] = Array.isArray(data) ? data : (data?.data ?? []);
   const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function retry(jobId: string) {
@@ -319,8 +317,8 @@ function DeadLetterSection() {
         </button>
       </header>
       <p className="text-[12px] text-muted mt-0 mb-3">
-        Jobs que falharam após exceder o máximo de retries. Investigar a causa raiz antes
-        de retentar — caso contrário falha de novo e consome recursos.
+        Jobs que falharam após exceder o máximo de retries. Investigar a causa raiz antes de
+        retentar — caso contrário falha de novo e consome recursos.
       </p>
 
       <StateView
@@ -392,8 +390,8 @@ function DbHealthSection() {
         </button>
       </div>
       <p className="text-[12px] text-muted m-0 mb-3">
-        Visibilidade de quanto cada tabela ocupa no Postgres. Use pra detectar
-        crescimento descontrolado antes do disco encher de novo.
+        Visibilidade de quanto cada tabela ocupa no Postgres. Use pra detectar crescimento
+        descontrolado antes do disco encher de novo.
       </p>
       <StateView loading={loading && !data} error={error} onRetry={refetch}>
         {data && (
@@ -423,12 +421,14 @@ function DbHealthSection() {
                 </div>
               )}
             </div>
-            <div className="overflow-x-auto">
+            <div className="scroll-x-hint">
               <table className="w-full border-collapse text-[12px]">
                 <thead>
                   <tr className="border-b border-border text-left">
                     <th className="py-[0.4rem] px-2 font-semibold text-muted">Tabela</th>
-                    <th className="py-[0.4rem] px-2 font-semibold text-muted text-right">Tamanho</th>
+                    <th className="py-[0.4rem] px-2 font-semibold text-muted text-right">
+                      Tamanho
+                    </th>
                     <th className="py-[0.4rem] px-2 font-semibold text-muted text-right">
                       Linhas (aprox.)
                     </th>
@@ -548,11 +548,14 @@ function BackupSection() {
   }
 
   return (
-    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4" data-testid="backup-card">
+    <section
+      className="bg-surface border border-border rounded-[10px] p-6 mb-4"
+      data-testid="backup-card"
+    >
       <h2 className="mt-0 text-[16px]">🗄️ Backup do banco</h2>
       <p className="text-[12px] text-muted m-0 mb-3 leading-[1.5]">
-        O backup automático roda todo dia. Use os botões abaixo pra rodar um backup na hora
-        ou checar a integridade do último dump.
+        O backup automático roda todo dia. Use os botões abaixo pra rodar um backup na hora ou
+        checar a integridade do último dump.
       </p>
 
       <StateView loading={loading && !data} error={error} onRetry={refetch}>
@@ -678,9 +681,7 @@ function AuditLogSection() {
     {
       key: 'ip',
       header: 'IP',
-      render: (e) => (
-        <span className="text-[11px] text-muted font-mono">{e.ip ?? '—'}</span>
-      ),
+      render: (e) => <span className="text-[11px] text-muted font-mono">{e.ip ?? '—'}</span>,
     },
   ];
 
@@ -802,8 +803,8 @@ function PermissoesGranularesSection() {
     <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
       <h2 className="mt-0 text-[16px]">🔐 Permissões granulares</h2>
       <p className="text-muted mt-0 text-[13px] leading-[1.5]">
-        Configure quais módulos cada papel (DIRECTOR, GERENTE, SAC, REP) pode <strong>ver</strong>
-        {' '}e <strong>editar</strong>. ADMIN sempre tem acesso total.
+        Configure quais módulos cada papel (DIRECTOR, GERENTE, SAC, REP) pode <strong>ver</strong> e{' '}
+        <strong>editar</strong>. ADMIN sempre tem acesso total.
       </p>
       <Link
         to="/permissoes"
