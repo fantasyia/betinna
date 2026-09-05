@@ -106,6 +106,10 @@ export class PedidoSiteService {
         representanteId: null,
         origem: 'SITE',
         status: 'RASCUNHO',
+        // Venda do site é paga no checkout (Pix, à vista). É isto que decide a
+        // conta a receber no ERP — o default do app (boleto) é do pedido de rep.
+        formaPagamento: 'PIX',
+        condicaoPagamento: 'avista',
         subtotal: new Prisma.Decimal(subtotal),
         total: new Prisma.Decimal(total),
         // Frete em coluna própria: entra no total, mas fica FORA da comissão.

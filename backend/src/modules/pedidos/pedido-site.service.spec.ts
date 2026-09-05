@@ -62,6 +62,14 @@ const PEDIDO = {
 describe('pedido do site', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('pedido do site nasce Pix à vista — é o que vira a conta a receber no ERP', async () => {
+    const { svc, prisma } = build();
+    await svc.receber('emp-1', PEDIDO as never);
+    const data = prisma.pedido.create.mock.calls[0][0].data;
+    expect(data.formaPagamento).toBe('PIX');
+    expect(data.condicaoPagamento).toBe('avista');
+  });
+
   it('cria o pedido como venda de CANAL e sobe pro ERP', async () => {
     const { svc, prisma, erpPush } = build();
 
