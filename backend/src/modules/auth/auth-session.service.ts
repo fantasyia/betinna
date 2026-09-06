@@ -43,7 +43,16 @@ import { addBreadcrumb } from '@shared/observability/sentry';
  *                                   surface CSRF — mesmo com SameSite=None)
  */
 /** Pedidos de reset por endereço em 24h. Regra do Léo: manda de novo sempre, com limite claro. */
-const RESET_MAX_DIA = 5;
+const RESET_MAX_DIA_PADRAO = 5;
+/**
+ * Teto por endereço em 24h. Sobrescrevível por `AUTH_RESET_MAX_DIA` no env pra
+ * afrouxar durante depuração (06/09: subiu pra 50 enquanto o fluxo era
+ * ajustado) e voltar a 5 sem deploy — basta remover a variável.
+ */
+const resetMaxDia = (): number => {
+  const bruto = Number(process.env['AUTH_RESET_MAX_DIA']);
+  return Number.isFinite(bruto) && bruto > 0 ? Math.floor(bruto) : RESET_MAX_DIA_PADRAO;
+};
 /** Segundos pra absorver clique duplo sem gastar um dos cinco. */
 const RESET_DEBOUNCE_S = 10;
 /** Quanto o token de recovery fica reutilizável no Redis — abaixo da 1h do Supabase. */
@@ -241,13 +250,13 @@ export class AuthSessionService {
       }
       const doDia = await this.redis.incr(`auth:reset:dia:${alvo}`);
       if (doDia === 1) await this.redis.setEx(`auth:reset:dia:${alvo}`, '1', 24 * 60 * 60);
-      if (doDia > RESET_MAX_DIA) {
+      if (doDia > resetMaxDia()) {
         this.logger.warn(
-          `[reset] ${alvo}: ${doDia}º pedido em 24h — teto de ${RESET_MAX_DIA} atingido`,
+          `[reset] ${alvo}: ${doDia}º pedido em 24h — teto de ${resetMaxDia()} atingido`,
         );
         return { enviado: false, motivo: 'limite_diario', restantes: 0 };
       }
-      const restantes = RESET_MAX_DIA - doDia;
+      const restantes = resetMaxDia() - doDia;
 
       const usuario = await this.prisma.usuario.findFirst({
         where: { email: alvo },
@@ -303,7 +312,7 @@ export class AuthSessionService {
         );
         return neutro;
       }
-      this.logger.log(`[reset] ${alvo}: link enviado (${doDia}º de ${RESET_MAX_DIA} hoje)`);
+      this.logger.log(`[reset] ${alvo}: link enviado (${doDia}º de ${resetMaxDia()} hoje)`);
       return { enviado: true, restantes };
     } catch (err) {
       // Nunca propaga: o retorno é neutro por desenho, e um 500 aqui já contaria
