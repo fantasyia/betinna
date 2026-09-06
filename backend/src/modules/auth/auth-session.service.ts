@@ -364,7 +364,7 @@ export class AuthSessionService {
         ErrorCode.AUTH_INVALID_TOKEN,
       );
     }
-    const resultado = await this.welcomeFinalize(body.access_token, password, res);
+    const resultado = await this.welcomeFinalize(body.access_token, password, res, 'reset');
     // Senha gravada: o token morreu no Supabase, então some do cache também —
     // senão o próximo "esqueci" reenviaria um link já gasto.
     const emailDoToken = body.user?.email?.toLowerCase();
@@ -376,6 +376,16 @@ export class AuthSessionService {
     accessToken: string,
     password: string,
     res: Response,
+    /**
+     * `convite` (padrão): só finaliza conta PENDENTE — é o gate contra sequestro
+     * por access token velho de conta já ativa.
+     * `reset`: a conta É ativa por definição. A prova de posse aqui é outra e
+     * mais forte — o token de recovery que NÓS geramos e mandamos pra caixa da
+     * pessoa, acabado de trocar por sessão. Medido em 06/09: sem este modo, o
+     * reset do Leandro passava no verify e morria neste gate com 403,
+     * consumindo o token no caminho.
+     */
+    modo: 'convite' | 'reset' = 'convite',
   ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
     if (!accessToken || accessToken.length < 20) {
       throw new UnauthorizedException(
@@ -418,7 +428,15 @@ export class AuthSessionService {
       where: { id: supaUser.id },
       select: { status: true },
     });
-    if (!usuario || usuario.status !== 'PENDENTE') {
+    if (modo === 'reset') {
+      // Desligado não redefine senha — seria porta de volta pra quem saiu.
+      if (!usuario || usuario.status === 'INATIVO') {
+        throw new ForbiddenException(
+          'Esta conta não está ativa. Fale com quem administra o sistema.',
+          ErrorCode.FORBIDDEN,
+        );
+      }
+    } else if (!usuario || usuario.status !== 'PENDENTE') {
       throw new ForbiddenException(
         'Este convite já foi finalizado ou a conta já está ativa. Para redefinir a senha, use "Esqueci minha senha".',
         ErrorCode.FORBIDDEN,

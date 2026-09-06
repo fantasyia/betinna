@@ -209,7 +209,9 @@ describe('AuthSessionService.redefinirSenha', () => {
       'https://sb.local/auth/v1/verify',
       expect.objectContaining({ method: 'POST' }),
     );
-    expect(welcomeFinalize).toHaveBeenCalledWith('sb-access', 'senha-nova-8', {});
+    // modo 'reset': a conta é ATIVA por definição — o gate de "só PENDENTE" do
+    // convite é o que devolvia 403 e consumia o token (06/09, 23:54:40)
+    expect(welcomeFinalize).toHaveBeenCalledWith('sb-access', 'senha-nova-8', {}, 'reset');
     expect(r.accessToken).toBe('app-token');
     // senha gravada = token morto no Supabase = some do cache, senão o próximo
     // "esqueci" reenviaria um link já gasto
@@ -236,5 +238,64 @@ describe('AuthSessionService.redefinirSenha', () => {
       svc.redefinirSenha('pkce_hash_abc123_long_enough', '1234', {} as never),
     ).rejects.toThrow(/8 caracteres/);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthSessionService.welcomeFinalize — gate por modo', () => {
+  const buildFinalize = (status: 'ATIVO' | 'PENDENTE' | 'INATIVO') => {
+    const svc = Object.create(AuthSessionService.prototype) as AuthSessionService;
+    const updateUserById = vi.fn(async () => ({ error: null }));
+    const login = vi.fn(async () => ({ accessToken: 'app', expiresAt: 1, userId: 'u1' }));
+    Object.assign(svc, {
+      env: {
+        get: (k: string) =>
+          k === 'SUPABASE_URL' ? 'https://sb.local' : k === 'SUPABASE_ANON_KEY' ? 'anon' : 'x',
+      },
+      prisma: {
+        usuario: {
+          findUnique: vi.fn(async () => ({ status })),
+          update: vi.fn(async () => ({})),
+        },
+      },
+      supabaseAdmin: { auth: { admin: { updateUserById } } },
+      logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      login,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({ id: 'u1', email: 'x@y.com' }) })),
+    );
+    return { svc, updateUserById, login };
+  };
+  const TOKEN = 'access-token-long-enough-xxxxxxxx';
+
+  it("reset em conta ATIVA passa — é o caso normal de 'esqueci minha senha'", async () => {
+    const { svc, updateUserById, login } = buildFinalize('ATIVO');
+
+    await svc.welcomeFinalize(TOKEN, 'senha-nova-8', {} as never, 'reset');
+
+    expect(updateUserById).toHaveBeenCalledWith('u1', {
+      password: 'senha-nova-8',
+      email_confirm: true,
+    });
+    expect(login).toHaveBeenCalled();
+  });
+
+  it('reset em conta INATIVA é barrado — seria porta de volta pra quem saiu', async () => {
+    const { svc, updateUserById } = buildFinalize('INATIVO');
+
+    await expect(svc.welcomeFinalize(TOKEN, 'senha-nova-8', {} as never, 'reset')).rejects.toThrow(
+      /não está ativa/,
+    );
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
+  it('convite em conta ATIVA continua barrado (anti-sequestro por token velho)', async () => {
+    const { svc, updateUserById } = buildFinalize('ATIVO');
+
+    await expect(svc.welcomeFinalize(TOKEN, 'senha-nova-8', {} as never)).rejects.toThrow(
+      /já está ativa/,
+    );
+    expect(updateUserById).not.toHaveBeenCalled();
   });
 });
