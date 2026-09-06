@@ -93,19 +93,32 @@ export default function LoginPage() {
     }
     setResetEnviando(true);
     setResetAviso(null);
+    let limite = false;
+    let restantes: number | undefined;
     try {
-      await fetch(`${API_BASE}/api/v1/auth/esqueci-senha`, {
+      const r = await fetch(`${API_BASE}/api/v1/auth/esqueci-senha`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: alvo }),
       });
+      const j = (await r.json().catch(() => null)) as {
+        data?: { enviado?: boolean; motivo?: string; restantes?: number };
+      } | null;
+      limite = j?.data?.enviado === false && j?.data?.motivo === 'limite_diario';
+      restantes = j?.data?.restantes;
     } catch {
-      /* silencioso de propósito: o retorno é neutro em qualquer cenário */
+      /* rede caiu: mostra a mensagem neutra mesmo assim */
     }
     setResetEnviando(false);
+    // O limite é dito com todas as letras (regra do Léo): silêncio é o que faz a
+    // pessoa clicar de novo achando que falhou. Não vaza se a conta existe —
+    // o contador é por endereço digitado.
     setResetAviso(
-      'Se existir uma conta com esse e-mail, o link de redefinição chega em instantes. ' +
-        'Confira também o spam. Se já pediu há pouco, aguarde 1 minuto antes de pedir de novo.',
+      limite
+        ? 'Você já pediu o link 5 vezes hoje. Por segurança, o próximo só amanhã — ou fale com o suporte.'
+        : 'Se existir uma conta com esse e-mail, o link chega em instantes. Confira também o spam. ' +
+            'Não chegou? Clique de novo que mandamos outro' +
+            (typeof restantes === 'number' ? ` (você ainda pode pedir ${restantes}x hoje).` : '.'),
     );
   }
 

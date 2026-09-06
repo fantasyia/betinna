@@ -50,7 +50,7 @@ describe('AuthSessionService.esqueciSenha', () => {
 
     const r = await svc.esqueciSenha('Leandro@Betinna.AI');
 
-    expect(r).toEqual({ enviado: true });
+    expect(r).toEqual({ enviado: true, restantes: 4 });
     // normaliza pra minúsculas — senão o mesmo endereço fura o cooldown
     expect(generateLink).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'recovery', email: 'leandro@betinna.ai' }),
@@ -83,7 +83,7 @@ describe('AuthSessionService.esqueciSenha', () => {
     expect(email.enviarRecuperacaoSenha).not.toHaveBeenCalled();
   });
 
-  it('segundo pedido dentro de 1min não manda de novo', async () => {
+  it('clique duplo (<10s) é absorvido sem gastar um dos cinco', async () => {
     const { svc, email, prisma } = build({ janelaLivre: false });
 
     const r = await svc.esqueciSenha('leandro@betinna.ai');
@@ -94,14 +94,26 @@ describe('AuthSessionService.esqueciSenha', () => {
     expect(prisma.usuario.findFirst).not.toHaveBeenCalled();
   });
 
-  it('acima de 5 pedidos em 24h, para de mandar (teto por ENDEREÇO, não por IP)', async () => {
+  it('pedir de novo MANDA de novo — e diz quantos ainda restam', async () => {
+    // Regra do Léo (06/09): quem clica de novo é porque não chegou. Responder
+    // "enviado" sem mandar é o que faz a pessoa clicar uma terceira vez.
+    const { svc, email } = build({ doDia: 3 });
+
+    const r = await svc.esqueciSenha('leandro@betinna.ai');
+
+    expect(email.enviarRecuperacaoSenha).toHaveBeenCalledTimes(1);
+    expect(r).toEqual({ enviado: true, restantes: 2 });
+  });
+
+  it('acima de 5 em 24h, para — e DIZ que parou (teto por ENDEREÇO, não por IP)', async () => {
     // O @Throttle do controller conta por IP; trocar de IP é trivial e sozinho
-    // ele não protege a caixa de ninguém.
+    // ele não protege a caixa de ninguém. E o limite é dito com todas as letras:
+    // não vaza se a conta existe, porque o contador é por endereço digitado.
     const { svc, email } = build({ doDia: 6 });
 
     const r = await svc.esqueciSenha('alvo@x.com');
 
-    expect(r).toEqual({ enviado: true });
+    expect(r).toEqual({ enviado: false, motivo: 'limite_diario', restantes: 0 });
     expect(email.enviarRecuperacaoSenha).not.toHaveBeenCalled();
   });
 

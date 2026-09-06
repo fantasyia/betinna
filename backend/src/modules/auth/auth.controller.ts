@@ -139,6 +139,9 @@ export class AuthController {
   /**
    * "Esqueceu sua senha?" — dispara o e-mail com o link de redefinição.
    *
+   * Manda de novo toda vez que pedirem (regra do Léo, 06/09), até 5 por
+   * endereço em 24h — e ao estourar a resposta diz isso com todas as letras.
+   *
    * Throttle mais apertado que o do login: 5 por IP a cada 15 min. Isto é um
    * endpoint público que MANDA E-MAIL, então o custo de abuso não é só CPU — é
    * a reputação do domínio no Resend e a caixa de quem foi escolhido como alvo.
@@ -157,7 +160,7 @@ export class AuthController {
   })
   async esqueciSenha(
     @Body(new ZodValidationPipe(esqueciSenhaSchema)) dto: EsqueciSenhaDto,
-  ): Promise<{ enviado: true }> {
+  ): Promise<{ enviado: boolean; motivo?: 'limite_diario'; restantes?: number }> {
     return this.authSession.esqueciSenha(dto.email);
   }
 

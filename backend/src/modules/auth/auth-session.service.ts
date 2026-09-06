@@ -42,6 +42,11 @@ import { addBreadcrumb } from '@shared/observability/sentry';
  *  - `path: '/api/v1/auth'`      → cookie só é enviado nesse path (minimiza
  *                                   surface CSRF — mesmo com SameSite=None)
  */
+/** Pedidos de reset por endereço em 24h. Regra do Léo: manda de novo sempre, com limite claro. */
+const RESET_MAX_DIA = 5;
+/** Segundos pra absorver clique duplo sem gastar um dos cinco. */
+const RESET_DEBOUNCE_S = 10;
+
 @Injectable()
 export class AuthSessionService {
   private readonly logger = new Logger(AuthSessionService.name);
@@ -207,32 +212,40 @@ export class AuthSessionService {
    * Reusa o `/welcome`, que já trata `type=recovery` — mesma tela que define a
    * senha do convite.
    *
-   * DUAS travas, porque o `@Throttle` do controller conta por IP e não protege
-   * a CAIXA de ninguém: quem trocar de IP mandaria um e-mail por requisição.
-   *   - 1 e-mail por minuto por endereço — segura clique duplo e rajada. Era
-   *     5 min, e em 06/09 o Léo clicou duas vezes dentro da janela porque o
-   *     primeiro e-mail não tinha aparecido: o servidor dizia "enviado" e não
-   *     mandava nada. Cinco minutos mudos é hostil pra quem está esperando;
-   *   - teto de 5 por endereço a cada 24h — é ESTA que impede bombardeio.
-   * Estourar qualquer uma delas devolve o mesmo "enviado" — quem está atacando
-   * não aprende nada, e quem é dono da caixa para de ser bombardeado.
+   * A regra do Léo (06/09): **manda de novo toda vez que pedirem, com limite
+   * claro.** Nada de janela muda de minutos — quem clica de novo é porque o
+   * e-mail não chegou, e responder "enviado" sem mandar é o que faz a pessoa
+   * clicar uma terceira vez.
+   *
+   *   - teto de 5 por endereço a cada 24h — é ESTA que impede bombardeio, e ao
+   *     estourar a resposta DIZ que estourou (`enviado: false`). Não vaza se a
+   *     conta existe: o contador é por ENDEREÇO digitado, não por conta;
+   *   - 10s de debounce contra clique duplo — pra não gastar dois dos cinco num
+   *     dedo nervoso. Dentro deles a resposta é a neutra.
+   *
+   * O `@Throttle` do controller conta por IP e sozinho não protege a CAIXA de
+   * ninguém: quem trocar de IP mandaria um e-mail por requisição.
    */
-  async esqueciSenha(email: string): Promise<{ enviado: true }> {
+  async esqueciSenha(
+    email: string,
+  ): Promise<{ enviado: boolean; motivo?: 'limite_diario'; restantes?: number }> {
     const alvo = email.trim().toLowerCase();
     const neutro = { enviado: true as const };
 
     try {
-      const janela = `auth:reset:janela:${alvo}`;
-      if (!(await this.redis.setNxEx(janela, '1', 60))) {
-        this.logger.log(`[reset] ${alvo}: pedido dentro da janela de 1min — nada enviado`);
+      if (!(await this.redis.setNxEx(`auth:reset:debounce:${alvo}`, '1', RESET_DEBOUNCE_S))) {
+        this.logger.log(`[reset] ${alvo}: clique duplo (<${RESET_DEBOUNCE_S}s) — ignorado`);
         return neutro;
       }
       const doDia = await this.redis.incr(`auth:reset:dia:${alvo}`);
       if (doDia === 1) await this.redis.setEx(`auth:reset:dia:${alvo}`, '1', 24 * 60 * 60);
-      if (doDia > 5) {
-        this.logger.warn(`[reset] ${alvo}: ${doDia} pedidos em 24h — teto atingido, nada enviado`);
-        return neutro;
+      if (doDia > RESET_MAX_DIA) {
+        this.logger.warn(
+          `[reset] ${alvo}: ${doDia}º pedido em 24h — teto de ${RESET_MAX_DIA} atingido`,
+        );
+        return { enviado: false, motivo: 'limite_diario', restantes: 0 };
       }
+      const restantes = RESET_MAX_DIA - doDia;
 
       const usuario = await this.prisma.usuario.findFirst({
         where: { email: alvo },
@@ -276,9 +289,10 @@ export class AuthSessionService {
         this.logger.error(
           `[reset] ${alvo}: e-mail NÃO saiu — ${JSON.stringify(enviado).slice(0, 200)}`,
         );
-      } else {
-        this.logger.log(`[reset] ${alvo}: link de redefinição enviado`);
+        return neutro;
       }
+      this.logger.log(`[reset] ${alvo}: link enviado (${doDia}º de ${RESET_MAX_DIA} hoje)`);
+      return { enviado: true, restantes };
     } catch (err) {
       // Nunca propaga: o retorno é neutro por desenho, e um 500 aqui já contaria
       // que aquele endereço fez o servidor trabalhar.
