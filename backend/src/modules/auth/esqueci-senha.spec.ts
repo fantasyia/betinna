@@ -26,7 +26,9 @@ const build = (
   const env = { get: (k: string) => (k === 'FRONTEND_URL' ? 'https://app.betinna.ai' : 'x') };
   const svc = Object.create(AuthSessionService.prototype) as AuthSessionService;
   const generateLink = vi.fn(async () => ({
-    data: { properties: { action_link: 'https://sb/verify?token=abc' } },
+    data: {
+      properties: { action_link: 'https://sb/verify?token=abc', hashed_token: 'pkce_hash_abc123' },
+    },
     error: null,
   }));
   Object.assign(svc, {
@@ -53,10 +55,12 @@ describe('AuthSessionService.esqueciSenha', () => {
     expect(generateLink).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'recovery', email: 'leandro@betinna.ai' }),
     );
+    // O e-mail leva o token pro NOSSO /welcome, não o action_link do Supabase —
+    // o action_link é um GET de uso único, e morria no segundo navegador.
     expect(email.enviarRecuperacaoSenha).toHaveBeenCalledWith(
       expect.objectContaining({
         para: 'leandro@betinna.ai',
-        resetUrl: 'https://sb/verify?token=abc',
+        resetUrl: 'https://app.betinna.ai/welcome?token_hash=pkce_hash_abc123&type=recovery',
       }),
     );
   });
@@ -115,5 +119,69 @@ describe('AuthSessionService.esqueciSenha', () => {
 
     expect(r).toEqual({ enviado: true });
     expect(email.enviarRecuperacaoSenha).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthSessionService.redefinirSenha', () => {
+  const buildReset = (verify: { ok: boolean; status: number; body: unknown }) => {
+    const svc = Object.create(AuthSessionService.prototype) as AuthSessionService;
+    const welcomeFinalize = vi.fn(async () => ({
+      accessToken: 'app-token',
+      expiresAt: 1,
+      userId: 'u1',
+    }));
+    // `supabaseUrl`/`supabaseAnonKey` são getters que leem o env — mocka a fonte.
+    Object.assign(svc, {
+      env: {
+        get: (k: string) =>
+          k === 'SUPABASE_URL' ? 'https://sb.local' : k === 'SUPABASE_ANON_KEY' ? 'anon' : 'x',
+      },
+      logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      welcomeFinalize,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: verify.ok, status: verify.status, json: async () => verify.body })),
+    );
+    return { svc, welcomeFinalize };
+  };
+
+  it('troca o token_hash por sessão SÓ no envio da senha, e segue pelo caminho do convite', async () => {
+    const { svc, welcomeFinalize } = buildReset({
+      ok: true,
+      status: 200,
+      body: { access_token: 'sb-access' },
+    });
+
+    const r = await svc.redefinirSenha('pkce_hash_abc123_long_enough', 'senha-nova-8', {} as never);
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://sb.local/auth/v1/verify',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(welcomeFinalize).toHaveBeenCalledWith('sb-access', 'senha-nova-8', {});
+    expect(r.accessToken).toBe('app-token');
+  });
+
+  it('token já usado/expirado: erro legível em português, sem gravar senha', async () => {
+    const { svc, welcomeFinalize } = buildReset({
+      ok: false,
+      status: 403,
+      body: { msg: 'One-time token not found' },
+    });
+
+    await expect(
+      svc.redefinirSenha('pkce_hash_abc123_long_enough', 'senha-nova-8', {} as never),
+    ).rejects.toThrow(/já foi usado ou expirou/);
+    expect(welcomeFinalize).not.toHaveBeenCalled();
+  });
+
+  it('senha curta é barrada ANTES de gastar o token', async () => {
+    const { svc } = buildReset({ ok: true, status: 200, body: { access_token: 'x' } });
+
+    await expect(
+      svc.redefinirSenha('pkce_hash_abc123_long_enough', '1234', {} as never),
+    ).rejects.toThrow(/8 caracteres/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

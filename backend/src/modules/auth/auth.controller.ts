@@ -56,6 +56,12 @@ const esqueciSenhaSchema = z.object({
 });
 type EsqueciSenhaDto = z.infer<typeof esqueciSenhaSchema>;
 
+const redefinirSenhaSchema = z.object({
+  tokenHash: z.string().min(20).max(512),
+  password: z.string().min(8).max(128),
+});
+type RedefinirSenhaDto = z.infer<typeof redefinirSenhaSchema>;
+
 // U2/lote 4: finaliza convite — frontend pega access_token do hash do
 // link Supabase + pede ao user pra definir senha
 const welcomeSchema = z.object({
@@ -153,6 +159,22 @@ export class AuthController {
     @Body(new ZodValidationPipe(esqueciSenhaSchema)) dto: EsqueciSenhaDto,
   ): Promise<{ enviado: true }> {
     return this.authSession.esqueciSenha(dto.email);
+  }
+
+  /**
+   * Grava a senha nova a partir do link do e-mail. O token do link só é
+   * consumido AQUI — abrir o link não gasta nada (ver `esqueciSenha`).
+   */
+  @Post('redefinir-senha')
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: seconds(15 * 60) } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Troca o token do e-mail pela senha nova e abre sessão.' })
+  async redefinirSenha(
+    @Body(new ZodValidationPipe(redefinirSenhaSchema)) dto: RedefinirSenhaDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
+    return this.authSession.redefinirSenha(dto.tokenHash, dto.password, res);
   }
 
   @Post('welcome')

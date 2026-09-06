@@ -41,20 +41,29 @@ interface HashParams {
   accessToken: string | null;
   type: string | null;
   errorDescription: string | null;
+  /**
+   * Redefinição de senha: o e-mail traz `?token_hash=…&type=recovery` na QUERY,
+   * não um access_token no hash. Abrir o link não consome nada — o token só é
+   * trocado por sessão quando a senha nova é enviada. É o que faz o link
+   * aguentar ser aberto em dois navegadores (o do Supabase morria no 2º).
+   */
+  tokenHash: string | null;
 }
 
 function parseHashParams(): HashParams {
   if (typeof window === 'undefined') {
-    return { accessToken: null, type: null, errorDescription: null };
+    return { accessToken: null, type: null, errorDescription: null, tokenHash: null };
   }
   const raw = window.location.hash.startsWith('#')
     ? window.location.hash.slice(1)
     : window.location.hash;
   const params = new URLSearchParams(raw);
+  const query = new URLSearchParams(window.location.search);
   return {
     accessToken: params.get('access_token'),
-    type: params.get('type'),
+    type: params.get('type') ?? query.get('type'),
     errorDescription: params.get('error_description') ?? params.get('error'),
+    tokenHash: query.get('token_hash'),
   };
 }
 
@@ -73,9 +82,8 @@ export default function WelcomePage() {
   // (Fix U2 2026-05-23 — antes só aceitava `type=invite`.)
   const ACCEPTED_TYPES = ['invite', 'magiclink', 'recovery', 'signup'] as const;
   const linkValido =
-    !!hashParams.accessToken &&
-    (!hashParams.type ||
-      (ACCEPTED_TYPES as readonly string[]).includes(hashParams.type));
+    (!!hashParams.accessToken || !!hashParams.tokenHash) &&
+    (!hashParams.type || (ACCEPTED_TYPES as readonly string[]).includes(hashParams.type));
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 10);
@@ -85,14 +93,21 @@ export default function WelcomePage() {
   // Se o hash trouxer um erro do Supabase, mostra direto
   useEffect(() => {
     if (hashParams.errorDescription) {
-      setError(decodeURIComponent(hashParams.errorDescription.replace(/\+/g, ' ')));
+      const bruto = decodeURIComponent(hashParams.errorDescription.replace(/\+/g, ' '));
+      // O Supabase devolve isto em inglês quando um link de uso único é aberto
+      // pela segunda vez. Quem lê é o rep, não o dev.
+      setError(
+        /invalid or has expired/i.test(bruto)
+          ? 'Este link já foi usado ou expirou. Volte ao login e peça um novo em "Esqueceu sua senha?".'
+          : bruto,
+      );
     }
   }, [hashParams.errorDescription]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;
-    if (!hashParams.accessToken) {
+    if (!hashParams.accessToken && !hashParams.tokenHash) {
       setError('Token de convite ausente — peça pra reenviar o convite.');
       return;
     }
@@ -107,12 +122,21 @@ export default function WelcomePage() {
     setLoading(true);
     setError(null);
     try {
-      // POST /auth/welcome — backend valida token, seta senha, abre sessão
-      const r = await api.post<{ accessToken: string; expiresAt: number; userId: string }>(
-        '/auth/welcome',
-        { accessToken: hashParams.accessToken, password },
-        { skipAuth: true },
-      );
+      // Dois caminhos, mesma saída:
+      //  - convite/magic link: o hash já traz a sessão → POST /auth/welcome;
+      //  - redefinição de senha: a query traz o token_hash → POST /auth/redefinir-senha,
+      //    que troca o token por sessão SÓ AGORA (é o que permite abrir o link mais de uma vez).
+      const r = hashParams.tokenHash
+        ? await api.post<{ accessToken: string; expiresAt: number; userId: string }>(
+            '/auth/redefinir-senha',
+            { tokenHash: hashParams.tokenHash, password },
+            { skipAuth: true },
+          )
+        : await api.post<{ accessToken: string; expiresAt: number; userId: string }>(
+            '/auth/welcome',
+            { accessToken: hashParams.accessToken, password },
+            { skipAuth: true },
+          );
       // Carrega o user completo (igual login faz)
       const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
         headers: { Authorization: `Bearer ${r.accessToken}` },
@@ -221,9 +245,7 @@ export default function WelcomePage() {
               }}
             >
               <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>
-                Link de convite inválido ou já usado. Peça pra um administrador reenviar.
-              </span>
+              <span>Link de convite inválido ou já usado. Peça pra um administrador reenviar.</span>
             </div>
           )}
 
@@ -366,10 +388,7 @@ export default function WelcomePage() {
           )}
         </div>
 
-        <p
-          className="mt-6 text-center text-xs"
-          style={{ color: 'rgba(248, 247, 242, 0.4)' }}
-        >
+        <p className="mt-6 text-center text-xs" style={{ color: 'rgba(248, 247, 242, 0.4)' }}>
           Já tem conta?{' '}
           <a
             href="/login"

@@ -241,19 +241,28 @@ export class AuthSessionService {
         return neutro;
       }
 
-      const redirectTo = `${this.env.get('FRONTEND_URL')}/welcome`;
       const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
         type: 'recovery',
         email: alvo,
-        options: { redirectTo },
       });
-      const resetUrl = data?.properties?.action_link;
-      if (error || !resetUrl) {
+      // NÃO manda o `action_link` do Supabase. Ele é um GET que CONSOME o token
+      // ao ser aberto — uso único. Aberto duas vezes (segundo navegador, clique
+      // duplo, scanner de link do Gmail), a segunda dá "Email link is invalid or
+      // has expired" e a pessoa fica sem senha. Aconteceu em 06/09: o primeiro
+      // clique criou a sessão às 23:01:27 e o segundo, 34s depois, morreu.
+      //
+      // Vai o `hashed_token` numa URL NOSSA. Abrir não consome nada; quem gasta
+      // o token é o POST /auth/redefinir-senha, quando a senha nova é enviada.
+      const tokenHash = data?.properties?.hashed_token;
+      if (error || !tokenHash) {
         this.logger.error(
-          `[reset] ${alvo}: Supabase não gerou o link — ${error?.message ?? 'sem action_link'}`,
+          `[reset] ${alvo}: Supabase não gerou o token — ${error?.message ?? 'sem hashed_token'}`,
         );
         return neutro;
       }
+      const resetUrl =
+        `${this.env.get('FRONTEND_URL')}/welcome` +
+        `?token_hash=${encodeURIComponent(tokenHash)}&type=recovery`;
 
       const enviado = await this.email.enviarRecuperacaoSenha({
         para: alvo,
@@ -275,6 +284,45 @@ export class AuthSessionService {
       );
     }
     return neutro;
+  }
+
+  /**
+   * Redefine a senha a partir do `token_hash` que veio no e-mail.
+   *
+   * O token é trocado por sessão AQUI, no POST — e não ao abrir o link. É o que
+   * faz o link aguentar ser aberto em dois navegadores, ou duas vezes: até a
+   * pessoa enviar a senha nova, nada foi consumido.
+   *
+   * Depois da troca, é o mesmo caminho do convite (`welcomeFinalize`): valida a
+   * sessão, grava a senha, ativa o usuário e abre a sessão do app.
+   */
+  async redefinirSenha(
+    tokenHash: string,
+    password: string,
+    res: Response,
+  ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
+    if (!tokenHash || tokenHash.length < 20) {
+      throw new UnauthorizedException('Link de redefinição inválido', ErrorCode.AUTH_INVALID_TOKEN);
+    }
+    if (!password || password.length < 8) {
+      throw new BusinessRuleException('Senha deve ter no mínimo 8 caracteres');
+    }
+    const r = await fetch(`${this.supabaseUrl}/auth/v1/verify`, {
+      method: 'POST',
+      headers: { apikey: this.supabaseAnonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'recovery', token_hash: tokenHash }),
+    });
+    const body = (await r.json().catch(() => null)) as { access_token?: string } | null;
+    if (!r.ok || !body?.access_token) {
+      this.logger.warn(
+        `[reset] verify falhou (HTTP ${r.status}) — token usado, expirado ou inválido`,
+      );
+      throw new UnauthorizedException(
+        'Este link já foi usado ou expirou. Peça um novo em "Esqueceu sua senha?".',
+        ErrorCode.AUTH_INVALID_TOKEN,
+      );
+    }
+    return this.welcomeFinalize(body.access_token, password, res);
   }
 
   async welcomeFinalize(
