@@ -1502,6 +1502,12 @@ const FLUXO_ACAO_TIPO = z.enum([
   "ENVIAR_EMAIL",
   "CRIAR_TAREFA",
   "MUDAR_TAG",
+  // MOVER_LEAD_ETAPA aceita `reacenderSeJaEstaNaEtapa: true` — dispara
+  // LEAD_ETAPA_MUDOU mesmo quando o lead JÁ ESTÁ na etapa de destino. Por
+  // padrão, mover pra própria etapa não emite nada (evita no-op e laço), e foi
+  // isso que deixou o C2 sem assumir o lead do Canal Reps em 05/09: o RT
+  // devolvia pra "Canal Reps / Novo" e ele já estava lá. Ligue quando a
+  // intenção do nó for "(re)acender o fluxo de destino", não "mover".
   "MOVER_LEAD_ETAPA",
   "ATRIBUIR_REP",
   "WEBHOOK_EXTERNO",

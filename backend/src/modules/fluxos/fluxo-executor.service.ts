@@ -2023,9 +2023,10 @@ export class FluxoExecutorService {
       // e pra só disparar quando a etapa realmente muda).
       const antes = await this.prisma.lead.findFirst({
         where: { id: leadId, empresaId },
-        select: { funilEtapaId: true },
+        select: { funilEtapaId: true, etapa: true, funilEtapa: { select: { tipo: true } } },
       });
       const origemId = antes?.funilEtapaId ?? undefined;
+      const vinhaDePerdido = antes?.funilEtapa?.tipo === 'PERDIDO' || antes?.etapa === 'PERDIDO';
       const { count } = await this.prisma.lead.updateMany({
         where: { id: leadId, empresaId },
         data: {
@@ -2048,10 +2049,41 @@ export class FluxoExecutorService {
           origemMudanca: 'fluxo',
         });
       }
+      // RESSUSCITOU: saiu de "Perdido" por decisão de um fluxo (o RT existe pra
+      // isso). O bot geral, ao ver o lead ainda Perdido, silencia e marca
+      // `precisaHumano` pra ele subir na inbox — certo isoladamente. Só que dois
+      // segundos depois o fluxo reativa o lead, e o nó de IA do C2 encontra a
+      // flag e se cala: medido em 05/09, o cliente recebeu ZERO mensagens e o
+      // lead parou em "Qualificando" sem tarefa, parecendo em atendimento.
+      //
+      // O motivo da flag deixou de existir no instante em que o lead voltou a
+      // ser atendível, então ela cai junto. Só neste caso — sair de Perdido pra
+      // uma etapa viva — pra não apagar um `precisaHumano` posto por outra razão
+      // (áudio ilegível, teto de custo, pedido do operador).
+      if (vinhaDePerdido && enumEtapa !== 'PERDIDO' && typeof ctx['conversationId'] === 'string') {
+        await this.prisma.conversation
+          .updateMany({
+            where: { id: ctx['conversationId'] as string, precisaHumano: true },
+            data: { precisaHumano: false },
+          })
+          .then((r) => {
+            if (r.count > 0) {
+              this.logger.log(
+                `Lead ${leadId} saiu de Perdido — precisaHumano limpo na conversa ` +
+                  `${String(ctx['conversationId'])} (senão o fluxo que o reativou ficaria mudo)`,
+              );
+            }
+          })
+          .catch(() => undefined);
+      }
+
       // Lead mudou de etapa → dispara LEAD_ETAPA_MUDOU pros fluxos da etapa destino
-      // (ex: "Primeira Abordagem"), mesma semântica do LIBERAR_LOTE. Só quando a
-      // etapa realmente muda, pra não disparar em re-move no-op nem criar laço.
-      if (origemId !== etapa.id) {
+      // (ex: "Primeira Abordagem"), mesma semântica do LIBERAR_LOTE. Por padrão só
+      // quando a etapa realmente muda, pra não disparar em re-move no-op nem criar
+      // laço — salvo quando o nó pede `reacenderSeJaEstaNaEtapa`, que é o caso do
+      // RT devolvendo o lead pra "Canal Reps / Novo" pra que o C2 assuma: se ele
+      // já estava lá, o C2 nunca acendia e o lead ficava sem atendimento.
+      if (origemId !== etapa.id || cfg.reacenderSeJaEstaNaEtapa === true) {
         // Propaga _hops: este re-disparo é um elo de cadeia (corta-loop do FluxoEventBus).
         const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
         await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {

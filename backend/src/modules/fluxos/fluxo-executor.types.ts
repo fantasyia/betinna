@@ -108,6 +108,18 @@ export interface MoverLeadEtapaConfig {
   funilEtapaId?: string;
   /** Enum legado (fallback quando não há funilEtapaId). */
   etapa?: 'NOVO' | 'QUALIFICANDO' | 'PROPOSTA' | 'NEGOCIACAO' | 'GANHO' | 'PERDIDO';
+  /**
+   * Disparar `LEAD_ETAPA_MUDOU` mesmo quando o lead JÁ ESTÁ na etapa de destino.
+   *
+   * Por padrão, mover pra própria etapa não emite nada — evita re-disparo em
+   * no-op e laço. Só que existe um uso legítimo do contrário: o RT devolve o
+   * lead pra "Canal Reps / Novo" pra que o C2 assuma, e quando ele JÁ estava lá
+   * o C2 nunca acendia — medido em 05/09, o lead ficou sem atendimento nenhum.
+   *
+   * Ligue quando a intenção do nó for "(re)acender o fluxo de destino", não
+   * "mover". O corta-loop por `_hops` do bus continua valendo.
+   */
+  reacenderSeJaEstaNaEtapa?: boolean;
 }
 
 /**
