@@ -87,7 +87,7 @@ describe('PedidoComissoesService', () => {
         valorDevolvido: new Prisma.Decimal('200.00'),
       }),
     );
-    prisma.usuario.findMany.mockResolvedValue([{ id: 'rep-1', comissaoPadrao: 5 }]);
+    prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 5 });
 
     await svc.recalcular('ped-1');
 
@@ -114,26 +114,25 @@ describe('PedidoComissoesService', () => {
     expect(Number(criada.valor)).toBe(3.63);
   });
 
-  it('venda por REPRESENTANTE paga todo mundo com % — não só quem vendeu', async () => {
-    // Regra do Léo (05/09): "5% pra mim e pro Harada nas vendas através de
-    // representantes". Era a única camada que não existia — o site já pagava
-    // todos os configurados, a de representante pagava só o dono do pedido.
+  it('pedido fora do site paga SÓ o rep — a participação de 5% é de locação', async () => {
+    // Regra do Léo (06/09): "representante É locação", e locação paga por
+    // MENSALIDADE (ContratoComissao), não por pedido. Se os 5% valessem aqui, a
+    // participação sairia sobre algo que não é nem locação nem site.
     prisma.pedido.findUnique.mockResolvedValue(
       pedido({ origem: 'REP_APP', representanteId: 'rep-1', total: new Prisma.Decimal('1000.00') }),
     );
+    prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 5 });
     prisma.usuario.findMany.mockResolvedValue([
-      { id: 'rep-1', comissaoPadrao: 5 },
-      { id: 'leo', comissaoPadrao: 5 },
-      { id: 'harada', comissaoPadrao: 5 },
+      { id: 'leo', comissaoSite: 7.25 },
+      { id: 'harada', comissaoSite: 7.25 },
     ]);
 
     await svc.recalcular('ped-1');
 
-    expect(tx.pedidoComissao.upsert).toHaveBeenCalledTimes(3);
-    const donos = tx.pedidoComissao.upsert.mock.calls.map(
-      (c) => (c[0] as { create: { usuarioId: string } }).create.usuarioId,
-    );
-    expect(donos.sort()).toEqual(['harada', 'leo', 'rep-1']);
+    expect(tx.pedidoComissao.upsert).toHaveBeenCalledTimes(1);
+    const dono = (tx.pedidoComissao.upsert.mock.calls[0][0] as { create: { usuarioId: string } })
+      .create.usuarioId;
+    expect(dono).toBe('rep-1');
   });
 
   it('pedido cancelado apaga as linhas que existiam', async () => {
@@ -195,7 +194,7 @@ describe('PedidoComissoesService — locação não comissiona como venda', () =
 
   it('NÃO cria linha de comissão pra pedido de locação, mesmo com rep e % configurados', async () => {
     prisma.pedido.findUnique.mockResolvedValue(locacao());
-    prisma.usuario.findMany.mockResolvedValue([{ id: 'rep-1', comissaoPadrao: 10 }]);
+    prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 10 });
 
     await svc.recalcular('ped-loc');
 
@@ -220,7 +219,7 @@ describe('PedidoComissoesService — locação não comissiona como venda', () =
       modalidade: 'VENDA',
       origem: 'REP_APP',
     });
-    prisma.usuario.findMany.mockResolvedValue([{ id: 'rep-1', comissaoPadrao: 10 }]);
+    prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 10 });
 
     await svc.recalcular('ped-loc');
 
