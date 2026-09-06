@@ -4,7 +4,9 @@ import { ContratoComissoesService, competencias, mesUtc } from './contrato-comis
 
 const makePrisma = () => ({
   contrato: { findUnique: vi.fn() },
-  usuario: { findUnique: vi.fn(async () => ({ comissaoPadrao: 10 })) },
+  // Quem recebe pela mensalidade é todo mundo com % de representante — o rep
+  // do contrato entra nessa lista como qualquer outro, uma linha por pessoa.
+  usuario: { findMany: vi.fn(async () => [{ id: 'rep-1', comissaoPadrao: 10 }]) },
   contratoComissao: {
     findUnique: vi.fn(async () => null),
     create: vi.fn(async () => ({})),
@@ -80,9 +82,9 @@ describe('ContratoComissoesService', () => {
     });
   });
 
-  it('rep sem % configurada: nenhuma linha (não inventa comissão)', async () => {
+  it('ninguém com % configurada: nenhuma linha (não inventa comissão)', async () => {
     prisma.contrato.findUnique.mockResolvedValue(contrato());
-    prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 0 });
+    prisma.usuario.findMany.mockResolvedValue([]);
 
     await svc.recalcular('ctr-1');
 
@@ -128,6 +130,46 @@ describe('ContratoComissoesService', () => {
     };
     expect(del.where.contaPagarErpId).toBeNull();
     expect(del.where.competencia.gt).toBeInstanceOf(Date);
+  });
+
+  it('paga TODO MUNDO com % de representante, não só quem fechou o contrato', async () => {
+    // Regra do Léo (05/09): "5% pra mim e pro Harada nas vendas através de
+    // representantes". A participação dos dois não depende de quem vendeu.
+    prisma.contrato.findUnique.mockResolvedValue(contrato({ prazoMeses: 1 }));
+    prisma.usuario.findMany.mockResolvedValue([
+      { id: 'rep-1', comissaoPadrao: 5 },
+      { id: 'leo', comissaoPadrao: 5 },
+    ]);
+
+    await svc.recalcular('ctr-1');
+
+    expect(prisma.contratoComissao.create).toHaveBeenCalledTimes(2);
+    const donos = prisma.contratoComissao.create.mock.calls.map(
+      (c) => (c[0] as { data: { usuarioId: string } }).data.usuarioId,
+    );
+    expect(donos.sort()).toEqual(['leo', 'rep-1']);
+  });
+
+  it('quem é o próprio representante aparece UMA vez, não duas', async () => {
+    // O rep do contrato entra na lista de beneficiários como qualquer outro —
+    // a linha dele não soma com uma segunda "de participação".
+    prisma.contrato.findUnique.mockResolvedValue(contrato({ prazoMeses: 1 }));
+    prisma.usuario.findMany.mockResolvedValue([{ id: 'rep-1', comissaoPadrao: 5 }]);
+
+    await svc.recalcular('ctr-1');
+
+    expect(prisma.contratoComissao.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('contrato SEM representante continua comissionando os beneficiários', async () => {
+    prisma.contrato.findUnique.mockResolvedValue(
+      contrato({ prazoMeses: 1, representanteId: null }),
+    );
+    prisma.usuario.findMany.mockResolvedValue([{ id: 'leo', comissaoPadrao: 5 }]);
+
+    await svc.recalcular('ctr-1');
+
+    expect(prisma.contratoComissao.create).toHaveBeenCalledTimes(1);
   });
 
   it('falha no banco não derruba quem chamou (best-effort, igual à venda)', async () => {

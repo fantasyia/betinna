@@ -132,15 +132,27 @@ export class PedidoComissoesService {
 
     const linhas: Array<{ usuarioId: string; tipo: 'REP' | 'SITE'; percentual: number }> = [];
 
-    // REP — quem vendeu. Venda de canal não tem dono, e atribuir um aqui
-    // criaria comissão sobre venda que ninguém atendeu.
-    if (pedido.representanteId && !ORIGENS_CANAL.has(pedido.origem)) {
-      const rep = await this.prisma.usuario.findUnique({
-        where: { id: pedido.representanteId },
-        select: { comissaoPadrao: true },
+    // REP — venda que entrou POR REPRESENTANTE. Recebe todo mundo que tem % de
+    // representante configurada, não só quem fechou: regra do Léo (05/09), "5%
+    // pra mim e pro Harada nas vendas através de representantes", além do rep.
+    //
+    // Uma linha por PESSOA: quando o próprio beneficiário é o representante do
+    // pedido, ele aparece UMA vez, não duas. Mesmo desenho da camada de SITE
+    // logo abaixo, que já fazia isso — e que era a única a existir.
+    //
+    // Venda de CANAL não entra aqui: ela não tem dono, e paga pela outra camada.
+    if (!ORIGENS_CANAL.has(pedido.origem)) {
+      const doRep = await this.prisma.usuario.findMany({
+        where: {
+          empresas: { some: { empresaId: pedido.empresaId } },
+          status: { not: 'INATIVO' },
+          comissaoPadrao: { gt: 0 },
+        },
+        select: { id: true, comissaoPadrao: true },
       });
-      const pct = rep?.comissaoPadrao ?? 0;
-      if (pct > 0) linhas.push({ usuarioId: pedido.representanteId, tipo: 'REP', percentual: pct });
+      for (const u of doRep) {
+        linhas.push({ usuarioId: u.id, tipo: 'REP', percentual: u.comissaoPadrao ?? 0 });
+      }
     }
 
     // SITE — todo mundo que tem % de canal configurada.

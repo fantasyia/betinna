@@ -62,18 +62,34 @@ export class ContratoComissoesService {
     });
     if (!contrato) return;
 
-    if (SEM_COMISSAO.has(contrato.status) || !contrato.representanteId) {
+    if (SEM_COMISSAO.has(contrato.status)) {
       await this.zerarPendentes(contratoId, 'contrato sem comissão a pagar');
       return;
     }
 
-    const rep = await this.prisma.usuario.findUnique({
-      where: { id: contrato.representanteId },
-      select: { comissaoPadrao: true },
+    // Quem recebe pela mensalidade: TODO MUNDO com % de representante
+    // configurada — não só quem fechou o contrato (regra do Léo, 05/09: "5% pra
+    // mim e pro Harada nas vendas através de representantes").
+    //
+    // Uma linha por PESSOA, não por papel: quando o próprio Harada é o
+    // representante do contrato, ele aparece UMA vez, não duas. É o mesmo
+    // desenho da camada de site na venda ("todo mundo que tem % de canal"), que
+    // nunca tinha sido aplicada às vendas por representante.
+    //
+    // Sem representante o contrato continua comissionando: a participação dos
+    // dois não depende de quem vendeu.
+    const beneficiarios = await this.prisma.usuario.findMany({
+      where: {
+        empresas: { some: { empresaId: contrato.empresaId } },
+        // Perde a comissão quem foi DESLIGADO. PENDENTE é quem foi convidado e
+        // ainda não logou — a % dele já foi decidida por quem configurou.
+        status: { not: 'INATIVO' },
+        comissaoPadrao: { gt: 0 },
+      },
+      select: { id: true, comissaoPadrao: true },
     });
-    const pct = rep?.comissaoPadrao ?? 0;
-    if (pct <= 0) {
-      await this.zerarPendentes(contratoId, 'representante sem % de comissão');
+    if (beneficiarios.length === 0) {
+      await this.zerarPendentes(contratoId, 'ninguém com % de representante configurada');
       return;
     }
 
@@ -87,45 +103,59 @@ export class ContratoComissoesService {
     const ate = contrato.status === 'ENCERRADO' ? new Date() : null;
 
     const base = new Prisma.Decimal(contrato.valorMensal);
-    const valor = base.mul(pct).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
     for (const competencia of meses) {
       if (ate && competencia > ate) continue;
-      const existente = await this.prisma.contratoComissao.findUnique({
-        where: {
-          contratoId_usuarioId_tipo_competencia: {
-            contratoId,
-            usuarioId: contrato.representanteId,
-            tipo: 'REP',
-            competencia,
+      for (const b of beneficiarios) {
+        const pct = b.comissaoPadrao ?? 0;
+        const valor = base.mul(pct).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+        const existente = await this.prisma.contratoComissao.findUnique({
+          where: {
+            contratoId_usuarioId_tipo_competencia: {
+              contratoId,
+              usuarioId: b.id,
+              tipo: 'REP',
+              competencia,
+            },
           },
-        },
-        select: { id: true, contaPagarErpId: true },
-      });
-      if (!existente) {
-        await this.prisma.contratoComissao.create({
-          data: {
-            empresaId: contrato.empresaId,
-            contratoId,
-            usuarioId: contrato.representanteId,
-            tipo: 'REP',
-            competencia,
-            percentual: pct,
-            base,
-            valor,
-          },
+          select: { id: true, contaPagarErpId: true },
         });
-      } else if (!existente.contaPagarErpId) {
-        await this.prisma.contratoComissao.update({
-          where: { id: existente.id },
-          data: { percentual: pct, base, valor },
-        });
+        if (!existente) {
+          await this.prisma.contratoComissao.create({
+            data: {
+              empresaId: contrato.empresaId,
+              contratoId,
+              usuarioId: b.id,
+              tipo: 'REP',
+              competencia,
+              percentual: pct,
+              base,
+              valor,
+            },
+          });
+        } else if (!existente.contaPagarErpId) {
+          await this.prisma.contratoComissao.update({
+            where: { id: existente.id },
+            data: { percentual: pct, base, valor },
+          });
+        }
       }
       // Linha que já virou conta no ERP não é reescrita por um recálculo: o
       // valor de lá é o que o financeiro viu, e o `upsert` que estava aqui
       // sobrescrevia sem olhar. Era inofensivo enquanto nada preenchia
       // `contaPagarErpId` — deixa de ser agora que a locação provisiona.
     }
+
+    // Quem saiu da lista (perdeu a %, foi desligado) some — salvo se já virou
+    // conta no ERP, que aí é zerada e vira aviso, porque a API não apaga conta.
+    const ids = beneficiarios.map((b) => b.id);
+    await this.prisma.contratoComissao.updateMany({
+      where: { contratoId, usuarioId: { notIn: ids }, contaPagarErpId: { not: null } },
+      data: { valor: new Prisma.Decimal(0) },
+    });
+    await this.prisma.contratoComissao.deleteMany({
+      where: { contratoId, usuarioId: { notIn: ids }, contaPagarErpId: null },
+    });
 
     if (ate) {
       const { count } = await this.prisma.contratoComissao.deleteMany({
