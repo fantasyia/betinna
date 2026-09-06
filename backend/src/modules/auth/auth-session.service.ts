@@ -209,8 +209,11 @@ export class AuthSessionService {
    *
    * DUAS travas, porque o `@Throttle` do controller conta por IP e não protege
    * a CAIXA de ninguém: quem trocar de IP mandaria um e-mail por requisição.
-   *   - 1 e-mail a cada 5 min por endereço;
-   *   - teto de 5 por endereço a cada 24h.
+   *   - 1 e-mail por minuto por endereço — segura clique duplo e rajada. Era
+   *     5 min, e em 06/09 o Léo clicou duas vezes dentro da janela porque o
+   *     primeiro e-mail não tinha aparecido: o servidor dizia "enviado" e não
+   *     mandava nada. Cinco minutos mudos é hostil pra quem está esperando;
+   *   - teto de 5 por endereço a cada 24h — é ESTA que impede bombardeio.
    * Estourar qualquer uma delas devolve o mesmo "enviado" — quem está atacando
    * não aprende nada, e quem é dono da caixa para de ser bombardeado.
    */
@@ -220,8 +223,8 @@ export class AuthSessionService {
 
     try {
       const janela = `auth:reset:janela:${alvo}`;
-      if (!(await this.redis.setNxEx(janela, '1', 5 * 60))) {
-        this.logger.log(`[reset] ${alvo}: pedido dentro da janela de 5min — nada enviado`);
+      if (!(await this.redis.setNxEx(janela, '1', 60))) {
+        this.logger.log(`[reset] ${alvo}: pedido dentro da janela de 1min — nada enviado`);
         return neutro;
       }
       const doDia = await this.redis.incr(`auth:reset:dia:${alvo}`);

@@ -83,7 +83,7 @@ describe('AuthSessionService.esqueciSenha', () => {
     expect(email.enviarRecuperacaoSenha).not.toHaveBeenCalled();
   });
 
-  it('segundo pedido dentro de 5min não manda de novo', async () => {
+  it('segundo pedido dentro de 1min não manda de novo', async () => {
     const { svc, email, prisma } = build({ janelaLivre: false });
 
     const r = await svc.esqueciSenha('leandro@betinna.ai');

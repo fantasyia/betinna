@@ -104,7 +104,8 @@ export default function LoginPage() {
     }
     setResetEnviando(false);
     setResetAviso(
-      'Se existir uma conta com esse e-mail, o link de redefinição chega em instantes. Confira também o spam.',
+      'Se existir uma conta com esse e-mail, o link de redefinição chega em instantes. ' +
+        'Confira também o spam. Se já pediu há pouco, aguarde 1 minuto antes de pedir de novo.',
     );
   }
 
