@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { EmailModule } from '@integrations/email/email.module';
 import { PermissionsModule } from '@modules/permissions/permissions.module';
 import { AuthController } from './auth.controller';
 import { AuthSessionService } from './auth-session.service';
@@ -11,7 +12,8 @@ import { SupabaseAuthService } from './supabase-auth.service';
 
 @Global()
 @Module({
-  imports: [PermissionsModule],
+  // EmailModule: o "esqueci minha senha" manda o link pelo Resend.
+  imports: [PermissionsModule, EmailModule],
   controllers: [AuthController],
   providers: [
     SupabaseAuthService,

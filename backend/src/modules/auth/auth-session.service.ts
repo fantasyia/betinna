@@ -3,6 +3,8 @@ import type { Response, Request } from 'express';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -51,6 +53,8 @@ export class AuthSessionService {
   constructor(
     private readonly env: EnvService,
     private readonly prisma: PrismaService,
+    private readonly email: TransactionalEmailService,
+    private readonly redis: RedisService,
   ) {
     this.supabaseAdmin = createClient(
       this.env.get('SUPABASE_URL'),
@@ -191,6 +195,88 @@ export class AuthSessionService {
    *     Marca status='ATIVO' no Usuario
    *     Chama this.login(email, password, res) pra abrir sessão httpOnly
    */
+  /**
+   * "Esqueceu sua senha?" — manda o link de redefinição.
+   *
+   * **Sempre responde a mesma coisa**, exista o e-mail ou não. Um endpoint
+   * público que diferencia "não existe" de "enviado" vira consulta de quem tem
+   * conta aqui: dá pra varrer uma lista inteira de endereços e descobrir os
+   * clientes de um concorrente. O preço de não vazar isso é que quem digitou
+   * errado não descobre pelo retorno.
+   *
+   * Reusa o `/welcome`, que já trata `type=recovery` — mesma tela que define a
+   * senha do convite.
+   *
+   * DUAS travas, porque o `@Throttle` do controller conta por IP e não protege
+   * a CAIXA de ninguém: quem trocar de IP mandaria um e-mail por requisição.
+   *   - 1 e-mail a cada 5 min por endereço;
+   *   - teto de 5 por endereço a cada 24h.
+   * Estourar qualquer uma delas devolve o mesmo "enviado" — quem está atacando
+   * não aprende nada, e quem é dono da caixa para de ser bombardeado.
+   */
+  async esqueciSenha(email: string): Promise<{ enviado: true }> {
+    const alvo = email.trim().toLowerCase();
+    const neutro = { enviado: true as const };
+
+    try {
+      const janela = `auth:reset:janela:${alvo}`;
+      if (!(await this.redis.setNxEx(janela, '1', 5 * 60))) {
+        this.logger.log(`[reset] ${alvo}: pedido dentro da janela de 5min — nada enviado`);
+        return neutro;
+      }
+      const doDia = await this.redis.incr(`auth:reset:dia:${alvo}`);
+      if (doDia === 1) await this.redis.setEx(`auth:reset:dia:${alvo}`, '1', 24 * 60 * 60);
+      if (doDia > 5) {
+        this.logger.warn(`[reset] ${alvo}: ${doDia} pedidos em 24h — teto atingido, nada enviado`);
+        return neutro;
+      }
+
+      const usuario = await this.prisma.usuario.findFirst({
+        where: { email: alvo },
+        select: { nome: true, status: true },
+      });
+      // Desligado não redefine senha — seria porta de volta pra quem saiu.
+      if (!usuario || usuario.status === 'INATIVO') {
+        this.logger.log(`[reset] ${alvo}: sem conta ativa — nada enviado (resposta neutra)`);
+        return neutro;
+      }
+
+      const redirectTo = `${this.env.get('FRONTEND_URL')}/welcome`;
+      const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email: alvo,
+        options: { redirectTo },
+      });
+      const resetUrl = data?.properties?.action_link;
+      if (error || !resetUrl) {
+        this.logger.error(
+          `[reset] ${alvo}: Supabase não gerou o link — ${error?.message ?? 'sem action_link'}`,
+        );
+        return neutro;
+      }
+
+      const enviado = await this.email.enviarRecuperacaoSenha({
+        para: alvo,
+        nome: usuario.nome,
+        resetUrl,
+      });
+      if (!enviado.ok) {
+        this.logger.error(
+          `[reset] ${alvo}: e-mail NÃO saiu — ${JSON.stringify(enviado).slice(0, 200)}`,
+        );
+      } else {
+        this.logger.log(`[reset] ${alvo}: link de redefinição enviado`);
+      }
+    } catch (err) {
+      // Nunca propaga: o retorno é neutro por desenho, e um 500 aqui já contaria
+      // que aquele endereço fez o servidor trabalhar.
+      this.logger.error(
+        `[reset] falha inesperada: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return neutro;
+  }
+
   async welcomeFinalize(
     accessToken: string,
     password: string,

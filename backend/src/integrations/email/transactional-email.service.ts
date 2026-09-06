@@ -8,6 +8,7 @@ import {
   templateBoasVindas,
   templateComissaoFechada,
   templateOcorrenciaCritica,
+  templateRecuperarSenha,
   templateReenvioConvite,
 } from './email-templates';
 
@@ -204,6 +205,23 @@ export class TransactionalEmailService {
       html,
       undefined,
       `convite:${params.para}:${params.inviteUrl.slice(-24)}`,
+    );
+  }
+
+  async enviarRecuperacaoSenha(params: { para: string; nome: string; resetUrl: string }) {
+    const { assunto, html } = templateRecuperarSenha({
+      nome: params.nome,
+      resetUrl: params.resetUrl,
+    });
+    // A chave inclui a URL: pedir de novo gera link novo e DEVE mandar de novo
+    // (quem pediu duas vezes está esperando o segundo e-mail). O que segura
+    // repetição é o cooldown por e-mail no AuthSessionService, não a idempotência.
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `reset-senha:${params.para}:${params.resetUrl.slice(-24)}`,
     );
   }
 

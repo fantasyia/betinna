@@ -158,6 +158,39 @@ export function templateReenvioConvite(p: ReenvioConviteParams): {
   };
 }
 
+export interface RecuperarSenhaParams {
+  nome: string;
+  /** URL completa do action link do Supabase (já com token embutido). */
+  resetUrl: string;
+}
+
+/**
+ * Template: quem clicou em "Esqueceu sua senha?" na tela de login.
+ *
+ * Sem promessa de prazo no corpo além do que o Supabase realmente pratica, e
+ * com a linha do "se não foi você": este é o e-mail que mais chega a quem NÃO
+ * pediu, porque basta alguém digitar o endereço de outra pessoa.
+ */
+export function templateRecuperarSenha(p: RecuperarSenhaParams): {
+  assunto: string;
+  html: string;
+} {
+  return {
+    assunto: 'Redefinir sua senha — Betinna.ai',
+    html: layout({
+      preheader: 'Link pra criar uma senha nova no Betinna.ai.',
+      title: `Olá, ${escapeHtml(p.nome)}`,
+      bodyHtml: `
+        <p>Recebemos um pedido pra redefinir a senha da sua conta no Betinna.ai.</p>
+        <p>Clique no botão abaixo pra criar uma senha nova. O link vale por 1 hora e só pode ser usado uma vez.</p>
+        <p style="font-size:13px;color:#6b6580;">Se não foi você que pediu, ignore este e-mail — sua senha atual continua valendo e nada muda.</p>
+      `,
+      ctaText: 'Criar senha nova',
+      ctaUrl: p.resetUrl,
+    }),
+  };
+}
+
 export interface AprovacaoResolvidaParams {
   repNome: string;
   pedidoNumero: string;

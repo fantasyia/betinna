@@ -51,6 +51,11 @@ const loginSchema = z.object({
 });
 type LoginDto = z.infer<typeof loginSchema>;
 
+const esqueciSenhaSchema = z.object({
+  email: z.string().email().max(254),
+});
+type EsqueciSenhaDto = z.infer<typeof esqueciSenhaSchema>;
+
 // U2/lote 4: finaliza convite — frontend pega access_token do hash do
 // link Supabase + pede ao user pra definir senha
 const welcomeSchema = z.object({
@@ -125,6 +130,31 @@ export class AuthController {
    * Público (não exige token válido — o próprio body traz o token de
    * convite). Throttle estrito de credencial: 10/15min.
    */
+  /**
+   * "Esqueceu sua senha?" — dispara o e-mail com o link de redefinição.
+   *
+   * Throttle mais apertado que o do login: 5 por IP a cada 15 min. Isto é um
+   * endpoint público que MANDA E-MAIL, então o custo de abuso não é só CPU — é
+   * a reputação do domínio no Resend e a caixa de quem foi escolhido como alvo.
+   * O teto por ENDEREÇO (5/dia, 1 a cada 5min) vive no serviço, porque trocar
+   * de IP é trivial e sozinho o throttle por IP não protege caixa nenhuma.
+   *
+   * Responde 200 e a mesma mensagem SEMPRE, exista o e-mail ou não.
+   */
+  @Post('esqueci-senha')
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: seconds(15 * 60) } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Envia o link de redefinição de senha. Resposta neutra (não revela se o e-mail existe).',
+  })
+  async esqueciSenha(
+    @Body(new ZodValidationPipe(esqueciSenhaSchema)) dto: EsqueciSenhaDto,
+  ): Promise<{ enviado: true }> {
+    return this.authSession.esqueciSenha(dto.email);
+  }
+
   @Post('welcome')
   @Public()
   @Throttle({ default: { limit: 10, ttl: seconds(15 * 60) } })
