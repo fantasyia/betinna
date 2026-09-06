@@ -4,11 +4,17 @@ import { AuthSessionService } from './auth-session.service';
 /**
  * "Esqueceu sua senha?" — o endpoint público que MANDA E-MAIL.
  *
- * Duas propriedades importam mais que o envio em si: ele não pode contar quem
- * tem conta aqui, e não pode virar máquina de bombardear a caixa de alguém.
+ * Três propriedades importam mais que o envio em si: ele não pode contar quem
+ * tem conta aqui, não pode virar máquina de bombardear a caixa de alguém, e
+ * pedir de novo tem que mandar DE NOVO — o mesmo link, enquanto ele vale.
  */
 const build = (
-  over: { usuario?: Record<string, unknown> | null; janelaLivre?: boolean; doDia?: number } = {},
+  over: {
+    usuario?: Record<string, unknown> | null;
+    janelaLivre?: boolean;
+    doDia?: number;
+    tokenEmCache?: string;
+  } = {},
 ) => {
   const prisma = {
     usuario: {
@@ -21,6 +27,8 @@ const build = (
     setNxEx: vi.fn(async () => over.janelaLivre ?? true),
     incr: vi.fn(async () => over.doDia ?? 1),
     setEx: vi.fn(async () => undefined),
+    get: vi.fn(async () => over.tokenEmCache ?? null),
+    del: vi.fn(async () => 1),
   };
   const email = { enviarRecuperacaoSenha: vi.fn(async () => ({ ok: true })) };
   const env = { get: (k: string) => (k === 'FRONTEND_URL' ? 'https://app.betinna.ai' : 'x') };
@@ -51,7 +59,7 @@ describe('AuthSessionService.esqueciSenha', () => {
     const r = await svc.esqueciSenha('Leandro@Betinna.AI');
 
     expect(r).toEqual({ enviado: true, restantes: 4 });
-    // normaliza pra minúsculas — senão o mesmo endereço fura o cooldown
+    // normaliza pra minúsculas — senão o mesmo endereço fura o contador
     expect(generateLink).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'recovery', email: 'leandro@betinna.ai' }),
     );
@@ -61,6 +69,34 @@ describe('AuthSessionService.esqueciSenha', () => {
       expect.objectContaining({
         para: 'leandro@betinna.ai',
         resetUrl: 'https://app.betinna.ai/welcome?token_hash=pkce_hash_abc123&type=recovery',
+      }),
+    );
+  });
+
+  it('token novo vai pro cache por 55min — abaixo da 1h do Supabase', async () => {
+    const { svc, redis } = build();
+
+    await svc.esqueciSenha('leandro@betinna.ai');
+
+    expect(redis.setEx).toHaveBeenCalledWith(
+      'auth:reset:token:leandro@betinna.ai',
+      'pkce_hash_abc123',
+      55 * 60,
+    );
+  });
+
+  it('pedir de novo dentro da hora REENVIA O MESMO link — não gera token novo', async () => {
+    // O Supabase guarda um token de recovery por usuário: gerar outro invalida
+    // o e-mail anterior. Quem abria qualquer e-mail que não fosse o último
+    // tomava 403 — medido em 06/09.
+    const { svc, email, generateLink } = build({ tokenEmCache: 'pkce_ja_existente' });
+
+    await svc.esqueciSenha('leandro@betinna.ai');
+
+    expect(generateLink).not.toHaveBeenCalled();
+    expect(email.enviarRecuperacaoSenha).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resetUrl: 'https://app.betinna.ai/welcome?token_hash=pkce_ja_existente&type=recovery',
       }),
     );
   });
@@ -142,6 +178,7 @@ describe('AuthSessionService.redefinirSenha', () => {
       expiresAt: 1,
       userId: 'u1',
     }));
+    const redis = { del: vi.fn(async () => 1) };
     // `supabaseUrl`/`supabaseAnonKey` são getters que leem o env — mocka a fonte.
     Object.assign(svc, {
       env: {
@@ -150,19 +187,20 @@ describe('AuthSessionService.redefinirSenha', () => {
       },
       logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
       welcomeFinalize,
+      redis,
     });
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({ ok: verify.ok, status: verify.status, json: async () => verify.body })),
     );
-    return { svc, welcomeFinalize };
+    return { svc, welcomeFinalize, redis };
   };
 
   it('troca o token_hash por sessão SÓ no envio da senha, e segue pelo caminho do convite', async () => {
-    const { svc, welcomeFinalize } = buildReset({
+    const { svc, welcomeFinalize, redis } = buildReset({
       ok: true,
       status: 200,
-      body: { access_token: 'sb-access' },
+      body: { access_token: 'sb-access', user: { email: 'Leandro@Betinna.ai' } },
     });
 
     const r = await svc.redefinirSenha('pkce_hash_abc123_long_enough', 'senha-nova-8', {} as never);
@@ -173,9 +211,12 @@ describe('AuthSessionService.redefinirSenha', () => {
     );
     expect(welcomeFinalize).toHaveBeenCalledWith('sb-access', 'senha-nova-8', {});
     expect(r.accessToken).toBe('app-token');
+    // senha gravada = token morto no Supabase = some do cache, senão o próximo
+    // "esqueci" reenviaria um link já gasto
+    expect(redis.del).toHaveBeenCalledWith('auth:reset:token:leandro@betinna.ai');
   });
 
-  it('token já usado/expirado: erro legível em português, sem gravar senha', async () => {
+  it('token já usado/expirado/substituído: erro legível em português, sem gravar senha', async () => {
     const { svc, welcomeFinalize } = buildReset({
       ok: false,
       status: 403,
@@ -184,7 +225,7 @@ describe('AuthSessionService.redefinirSenha', () => {
 
     await expect(
       svc.redefinirSenha('pkce_hash_abc123_long_enough', 'senha-nova-8', {} as never),
-    ).rejects.toThrow(/já foi usado ou expirou/);
+    ).rejects.toThrow(/já foi usado, expirou ou foi substituído/);
     expect(welcomeFinalize).not.toHaveBeenCalled();
   });
 

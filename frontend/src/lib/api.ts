@@ -14,18 +14,11 @@
  *
  * Em testes E2E (Playwright), VITE_API_URL aponta pra Railway staging URL.
  */
-import * as Sentry from "@sentry/react";
-import {
-  clearSession,
-  getSession,
-  getStoredEmpresaId,
-  refreshAccessToken,
-} from "./auth-store";
+import * as Sentry from '@sentry/react';
+import { clearSession, getSession, getStoredEmpresaId, refreshAccessToken } from './auth-store';
 
-const BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ??
-  "http://localhost:3001";
-const API_PREFIX = "/api/v1";
+const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+const API_PREFIX = '/api/v1';
 const TIMEOUT_MS = 10_000;
 // Escritas (POST/PUT/PATCH/DELETE) ganham mais folga: saves pesados (ex: fluxo faz
 // full-replace de todos os nós/arestas numa transação) podem passar de 10s sob carga.
@@ -39,10 +32,10 @@ const WRITE_TIMEOUT_MS = 30_000;
 function addRequestBreadcrumb(method: string, url: string): void {
   try {
     Sentry.addBreadcrumb({
-      category: "http",
+      category: 'http',
       message: `${method} ${url}`,
-      level: "info",
-      type: "http",
+      level: 'info',
+      type: 'http',
       data: { method, url },
     });
   } catch {
@@ -62,23 +55,19 @@ function reportApiError(error: ApiError, url: string, method: string): void {
     // 5xx sempre
     if (error.status >= 500) {
       Sentry.captureException(error, {
-        tags: { source: "api-client", method, statusGroup: "5xx" },
+        tags: { source: 'api-client', method, statusGroup: '5xx' },
         extra: { url, status: error.status, code: error.code },
       });
       return;
     }
     // 408 timeout, 429 rate limit — captura como warning
-    if (
-      error.status === 408 ||
-      error.status === 429 ||
-      error.code === "TIMEOUT"
-    ) {
+    if (error.status === 408 || error.status === 429 || error.code === 'TIMEOUT') {
       Sentry.captureMessage(`API ${error.code}: ${method} ${url}`, {
-        level: "warning",
+        level: 'warning',
         tags: {
-          source: "api-client",
+          source: 'api-client',
           method,
-          statusGroup: error.status === 429 ? "429" : "408",
+          statusGroup: error.status === 429 ? '429' : '408',
         },
         extra: {
           status: error.status,
@@ -95,7 +84,7 @@ function reportApiError(error: ApiError, url: string, method: string): void {
 
 /** URL pública completa de um endpoint (pra snippets/exemplos exibidos na UI). */
 export function publicApiUrl(path: string): string {
-  return `${BASE_URL}${API_PREFIX}${path.startsWith("/") ? path : `/${path}`}`;
+  return `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 export class ApiError extends Error {
@@ -106,7 +95,7 @@ export class ApiError extends Error {
     public readonly details?: unknown,
   ) {
     super(message);
-    this.name = "ApiError";
+    this.name = 'ApiError';
   }
 }
 
@@ -123,17 +112,13 @@ export class ApiError extends Error {
  */
 export function apiErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) {
-    return err instanceof Error ? err.message : "Erro desconhecido";
+    return err instanceof Error ? err.message : 'Erro desconhecido';
   }
   // Validação Zod — extrai o primeiro detalhe com field+message
-  if (
-    err.code === "VALIDATION_ERROR" &&
-    Array.isArray(err.details) &&
-    err.details.length > 0
-  ) {
+  if (err.code === 'VALIDATION_ERROR' && Array.isArray(err.details) && err.details.length > 0) {
     const first = err.details[0] as { field?: string; message?: string };
-    const field = (first?.field ?? "").trim();
-    const msg = (first?.message ?? "").trim();
+    const field = (first?.field ?? '').trim();
+    const msg = (first?.message ?? '').trim();
     if (field && msg) return `${field}: ${msg}`;
     if (msg) return msg;
   }
@@ -141,7 +126,7 @@ export function apiErrorMessage(err: unknown): string {
 }
 
 interface RequestOpts {
-  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   /** Override empresa ativa via header X-Empresa-Id */
   empresaId?: string;
@@ -156,11 +141,11 @@ async function request<T>(
   opts: RequestOpts = {},
   retryWithRefresh = true,
 ): Promise<T> {
-  const url = path.startsWith("http")
+  const url = path.startsWith('http')
     ? path
-    : `${BASE_URL}${API_PREFIX}${path.startsWith("/") ? path : `/${path}`}`;
+    : `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
 
-  const method = opts.method ?? "GET";
+  const method = opts.method ?? 'GET';
   // Breadcrumb antes da request (Sentry timeline)
   addRequestBreadcrumb(method, url);
 
@@ -168,24 +153,20 @@ async function request<T>(
   // precisa incluir o `boundary` — fixar 'application/json' aqui fazia o
   // servidor receber um corpo que não sabe ler, e cada tela de upload
   // acabava reimplementando o fetch na mão pra fugir disso.
-  const ehFormData =
-    typeof FormData !== "undefined" && opts.body instanceof FormData;
-  const headers: Record<string, string> = ehFormData
-    ? {}
-    : { "Content-Type": "application/json" };
+  const ehFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
+  const headers: Record<string, string> = ehFormData ? {} : { 'Content-Type': 'application/json' };
 
   if (!opts.skipAuth) {
     const sess = getSession();
     if (sess?.accessToken) {
-      headers["Authorization"] = `Bearer ${sess.accessToken}`;
+      headers['Authorization'] = `Bearer ${sess.accessToken}`;
     }
     // Fonte do X-Empresa-Id: override → sessão → empresa persistida (localStorage).
     // O fallback pro localStorage evita que a empresa "suma" num refresh de
     // sessão (era a causa do PUT/salvar dar 403 "Empresa não definida").
-    const empresaId =
-      opts.empresaId ?? sess?.user?.empresaIdAtiva ?? getStoredEmpresaId();
+    const empresaId = opts.empresaId ?? sess?.user?.empresaIdAtiva ?? getStoredEmpresaId();
     if (empresaId) {
-      headers["X-Empresa-Id"] = empresaId;
+      headers['X-Empresa-Id'] = empresaId;
     }
   }
 
@@ -204,29 +185,25 @@ async function request<T>(
           ? JSON.stringify(opts.body)
           : undefined,
       // credentials: 'include' permite cookie httpOnly do refresh token
-      credentials: "include",
+      credentials: 'include',
       // `no-store` previne que browser cacheie respostas e envie
       // conditional requests (If-None-Match), o que causaria 304 com body
       // vazio em endpoints autenticados como /auth/me.
       // Auditoria 2026-05-16 — login travado em produção.
-      cache: "no-store",
+      cache: 'no-store',
       signal: controller.signal,
     });
   } catch (err) {
     clearTimeout(timer);
-    if (err instanceof DOMException && err.name === "AbortError") {
-      const timeoutErr = new ApiError(
-        0,
-        "TIMEOUT",
-        `Requisição excedeu ${timeoutMs / 1000}s`,
-      );
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      const timeoutErr = new ApiError(0, 'TIMEOUT', `Requisição excedeu ${timeoutMs / 1000}s`);
       reportApiError(timeoutErr, url, method);
       throw timeoutErr;
     }
     const networkErr = new ApiError(
       0,
-      "NETWORK_ERROR",
-      err instanceof Error ? err.message : "Falha de rede",
+      'NETWORK_ERROR',
+      err instanceof Error ? err.message : 'Falha de rede',
     );
     reportApiError(networkErr, url, method);
     throw networkErr;
@@ -242,11 +219,26 @@ async function request<T>(
       return request<T>(path, opts, false);
     }
     clearSession();
-    throw new ApiError(401, "AUTH_REQUIRED", "Não autenticado");
+    throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');
   }
   if (response.status === 401) {
+    // Fluxo público (welcome / redefinir senha, `skipAuth`): o 401 aqui não é
+    // "sessão caiu", é o backend explicando por que o token do link não serve
+    // ("já foi usado", "substituído por um mais novo"). Engolir isso em
+    // "Não autenticado" foi o que deixou o Léo sem saber o que fazer em 06/09.
+    if (opts.skipAuth) {
+      const body = (await response.json().catch(() => null)) as {
+        error?: { code?: string; message?: string };
+      } | null;
+      clearSession();
+      throw new ApiError(
+        401,
+        body?.error?.code ?? 'AUTH_REQUIRED',
+        body?.error?.message ?? 'Não autenticado',
+      );
+    }
     clearSession();
-    throw new ApiError(401, "AUTH_REQUIRED", "Não autenticado");
+    throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');
   }
 
   // 403 → frontend redireciona para /403
@@ -254,13 +246,13 @@ async function request<T>(
     // Permissão pode ter sido revogada AGORA pelo admin — pede ao permissions-store
     // pra revalidar a matriz viva (menu/rotas se ajustam sem F5). Evento evita
     // import circular (permissions-store importa api).
-    window.dispatchEvent(new Event("betinna:perm-refresh"));
+    window.dispatchEvent(new Event('betinna:perm-refresh'));
     const body = await safeJson(response);
     const errObj = (body?.error ?? {}) as Record<string, unknown>;
     throw new ApiError(
       403,
-      (errObj.code as string) ?? "FORBIDDEN",
-      (errObj.message as string) ?? "Acesso negado",
+      (errObj.code as string) ?? 'FORBIDDEN',
+      (errObj.message as string) ?? 'Acesso negado',
       errObj.details,
     );
   }
@@ -270,7 +262,7 @@ async function request<T>(
     if (response.status === 204) return undefined as T;
     const body = await safeJson(response);
     // Backend retorna { success: true, data, meta }
-    if (body && typeof body === "object" && "data" in body) {
+    if (body && typeof body === 'object' && 'data' in body) {
       return body.data as T;
     }
     return body as T;
@@ -281,7 +273,7 @@ async function request<T>(
   const errObj = (errBody?.error ?? {}) as Record<string, unknown>;
   const apiErr = new ApiError(
     response.status,
-    (errObj.code as string) ?? "UNKNOWN_ERROR",
+    (errObj.code as string) ?? 'UNKNOWN_ERROR',
     (errObj.message as string) ?? `HTTP ${response.status}`,
     errObj.details,
   );
@@ -289,9 +281,7 @@ async function request<T>(
   throw apiErr;
 }
 
-async function safeJson(
-  res: Response,
-): Promise<Record<string, unknown> | null> {
+async function safeJson(res: Response): Promise<Record<string, unknown> | null> {
   try {
     return (await res.json()) as Record<string, unknown>;
   } catch {
@@ -305,13 +295,10 @@ async function safeJson(
  * Baixa um arquivo (ex: CSV) de um endpoint autenticado e dispara o download.
  * Usa o mesmo token/base do `api`. Pra respostas binárias/texto (não-JSON).
  */
-export async function downloadFile(
-  path: string,
-  filename: string,
-): Promise<void> {
-  const url = path.startsWith("http")
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const url = path.startsWith('http')
     ? path
-    : `${BASE_URL}${API_PREFIX}${path.startsWith("/") ? path : `/${path}`}`;
+    : `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
   // Mesmo contrato do request: Authorization + X-Empresa-Id (sessão → localStorage) + refresh
   // 1× em 401. Sem isso, download autenticado podia dar 403 'Empresa não definida' ou 401 sem retry.
   const fetchOnce = async (): Promise<Response> => {
@@ -319,7 +306,7 @@ export async function downloadFile(
     const empresaId = sess?.user?.empresaIdAtiva ?? getStoredEmpresaId();
     const headers: Record<string, string> = {};
     if (sess?.accessToken) headers.Authorization = `Bearer ${sess.accessToken}`;
-    if (empresaId) headers["X-Empresa-Id"] = empresaId;
+    if (empresaId) headers['X-Empresa-Id'] = empresaId;
     return fetch(url, { headers });
   };
   let res = await fetchOnce();
@@ -328,15 +315,11 @@ export async function downloadFile(
     if (refreshed) res = await fetchOnce();
   }
   if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      "DOWNLOAD_ERROR",
-      `Falha no download (${res.status})`,
-    );
+    throw new ApiError(res.status, 'DOWNLOAD_ERROR', `Falha no download (${res.status})`);
   }
   const blob = await res.blob();
   const objUrl = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = objUrl;
   a.download = filename;
   document.body.appendChild(a);
@@ -346,57 +329,41 @@ export async function downloadFile(
 }
 
 export const api = {
-  get: <T>(path: string, opts?: Omit<RequestOpts, "method" | "body">) =>
-    request<T>(path, { ...opts, method: "GET" }),
-  post: <T>(
-    path: string,
-    body?: unknown,
-    opts?: Omit<RequestOpts, "method" | "body">,
-  ) =>
+  get: <T>(path: string, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
+    request<T>(path, { ...opts, method: 'GET' }),
+  post: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
     request<T>(path, {
       timeoutMs: WRITE_TIMEOUT_MS,
       ...opts,
-      method: "POST",
+      method: 'POST',
       body,
     }),
-  patch: <T>(
-    path: string,
-    body?: unknown,
-    opts?: Omit<RequestOpts, "method" | "body">,
-  ) =>
+  patch: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
     request<T>(path, {
       timeoutMs: WRITE_TIMEOUT_MS,
       ...opts,
-      method: "PATCH",
+      method: 'PATCH',
       body,
     }),
-  put: <T>(
-    path: string,
-    body?: unknown,
-    opts?: Omit<RequestOpts, "method" | "body">,
-  ) =>
+  put: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
     request<T>(path, {
       timeoutMs: WRITE_TIMEOUT_MS,
       ...opts,
-      method: "PUT",
+      method: 'PUT',
       body,
     }),
-  delete: <T>(path: string, opts?: Omit<RequestOpts, "method" | "body">) =>
+  delete: <T>(path: string, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
     request<T>(path, {
       timeoutMs: WRITE_TIMEOUT_MS,
       ...opts,
-      method: "DELETE",
+      method: 'DELETE',
     }),
   /** Upload multipart — arquivo grande merece um timeout maior que o de escrita. */
-  upload: <T>(
-    path: string,
-    form: FormData,
-    opts?: Omit<RequestOpts, "method" | "body">,
-  ) =>
+  upload: <T>(path: string, form: FormData, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
     request<T>(path, {
       timeoutMs: 120_000,
       ...opts,
-      method: "POST",
+      method: 'POST',
       body: form,
     }),
 };

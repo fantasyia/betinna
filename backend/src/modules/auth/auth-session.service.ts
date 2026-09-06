@@ -46,6 +46,8 @@ import { addBreadcrumb } from '@shared/observability/sentry';
 const RESET_MAX_DIA = 5;
 /** Segundos pra absorver clique duplo sem gastar um dos cinco. */
 const RESET_DEBOUNCE_S = 10;
+/** Quanto o token de recovery fica reutilizável no Redis — abaixo da 1h do Supabase. */
+const RESET_TOKEN_CACHE_S = 55 * 60;
 
 @Injectable()
 export class AuthSessionService {
@@ -257,24 +259,34 @@ export class AuthSessionService {
         return neutro;
       }
 
-      const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email: alvo,
-      });
-      // NÃO manda o `action_link` do Supabase. Ele é um GET que CONSOME o token
-      // ao ser aberto — uso único. Aberto duas vezes (segundo navegador, clique
-      // duplo, scanner de link do Gmail), a segunda dá "Email link is invalid or
-      // has expired" e a pessoa fica sem senha. Aconteceu em 06/09: o primeiro
-      // clique criou a sessão às 23:01:27 e o segundo, 34s depois, morreu.
-      //
-      // Vai o `hashed_token` numa URL NOSSA. Abrir não consome nada; quem gasta
-      // o token é o POST /auth/redefinir-senha, quando a senha nova é enviada.
-      const tokenHash = data?.properties?.hashed_token;
-      if (error || !tokenHash) {
-        this.logger.error(
-          `[reset] ${alvo}: Supabase não gerou o token — ${error?.message ?? 'sem hashed_token'}`,
-        );
-        return neutro;
+      // O Supabase guarda UM token de recovery por usuário: cada generateLink
+      // substitui o anterior. Com "manda de novo toda vez", quem tem três
+      // e-mails na caixa e abre qualquer um que não seja o ÚLTIMO toma 403 —
+      // medido em 06/09 (23:18 e 23:29). Então o reenvio manda o MESMO link
+      // enquanto ele vale: o token vive 1h no Supabase e fica 55min no Redis;
+      // gasto ou expirado, gera outro. Todos os e-mails da hora funcionam.
+      const chaveToken = `auth:reset:token:${alvo}`;
+      let tokenHash = await this.redis.get(chaveToken);
+      if (!tokenHash) {
+        const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: alvo,
+        });
+        // NÃO manda o `action_link` do Supabase. Ele é um GET que CONSOME o
+        // token ao ser aberto — uso único. Aberto duas vezes (segundo navegador,
+        // clique duplo, scanner de link do Gmail), a segunda morre. Vai o
+        // `hashed_token` numa URL NOSSA: abrir não consome nada; quem gasta o
+        // token é o POST /auth/redefinir-senha, quando a senha nova é enviada.
+        tokenHash = data?.properties?.hashed_token ?? null;
+        if (error || !tokenHash) {
+          this.logger.error(
+            `[reset] ${alvo}: Supabase não gerou o token — ${error?.message ?? 'sem hashed_token'}`,
+          );
+          return neutro;
+        }
+        await this.redis.setEx(chaveToken, tokenHash, RESET_TOKEN_CACHE_S);
+      } else {
+        this.logger.log(`[reset] ${alvo}: reenviando o MESMO link (ainda válido)`);
       }
       const resetUrl =
         `${this.env.get('FRONTEND_URL')}/welcome` +
@@ -329,17 +341,26 @@ export class AuthSessionService {
       headers: { apikey: this.supabaseAnonKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'recovery', token_hash: tokenHash }),
     });
-    const body = (await r.json().catch(() => null)) as { access_token?: string } | null;
+    const body = (await r.json().catch(() => null)) as {
+      access_token?: string;
+      user?: { email?: string };
+    } | null;
     if (!r.ok || !body?.access_token) {
       this.logger.warn(
         `[reset] verify falhou (HTTP ${r.status}) — token usado, expirado ou inválido`,
       );
       throw new UnauthorizedException(
-        'Este link já foi usado ou expirou. Peça um novo em "Esqueceu sua senha?".',
+        'Este link já foi usado, expirou ou foi substituído por um mais novo. ' +
+          'Use o e-mail MAIS RECENTE, ou peça outro em "Esqueceu sua senha?".',
         ErrorCode.AUTH_INVALID_TOKEN,
       );
     }
-    return this.welcomeFinalize(body.access_token, password, res);
+    const resultado = await this.welcomeFinalize(body.access_token, password, res);
+    // Senha gravada: o token morreu no Supabase, então some do cache também —
+    // senão o próximo "esqueci" reenviaria um link já gasto.
+    const emailDoToken = body.user?.email?.toLowerCase();
+    if (emailDoToken) await this.redis.del(`auth:reset:token:${emailDoToken}`).catch(() => 0);
+    return resultado;
   }
 
   async welcomeFinalize(
