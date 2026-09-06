@@ -44,6 +44,7 @@ function build(prisma: ReturnType<typeof makePrisma>, muller: ReturnType<typeof 
     marcarPrecisaHumano: vi.fn(async () => undefined),
   };
   const auditoria = { registrar: vi.fn().mockResolvedValue(undefined) };
+  const notificacoes = { criarParaRole: vi.fn().mockResolvedValue(1) };
   const svc = new MullerWhatsappService(
     prisma as never,
     inbox as never,
@@ -78,8 +79,9 @@ function build(prisma: ReturnType<typeof makePrisma>, muller: ReturnType<typeof 
       ehPerguntaDePedido: vi.fn().mockReturnValue(false),
       contextoPorTelefone: vi.fn().mockResolvedValue(''),
     } as never,
+    notificacoes as never,
   );
-  return { svc, inbox, auditoria };
+  return { svc, inbox, auditoria, notificacoes };
 }
 
 const params = {
@@ -165,5 +167,78 @@ describe('fallback do bot geral × fluxo em andamento', () => {
 
     const texto = (inbox.responderComoBot.mock.calls[0] as unknown as string[])[1];
     expect(texto).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+});
+
+describe('bot geral × lead DENTRO de um funil', () => {
+  /** IA que RESPONDE — aqui o ponto é o bot se calar antes de chegar nela. */
+  const mullerOk = () => ({
+    responderComoEmpresa: vi.fn(async () => ({ texto: 'resposta do bot geral' })),
+    transcreverAudio: vi.fn(async () => ''),
+    temChaveOpenAI: vi.fn(async () => true),
+  });
+
+  it('lead com funil e SEM execução viva: o bot não responde e a diretoria é avisada', async () => {
+    // Caso real de 05/09: cliente do Canal Reps escreveu "queimou outro CLP, dá
+    // pra apressar aquele orçamento?" — o sinal de compra mais quente que chega
+    // aqui — e o bot geral respondeu pedindo modelo do CLP, número do pedido e
+    // nota fiscal. Ele nunca tinha comprado nada. O RT tinha acabado e o C2
+    // nunca acendeu: sem execução viva, o guard antigo deixava passar.
+    const prisma = makePrisma();
+    // O lead precisa ser encontrado pelo telefone — é assim que o guard o vê.
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-1' }]);
+    prisma.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      etapa: 'NOVO',
+      funilEtapa: null,
+      tags: [],
+      funilId: 'funil-canal-reps',
+      nome: 'Fulano',
+      contatoTelefone: '5519999990000',
+      funil: { nome: 'Clientes - Canal Reps' },
+    });
+    const { svc, inbox, notificacoes } = build(prisma, mullerOk() as never);
+
+    await svc['aoReceber'](params as never, resultado as never);
+
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+    expect(notificacoes.criarParaRole).toHaveBeenCalledWith(
+      expect.objectContaining({ prioridade: 'URGENTE' }),
+    );
+  });
+
+  it('lead SEM funil segue pelo caminho normal — os 30 mil de prospecção fria não travam', async () => {
+    const prisma = makePrisma();
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-1' }]);
+    prisma.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      etapa: 'NOVO',
+      funilEtapa: null,
+      tags: [],
+      funilId: null,
+    });
+    const { svc, notificacoes } = build(prisma, mullerOk() as never);
+
+    await svc['aoReceber'](params as never, resultado as never);
+
+    expect(notificacoes.criarParaRole).not.toHaveBeenCalled();
+  });
+
+  it('execução VIVA não gera aviso — quem está falando é o fluxo, não é silêncio', async () => {
+    const prisma = makePrisma();
+    prisma.fluxoExecucao.findFirst.mockResolvedValue({ id: 'exec-1' });
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-1' }]);
+    prisma.lead.findUnique.mockResolvedValue({
+      id: 'lead-1',
+      etapa: 'NOVO',
+      funilEtapa: null,
+      tags: [],
+      funilId: 'funil-1',
+    });
+    const { svc, notificacoes } = build(prisma, mullerOk() as never);
+
+    await svc['aoReceber'](params as never, resultado as never);
+
+    expect(notificacoes.criarParaRole).not.toHaveBeenCalled();
   });
 });

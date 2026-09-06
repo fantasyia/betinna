@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { PedidoStatusBotModule } from '@modules/pedidos/pedido-status-bot.module';
 import { EmailModule } from '@integrations/email/email.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
@@ -18,7 +19,16 @@ import { BotAuditoriaController } from './bot-auditoria.controller';
 @Module({
   // Só o módulo do STATUS de pedido: importar o PedidosModule inteiro fecharia
   // um ciclo (Pedidos → Fluxos → … → MullerBot) e o Nest nem sobe.
-  imports: [EmailModule, WhatsAppModule, BotPromptsModule, RagModule, PedidoStatusBotModule],
+  imports: [
+    EmailModule,
+    WhatsAppModule,
+    BotPromptsModule,
+    RagModule,
+    PedidoStatusBotModule,
+    // O bot geral cala quando o lead está num funil — e avisa a diretoria, senão
+    // o silêncio some junto com o lead.
+    NotificacoesModule,
+  ],
   controllers: [MullerBotController, MullerBotPersonaController, BotAuditoriaController],
   providers: [
     MullerBotService,

@@ -14,6 +14,7 @@ import { MullerBotPersonaService } from './persona.service';
 import type { HistoricoMsg } from './mullerbot-cache.service';
 import { BotAuditoriaService } from './bot-auditoria.service';
 import { BotCustoService } from './bot-custo.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 
 /**
  * Fase 2 — Motor do bot no WhatsApp: número da EMPRESA e (opt-in) o PESSOAL
@@ -282,6 +283,7 @@ export class MullerWhatsappService implements OnModuleInit {
     private readonly redis: RedisService,
     private readonly pacing: WhatsappPacingService,
     private readonly pedidoStatus: PedidoStatusBotService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   onModuleInit(): void {
@@ -987,7 +989,89 @@ export class MullerWhatsappService implements OnModuleInit {
 
   private async fluxoAssumiu(empresaId: string, convId: string, leadId?: string): Promise<boolean> {
     if (await this.fluxoConduzindoConversa(empresaId, convId)) return true;
-    return leadId ? this.fluxoConduzindoLead(empresaId, leadId) : false;
+    if (leadId && (await this.fluxoConduzindoLead(empresaId, leadId))) return true;
+    // Nenhuma execução VIVA — mas isso não quer dizer que o lead esteja solto.
+    if (leadId && (await this.leadEmFunil(leadId))) {
+      // Calar sem avisar é trocar resposta errada por silêncio.
+      void this.avisarLeadSemDono(empresaId, convId, leadId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * O lead PERTENCE a um funil de venda?
+   *
+   * O guard por execução responde "tem fluxo falando AGORA?". Ficava um buraco:
+   * lead que é conduzido por fluxo, mas que naquele segundo não tem execução no
+   * ar, não tinha proteção nenhuma — e o respondedor geral preenchia o vazio.
+   *
+   * Aconteceu em 05/09: cliente do Canal Reps escreveu "queimou outro CLP, dá
+   * pra apressar aquele orçamento?" — o sinal de compra mais quente que chega
+   * aqui — e o bot geral respondeu pedindo modelo do CLP, número do pedido e
+   * nota fiscal. Ele nunca tinha comprado nada; não existia pedido nem nota. O
+   * RT tinha terminado e o C2 nunca chegou a acender.
+   *
+   * `funilId` preenchido = a operação é dona deste lead. Os 30 mil leads de
+   * prospecção fria não têm funil, então continuam pelo caminho normal (e a
+   * triagem, que cria execução na 1ª mensagem, já é coberta pelo guard acima).
+   *
+   * Fail-open, como os outros: erro aqui não pode calar o bot.
+   */
+  private async leadEmFunil(leadId: string): Promise<boolean> {
+    try {
+      const lead = await this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { funilId: true },
+      });
+      return Boolean(lead?.funilId);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * O bot calou e nenhum fluxo assumiu — alguém precisa saber.
+   *
+   * Sem isto, a correção acima trocaria "resposta errada" por "silêncio", que é
+   * pior: o lead escreve, ninguém responde, e não há erro em lugar nenhum.
+   *
+   * Uma vez por conversa a cada 30min (o guard é consultado três vezes por
+   * mensagem — no portão, antes de enviar e no fallback).
+   */
+  private async avisarLeadSemDono(
+    empresaId: string,
+    convId: string,
+    leadId: string,
+  ): Promise<void> {
+    try {
+      const chave = `bot:sem-dono:${convId}`;
+      if (!(await this.redis.setNxEx(chave, '1', 30 * 60))) return;
+      const lead = await this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { nome: true, contatoTelefone: true, funil: { select: { nome: true } } },
+      });
+      await this.notificacoes.criarParaRole({
+        empresaId,
+        roles: ['ADMIN', 'DIRECTOR'],
+        tipo: 'GENERICO',
+        titulo: '🚨 Lead escreveu e nenhum fluxo assumiu',
+        mensagem:
+          `${lead?.nome ?? 'Lead'}${lead?.contatoTelefone ? ` (${lead.contatoTelefone})` : ''} ` +
+          `está no funil ` +
+          `"${lead?.funil?.nome ?? '—'}" e mandou mensagem, mas nenhum fluxo estava conduzindo. ` +
+          `O bot geral NÃO respondeu de propósito — alguém precisa assumir esta conversa.`,
+        prioridade: 'URGENTE',
+        link: `/inbox?conversa=${convId}`,
+      });
+      this.logger.warn(
+        `[bot] lead ${leadId} em funil escreveu sem fluxo conduzindo — bot geral calado, diretoria avisada`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[bot] não deu pra avisar sobre lead sem dono: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async fluxoConduzindoLead(empresaId: string, leadId: string): Promise<boolean> {
