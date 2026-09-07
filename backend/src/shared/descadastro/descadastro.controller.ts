@@ -41,6 +41,7 @@ export class DescadastroController {
         'Confirme abaixo e você não recebe mais nossos e-mails de novidades e acompanhamento. ' +
           'Avisos sobre um pedido que você fez (confirmação, nota, rastreio) continuam chegando.',
         token,
+        this.descadastro.caminhoDescadastro(),
       ),
     );
   }
@@ -97,9 +98,14 @@ const escapar = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Página mínima e autossuficiente — sem CSS externo, sem JS, abre em qualquer lugar. */
-function pagina(titulo: string, texto: string, tokenParaConfirmar?: string): string {
+function pagina(
+  titulo: string,
+  texto: string,
+  tokenParaConfirmar?: string,
+  acao = '/api/v1/descadastrar',
+): string {
   const botao = tokenParaConfirmar
-    ? `<form method="post" action="/api/v1/descadastrar">
+    ? `<form method="post" action="${escapar(acao)}">
          <input type="hidden" name="t" value="${escapar(tokenParaConfirmar)}">
          <button type="submit" style="background:#201554;color:#fff;border:0;border-radius:10px;padding:12px 20px;font-size:15px;cursor:pointer">
            Confirmar e não receber mais

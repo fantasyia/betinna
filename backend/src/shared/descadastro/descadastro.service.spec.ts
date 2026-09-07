@@ -13,7 +13,7 @@ import { SupressaoService } from '@shared/supressao/supressao.service';
  */
 const CHAVE = 'a'.repeat(64);
 
-const build = (over: { lead?: unknown; cliente?: unknown } = {}) => {
+const build = (over: { lead?: unknown; cliente?: unknown; apiPublicUrl?: string } = {}) => {
   const prisma = {
     tag: { upsert: vi.fn().mockResolvedValue({ id: 'tag-lgpd' }) },
     // `??` aqui engoliria o `null` do teste de outro tenant — o default só vale
@@ -23,9 +23,17 @@ const build = (over: { lead?: unknown; cliente?: unknown } = {}) => {
     leadTag: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
     clienteTag: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
+  // Como é em produção: a origem é PURA (sem prefixo) e o prefixo vem do
+  // API_PREFIX, que o `setGlobalPrefix` aplica nas rotas.
   const env = {
     get: (k: string) =>
-      k === 'ENCRYPTION_KEY' ? CHAVE : k === 'API_PUBLIC_URL' ? 'https://api.x/api/v1' : '',
+      k === 'ENCRYPTION_KEY'
+        ? CHAVE
+        : k === 'API_PUBLIC_URL'
+          ? (over.apiPublicUrl ?? 'https://api.x')
+          : k === 'API_PREFIX'
+            ? 'api/v1'
+            : '',
   };
   return { svc: new DescadastroService(prisma as never, env as never), prisma };
 };
@@ -90,12 +98,27 @@ describe('DescadastroService', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('a URL sai pronta pro rodapé e pro cabeçalho List-Unsubscribe', () => {
+  it('a URL leva o PREFIXO GLOBAL — sem ele é 404 no rodapé E no one-click', () => {
+    // Aconteceu em produção em 07/09: o link do e-mail real da E6 deu
+    // `Cannot GET /descadastrar`. A rota vive sob o `setGlobalPrefix`, e
+    // `API_PUBLIC_URL` é a origem PURA. E a mesma URL vai no cabeçalho
+    // List-Unsubscribe: 404 ali vira descadastro FALHO registrado pelo provedor,
+    // pior pra reputação que não ter o cabeçalho.
     const url = ctx.svc.urlDescadastro('abc/def+gh');
 
     expect(url.startsWith('https://api.x/api/v1/descadastrar?t=')).toBe(true);
     // Query string: o token precisa ir escapado.
     expect(url).not.toContain('abc/def+gh');
+  });
+
+  it('API_PUBLIC_URL que JÁ vem com o prefixo não duplica', () => {
+    const c = build({ apiPublicUrl: 'https://api.x/api/v1' });
+
+    expect(c.svc.urlDescadastro('t')).toBe('https://api.x/api/v1/descadastrar?t=t');
+  });
+
+  it('o form da página posta no mesmo caminho da rota', () => {
+    expect(ctx.svc.caminhoDescadastro()).toBe('/api/v1/descadastrar');
   });
 });
 

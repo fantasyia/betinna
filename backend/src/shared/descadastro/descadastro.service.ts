@@ -91,10 +91,33 @@ export class DescadastroService {
     }
   }
 
-  /** URL que vai no rodapé e no cabeçalho `List-Unsubscribe`. */
+  /**
+   * Caminho da rota, COM o prefixo global (`/api/v1/descadastrar`).
+   *
+   * O endpoint vive sob o `setGlobalPrefix`, então montar só `/descadastrar` dá
+   * 404 — foi o que aconteceu em produção em 07/09: o Léo clicou no link do
+   * e-mail real da E6 e levou `Cannot GET /descadastrar`. Meu comentário dizia
+   * que `API_PUBLIC_URL` já trazia o prefixo, e não traz (é a origem pura).
+   *
+   * Mesma composição do webhook do Evolution, inclusive a tolerância a um
+   * `API_PUBLIC_URL` que JÁ venha com o prefixo — sem duplicar.
+   */
+  caminhoDescadastro(): string {
+    const prefixo = (this.env.get('API_PREFIX') || '').replace(/^\/+|\/+$/g, '');
+    return prefixo ? `/${prefixo}/descadastrar` : '/descadastrar';
+  }
+
+  /**
+   * URL que vai no rodapé e no cabeçalho `List-Unsubscribe`.
+   *
+   * ⚠️ A MESMA URL serve os dois. Errar aqui não é só link quebrado no rodapé:
+   * o one-click do Gmail bate no 404 e o provedor registra descadastro FALHO,
+   * que é pior pra reputação do domínio do que não ter o cabeçalho.
+   */
   urlDescadastro(token: string): string {
-    const base = (this.env.get('API_PUBLIC_URL') || '').replace(/\/$/, '');
-    // API_PUBLIC_URL já inclui /api/v1 (é a mesma que o Evolution usa pro webhook).
+    const origem = (this.env.get('API_PUBLIC_URL') || '').replace(/\/+$/, '');
+    const prefixo = (this.env.get('API_PREFIX') || '').replace(/^\/+|\/+$/g, '');
+    const base = prefixo && !origem.endsWith(`/${prefixo}`) ? `${origem}/${prefixo}` : origem;
     return `${base}/descadastrar?t=${encodeURIComponent(token)}`;
   }
 
