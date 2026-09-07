@@ -442,12 +442,22 @@ export default function PersonaBotPage() {
               )}
             </Field>
 
-            {/* Só faz sentido pra empresa, e só com a automação ligada: com o bot
-                da empresa desligado não há respondedor nenhum pra separar. */}
-            {!isRep && botWhatsappAtivo && (
+            {/* Aparece SEMPRE pra empresa — inclusive com a resposta automática
+                DESLIGADA. O gate `botWhatsappAtivo &&` que estava aqui vinha de
+                uma premissa falsa ("sem automação não há respondedor pra
+                separar"): quem manda em cada conversa é `Conversation.botLigado`,
+                que VENCE a flag da empresa. Com a automação desligada, toda
+                conversa que alguém religou no botão — e as da bateria de teste —
+                continua sendo respondida pelo respondedor geral. Ou seja: o
+                controle sumia da tela exatamente no estado em que ele ainda fala,
+                e a decisão de desligá-lo (21/08 e 29/08) nunca pôde ser
+                executada. Interruptor que some quando o risco existe não é
+                interruptor. */}
+            {!isRep && (
               <Field label="Respondedor geral" className="mb-0">
                 <div>
                   <Switch
+                    data-testid="switch-respondedor-geral"
                     checked={botGeralAtivo}
                     disabled={savingBot || !empresaQuery.data}
                     onChange={(e) => void alternarRespondedorGeral(e.target.checked)}
@@ -463,6 +473,13 @@ export default function PersonaBotPage() {
                     esperando — aí o cliente fica aguardando um humano. O bot pessoal dos
                     representantes não é afetado.
                   </p>
+                  {!botWhatsappAtivo && (
+                    <p className="text-[12px] text-warning mt-1.5 mb-0">
+                      A resposta automática acima está desligada, mas isto aqui continua valendo:
+                      conversa em que alguém religou o bot no botão ainda é respondida pelo
+                      respondedor geral.
+                    </p>
+                  )}
                 </div>
               </Field>
             )}
