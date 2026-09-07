@@ -274,7 +274,10 @@ export class AuthSessionService {
       // medido em 06/09 (23:18 e 23:29). Então o reenvio manda o MESMO link
       // enquanto ele vale: o token vive 1h no Supabase e fica 55min no Redis;
       // gasto ou expirado, gera outro. Todos os e-mails da hora funcionam.
-      const chaveToken = `auth:reset:token:${alvo}`;
+      // Prefixo v2: o cache anterior (06/09, antes do mapa reverso) guardou um
+      // token já consumido sem jeito de invalidá-lo — trocar o namespace deixa
+      // o resíduo morrer sozinho no TTL em vez de reenviar link morto.
+      const chaveToken = `auth:reset:v2:token:${alvo}`;
       let tokenHash = await this.redis.get(chaveToken);
       if (!tokenHash) {
         const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
@@ -296,7 +299,7 @@ export class AuthSessionService {
         await this.redis.setEx(chaveToken, tokenHash, RESET_TOKEN_CACHE_S);
         // Mapa reverso: na hora de redefinir só se tem o hash, e qualquer
         // tentativa de usá-lo (com ou sem sucesso) precisa derrubar o cache.
-        await this.redis.setEx(`auth:reset:hash:${tokenHash}`, alvo, RESET_TOKEN_CACHE_S);
+        await this.redis.setEx(`auth:reset:v2:hash:${tokenHash}`, alvo, RESET_TOKEN_CACHE_S);
       } else {
         this.logger.log(`[reset] ${alvo}: reenviando o MESMO link (ainda válido)`);
       }
@@ -378,9 +381,9 @@ export class AuthSessionService {
   /** Derruba o token do cache pelos dois lados: pelo hash e pelo e-mail dono. */
   private async esquecerTokenEmCache(tokenHash: string, emailConhecido?: string): Promise<void> {
     try {
-      const chaveHash = `auth:reset:hash:${tokenHash}`;
+      const chaveHash = `auth:reset:v2:hash:${tokenHash}`;
       const email = (emailConhecido ?? (await this.redis.get(chaveHash)) ?? '').toLowerCase();
-      const chaves = [chaveHash, ...(email ? [`auth:reset:token:${email}`] : [])];
+      const chaves = [chaveHash, ...(email ? [`auth:reset:v2:token:${email}`] : [])];
       await this.redis.del(...chaves);
     } catch {
       /* best-effort: o pior caso é reenviar um link morto até o TTL vencer */

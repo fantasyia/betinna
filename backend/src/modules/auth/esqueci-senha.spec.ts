@@ -79,13 +79,13 @@ describe('AuthSessionService.esqueciSenha', () => {
     await svc.esqueciSenha('leandro@betinna.ai');
 
     expect(redis.setEx).toHaveBeenCalledWith(
-      'auth:reset:token:leandro@betinna.ai',
+      'auth:reset:v2:token:leandro@betinna.ai',
       'pkce_hash_abc123',
       55 * 60,
     );
     // e o mapa reverso, pra derrubar o cache na hora de usar o token
     expect(redis.setEx).toHaveBeenCalledWith(
-      'auth:reset:hash:pkce_hash_abc123',
+      'auth:reset:v2:hash:pkce_hash_abc123',
       'leandro@betinna.ai',
       55 * 60,
     );
@@ -222,8 +222,8 @@ describe('AuthSessionService.redefinirSenha', () => {
     // senha gravada = token morto no Supabase = some do cache, senão o próximo
     // "esqueci" reenviaria um link já gasto
     expect(redis.del).toHaveBeenCalledWith(
-      'auth:reset:hash:pkce_hash_abc123_long_enough',
-      'auth:reset:token:leandro@betinna.ai',
+      'auth:reset:v2:hash:pkce_hash_abc123_long_enough',
+      'auth:reset:v2:token:leandro@betinna.ai',
     );
   });
 
@@ -253,10 +253,10 @@ describe('AuthSessionService.redefinirSenha', () => {
       .redefinirSenha('pkce_hash_abc123_long_enough', 'senha-nova-8', {} as never)
       .catch(() => undefined);
 
-    expect(redis.get).toHaveBeenCalledWith('auth:reset:hash:pkce_hash_abc123_long_enough');
+    expect(redis.get).toHaveBeenCalledWith('auth:reset:v2:hash:pkce_hash_abc123_long_enough');
     expect(redis.del).toHaveBeenCalledWith(
-      'auth:reset:hash:pkce_hash_abc123_long_enough',
-      'auth:reset:token:leandro@betinna.ai',
+      'auth:reset:v2:hash:pkce_hash_abc123_long_enough',
+      'auth:reset:v2:token:leandro@betinna.ai',
     );
   });
 
