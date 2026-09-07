@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Header, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '@shared/decorators/public.decorator';
@@ -16,8 +17,9 @@ import { DescadastroService } from './descadastro.service';
  * (RFC 8058 — `List-Unsubscribe-Post: List-Unsubscribe=One-Click` faz o Gmail
  * POSTar sozinho quando a pessoa clica no botão nativo "cancelar inscrição").
  *
- * Responde HTML cru em vez do envelope padrão da API porque quem abre isto é uma
- * pessoa no navegador, não um cliente de API.
+ * Responde HTML CRU, com `@Res()`, porque quem abre isto é uma pessoa no
+ * navegador: pelo caminho normal o `ResponseInterceptor` envelopa tudo em
+ * `{success, data}` e o navegador mostraria o JSON com a página dentro.
  */
 @ApiExcludeController()
 @Controller()
@@ -26,15 +28,20 @@ export class DescadastroController {
 
   @Public()
   @Get('descadastrar')
-  @Header('Content-Type', 'text/html; charset=utf-8')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  paginaConfirmar(@Query('t') token?: string): string {
-    if (!token) return pagina('Link inválido', 'Este link de descadastro está incompleto.');
-    return pagina(
-      'Cancelar os e-mails',
-      'Confirme abaixo e você não recebe mais nossos e-mails de novidades e acompanhamento. ' +
-        'Avisos sobre um pedido que você fez (confirmação, nota, rastreio) continuam chegando.',
-      token,
+  paginaConfirmar(@Res() res: Response, @Query('t') token?: string): void {
+    if (!token) {
+      html(res, pagina('Link inválido', 'Este link de descadastro está incompleto.'));
+      return;
+    }
+    html(
+      res,
+      pagina(
+        'Cancelar os e-mails',
+        'Confirme abaixo e você não recebe mais nossos e-mails de novidades e acompanhamento. ' +
+          'Avisos sobre um pedido que você fez (confirmação, nota, rastreio) continuam chegando.',
+        token,
+      ),
     );
   }
 
@@ -44,32 +51,46 @@ export class DescadastroController {
    */
   @Public()
   @Post('descadastrar')
-  @HttpCode(HttpStatus.OK)
-  @Header('Content-Type', 'text/html; charset=utf-8')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async descadastrar(
+    @Res() res: Response,
     @Query('t') tokenQuery?: string,
     @Body() body?: { t?: string },
-  ): Promise<string> {
+  ): Promise<void> {
     const token = tokenQuery ?? body?.t;
-    if (!token) return pagina('Link inválido', 'Este link de descadastro está incompleto.');
+    if (!token) {
+      html(res, pagina('Link inválido', 'Este link de descadastro está incompleto.'));
+      return;
+    }
 
     const r = await this.descadastro.descadastrar(token);
     if (!r.ok) {
-      return pagina(
-        'Não deu pra concluir',
-        `Não conseguimos processar este link (${r.motivo ?? 'motivo desconhecido'}). ` +
-          'Responda o e-mail que a gente resolve na mão.',
+      html(
+        res,
+        pagina(
+          'Não deu pra concluir',
+          `Não conseguimos processar este link (${r.motivo ?? 'motivo desconhecido'}). ` +
+            'Responda o e-mail que a gente resolve na mão.',
+        ),
       );
+      return;
     }
-    return pagina(
-      'Pronto',
-      r.jaEstava
-        ? 'Você já estava fora da nossa lista. Não vamos mandar mais nada.'
-        : `Removemos ${r.email ? `<strong>${escapar(r.email)}</strong>` : 'seu e-mail'} da nossa lista. ` +
-            'Avisos sobre pedidos que você fizer continuam chegando.',
+    html(
+      res,
+      pagina(
+        'Pronto',
+        r.jaEstava
+          ? 'Você já estava fora da nossa lista. Não vamos mandar mais nada.'
+          : `Removemos ${r.email ? `<strong>${escapar(r.email)}</strong>` : 'seu e-mail'} da nossa lista. ` +
+              'Avisos sobre pedidos que você fizer continuam chegando.',
+      ),
     );
   }
+}
+
+/** Escreve a página direto na resposta — sem passar pelo envelope da API. */
+function html(res: Response, corpo: string): void {
+  res.status(200).type('html').send(corpo);
 }
 
 const escapar = (s: string): string =>
