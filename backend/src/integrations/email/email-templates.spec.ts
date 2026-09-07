@@ -206,6 +206,29 @@ describe('Email templates', () => {
       }
     });
 
+    it('rodapé tem SEMPRE as duas linhas: motivo + domínio', () => {
+      // com footerNote próprio (rastreio) o domínio não pode sumir…
+      const comNota = templateOcorrenciaCritica({
+        clienteNome: 'ACME',
+        titulo: 'Falha',
+        severidade: 'CRITICA',
+        slaHoras: 2,
+        ocorrenciaUrl: 'https://x',
+        marca: { ...marca, rodape: 'somatecblocking.com.br' },
+      }).html;
+      expect(comNota).toContain('SLA');
+      expect(comNota).toContain('somatecblocking.com.br');
+
+      // …e sem footerNote, o motivo padrão aparece no lugar
+      const semNota = templateRecuperarSenha({
+        nome: 'Ana',
+        resetUrl: 'https://x',
+        marca: { ...marca, rodape: 'somatecblocking.com.br' },
+      }).html;
+      expect(semNota).toContain('porque tem uma conta na Somatec Blocking');
+      expect(semNota).toContain('somatecblocking.com.br');
+    });
+
     it('sem marca, o layout genérico continua sendo o do app', () => {
       const { html } = templateRecuperarSenha({ nome: 'Ana', resetUrl: 'https://x' });
       expect(html).toContain('Betinna.ai');

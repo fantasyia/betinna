@@ -72,7 +72,12 @@ function layout(p: BaseLayoutParams): string {
  *    gradiente, e há `background-color` por trás — quem bloqueia imagem vê a cor
  *    sólida, não branco;
  *  - **sem webfont**: cliente de e-mail não carrega, então a pilha é a do sistema;
- *  - **botão em `<table>`**, não `<a>` solto: Outlook ignora padding em link inline.
+ *  - **botão em `<table>`**, não `<a>` solto: Outlook ignora padding em link inline;
+ *  - **rodapé em DUAS linhas fixas**: o motivo (por que a pessoa recebeu) e a
+ *    identidade (domínio do tenant). Antes o `footerNote` de um template
+ *    SUBSTITUÍA o `rodape` da config — o rastreio dizia o motivo e omitia o
+ *    domínio, e o resto fazia o contrário. Dizer o motivo é o que sustenta a
+ *    reputação de envio; o domínio é quem assina.
  */
 function layoutDoTenant(
   { preheader, title, bodyHtml, ctaText, ctaUrl, footerNote }: BaseLayoutParams,
@@ -101,7 +106,9 @@ ${preheader ? `<div style="display:none;font-size:1px;max-height:0;opacity:0;ove
  }
  <tr><td style="background:${escapeAttr(m.corPrimaria)};padding:26px 44px;">
    <p style="margin:0 0 8px 0;font-size:11px;color:#ffffff;font-weight:700;letter-spacing:1.4px;">${escapeHtml(m.empresaNome)}</p>
-   <p style="margin:0;font-size:11px;line-height:1.7;color:#93a4b5;">${escapeHtml(footerNote ?? m.rodape ?? '')}</p></td></tr>
+   <p style="margin:0;font-size:11px;line-height:1.7;color:#93a4b5;">${escapeHtml(
+     footerNote ?? `Você está recebendo este e-mail porque tem uma conta na ${m.empresaNome}.`,
+   )}${m.rodape ? `<br>${escapeHtml(m.rodape)}` : ''}</p></td></tr>
 </table></td></tr></table></body></html>`;
 }
 
