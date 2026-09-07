@@ -2122,7 +2122,14 @@ model FluxoStepClaim {
   /// acontece depois. Se algo estourar nesse meio, o retry batia no claim
   /// CONCLUIDO, pulava tudo e voltava VERDE — sem erro, sem alarme e sem os
   /// próximos passos. A execução ficava EM_EXECUCAO pra sempre e o lead, mudo.
-  proximos    String[]
+  ///
+  /// ⚠️ `@default([])` é OBRIGATÓRIO aqui, não é enfeite: sem ele o Prisma Client
+  /// manda NULL explícito no INSERT quando o campo não é informado, e o
+  /// `create` do claim estoura com "Null constraint violation on the fields:
+  /// (proximos)" — a coluna é NOT NULL. Derrubou o motor em produção em 07/09
+  /// (R2 100% no chão por ~40min); o DEFAULT do Postgres não salva, porque a
+  /// coluna vem no INSERT com NULL em vez de ser omitida.
+  proximos    String[] @default([])
 
   @@index([execucaoId])
   @@index([estado, criadoEm])

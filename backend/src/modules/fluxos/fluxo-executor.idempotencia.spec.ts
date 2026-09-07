@@ -106,8 +106,12 @@ describe('FluxoExecutor — idempotência por job.id', () => {
 
   it('claim novo → cria EXECUTANDO e o efeito roda', async () => {
     await ctx.service.executarPasso('exec-1', 'no-wa', 'job-1');
+    // `proximos: []` explícito: sem valor, o Prisma manda NULL no INSERT e a
+    // coluna é NOT NULL — foi o que derrubou o motor em produção em 07/09
+    // (R2 100% no chão). O `@default([])` do schema é a primeira tranca; esta é
+    // a segunda, e é a única que um teste consegue ver (o Prisma é mockado).
     expect(ctx.claim.create).toHaveBeenCalledWith({
-      data: { jobId: 'job-1', execucaoId: 'exec-1', noId: 'no-wa' },
+      data: { jobId: 'job-1', execucaoId: 'exec-1', noId: 'no-wa', proximos: [] },
     });
     expect(ctx.whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
   });

@@ -334,7 +334,12 @@ export class FluxoExecutorService {
     //   destinatário NÃO recebe 2×. jobId é estável no retry e fresco a cada enqueue, então
     //   loops cíclicos e re-entrada do CONVERSAR_IA por turno não são suprimidos.
     try {
-      await this.prisma.fluxoStepClaim.create({ data: { jobId, execucaoId, noId } });
+      // `proximos: []` explícito: o Prisma manda NULL no INSERT quando um scalar
+      // list não é informado, e a coluna é NOT NULL (derrubou o motor em 07/09).
+      // O `@default([])` do schema já resolve; isto é a segunda tranca.
+      await this.prisma.fluxoStepClaim.create({
+        data: { jobId, execucaoId, noId, proximos: [] },
+      });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         const claim = await this.prisma.fluxoStepClaim.findUnique({ where: { jobId } });
