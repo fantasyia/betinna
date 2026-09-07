@@ -389,6 +389,21 @@ function truncate(s: string, max: number): string {
  * escrito fora daqui (editor de campanha / nó do fluxo) e não passa pelo
  * `layout()`.
  */
+export const SLOT_DESCADASTRO = '<!-- SLOT_DESCADASTRO -->';
+
+/**
+ * Link INLINE pro slot que os e-mails de marketing já trazem no rodapé.
+ *
+ * Quando o corpo tem `<!-- SLOT_DESCADASTRO -->`, o link entra ALI — dentro do
+ * rodapé que o autor desenhou, herdando a cor dele. Anexar o bloco genérico
+ * depois de um rodapé navy da Somatec deixaria um retângulo cinza pendurado no
+ * fim do e-mail.
+ */
+export function linkDescadastroInline(url: string): string {
+  return ` <a href="${escapeAttr(url)}" style="color:inherit;text-decoration:underline;">Não quero mais receber estes e-mails</a>.`;
+}
+
+/** Bloco autônomo — pro corpo que NÃO tem o slot (campanha antiga, e-mail simples). */
 export function rodapeDescadastro(url: string): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:16px auto 0;">
   <tr><td style="padding:12px 28px 20px 28px;border-top:1px solid ${COLOR_BORDER};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">

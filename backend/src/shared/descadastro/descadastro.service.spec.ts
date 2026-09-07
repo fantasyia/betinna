@@ -98,3 +98,29 @@ describe('DescadastroService', () => {
     expect(url).not.toContain('abc/def+gh');
   });
 });
+
+describe('onde o link entra no corpo do e-mail', () => {
+  // O corpo da régua traz `<!-- SLOT_DESCADASTRO -->` dentro do rodapé navy que o
+  // autor desenhou. Anexar o bloco genérico depois disso deixaria um retângulo
+  // cinza pendurado no fim do e-mail da Somatec.
+  it('com slot: substitui NO LUGAR, herdando a cor do rodapé', async () => {
+    const { linkDescadastroInline, SLOT_DESCADASTRO } =
+      await import('@integrations/email/email-templates');
+    const corpo = `<p style="color:#93a4b5">Você começou um pedido.${SLOT_DESCADASTRO}</p>`;
+
+    const final = corpo.split(SLOT_DESCADASTRO).join(linkDescadastroInline('https://x/desc'));
+
+    expect(final).not.toContain(SLOT_DESCADASTRO);
+    expect(final).toContain('color:inherit');
+    expect(final).toContain('https://x/desc');
+  });
+
+  it('sem slot: o bloco autônomo carrega o aviso do transacional', async () => {
+    const { rodapeDescadastro } = await import('@integrations/email/email-templates');
+
+    const bloco = rodapeDescadastro('https://x/desc');
+
+    expect(bloco).toContain('Cancelar o envio');
+    expect(bloco).toContain('Avisos sobre pedidos');
+  });
+});

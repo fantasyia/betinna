@@ -12,6 +12,8 @@ import {
   templateRecuperarSenha,
   templateReenvioConvite,
   rodapeDescadastro,
+  linkDescadastroInline,
+  SLOT_DESCADASTRO,
 } from './email-templates';
 
 /**
@@ -156,7 +158,12 @@ export class TransactionalEmailService {
     if (params.descadastro) {
       const token = this.descadastro.gerarToken({ ...params.descadastro, email: params.para });
       const url = this.descadastro.urlDescadastro(token);
-      html = [html, rodapeDescadastro(url)].join('\n');
+      // O corpo do marketing costuma trazer o slot no rodapé que o autor
+      // desenhou — o link entra LÁ, herdando a cor. Sem slot, vai o bloco
+      // autônomo no fim (campanha antiga, e-mail simples).
+      html = html.includes(SLOT_DESCADASTRO)
+        ? html.split(SLOT_DESCADASTRO).join(linkDescadastroInline(url))
+        : [html, rodapeDescadastro(url)].join('\n');
       headers = {
         'List-Unsubscribe': `<${url}>`,
         // RFC 8058: com isto o provedor POSTa sozinho no clique do botão nativo,
