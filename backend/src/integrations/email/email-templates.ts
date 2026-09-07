@@ -389,6 +389,45 @@ function truncate(s: string, max: number): string {
  * escrito fora daqui (editor de campanha / nó do fluxo) e não passa pelo
  * `layout()`.
  */
+export interface PedidoRastreioParams {
+  nome: string;
+  numeroPedido: string;
+  codigo: string;
+  url: string;
+}
+
+/**
+ * Template: pedido despachado, com o código E o link.
+ *
+ * É TRANSACIONAL — não leva descadastro. Quem saiu da lista de marketing
+ * continua precisando saber onde está a encomenda que comprou.
+ *
+ * O e-mail do ERP mandava só o número do código ("O código de rastreio referente
+ * ao Pedido 42 é 6090626777959"), sem link e sem dizer o que fazer com aquilo —
+ * num pedido de equipamento industrial isso é atrito à toa.
+ */
+export function templatePedidoRastreio(p: PedidoRastreioParams): {
+  assunto: string;
+  html: string;
+} {
+  return {
+    assunto: `Seu pedido ${p.numeroPedido} foi despachado`,
+    html: layout({
+      preheader: `Código de rastreio ${p.codigo}`,
+      title: 'Seu Master Block foi despachado',
+      bodyHtml: `
+        <p style="margin:0 0 12px 0;">Olá, ${escapeHtml(p.nome)}.</p>
+        <p style="margin:0 0 12px 0;">O pedido <strong>${escapeHtml(p.numeroPedido)}</strong> saiu para entrega.</p>
+        <p style="margin:0 0 12px 0;">Código de rastreio: <strong>${escapeHtml(p.codigo)}</strong></p>
+        <p style="margin:0 0 12px 0;">Se a página pedir o código, é esse mesmo aí de cima.</p>
+        <p style="margin:0;">Qualquer dúvida sobre a entrega, é só responder este e-mail.</p>`,
+      ctaText: 'Acompanhar a entrega',
+      ctaUrl: p.url,
+      footerNote: 'Você está recebendo este e-mail porque fez um pedido conosco.',
+    }),
+  };
+}
+
 export const SLOT_DESCADASTRO = '<!-- SLOT_DESCADASTRO -->';
 
 /**

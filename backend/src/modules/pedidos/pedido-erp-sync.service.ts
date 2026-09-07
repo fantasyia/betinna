@@ -9,6 +9,7 @@ import { TinyContatosService } from '@integrations/tiny/tiny-contatos.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { PedidoComissoesService } from './pedido-comissoes.service';
 import { ContratoComodatoService } from '@modules/contratos/contrato-comodato.service';
@@ -145,6 +146,7 @@ export class PedidoErpSyncService {
     private readonly contatos: TinyContatosService,
     private readonly site: SiteStatusService,
     private readonly notificacoes: NotificacoesService,
+    private readonly emailSvc: TransactionalEmailService,
     private readonly bus: FluxoEventBusService,
     private readonly etapa: LeadEtapaSistemaService,
     private readonly comissoes: PedidoComissoesService,
@@ -676,7 +678,7 @@ export class PedidoErpSyncService {
         representanteId: true,
         rastreioCodigo: true,
         rastreioUrl: true,
-        cliente: { select: { id: true, nome: true } },
+        cliente: { select: { id: true, nome: true, email: true } },
       },
     });
     if (!p?.rastreioCodigo) return;
@@ -704,6 +706,30 @@ export class PedidoErpSyncService {
       rastreioCodigo: p.rastreioCodigo,
       rastreioUrl: p.rastreioUrl,
     });
+    // E-MAIL pro cliente, além do WhatsApp que o fluxo manda (decisão do Léo,
+    // 07/09: os dois canais). Transacional — sem descadastro. Best-effort: o
+    // aviso por e-mail não pode derrubar a sincronização do pedido, e o WhatsApp
+    // já saiu pelo evento acima.
+    if (p.cliente.email) {
+      await this.emailSvc
+        .enviarPedidoRastreio({
+          para: p.cliente.email,
+          empresaId,
+          pedidoId: p.id,
+          nome: p.cliente.nome,
+          numeroPedido: p.numeroSite ?? p.numero,
+          codigo: p.rastreioCodigo,
+          url: p.rastreioUrl,
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `[erp] pedido ${p.numero}: e-mail de rastreio falhou — ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    } else {
+      this.logger.log(`[erp] pedido ${p.numero}: cliente sem e-mail — rastreio só por WhatsApp`);
+    }
     this.logger.log(`[erp] pedido ${p.numero}: rastreio disponível (${p.rastreioCodigo})`);
   }
 

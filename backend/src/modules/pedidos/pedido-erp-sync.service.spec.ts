@@ -22,6 +22,8 @@ function build(
     pendentes?: Array<{ numeroErp: string }>;
     /** `null` = pedido com código mas SEM link de consulta. */
     rastreioUrlGravado?: string | null;
+    /** Cliente sem e-mail cadastrado — o aviso sai só por WhatsApp. */
+    clienteSemEmail?: boolean;
     /** O que está GRAVADO no pedido — `null` = pedido sem rastreio nenhum. */
     rastreioGravado?: string | null;
   } = {},
@@ -45,7 +47,11 @@ function build(
         rastreioCodigo: 'rastreioGravado' in opts ? opts.rastreioGravado : 'BR123456789BR',
         rastreioUrl:
           'rastreioUrlGravado' in opts ? opts.rastreioUrlGravado : 'https://rastreio/BR123456789BR',
-        cliente: { id: 'cli-1', nome: 'Cliente X' },
+        cliente: {
+          id: 'cli-1',
+          nome: 'Cliente X',
+          email: opts.clienteSemEmail ? null : 'cliente@x.com',
+        },
       }),
       create: vi.fn().mockResolvedValue({ id: 'ped-novo', numero: 'PED-0009' }),
       update: vi.fn().mockResolvedValue({}),
@@ -72,6 +78,7 @@ function build(
   const notificacoes = { criarParaRole: vi.fn().mockResolvedValue(1) };
   const bus = { disparar: vi.fn().mockResolvedValue(undefined) };
 
+  const emailSvc = { enviarPedidoRastreio: vi.fn().mockResolvedValue({ ok: true }) };
   const svc = new PedidoErpSyncService(
     prisma as never,
     tiny as never,
@@ -83,6 +90,9 @@ function build(
     // Aviso pro site: best-effort e sem site configurado nos testes.
     { notificar: vi.fn().mockResolvedValue(false), configurado: false } as never,
     notificacoes as never,
+    // E-mail de rastreio pro cliente (transacional). Tem assert próprio no
+    // teste do gatilho; aqui só precisa não explodir.
+    emailSvc as never,
     bus as never,
     // Marco "instalação": só anda quando a NF sai e o lead está em contrato
     // assinado. Aqui é mudo — tem teste próprio no serviço de etapa.
@@ -104,7 +114,7 @@ function build(
     // Início da cobrança do comodato (locação): tem teste próprio no serviço.
     { iniciarCobranca: vi.fn(async () => undefined) } as never,
   );
-  return { svc, prisma, tiny, notificacoes, bus, sequence };
+  return { svc, prisma, tiny, notificacoes, emailSvc, bus, sequence };
 }
 
 /** A janela padrão é de 30 dias — o pedido base é de hoje pra não vencer. */
@@ -522,6 +532,36 @@ describe('pedidos que vêm do ERP', () => {
       expect(
         bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
       ).toBeUndefined();
+    });
+
+    it('manda o e-mail de rastreio pro cliente — os DOIS canais, decisão do Léo', async () => {
+      // O e-mail do ERP mandava só o número do código. O do app leva código E
+      // link, e é transacional (sem descadastro).
+      const { svc, emailSvc } = build({ detalhe: COM_RASTREIO, pedidoExistente: semRastreio });
+
+      await svc.sincronizar('emp-1');
+
+      expect(emailSvc.enviarPedidoRastreio).toHaveBeenCalledWith(
+        expect.objectContaining({
+          codigo: 'BR123456789BR',
+          url: 'https://rastreio/BR123456789BR',
+        }),
+      );
+    });
+
+    it('cliente sem e-mail não quebra o aviso — o WhatsApp sai igual', async () => {
+      const { svc, emailSvc, bus } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: semRastreio,
+        clienteSemEmail: true,
+      });
+
+      await svc.sincronizar('emp-1');
+
+      expect(emailSvc.enviarPedidoRastreio).not.toHaveBeenCalled();
+      expect(
+        bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
+      ).toBeDefined();
     });
 
     it('dispara quando o pedido vira ENVIADO com rastreio', async () => {

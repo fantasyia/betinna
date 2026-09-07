@@ -11,6 +11,7 @@ import {
   templateOcorrenciaCritica,
   templateRecuperarSenha,
   templateReenvioConvite,
+  templatePedidoRastreio,
   rodapeDescadastro,
   linkDescadastroInline,
   SLOT_DESCADASTRO,
@@ -124,6 +125,33 @@ export class TransactionalEmailService {
       this.logger.error(`E-mail falhou (Resend) · ${ctx} · ${motivo}`);
       return { ok: false, motivo };
     }
+  }
+
+  /**
+   * Pedido despachado — código E link, TRANSACIONAL (sem descadastro).
+   *
+   * Um por pedido: a chave de idempotência é o próprio pedido, e o Resend
+   * deduplica por 24h. O evento que chama isto já é uma transição única
+   * (pedido VIRA enviado), então o reenvio só aconteceria por retry.
+   */
+  async enviarPedidoRastreio(params: {
+    para: string;
+    empresaId: string;
+    pedidoId: string;
+    nome: string;
+    numeroPedido: string;
+    codigo: string;
+    url: string;
+  }) {
+    const { assunto, html } = templatePedidoRastreio(params);
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `rastreio:${params.pedidoId}`,
+      params.empresaId,
+    );
   }
 
   // ─── E-mail ad-hoc (sem template fixo) ───────────────────────────────
