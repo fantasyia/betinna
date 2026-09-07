@@ -504,7 +504,10 @@ export function templatePedidoRastreio(p: PedidoRastreioParams): {
     html: layout({
       marca: p.marca,
       preheader: `Código de rastreio ${p.codigo}`,
-      title: 'Seu Master Block foi despachado',
+      // NADA de nome de produto aqui: este template serve qualquer tenant, e
+      // "Master Block" é da Somatec. Escapou uma vez porque não tem a palavra
+      // "Somatec" — é a mesma classe do risco de hardcodar marca.
+      title: `Seu pedido ${escapeHtml(p.numeroPedido)} foi despachado`,
       bodyHtml: `
         <p style="margin:0 0 12px 0;">Olá, ${escapeHtml(p.nome)}.</p>
         <p style="margin:0 0 12px 0;">O pedido <strong>${escapeHtml(p.numeroPedido)}</strong> saiu para entrega.</p>
@@ -534,13 +537,21 @@ export function linkDescadastroInline(url: string): string {
 
 /** Bloco autônomo — pro corpo que NÃO tem o slot (campanha antiga, e-mail simples). */
 export function rodapeDescadastro(url: string): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:16px auto 0;">
+  // Duas tabelas de propósito: o Outlook desktop renderiza com o motor do WORD,
+  // que descarta `margin` e `max-width` em <table>. Sem a externa, o bloco cola
+  // no conteúdo de cima e encosta à esquerda; sem o `width="600"` ATRIBUTO (não
+  // CSS) na interna, ele estica além da largura do e-mail em tela larga.
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+  <tr><td align="center" style="padding-top:16px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="width:100%;max-width:600px;">
   <tr><td style="padding:12px 28px 20px 28px;border-top:1px solid ${COLOR_BORDER};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
     <p style="margin:0;font-size:11px;color:${COLOR_MUTED};line-height:1.5;">
       Não quer mais receber estes e-mails?
       <a href="${escapeAttr(url)}" style="color:${COLOR_MUTED};text-decoration:underline;">Cancelar o envio</a>.
       Avisos sobre pedidos que você fizer continuam chegando.
     </p>
+  </td></tr>
+</table>
   </td></tr>
 </table>`;
 }

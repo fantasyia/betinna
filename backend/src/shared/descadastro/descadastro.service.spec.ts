@@ -123,6 +123,19 @@ describe('onde o link entra no corpo do e-mail', () => {
     expect(bloco).toContain('Cancelar o envio');
     expect(bloco).toContain('Avisos sobre pedidos');
   });
+
+  it('o bloco sobrevive ao Outlook: largura por ATRIBUTO e espaço por padding', async () => {
+    // O Outlook desktop renderiza com o motor do Word, que descarta `margin` e
+    // `max-width` em <table> — o bloco colava no conteúdo de cima e esticava
+    // além da largura do e-mail.
+    const { rodapeDescadastro } = await import('@integrations/email/email-templates');
+
+    const bloco = rodapeDescadastro('https://x/desc');
+
+    expect(bloco).toContain('width="600"');
+    expect(bloco).toContain('padding-top:16px');
+    expect(bloco).not.toContain('margin:16px');
+  });
 });
 
 describe('layout com a marca do tenant', () => {
@@ -140,6 +153,21 @@ describe('layout com a marca do tenant', () => {
 
     expect(html).toContain('Betinna.ai');
     expect(html).not.toContain('background-image');
+  });
+
+  it('NÃO cita produto de tenant nenhum — o template serve todos', async () => {
+    // "Master Block" é da Somatec; num app multi-tenant o título tem que ser
+    // neutro. Escapou uma vez porque não tem a palavra "Somatec".
+    const { templatePedidoRastreio } = await import('@integrations/email/email-templates');
+
+    const { assunto, html } = templatePedidoRastreio({
+      nome: 'Fulano',
+      numeroPedido: 'SB1',
+      codigo: 'BR1',
+      url: 'https://x',
+    });
+
+    expect(`${assunto} ${html}`).not.toMatch(/master block/i);
   });
 
   it('com marca: usa cor, logo e o laranja da AÇÃO no botão', async () => {
