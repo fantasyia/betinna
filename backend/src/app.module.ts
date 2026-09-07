@@ -55,6 +55,7 @@ import { InboxInternaModule } from '@modules/inbox-interna/inbox-interna.module'
 import { WhatsappPacingModule } from '@shared/whatsapp-pacing/whatsapp-pacing.module';
 import { SupressaoModule } from '@shared/supressao/supressao.module';
 import { DescadastroModule } from '@shared/descadastro/descadastro.module';
+import { BrandingModule } from '@shared/branding/branding.module';
 import { EmpresasModule } from '@modules/empresas/empresas.module';
 import { HealthModule } from '@modules/health/health.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
@@ -234,6 +235,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     WhatsappPacingModule,
     SupressaoModule,
     DescadastroModule,
+    BrandingModule,
     MateriaisModule,
     DevolucoesModule,
     InboxInternaModule,

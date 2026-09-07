@@ -18,6 +18,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { isGlobalAdmin } from '@shared/utils/auth-context';
 import { buildPaginated, type Paginated } from '@shared/types/pagination';
+import { BrandingService } from '@shared/branding/branding.service';
 import type {
   CreateUserDto,
   ListUsersDto,
@@ -46,6 +47,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
+    private readonly branding: BrandingService,
     private readonly redis: RedisService,
     private readonly email: TransactionalEmailService,
     private readonly evolutionInstancias: EvolutionInstanciaService,
@@ -77,6 +79,20 @@ export class UsersService {
     const cors = this.env.get('CORS_ORIGINS').split(',')[0]?.trim();
     const base = (cors ?? 'http://localhost:5173').replace(/\/$/, '');
     return `${base}/welcome`;
+  }
+
+  /**
+   * Mesma coisa, mas pelo domínio DO TENANT quando ele tem um.
+   *
+   * `FRONTEND_URL` é uma só no ambiente. Com white-label no ar, o convite do
+   * representante da Somatec sairia apontando pro domínio do outro tenant: o
+   * link abre, mas com a marca errada — e o Supabase só respeita `redirect_to`
+   * que esteja na allowlist, então pode nem chegar lá.
+   */
+  private async inviteRedirectDoTenant(empresaId?: string): Promise<string> {
+    if (!empresaId) return this.resolveInviteRedirectUrl();
+    const base = await this.branding.urlDoApp(empresaId).catch(() => '');
+    return base ? `${base.replace(/\/$/, '')}/welcome` : this.resolveInviteRedirectUrl();
   }
 
   /**
@@ -300,7 +316,9 @@ export class UsersService {
     }
 
     // 3) Cria no Supabase Auth (envia convite por e-mail)
-    const redirectTo = this.resolveInviteRedirectUrl();
+    // Domínio DO TENANT: o rep da Somatec recebe link de app.somatecblocking,
+    // não do domínio padrão (ver `inviteRedirectDoTenant`).
+    const redirectTo = await this.inviteRedirectDoTenant(dto.empresaIds[0]);
     const { data: authData, error } = await this.supabaseAdmin.auth.admin.inviteUserByEmail(
       dto.email,
       { data: { nome: dto.nome, role: dto.role }, redirectTo },
@@ -609,7 +627,7 @@ export class UsersService {
     // registered". A solução é usar `generateLink({ type: 'invite' })` que
     // aceita user existente — porém o Supabase NÃO envia email automático
     // pra esse método, então enviamos manualmente via Resend.
-    const redirectTo = this.resolveInviteRedirectUrl();
+    const redirectTo = await this.inviteRedirectDoTenant(userScope.empresas?.[0]?.empresaId);
     let { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email: userScope.email,

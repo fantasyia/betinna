@@ -210,9 +210,11 @@ describe('layout com a marca do tenant', () => {
     });
 
     expect(html).toContain('#00416E');
-    // O botão é o laranja da ação, não a cor primária — regra específica da
-    // Somatec ("laranja marca a informação que importa").
-    expect(html).toContain('background:#F39200');
+    // O botão é o laranja da AÇÃO, não a cor primária — regra específica da
+    // Somatec ("laranja marca a informação que importa"). Sem pinar a
+    // propriedade CSS: o Estúdio passou a repetir a cor no atributo `bgcolor`
+    // (sem ele o botão some no Outlook), e o teste não pode brigar com isso.
+    expect(html).toMatch(/bgcolor="#F39200"|background(-color)?:#F39200/);
     expect(html).toContain('logo-somatec-white.png');
   });
 });

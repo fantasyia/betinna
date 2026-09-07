@@ -136,6 +136,9 @@ describe('UsersService', () => {
     service = new UsersService(
       prisma as never,
       env as never,
+      // Domínio do tenant pro link do convite: sem branding próprio, cai no
+      // FRONTEND_URL (é o comportamento que os testes daqui esperam).
+      { urlDoApp: vi.fn().mockResolvedValue('') } as never,
       redis as never,
       {
         enviarBoasVindas: vi.fn().mockResolvedValue({ ok: true }),
@@ -698,6 +701,7 @@ describe('UsersService', () => {
       const serviceEmailFail = new UsersService(
         prisma as never,
         env as never,
+        { urlDoApp: vi.fn().mockResolvedValue('') } as never,
         redis as never,
         {
           enviarBoasVindas: vi
@@ -934,6 +938,7 @@ describe('UsersService.resendInvite — link na resposta', () => {
     const svc = new UsersService(
       prisma as never,
       makeEnv() as never,
+      { urlDoApp: vi.fn().mockResolvedValue('') } as never,
       makeRedis() as never,
       {
         enviarReenvioConvite: vi

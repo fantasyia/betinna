@@ -13,6 +13,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { addBreadcrumb } from '@shared/observability/sentry';
+import { BrandingService } from '@shared/branding/branding.service';
 
 /**
  * Sessão de auth via cookie httpOnly (D47 — 2026-05-17).
@@ -71,6 +72,7 @@ export class AuthSessionService {
     private readonly prisma: PrismaService,
     private readonly email: TransactionalEmailService,
     private readonly redis: RedisService,
+    private readonly branding: BrandingService,
   ) {
     this.supabaseAdmin = createClient(
       this.env.get('SUPABASE_URL'),
@@ -260,7 +262,10 @@ export class AuthSessionService {
 
       const usuario = await this.prisma.usuario.findFirst({
         where: { email: alvo },
-        select: { nome: true, status: true },
+        // A empresa entra pro link sair no domínio DO TENANT: com white-label
+        // no ar, `FRONTEND_URL` (uma só) mandaria o rep da Somatec pro domínio
+        // do outro — com a marca errada, e talvez fora da allowlist do Supabase.
+        select: { nome: true, status: true, empresas: { select: { empresaId: true }, take: 1 } },
       });
       // Desligado não redefine senha — seria porta de volta pra quem saiu.
       if (!usuario || usuario.status === 'INATIVO') {
@@ -303,8 +308,11 @@ export class AuthSessionService {
       } else {
         this.logger.log(`[reset] ${alvo}: reenviando o MESMO link (ainda válido)`);
       }
+      const baseApp = await this.branding
+        .urlDoApp(usuario.empresas?.[0]?.empresaId)
+        .catch(() => this.env.get('FRONTEND_URL') ?? '');
       const resetUrl =
-        `${this.env.get('FRONTEND_URL')}/welcome` +
+        `${(baseApp || this.env.get('FRONTEND_URL') || '').replace(/\/+$/, '')}/welcome` +
         `?token_hash=${encodeURIComponent(tokenHash)}&type=recovery`;
 
       const enviado = await this.email.enviarRecuperacaoSenha({

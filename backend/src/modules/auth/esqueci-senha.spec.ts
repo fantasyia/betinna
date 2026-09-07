@@ -44,6 +44,9 @@ const build = (
     redis,
     email,
     env,
+    // Domínio do tenant pro link: vazio = cai no FRONTEND_URL, que é o que
+    // estes testes assertam.
+    branding: { urlDoApp: vi.fn().mockResolvedValue('') },
     supabaseAdmin: { auth: { admin: { generateLink } } },
     logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
   });

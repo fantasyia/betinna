@@ -311,6 +311,54 @@ const vendasSchema = z
  * `empresa-logos`). Aqui ficam só as cores e a linha de rodapé, que são
  * decisão de marca e mudam sem trocar arquivo.
  */
+/**
+ * WHITE-LABEL por tenant: como o app se apresenta pra ESTA empresa.
+ *
+ * Separado do `marca` (que é documento/PDF/e-mail) porque o que manda aqui é o
+ * DOMÍNIO: é por ele que a tela de login descobre de quem é a marca, antes de
+ * existir usuário logado. Dois tenants com domínios diferentes veem marcas
+ * diferentes ao mesmo tempo — um não interfere no outro.
+ */
+const brandingSchema = z
+  .object({
+    /** Nome por extenso: título de página, e-mail, PWA. */
+    nome: z.string().max(80).nullable().optional(),
+    /** Nome curto: aba do navegador e ícone do celular. */
+    nomeCurto: z.string().max(24).nullable().optional(),
+    /**
+     * Domínio próprio, sem esquema (ex.: `app.somatecblocking.com.br`).
+     * É a CHAVE do white-label — sem ele o tenant usa o domínio padrão e a
+     * marca só aparece depois do login.
+     */
+    dominio: z.string().max(120).nullable().optional(),
+    /** Logo em URL pública e estável (o app não resolve path de Storage aqui). */
+    logoUrl: z.string().url().max(300).nullable().optional(),
+    cores: z
+      .object({
+        primaria: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable()
+          .optional(),
+        secundaria: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable()
+          .optional(),
+        /** Cor da AÇÃO (botão principal). */
+        acao: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable()
+          .optional(),
+      })
+      .partial()
+      .nullable()
+      .optional(),
+  })
+  .partial()
+  .optional();
+
 const marcaSchema = z
   .object({
     /** Títulos, cabeçalho de tabela e números. Hex, ex. "#00416E". */
@@ -427,6 +475,7 @@ export const tenantConfigPatchSchema = z
     comissaoOriginacao: comissaoOriginacaoSchema.nullable(),
     vendas: vendasSchema.nullable(),
     marca: marcaSchema.nullable(),
+    branding: brandingSchema.nullable(),
     funilEtapas: funilEtapasSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
