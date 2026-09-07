@@ -1877,10 +1877,13 @@ server.registerTool(
   "fluxos_atualizar",
   {
     description:
-      "Atualiza um fluxo: nome/descrição/trigger e/ou FULL-REPLACE de nós e arestas (quando " +
-      "fornecidos, substituem TODOS os existentes). Funciona em RASCUNHO, ATIVO e PAUSADO — SÓ " +
-      "recusa ARQUIVADO (use fluxos_desarquivar antes). Editar um fluxo ATIVO o rebaixa pra " +
-      "RASCUNHO automaticamente (o Léo reativa depois de revisar). Nunca ativa sozinho.",
+      "Atualiza um fluxo: nome/descrição/remetente/trigger e/ou FULL-REPLACE de nós e arestas " +
+      "(quando fornecidos, substituem TODOS os existentes). Funciona em RASCUNHO, ATIVO e " +
+      "PAUSADO — SÓ recusa ARQUIVADO (use fluxos_desarquivar antes). Nunca ativa sozinho. " +
+      "⚠️ O rebaixamento ATIVO→RASCUNHO (que também cancela as execuções em voo) acontece " +
+      "SÓ quando você manda o GRAFO (`nos`+`arestas`). Mexer só em campo solto — nome, " +
+      "descrição, remetenteEmail, trigger — é update parcial: grafo e status ficam intactos, " +
+      "e a régua ATIVA continua rodando.",
     inputSchema: {
       fluxoId: z.string(),
       nome: z.string().min(1).max(150).optional(),

@@ -261,6 +261,12 @@
   `claude mcp add betinna-kanban --env BETINNA_API_URL=... --env BETINNA_API_TOKEN=bkt_... --
   node mcp-server/dist/index.js`. Fluxo: card por batch; Claude move "Em execução"→"Concluído"
   e comenta o resumo via `kanban_mover_card`/`kanban_comentar_card`.
+- ⚠️ **`fluxos_atualizar` só rebaixa ATIVO→RASCUNHO quando o GRAFO vai junto** (`nos`+`arestas`,
+  que é full-replace e cancela execuções em voo — `fluxos.service.ts`, `if (existing.status ===
+  'ATIVO' && grafo)`). Campo solto (nome, descrição, `remetenteEmail`, trigger) é update parcial:
+  grafo e status intactos, régua ativa segue rodando. A descrição da tool dizia o contrário e
+  custou trabalho a uma sessão — editar fluxo ATIVO por Prisma direto pra "não rebaixar" é
+  desnecessário.
 - [x] Frontend: `/kanban` (grade), `/kanban/:boardId` (dnd-kit + polling 15s c/ guard de
   visibilidade e pausa no drag + alternador de views + filtros), modal do card,
   `/kanban/meus-itens`, `/kanban/tokens`. Módulo de permissão = `quadros` (`kanban` é o
