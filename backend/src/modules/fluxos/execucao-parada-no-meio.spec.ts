@@ -44,17 +44,20 @@ const parada = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** Alerta in-app de quem não pôde ser retomado — o "alguém precisa olhar". */
+const notificacoes = { criarParaRole: vi.fn().mockResolvedValue(undefined) };
+
 const makeJob = (prisma: ReturnType<typeof makePrisma>, bus: Record<string, unknown>) =>
   new FluxoTriggersJob(
     prisma as never,
-    {} as never,
+    { criarParaRole: notificacoes.criarParaRole } as never,
     bus as never,
     { get: () => 'production' } as never,
     { acquire: vi.fn().mockResolvedValue(true) } as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
+    notificacoes as never,
+    notificacoes as never,
+    notificacoes as never,
+    notificacoes as never,
   );
 
 const makeBus = (vivos: string[] = []) => ({
@@ -67,6 +70,7 @@ describe('FluxoTriggersJob — execução parada no meio', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
+    notificacoes.criarParaRole.mockClear();
   });
 
   it('RETOMA do ponto onde parou, usando os sucessores gravados no claim', async () => {
@@ -114,6 +118,11 @@ describe('FluxoTriggersJob — execução parada no meio', () => {
     expect(falhou).toBeDefined();
     expect((falhou![0] as { data: { erroMsg: string } }).data.erroMsg).toContain(
       'Mover → Em conversa',
+    );
+    // O que NÃO deu pra retomar vira alerta: o lead ficou sem resposta e
+    // alguém precisa abrir a conversa.
+    expect(notificacoes.criarParaRole).toHaveBeenCalledWith(
+      expect.objectContaining({ roles: ['ADMIN', 'DIRECTOR'] }),
     );
   });
 

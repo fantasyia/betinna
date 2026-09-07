@@ -337,6 +337,7 @@ export class FluxoTriggersJob {
       },
       select: {
         id: true,
+        empresaId: true,
         contexto: true,
         fluxo: { select: { nome: true } },
         logs: {
@@ -349,7 +350,7 @@ export class FluxoTriggersJob {
     });
 
     let retomadas = 0;
-    let desistidas = 0;
+    const desistidas: Array<{ empresaId: string; descricao: string }> = [];
     for (const e of candidatas) {
       if (vivos.has(e.id)) continue;
       const ultimo = e.logs[0];
@@ -380,7 +381,8 @@ export class FluxoTriggersJob {
               `O lead ficou sem resposta a partir daí.`,
           },
         });
-        desistidas += r.count;
+        if (r.count > 0)
+          desistidas.push({ empresaId: e.empresaId, descricao: `${e.fluxo.nome} (${e.id})` });
         continue;
       }
 
@@ -406,14 +408,30 @@ export class FluxoTriggersJob {
       }
     }
 
-    // ALARME: os dois casos são anomalia — nenhum deles é rotina. Fica em ERROR
-    // porque, sem isso, o único jeito de descobrir era alguém reler a conversa.
-    if (retomadas > 0 || desistidas > 0) {
+    // ALARME: os dois casos são anomalia — nenhum deles é rotina.
+    if (retomadas > 0 || desistidas.length > 0) {
       this.logger.error(
-        `[fila] ${retomadas} execução(ões) PARADA(S) no meio retomada(s) e ${desistidas} sem retomada ` +
-          `(marcadas FALHOU). Estado 'EM_EXECUCAO sem job, sem turno e sem nó aguardando' não deveria ` +
-          `existir — se repetir, é bug de navegação no motor, não do fluxo.`,
+        `[fila] ${retomadas} execução(ões) PARADA(S) no meio retomada(s) e ${desistidas.length} sem ` +
+          `retomada (marcadas FALHOU). Estado 'EM_EXECUCAO sem job, sem turno e sem nó aguardando' ` +
+          `não deveria existir — se repetir, é bug de navegação no motor, não do fluxo.`,
       );
+    }
+    // Só o que NÃO deu pra retomar vira notificação: aí alguém precisa abrir a
+    // conversa, porque o lead ficou sem resposta. Retomada com sucesso não
+    // incomoda ninguém — se virasse alerta, o alerta perderia o valor.
+    for (const d of desistidas.slice(0, 5)) {
+      await this.notificacoes
+        .criarParaRole({
+          empresaId: d.empresaId,
+          tipo: 'GENERICO',
+          titulo: '🔴 Conversa parada no meio de um fluxo',
+          mensagem:
+            `Uma execução de "${d.descricao}" parou depois de um passo e não pôde ser retomada. ` +
+            `O lead ficou sem resposta — abra a conversa e responda na mão.`,
+          link: '/fluxos',
+          roles: ['ADMIN', 'DIRECTOR'],
+        })
+        .catch(() => null);
     }
   }
 
