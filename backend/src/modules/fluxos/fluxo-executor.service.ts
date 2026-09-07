@@ -1783,15 +1783,31 @@ export class FluxoExecutorService {
       }
     }
     if (!responsavelId) {
+      // Fallback = "ninguém específico é dono disto": nem o nó, nem o cliente,
+      // nem o lead tinham responsável. Isso quase sempre é lacuna de
+      // configuração, e o dono certo é quem toca a plataforma: ADMIN antes de
+      // DIRECTOR, e entre iguais o mais antigo. O `orderBy` é o contrato — sem
+      // ele o `findFirst` devolvia a ordem física do heap, e bastava um UPDATE
+      // na tabela pra tarefa de motor passar a cair no comercial, em silêncio
+      // (medido em 06/09: dois elegíveis com papéis opostos, resultado estável
+      // por sorte).
       const admin = await this.prisma.usuario.findFirst({
         where: {
           empresas: { some: { empresaId } },
           role: { in: ['ADMIN', 'DIRECTOR'] },
           status: 'ATIVO',
         },
-        select: { id: true },
+        select: { id: true, nome: true, role: true },
+        // 'ADMIN' < 'DIRECTOR' na ordem alfabética — é isso que põe o ADMIN na frente.
+        orderBy: [{ role: 'asc' }, { criadoEm: 'asc' }],
       });
       responsavelId = admin?.id;
+      if (admin) {
+        this.logger.warn(
+          `CRIAR_TAREFA sem responsável (nó/cliente/lead) — caiu no fallback ` +
+            `${admin.role} ${admin.nome} (passo ${idemBase}). Confira a configuração do nó.`,
+        );
+      }
     }
     if (!responsavelId) throw new Error('Nenhum usuário elegível para CRIAR_TAREFA');
 

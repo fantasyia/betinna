@@ -1528,6 +1528,35 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('fallback ADMIN/DIRECTOR tem ORDEM definida e avisa no log — não é o heap que escolhe', async () => {
+      // Sem orderBy, `findFirst` devolve a ordem física da tabela: bastava um
+      // UPDATE em Usuario pra tarefa de motor passar a cair no comercial, em
+      // silêncio (06/09: dois elegíveis com papéis opostos, estável por sorte).
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'CRIAR_TAREFA',
+        config: { titulo: 'Conferir prompt' },
+      });
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'admin-1', nome: 'Somatec', role: 'ADMIN' });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      const warn = vi.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).resolves.toBeUndefined();
+
+      expect(prisma.usuario.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ role: { in: ['ADMIN', 'DIRECTOR'] } }),
+          orderBy: [{ role: 'asc' }, { criadoEm: 'asc' }],
+        }),
+      );
+      // cair no fallback é lacuna de configuração — tem que aparecer
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/caiu no fallback ADMIN Somatec/));
+    });
+
     it('o erro NOMEIA a variável que faltou — senão não dá pra achar o nó', async () => {
       const acaoNo = fakeNo({
         id: 'no-email',

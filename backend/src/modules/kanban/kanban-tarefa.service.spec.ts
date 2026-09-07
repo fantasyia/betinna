@@ -468,3 +468,31 @@ describe('KanbanTarefaService — migração das relações ao virar espelho', (
     expect(prisma.kanbanCardMembro.deleteMany).toHaveBeenCalled();
   });
 });
+
+describe('KanbanTarefaService.garantirQuadroDiretor — dono do quadro', () => {
+  it('escolhe ADMIN antes de DIRECTOR, mais antigo primeiro — nunca a ordem do heap', async () => {
+    // Escolha única na vida da empresa, mas com o mesmo contrato do fallback do
+    // CRIAR_TAREFA. Sem orderBy é "primeiro" por acidente.
+    const prisma = {
+      kanbanBoard: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'board-1' }),
+      },
+      usuario: { findFirst: vi.fn().mockResolvedValue({ id: 'admin-1' }) },
+      kanbanLista: {
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue({ id: 'lista-1' }),
+      },
+    };
+    const svc = new KanbanTarefaService(prisma as never);
+
+    await svc.garantirQuadroDiretor('emp-1').catch(() => undefined);
+
+    expect(prisma.usuario.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ role: { in: ['ADMIN', 'DIRECTOR'] } }),
+        orderBy: [{ role: 'asc' }, { criadoEm: 'asc' }],
+      }),
+    );
+  });
+});

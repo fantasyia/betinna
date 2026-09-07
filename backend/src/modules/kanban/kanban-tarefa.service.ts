@@ -104,6 +104,10 @@ export class KanbanTarefaService {
       return { boardId: existente.id, listas };
     }
 
+    // Escolha única na vida da empresa (o quadro só nasce uma vez), mas com o
+    // mesmo contrato do fallback do CRIAR_TAREFA: ADMIN antes de DIRECTOR, e
+    // entre iguais o mais antigo. Sem `orderBy`, `findFirst` é a ordem física
+    // do heap — "primeiro" por acidente, não por regra.
     const dono = await this.prisma.usuario.findFirst({
       where: {
         empresas: { some: { empresaId } },
@@ -111,6 +115,7 @@ export class KanbanTarefaService {
         status: 'ATIVO',
       },
       select: { id: true },
+      orderBy: [{ role: 'asc' }, { criadoEm: 'asc' }],
     });
     if (!dono) {
       this.logger.warn(
