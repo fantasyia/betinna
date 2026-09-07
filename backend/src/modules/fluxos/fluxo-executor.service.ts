@@ -1359,7 +1359,8 @@ export class FluxoExecutorService {
         );
 
       case 'ENVIAR_EMAIL':
-        return this.acaoEnviarEmail(cfg as EnviarEmailConfig, ctx, empresaId, idemBase);
+        // `no.fluxoId` e não um parâmetro novo: o nó já sabe de qual fluxo é.
+        return this.acaoEnviarEmail(cfg as EnviarEmailConfig, ctx, empresaId, idemBase, no.fluxoId);
 
       case 'CRIAR_TAREFA':
         return this.acaoCriarTarefa(cfg as CriarTarefaConfig, ctx, empresaId, idemBase);
@@ -1650,6 +1651,7 @@ export class FluxoExecutorService {
     ctx: ExecucaoContexto,
     empresaId: string,
     idemBase: string,
+    fluxoId?: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_EMAIL');
     let emails = await this.resolverDestinatarios(cfg, ctx, empresaId);
@@ -1710,6 +1712,12 @@ export class FluxoExecutorService {
       ctx['leadId'] as string | undefined,
       ctx['clienteId'] as string | undefined,
     );
+    // Endereço de envio DESTE fluxo. Vazio = o do ambiente (o de hoje), então
+    // fluxo antigo não muda de comportamento. Existe pra régua fria sair de um
+    // subdomínio próprio: reclamação de spam numa base de 30 mil derruba a
+    // reputação do domínio, e quem para de chegar junto é o transacional —
+    // confirmação de pedido, rastreio, senha.
+    const remetenteEmail = await this.remetenteDoFluxo(fluxoId);
     for (const para of emails) {
       const ehContato = !!emailContatoLgpd && para.trim().toLowerCase() === emailContatoLgpd;
       const r = await this.emailSvc.enviarHtmlLivre({
@@ -1717,7 +1725,8 @@ export class FluxoExecutorService {
         assunto,
         html: corpo,
         idempotencyKey: `${idemBase}:${para}`,
-        empresaId, // remetente por-tenant (Empresa.config.emailTransacional)
+        empresaId, // nome de exibição e reply-to por-tenant (Empresa.config.emailTransacional)
+        ...(remetenteEmail ? { remetenteEmail } : {}),
         ...(ehContato
           ? {
               descadastro: {
@@ -1734,6 +1743,30 @@ export class FluxoExecutorService {
       if (r.id) messageIds.push(r.id);
     }
     return { destinatarios: emails, assunto, messageIds };
+  }
+
+  /**
+   * Endereço de envio configurado no fluxo (null = o do ambiente).
+   *
+   * Lido aqui, e não junto com o nó: só o ENVIAR_EMAIL precisa, e carregar o
+   * fluxo em todo passo custaria uma consulta por nó de todo fluxo do sistema.
+   * Falha de leitura NÃO derruba o envio — cai no remetente padrão, que é o
+   * comportamento de antes deste campo existir.
+   */
+  private async remetenteDoFluxo(fluxoId?: string): Promise<string | undefined> {
+    if (!fluxoId) return undefined;
+    try {
+      const f = await this.prisma.fluxo.findUnique({
+        where: { id: fluxoId },
+        select: { remetenteEmail: true },
+      });
+      return f?.remetenteEmail?.trim() || undefined;
+    } catch (err) {
+      this.logger.warn(
+        `Remetente do fluxo ${fluxoId} não resolveu (${String(err)}) — usando o padrão do ambiente`,
+      );
+      return undefined;
+    }
   }
 
   /**

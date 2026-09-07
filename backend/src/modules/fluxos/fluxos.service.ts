@@ -31,6 +31,8 @@ export interface ExportedFluxo {
   tipo: 'fluxo';
   nome: string;
   descricao: string | null;
+  /** Endereço de envio deste fluxo (null = o do ambiente). */
+  remetenteEmail: string | null;
   triggerTipo: string | null;
   triggerConfig: Record<string, unknown> | null;
   nos: Array<{
@@ -474,6 +476,7 @@ export class FluxosService {
           usuarioId,
           nome: dto.nome,
           descricao: dto.descricao ?? null,
+          remetenteEmail: dto.remetenteEmail ?? null,
           triggerTipo: dto.triggerTipo ?? null,
           triggerConfig: dto.triggerConfig ? toJson(dto.triggerConfig) : Prisma.JsonNull,
           status: 'RASCUNHO',
@@ -778,6 +781,7 @@ export class FluxosService {
       const updateData: Prisma.FluxoUpdateInput = { versao: { increment: 1 } };
       if (dto.nome !== undefined) updateData.nome = dto.nome;
       if (dto.descricao !== undefined) updateData.descricao = dto.descricao;
+      if (dto.remetenteEmail !== undefined) updateData.remetenteEmail = dto.remetenteEmail;
       if (dto.triggerTipo !== undefined) updateData.triggerTipo = dto.triggerTipo;
       if (dto.triggerConfig !== undefined) {
         updateData.triggerConfig = dto.triggerConfig
@@ -1062,6 +1066,7 @@ export class FluxosService {
       tipo: 'fluxo',
       nome: f.nome,
       descricao: f.descricao,
+      remetenteEmail: f.remetenteEmail,
       triggerTipo: f.triggerTipo,
       triggerConfig: (f.triggerConfig ?? null) as Record<string, unknown> | null,
       nos: f.nos.map((n) => ({
@@ -1127,6 +1132,7 @@ export class FluxosService {
     const fluxo = await this.create(user, {
       nome: dto.nome,
       descricao: dto.descricao ?? undefined,
+      remetenteEmail: dto.remetenteEmail ?? undefined,
       triggerTipo: dto.triggerTipo ?? undefined,
       triggerConfig: dto.triggerConfig ?? undefined,
       nos,

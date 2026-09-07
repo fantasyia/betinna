@@ -1943,6 +1943,15 @@ model Fluxo {
   triggerTipo   FluxoTriggerTipo?
   /// Config extra do trigger: p.ex. { cronExpr: "0 9 * * 1", diasInativo: 30 }
   triggerConfig Json?
+  /// Endereço de ENVIO dos e-mails deste fluxo. null = `RESEND_FROM_EMAIL` do
+  /// ambiente (o de hoje). Existe pra separar reputação: régua fria mira base
+  /// de 30 mil, e reclamação de spam nessa escala derruba a entrega do
+  /// TRANSACIONAL — confirmação de pedido, rastreio, senha — que sai do mesmo
+  /// domínio. Quem se muda pro subdomínio é a régua; o transacional fica na
+  /// raiz, onde a reputação é limpa.
+  /// ⚠️ O domínio precisa estar VERIFICADO no Resend, senão todo envio do fluxo
+  /// falha — a validação de formato aqui não garante isso.
+  remetenteEmail String?
   criadoEm      DateTime          @default(now())
   atualizadoEm  DateTime          @updatedAt
 

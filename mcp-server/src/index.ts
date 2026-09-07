@@ -1630,6 +1630,8 @@ interface FluxoResumo {
   status: string;
   triggerTipo: string | null;
   descricao?: string | null;
+  /** De onde os e-mails deste fluxo saem (null = padrão do sistema). */
+  remetenteEmail?: string | null;
 }
 
 // ─── Leitura ─────────────────────────────────────────────────────────────
@@ -1883,6 +1885,17 @@ server.registerTool(
       fluxoId: z.string(),
       nome: z.string().min(1).max(150).optional(),
       descricao: z.string().max(500).optional(),
+      remetenteEmail: z
+        .string()
+        .email()
+        .nullable()
+        .optional()
+        .describe(
+          "Endereço de onde os e-mails DESTE fluxo saem. `null` volta pro padrão do sistema. " +
+            "Serve pra separar reputação: régua fria num subdomínio próprio, transacional " +
+            "(pedido, rastreio, senha) no domínio raiz. O domínio precisa estar VERIFICADO no " +
+            "provedor — senão todo envio do fluxo falha.",
+        ),
       triggerTipo: FLUXO_TRIGGER_TIPO.optional(),
       triggerConfig: z.record(z.unknown()).optional(),
       nos: z
@@ -1914,7 +1927,7 @@ server.registerTool(
       );
       if (Object.keys(definidos).length === 0) {
         return erro(
-          "Informe pelo menos um campo (nome, descricao, triggerTipo, nos, arestas)",
+          "Informe pelo menos um campo (nome, descricao, remetenteEmail, triggerTipo, nos, arestas)",
         );
       }
       const f = await api.put<FluxoResumo>(`/fluxos/${fluxoId}`, definidos);
@@ -1922,6 +1935,7 @@ server.registerTool(
         id: f.id,
         nome: f.nome,
         status: f.status,
+        remetenteEmail: f.remetenteEmail ?? null,
         atualizado: Object.keys(definidos),
       });
     },

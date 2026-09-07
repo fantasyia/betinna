@@ -66,6 +66,15 @@ export function useFluxoEditor({
     return () => marcarSujo('fluxo-editor', false);
   }, [dirty]);
   const [name, setName] = useState('');
+  /**
+   * Endereço de envio DESTE fluxo (vazio = o do ambiente).
+   *
+   * Existe pra separar reputação de e-mail: régua fria sai de um subdomínio
+   * próprio, e o transacional — confirmação de pedido, rastreio, senha — fica
+   * no domínio raiz. Antes disto o endereço era um só pra instância inteira, e
+   * reclamação de spam na prospecção derrubava a entrega de quem já comprou.
+   */
+  const [remetenteEmail, setRemetenteEmail] = useState('');
   const [triggerTipo, setTriggerTipo] = useState<TriggerTipo | ''>('');
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, Edge> | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -150,6 +159,7 @@ export function useFluxoEditor({
     if (!data) return;
     const hidratado = hidratarFluxo(data);
     setName(hidratado.name);
+    setRemetenteEmail(data?.remetenteEmail ?? '');
     setTriggerTipo(hidratado.triggerTipo);
     setNodes(hidratado.nodes);
     setEdges(hidratado.edges);
@@ -298,7 +308,11 @@ export function useFluxoEditor({
     const eraAtivo = data?.status === 'ATIVO';
     try {
       const payload = serializarFluxo(nodes, edges, name, triggerTipo);
-      await api.put(`/fluxos/${fluxoId}`, payload);
+      // Vazio vira null: apagar o campo é como a pessoa diz "volta pro padrão".
+      await api.put(`/fluxos/${fluxoId}`, {
+        ...payload,
+        remetenteEmail: remetenteEmail.trim() || null,
+      });
       setDirty(false);
       if (eraAtivo) {
         // Aviso pegajoso com ação: sem isso o gestor salvava um ajuste de texto,
@@ -553,6 +567,7 @@ export function useFluxoEditor({
     selectedNodeId,
     selectedNode,
     name,
+    remetenteEmail,
     triggerTipo,
     dirty,
     saving,
@@ -563,6 +578,7 @@ export function useFluxoEditor({
     canRedo,
     // setters expostos
     setName,
+    setRemetenteEmail,
     setTriggerTipo,
     setDirty,
     // handlers de canvas

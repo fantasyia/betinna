@@ -67,6 +67,22 @@ export const createFluxoEdgeSchema = z.object({
 export const createFluxoSchema = z.object({
   nome: z.string().min(1).max(150),
   descricao: z.string().max(500).optional(),
+  /**
+   * Endereço de envio DESTE fluxo (vazio = o do ambiente).
+   *
+   * String vazia vira `null` de propósito: no formulário, apagar o campo é
+   * como a pessoa diz "volta pro padrão" — sem isto, gravaria `""` e o envio
+   * sairia sem remetente.
+   */
+  remetenteEmail: z
+    .string()
+    .trim()
+    .email('Remetente inválido')
+    .max(200)
+    .nullable()
+    .optional()
+    .or(z.literal('').transform(() => null)),
+
   triggerTipo: z.enum(fluxoTriggerTipoValues).optional(),
   triggerConfig: z.record(z.unknown()).optional(),
   nos: z.array(createFluxoNoSchema).default([]),
@@ -106,6 +122,7 @@ export const importFluxoSchema = z
     tipo: z.literal('fluxo').optional(),
     nome: z.string().min(1).max(150),
     descricao: z.string().max(500).nullable().optional(),
+    remetenteEmail: z.string().trim().email().max(200).nullable().optional(),
     triggerTipo: z.enum(fluxoTriggerTipoValues).nullable().optional(),
     triggerConfig: z.record(z.unknown()).nullable().optional(),
     nos: z.array(importFluxoNoSchema).max(200).default([]),
@@ -162,6 +179,22 @@ export const updateFluxoSchema = z
   .object({
     nome: z.string().min(1).max(150).optional(),
     descricao: z.string().max(500).optional(),
+    /**
+     * Endereço de envio DESTE fluxo (vazio = o do ambiente).
+     *
+     * String vazia vira `null` de propósito: no formulário, apagar o campo é
+     * como a pessoa diz "volta pro padrão" — sem isto, gravaria `""` e o envio
+     * sairia sem remetente.
+     */
+    remetenteEmail: z
+      .string()
+      .trim()
+      .email('Remetente inválido')
+      .max(200)
+      .nullable()
+      .optional()
+      .or(z.literal('').transform(() => null)),
+
     // nullable: converter o gatilho pra Manual manda triggerTipo=null (o front
     // omitia o campo, então o gatilho ANTIGO ficava gravado e o fluxo continuava
     // disparando no evento antigo em silêncio). null = manual.

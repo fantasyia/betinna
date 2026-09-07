@@ -64,6 +64,8 @@ export interface FluxoDetailApi {
   id: string;
   nome: string;
   descricao?: string | null;
+  /** Endereço de envio dos e-mails deste fluxo (null = o do ambiente). */
+  remetenteEmail?: string | null;
   status: 'RASCUNHO' | 'ATIVO' | 'PAUSADO' | 'ARQUIVADO';
   triggerTipo?: TriggerTipo | null;
   /// Agendamento do CRON (o job lê daqui). Fluxo criado por MCP/import guarda o

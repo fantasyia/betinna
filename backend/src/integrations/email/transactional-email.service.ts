@@ -150,6 +150,8 @@ export class TransactionalEmailService {
     empresaId?: string,
     /** Cabeçalhos da mensagem (List-Unsubscribe do marketing). */
     headers?: Record<string, string>,
+    /** Endereço de envio (override por fluxo). Default: o do ambiente. */
+    remetenteEmail?: string,
   ): Promise<{ ok: boolean; motivo?: string; id?: string | null }> {
     // Resend é o ÚNICO provedor transacional do sistema (SendGrid removido).
     const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
@@ -173,6 +175,7 @@ export class TransactionalEmailService {
         idempotencyKey,
         fromNome: remetente.fromNome,
         replyTo: remetente.replyTo,
+        fromEmail: remetenteEmail,
         headers,
       });
       const ok = r.status >= 200 && r.status < 300;
@@ -241,6 +244,14 @@ export class TransactionalEmailService {
      * saiu da lista continua precisando saber onde está a encomenda.
      */
     descadastro?: { empresaId: string; leadId?: string; clienteId?: string };
+    /**
+     * Endereço de envio DESTE e-mail (o fluxo decide). Vazio = o do ambiente.
+     *
+     * É por aqui que a régua fria sai do subdomínio de marketing sem levar o
+     * transacional junto: quem manda os dois é o mesmo serviço, e antes disto
+     * o endereço era um só pra instância inteira.
+     */
+    remetenteEmail?: string;
   }) {
     // Marketing: rodapé + cabeçalhos de descadastro na MESMA passada — o token
     // é por destinatário, então não dá pra montar isso no corpo da campanha.
@@ -270,6 +281,7 @@ export class TransactionalEmailService {
       params.idempotencyKey,
       params.empresaId,
       headers,
+      params.remetenteEmail,
     );
   }
 

@@ -54,6 +54,18 @@ export class ResendService {
     texto?: string;
     /** Nome de exibição do remetente (override por-tenant). Default env/'Betinna.ai'. */
     fromNome?: string;
+    /**
+     * ENDEREÇO de envio (override por fluxo). Default `RESEND_FROM_EMAIL`.
+     *
+     * Serve pra separar reputação: régua fria sai de um subdomínio próprio, e o
+     * transacional fica no domínio raiz. Reclamação de spam na prospecção pra
+     * uma base de 30 mil não pode derrubar a entrega da confirmação de pedido
+     * de quem já pagou.
+     *
+     * ⚠️ O domínio precisa estar VERIFICADO no Resend — endereço de domínio não
+     * verificado é recusado pelo provedor, e o envio inteiro falha.
+     */
+    fromEmail?: string;
     /** Reply-To por-tenant (respostas caem no e-mail da empresa). */
     replyTo?: string;
     /** Anexos opcionais (ex: PDF de proposta). content em base64 puro. */
@@ -74,7 +86,7 @@ export class ResendService {
     headers?: Record<string, string>;
   }): Promise<{ id: string | null; status: number }> {
     const apiKey = this.env.get('RESEND_API_KEY');
-    const fromEmail = this.env.get('RESEND_FROM_EMAIL');
+    const fromEmail = params.fromEmail?.trim() || this.env.get('RESEND_FROM_EMAIL');
     if (!apiKey || !fromEmail) {
       throw new IntegrationException(
         'Resend não configurado — defina RESEND_API_KEY e RESEND_FROM_EMAIL',

@@ -53,6 +53,27 @@ export function FluxoToolbar({
           className="max-w-md font-semibold"
           placeholder="Nome do fluxo"
         />
+        {/* Remetente do fluxo. Fica aqui, e não no nó, porque vale pro fluxo
+            inteiro: é a régua que muda de domínio, não um e-mail solto. Vazio =
+            o endereço padrão do sistema, que é o comportamento de sempre. */}
+        <label className="hidden lg:flex items-center gap-1.5 text-xs text-muted shrink-0">
+          De:
+          <Input
+            type="email"
+            value={editor.remetenteEmail}
+            onChange={(e) => {
+              editor.setRemetenteEmail(e.target.value);
+              editor.setDirty(true);
+            }}
+            className="w-[230px] text-xs"
+            placeholder="padrão do sistema"
+            data-testid="fluxo-remetente"
+            title={
+              'Endereço de onde os e-mails deste fluxo saem. Vazio = o padrão do sistema. ' +
+              'Use um domínio já verificado no provedor — senão os envios deste fluxo falham.'
+            }
+          />
+        </label>
         <Badge
           variant={status === 'ATIVO' ? 'success' : 'neutral'}
           className="hidden sm:inline-flex"
