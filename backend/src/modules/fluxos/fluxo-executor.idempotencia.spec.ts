@@ -112,14 +112,39 @@ describe('FluxoExecutor — idempotência por job.id', () => {
     expect(ctx.whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
   });
 
-  it('retry pós-efeito (claim CONCLUIDO) → SKIP, não re-executa nem enfileira', async () => {
+  it('retry pós-efeito (claim CONCLUIDO, sem sucessores gravados) → SKIP', async () => {
     ctx.claim.create.mockRejectedValueOnce(P2002());
-    ctx.claim.findUnique.mockResolvedValueOnce({ estado: 'CONCLUIDO' });
+    ctx.claim.findUnique.mockResolvedValueOnce({ estado: 'CONCLUIDO', proximos: [] });
 
     await ctx.service.executarPasso('exec-1', 'no-wa', 'job-1');
 
     expect(ctx.whatsapp.enviarTexto).not.toHaveBeenCalled();
     expect(ctx.queue.add).not.toHaveBeenCalled();
+  });
+
+  /**
+   * O buraco medido em 07/09: o claim vira CONCLUIDO junto com o log, e o
+   * enqueue dos sucessores acontece DEPOIS. Um estouro nesse meio fazia o retry
+   * pular o passo (certo — não reenvia WhatsApp) e voltar VERDE sem enfileirar
+   * ninguém. A execução ficava EM_EXECUCAO pra sempre, sem erro e sem alarme, e
+   * o lead sem resposta no meio da conversa.
+   */
+  it('retry pós-efeito NÃO perde a navegação: reenfileira os sucessores gravados', async () => {
+    ctx.claim.create.mockRejectedValueOnce(P2002());
+    ctx.claim.findUnique.mockResolvedValueOnce({ estado: 'CONCLUIDO', proximos: ['no-2'] });
+
+    await ctx.service.executarPasso('exec-1', 'no-wa', 'job-1');
+
+    // O efeito NÃO roda de novo…
+    expect(ctx.whatsapp.enviarTexto).not.toHaveBeenCalled();
+    // …mas o próximo passo vai pra fila.
+    expect(ctx.queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-2' },
+      // id DETERMINÍSTICO: se o enqueue original tiver passado, o BullMQ ignora
+      // este e o passo não roda duas vezes. `_` no separador — o v5 rejeita `:`.
+      expect.objectContaining({ jobId: 'p_job-1_no-2' }),
+    );
   });
 
   it('retry de falha real (claim EXECUTANDO) → re-executa o efeito', async () => {
@@ -168,7 +193,7 @@ describe('FluxoExecutor — idempotência por job.id', () => {
 
     // retry do MESMO job: claim CONCLUIDO → iniciar NÃO roda de novo
     ctx.claim.create.mockRejectedValueOnce(P2002());
-    ctx.claim.findUnique.mockResolvedValueOnce({ estado: 'CONCLUIDO' });
+    ctx.claim.findUnique.mockResolvedValueOnce({ estado: 'CONCLUIDO', proximos: [] });
     await ctx.service.executarPasso('exec-1', 'no-ia', 'job-1');
     expect(ctx.conversarIa.iniciar).toHaveBeenCalledTimes(1); // continua 1×
   });

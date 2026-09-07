@@ -2115,6 +2115,14 @@ model FluxoStepClaim {
   estado      String    @default("EXECUTANDO") // EXECUTANDO | CONCLUIDO
   criadoEm    DateTime  @default(now())
   concluidoEm DateTime?
+  /// Sucessores que este passo decidiu enfileirar, gravados ANTES do enqueue.
+  ///
+  /// É o que permite RECUPERAR a navegação: o claim vira CONCLUIDO junto com o
+  /// log (pra um retry não re-enviar WhatsApp), e o enqueue dos sucessores
+  /// acontece depois. Se algo estourar nesse meio, o retry batia no claim
+  /// CONCLUIDO, pulava tudo e voltava VERDE — sem erro, sem alarme e sem os
+  /// próximos passos. A execução ficava EM_EXECUCAO pra sempre e o lead, mudo.
+  proximos    String[]
 
   @@index([execucaoId])
   @@index([estado, criadoEm])

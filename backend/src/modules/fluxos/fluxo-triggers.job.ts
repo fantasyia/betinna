@@ -29,6 +29,8 @@ import { ehFeriadoNacional } from './feriados.util';
  *   cada minuto ali era um minuto a mais de cliente sem resposta.
  */
 /** Teto de re-enfileiramentos por rodada — recuperação não pode virar enxurrada. */
+/** Quanto tempo sem andar até uma execução ser considerada PARADA no meio. */
+const PARADA_MS = 5 * 60 * 1000;
 const MAX_REENFILEIRAR = 50;
 
 @Injectable()
@@ -286,6 +288,131 @@ export class FluxoTriggersJob {
         `[fila] ${travadas} execução(ões) PENDENTE com ZERO passos há mais de 5min — ` +
           `a fila provavelmente parou de consumir (worker fora do ar ou processor não registrado). ` +
           `Confira o worker antes de olhar qualquer fluxo.`,
+      );
+    }
+    await this.retomarExecucoesParadas();
+  }
+
+  /**
+   * Execução PARADA NO MEIO — o estado que, pela semântica do motor, não deveria
+   * existir: `EM_EXECUCAO`, sem turno em processamento, sem nó aguardando, sem
+   * erro e sem job na fila. Não está fazendo nada e não vai acordar.
+   *
+   * Medido em 07/09: o C1 moveu o lead de etapa, o passo concluiu às 19:45:03 e
+   * a execução parou ali. Dois logs, dois claims, nenhum terceiro. O lead ficou
+   * sem resposta no meio do acolhimento — sem erro, sem alarme e sem sintoma
+   * visível além de uma conversa que simplesmente parou.
+   *
+   * A causa está consertada no executor (o skip idempotente agora reenfileira os
+   * sucessores gravados no claim). Isto aqui é a rede de baixo, pros modos que
+   * ninguém previu: em vez de esperar a reconciliação de 15min matar a execução
+   * como FALHOU meia hora depois — que resolve o travamento da conversa mas
+   * deixa o lead sem resposta do mesmo jeito —, tenta RETOMAR do ponto onde
+   * parou, uma vez, e só desiste se não der.
+   *
+   * O critério não pode ser tempo puro: um nó DELAY de 3 dias deixa a execução
+   * EM_EXECUCAO legitimamente. Por isso a pergunta é "tem job vivo na fila?" —
+   * incluindo os `delayed`. Fila inacessível = não varre (sem a lista, todo
+   * delayed legítimo viraria "parada").
+   */
+  private async retomarExecucoesParadas(): Promise<void> {
+    let vivos: Set<string>;
+    try {
+      vivos = await this.bus.execucoesComJobVivo();
+    } catch (err) {
+      this.logger.warn(
+        `[fila] não deu pra checar jobs vivos (${err instanceof Error ? err.message : String(err)})` +
+          ` — varredura de execuções paradas pulada.`,
+      );
+      return;
+    }
+    const limite = new Date(Date.now() - PARADA_MS);
+    const candidatas = await this.prisma.fluxoExecucao.findMany({
+      where: {
+        status: 'EM_EXECUCAO',
+        processandoTurno: false,
+        aguardandoNoId: null,
+        teste: false,
+        criadoEm: { lt: limite },
+      },
+      select: {
+        id: true,
+        contexto: true,
+        fluxo: { select: { nome: true } },
+        logs: {
+          orderBy: { iniciadoEm: 'desc' },
+          take: 1,
+          select: { noId: true, noTitulo: true, status: true, terminadoEm: true },
+        },
+      },
+      take: 100,
+    });
+
+    let retomadas = 0;
+    let desistidas = 0;
+    for (const e of candidatas) {
+      if (vivos.has(e.id)) continue;
+      const ultimo = e.logs[0];
+      // Sem passo nenhum, ou último passo que FALHOU: quem trata é a
+      // reconciliação (re-enfileira do trigger / marca FALHOU). Aqui só entra
+      // quem parou DEPOIS de um passo que deu certo.
+      if (!ultimo || ultimo.status !== 'CONCLUIDO') continue;
+      if (!ultimo.terminadoEm || ultimo.terminadoEm > limite) continue;
+
+      const ctx = (e.contexto as Record<string, unknown> | null) ?? {};
+      const claim = await this.prisma.fluxoStepClaim.findFirst({
+        where: { execucaoId: e.id, noId: ultimo.noId ?? '' },
+        orderBy: { criadoEm: 'desc' },
+        select: { proximos: true },
+      });
+      const proximos = claim?.proximos ?? [];
+      // Uma tentativa só: insistir a cada 5min viraria loop. Sem sucessores
+      // gravados (execução anterior a esta versão), também não há o que retomar.
+      if (proximos.length === 0 || ctx['_retomadoEm']) {
+        const r = await this.prisma.fluxoExecucao.updateMany({
+          where: { id: e.id, status: 'EM_EXECUCAO' },
+          data: {
+            status: 'FALHOU',
+            terminouEm: new Date(),
+            erroMsg:
+              `Execução parou depois do passo "${ultimo.noTitulo ?? ultimo.noId}" e não pôde ser ` +
+              `retomada (${proximos.length === 0 ? 'sem sucessores gravados' : 'já tentada uma vez'}). ` +
+              `O lead ficou sem resposta a partir daí.`,
+          },
+        });
+        desistidas += r.count;
+        continue;
+      }
+
+      try {
+        await this.prisma.fluxoExecucao.update({
+          where: { id: e.id },
+          data: { contexto: { ...ctx, _retomadoEm: new Date().toISOString() } },
+        });
+        for (const noId of proximos) {
+          // jobId FRESCO de propósito: o id determinístico do enqueue original
+          // pode estar retido como concluído no BullMQ, e o `add` seria ignorado
+          // — justamente o que precisamos que aconteça agora.
+          await this.bus.dispararDireto(e.id, noId, {
+            jobId: `ret_${e.id}_${noId}_${Date.now()}`,
+          });
+        }
+        retomadas += 1;
+      } catch (err) {
+        this.logger.error(
+          `[fila] execução ${e.id} parada não pôde ser retomada: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // ALARME: os dois casos são anomalia — nenhum deles é rotina. Fica em ERROR
+    // porque, sem isso, o único jeito de descobrir era alguém reler a conversa.
+    if (retomadas > 0 || desistidas > 0) {
+      this.logger.error(
+        `[fila] ${retomadas} execução(ões) PARADA(S) no meio retomada(s) e ${desistidas} sem retomada ` +
+          `(marcadas FALHOU). Estado 'EM_EXECUCAO sem job, sem turno e sem nó aguardando' não deveria ` +
+          `existir — se repetir, é bug de navegação no motor, não do fluxo.`,
       );
     }
   }

@@ -339,8 +339,32 @@ export class FluxoExecutorService {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         const claim = await this.prisma.fluxoStepClaim.findUnique({ where: { jobId } });
         if (claim?.estado === 'CONCLUIDO') {
-          this.logger.warn(`Passo job ${jobId} já concluído — skip idempotente`);
-          return; // efeito já consumado neste job.id; nada a re-disparar
+          // O efeito já foi consumado neste job.id — o passo NÃO re-executa (é o
+          // que impede reenviar WhatsApp/e-mail/opener). Mas voltar aqui sem
+          // mais nada era o buraco: o claim vira CONCLUIDO junto com o log, e o
+          // enqueue dos sucessores acontece DEPOIS. Um estouro nesse meio (blip
+          // no Redis, processo morrendo) fazia o retry cair exatamente aqui,
+          // voltar VERDE e não enfileirar ninguém. Medido em 07/09: execução em
+          // EM_EXECUCAO, processandoTurno false, aguardandoNoId null, erroMsg
+          // null, 2 logs e nenhum terceiro claim — o lead ficou sem resposta no
+          // meio do acolhimento, sem erro em lugar nenhum.
+          //
+          // `claim.proximos` guarda o que este passo tinha decidido enfileirar.
+          // Reenfileirar é seguro: o id do job de cada sucessor é DETERMINÍSTICO
+          // (ver `enfileirarSucessor`), então o BullMQ ignora o duplicado se o
+          // enqueue original tiver funcionado.
+          if (claim.proximos.length > 0) {
+            this.logger.warn(
+              `Passo job ${jobId} já concluído — reenfileirando ${claim.proximos.length} ` +
+                `sucessor(es) que podem ter se perdido (skip idempotente NÃO perde a navegação)`,
+            );
+            for (const nextNoId of claim.proximos) {
+              await this.enfileirarSucessor(execucaoId, nextNoId, jobId, 0);
+            }
+          } else {
+            this.logger.warn(`Passo job ${jobId} já concluído — skip idempotente`);
+          }
+          return;
         }
         // EXECUTANDO: re-executa; o efeito é idempotente pela chave (dedup no provider).
         this.logger.warn(`Passo job ${jobId} retomando após falha (claim EXECUTANDO)`);
@@ -869,6 +893,13 @@ export class FluxoExecutorService {
       return;
     }
 
+    // Sucessores gravados no claim ANTES de enfileirar: é o que permite ao retry
+    // recuperar a navegação se o enqueue abaixo estourar (ver o skip idempotente
+    // lá em cima). Best-effort — falhar aqui não pode derrubar o passo.
+    await this.prisma.fluxoStepClaim
+      .update({ where: { jobId }, data: { proximos: proximosNoIds } })
+      .catch(() => undefined);
+
     // Enfileira próximos passos
     for (const nextNoId of proximosNoIds) {
       let delayMs = 0;
@@ -883,18 +914,39 @@ export class FluxoExecutorService {
         // na fila — cai em 0 (dispara já) em vez de travar o passo.
         if (!Number.isFinite(delayMs) || delayMs < 0) delayMs = 0;
       }
-      await this.queue.add(
-        'step',
-        { execucaoId, noId: nextNoId },
-        {
-          delay: delayMs,
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-          removeOnComplete: { count: 500 },
-          removeOnFail: { count: 200 },
-        },
-      );
+      await this.enfileirarSucessor(execucaoId, nextNoId, jobId, delayMs);
     }
+  }
+
+  /**
+   * Enfileira UM sucessor com id de job DETERMINÍSTICO.
+   *
+   * O id sai de (job do passo pai + nó de destino), e o BullMQ ignora `add` com
+   * id que já existe. É isso que deixa o reenfileiramento do skip idempotente
+   * ser seguro: se o enqueue original já tinha passado, o segundo não cria um
+   * passo duplicado — que num nó de envio seria mensagem repetida pro cliente.
+   *
+   * `_` em vez de `:` no separador de propósito: o BullMQ v5 REJEITA `:` em
+   * jobId, e foi assim que a fila parou de consumir em 2026-06.
+   */
+  private async enfileirarSucessor(
+    execucaoId: string,
+    noId: string,
+    jobIdPai: string,
+    delayMs: number,
+  ): Promise<void> {
+    await this.queue.add(
+      'step',
+      { execucaoId, noId },
+      {
+        jobId: `p_${jobIdPai}_${noId}`,
+        delay: delayMs,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: { count: 500 },
+        removeOnFail: { count: 200 },
+      },
+    );
   }
 
   /**
