@@ -25,6 +25,7 @@ import { SupressaoService } from '@shared/supressao/supressao.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { montarSchemaDoTurno, parseVariaveisGravadas } from './variaveis-gravadas.util';
+import { normalizarValor } from './normalizar-valor.util';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -557,6 +558,37 @@ const MARGEM_MSG_DO_TURNO_MS = 60 * 1000;
 
 /** Teto de um turno. Existe pra GARANTIR que o `finally` rode e solte o lock. */
 const TIMEOUT_TURNO_MS = 2 * 60 * 1000;
+
+/**
+ * JANELA DE RAJADA — quanto o turno espera, depois de pegar o claim, pra ver se
+ * o cliente ainda está escrevendo.
+ *
+ * Gente não escreve um parágrafo: escreve "ah esqueci" · "o disjuntor marca 63A"
+ * · "e a rede é 220v" em 13 segundos. Sem esta janela, o turno respondia a
+ * PRIMEIRA e as outras eram recolhidas depois — o cliente levava duas respostas,
+ * e a primeira já nascia velha. Medido em 07/09: o bot pediu foto do quadro
+ * "pra identificar a corrente" dois segundos DEPOIS de o cliente ter dito 63A.
+ *
+ * O preço é latência: a resposta sai ~5s mais tarde. Vale porque o turno inteiro
+ * já leva ~10s e porque responder ao conjunto é o que a pessoa espera.
+ * `IA_JANELA_RAJADA_MS=0` desliga.
+ */
+const JANELA_RAJADA_MS_PADRAO = 5000;
+
+/** Valores que significam "não informado" — ausência, não resposta. */
+const NAO_SEI = new Set([
+  'nao sei',
+  'nao informado',
+  'nao confirmado',
+  'nao informou',
+  'desconhecido',
+  'indefinido',
+  'n/a',
+  'na',
+  '-',
+  '?',
+]);
+const ehNaoSei = (v: unknown): boolean => NAO_SEI.has(normalizarValor(String(v ?? '')));
 
 /**
  * Quanto o encerramento do processo espera pelos turnos em voo. Tem que caber em
@@ -1716,6 +1748,14 @@ export class ConversarIaService implements OnModuleDestroy {
       return;
     }
     const inicioDoTurno = new Date();
+    // Espera curta antes de compor: o resto da rajada entra NESTE turno em vez
+    // de virar uma segunda resposta (ver JANELA_RAJADA_MS_PADRAO). Retry de
+    // turno falho não espera — o texto é o mesmo e o cliente já esperou demais.
+    const rajada =
+      conversationId && tentativa === 1
+        ? await this.absorverRajada(conversationId, inicioDoTurno)
+        : { texto: '', ate: inicioDoTurno };
+    const textoDoTurno = rajada.texto ? [textoLead, rajada.texto].join('\n') : textoLead;
     let falha: unknown = null;
     try {
       // Timeout que GARANTE o finally. A causa raiz do lock preso é um turno que
@@ -1723,7 +1763,7 @@ export class ConversarIaService implements OnModuleDestroy {
       // `finally`, e é assim que o lock some do radar. Com a corrida, o pior
       // caso vira "um turno perdido", não "a conversa muda".
       await Promise.race([
-        this.processarTurno(execucao, empresaId, conversationId, textoLead, imagemDataUrl),
+        this.processarTurno(execucao, empresaId, conversationId, textoDoTurno, imagemDataUrl),
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error(`turno excedeu ${TIMEOUT_TURNO_MS / 1000}s`)),
@@ -1792,7 +1832,9 @@ export class ConversarIaService implements OnModuleDestroy {
         execucaoId,
         empresaId,
         conversationId,
-        inicioDoTurno,
+        // Corte DEPOIS da janela de rajada: o que já entrou neste turno não pode
+        // ser recolhido de novo e virar resposta repetida.
+        rajada.ate,
       ).catch((err) =>
         this.logger.warn(
           `CONVERSAR_IA: varredura pós-turno falhou (exec ${execucaoId}): ` +
@@ -1900,6 +1942,58 @@ export class ConversarIaService implements OnModuleDestroy {
         data: { erroMsg: mensagem.slice(0, 1000) },
       })
       .catch(() => undefined);
+  }
+
+  /**
+   * Espera a rajada terminar e devolve o que chegou na janela.
+   *
+   * Roda com o claim JÁ na mão: quem manda no meio da espera perde o claim e
+   * não abre turno concorrente — a mensagem é lida aqui e responde junto. O
+   * corte (`ate`) volta pra varredura pós-turno não recolher de novo o que já
+   * entrou.
+   */
+  private async absorverRajada(
+    conversationId: string,
+    desde: Date,
+  ): Promise<{ texto: string; ate: Date }> {
+    // Lê do process.env direto: este serviço não injeta o EnvService, e mudar o
+    // construtor mexeria em meia dúzia de specs por um número. O schema de env
+    // continua validando e documentando o valor.
+    const bruto = process.env.IA_JANELA_RAJADA_MS;
+    // Em teste a janela nasce 0: 5s de espera por turno estouraria o timeout das
+    // specs. Quem quer exercitar a rajada seta a variável explicitamente.
+    const padrao = process.env.NODE_ENV === 'test' ? 0 : JANELA_RAJADA_MS_PADRAO;
+    const janela = bruto == null || bruto === '' ? padrao : Number(bruto);
+    if (!Number.isFinite(janela) || janela <= 0) return { texto: '', ate: desde };
+    await new Promise((r) => setTimeout(r, janela));
+    const ate = new Date();
+    try {
+      const novas = await this.prisma.message.findMany({
+        where: { conversationId, direction: 'INBOUND', criadoEm: { gt: desde, lte: ate } },
+        orderBy: { criadoEm: 'asc' },
+        select: { conteudo: true },
+        take: 5,
+      });
+      const texto = novas
+        .map((m) => (m.conteudo ?? '').trim())
+        .filter(Boolean)
+        .join('\n');
+      if (texto) {
+        this.logger.log(
+          `CONVERSAR_IA: ${novas.length} mensagem(ns) da rajada entraram no MESMO turno ` +
+            `(conversa ${conversationId})`,
+        );
+      }
+      return { texto, ate };
+    } catch (err) {
+      // Falhar aqui não pode matar o turno: sem a rajada, volta a ser o
+      // comportamento antigo (responde a 1ª e recolhe as outras depois).
+      this.logger.warn(
+        `CONVERSAR_IA: leitura da rajada falhou (conversa ${conversationId}): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { texto: '', ate };
+    }
   }
 
   private async processarMensagensPerdidas(
@@ -2391,11 +2485,35 @@ export class ConversarIaService implements OnModuleDestroy {
     const novasChaves = Object.entries(gravadas).filter(
       ([k, v]) => v != null && String(v).trim() !== '' && atuais[k] !== v,
     );
-    if (novasChaves.length === 0 && !p.classificacao) return atuais;
+    // "Não sei" também é ausência de informação — e ausência não apaga presença.
+    //
+    // Medido em 07/09: o lead disse "a rede é 220v", e o registro ficou com
+    // `tensao_rede: "nao sei"`; o link saiu sem a tensão e a mensagem mandou a
+    // pessoa escolher na página o que ela tinha acabado de informar. Guardar o
+    // CONTRÁRIO do que o cliente falou é pior que não guardar nada.
+    //
+    // Só protege quando o valor atual é concreto: "não sei" sobre "não sei"
+    // passa, e o cliente sempre pode corrigir com outro valor concreto.
+    const preservadas: string[] = [];
+    const aceitas = novasChaves.filter(([k, v]) => {
+      const atual = atuais[k];
+      if (!ehNaoSei(v) || atual == null || String(atual).trim() === '' || ehNaoSei(atual)) {
+        return true;
+      }
+      preservadas.push(`${k} (mantido "${String(atual)}", IA tentou "${String(v)}")`);
+      return false;
+    });
+    if (preservadas.length > 0) {
+      this.logger.warn(
+        `CONVERSAR_IA: "não sei" NÃO sobrescreveu valor já capturado — ${preservadas.join(', ')} ` +
+          `(lead ${p.leadId}, exec ${p.execucaoId})`,
+      );
+    }
+    if (aceitas.length === 0 && !p.classificacao) return atuais;
 
     const novas = {
       ...atuais,
-      ...Object.fromEntries(novasChaves),
+      ...Object.fromEntries(aceitas),
       ...(p.classificacao ? { classificacao: p.classificacao } : {}),
     };
     await this.prisma.lead.update({
@@ -2403,7 +2521,7 @@ export class ConversarIaService implements OnModuleDestroy {
       data: { variaveis: toJsonInput(novas) },
     });
     const oQue = [
-      ...novasChaves.map(([k]) => k),
+      ...aceitas.map(([k]) => k),
       ...(p.classificacao ? [`classificacao=${p.classificacao}`] : []),
     ].join(', ');
     this.logger.log(`CONVERSAR_IA: gravado no lead ${p.leadId} (${oQue}) — exec ${p.execucaoId}`);

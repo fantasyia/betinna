@@ -110,6 +110,15 @@ export const envSchema = z
      */
     MULLERBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(3000),
     /**
+     * Janela de RAJADA do nó Conversar com IA, em ms: quanto o turno espera,
+     * depois de pegar o claim, pra ver se o cliente ainda está escrevendo.
+     *
+     * Gente manda 3 mensagens em 13s no WhatsApp. Sem a janela, o turno responde
+     * a PRIMEIRA e recolhe o resto depois — o cliente leva duas respostas e a
+     * primeira já nasce velha. `0` desliga (volta ao comportamento antigo).
+     */
+    IA_JANELA_RAJADA_MS: z.coerce.number().int().min(0).max(30000).default(5000),
+    /**
      * Testes E2E / dev: quando `true`, o MullerBot devolve uma resposta fake
      * (de um conjunto de templates) em vez de chamar a OpenAI. Economiza custo e
      * evita poluir a auditoria do bot durante a varredura automatizada. Default
