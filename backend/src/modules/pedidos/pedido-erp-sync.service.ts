@@ -98,21 +98,29 @@ const CODIGO_OBJETO = /^[A-Z]{2}\d{9}[A-Z]{2}$/i;
 const ENVIO_MELHOR_ENVIO = /melhor\s*envio|olist\s*envios/i;
 
 /**
+ * Página de consulta do Olist Envios — o transportador que a Somatec usa
+ * (decisão de 05/09: Melhor Envio saiu). É PÁGINA, não deep link: `/rastreios`
+ * redireciona pra raiz e mostra um campo "insira o código de rastreio". Não há
+ * rota por código, então a mensagem entrega o código e o endereço da consulta.
+ */
+export const RASTREIO_OLIST = 'https://envios.olist.com/rastreios';
+
+/**
  * Link de rastreio PRA MOSTRAR AO CLIENTE quando o ERP não manda nenhum.
  *
  * O `urlRastreamento` do Tiny é campo livre: vem preenchido quando a
- * transportadora/integração fornece, e vazio no resto — e aí a mensagem de
- * despacho sairia com o código e sem lugar nenhum pra clicar.
+ * transportadora fornece (e aí é MELHOR que isto — leva direto ao rastreio), e
+ * vazio no resto.
  *
- * O Melhor Rastreio resolve pelo código e é **público**: conferido em 03/09
- * renderizando `/rastreio/<codigo>` sem sessão nenhuma (a página redireciona
- * pra `/app/<transportadora>/<codigo>` e mostra o rastreio; "Entrar" é só o
- * cabeçalho). Link que exige login não serve pro cliente final.
+ * Antes o fallback era um deep link do **Melhor Rastreio** — fornecedor que a
+ * operação não usa mais. Mandar o cliente pro site de outra empresa pra
+ * acompanhar uma entrega nossa é o tipo de detalhe que ninguém corrige depois.
  *
- * Só monta quando dá pra ter certeza de que o código é rastreável lá: envio
- * pelo Melhor Envio/Olist Envios, ou código no formato de objeto dos Correios.
- * Fora disso devolve null — link que abre em "não encontrado" é pior que
- * mensagem sem link.
+ * A validação de "código rastreável" CONTINUA: envio pelo Olist Envios ou
+ * código no formato de objeto dos Correios. Código que não é de rastreio nenhum
+ * (número de nota digitado à mão, por exemplo) devolve null — e quem chama não
+ * avisa o cliente, porque mandar um código que a consulta não acha é pior que
+ * não mandar nada.
  */
 export function linkPublicoRastreio(
   codigo: string | null,
@@ -122,7 +130,7 @@ export function linkPublicoRastreio(
   const nomeEnvio = typeof formaEnvio === 'string' ? formaEnvio : (formaEnvio?.nome ?? '');
   const rastreavel = ENVIO_MELHOR_ENVIO.test(nomeEnvio) || CODIGO_OBJETO.test(codigo);
   if (!rastreavel) return null;
-  return `https://www.melhorrastreio.com.br/rastreio/${encodeURIComponent(codigo)}`;
+  return RASTREIO_OLIST;
 }
 
 @Injectable()
@@ -424,12 +432,24 @@ export class PedidoErpSyncService {
       if (!mudou) return naoEntregue || adotouRep ? 'atualizado' : 'semMudanca';
 
       const viraEntregue = status === 'ENTREGUE' && existente.status !== 'ENTREGUE';
-      // O rastreio PASSOU A EXISTIR. É a transição vazio → preenchido, não o
-      // status: o ERP às vezes preenche fora de ordem, e amarrar em `ENVIADO`
-      // perderia esses casos. Comparar com o que estava guardado é o que
-      // garante UMA notificação por pedido — a varredura roda todo dia e
-      // reemitir mandaria o mesmo código pro cliente de novo.
+      // AVISO DE DESPACHO — o cliente só pode ouvir "foi despachado" quando o
+      // pedido VIRA ENVIADO (situação 5).
+      //
+      // Antes bastava o código de rastreio PASSAR A EXISTIR. Só que o Tiny
+      // preenche o código na COMPRA DA ETIQUETA — situação 7, "pronto para
+      // envio", que aqui vira EM_SEPARACAO (o comentário do SITUACOES_EXPEDIDO
+      // logo acima já dizia isso). Resultado: a mensagem saía com o pacote
+      // ainda na prateleira, e o rastreio abria sem movimentação nenhuma por
+      // horas ou dias.
+      //
+      // A segunda metade preserva o motivo do desenho antigo (o ERP às vezes
+      // preenche fora de ordem): pedido que JÁ estava ENVIADO e só agora ganhou
+      // código também avisa. Continua UMA notificação por pedido — as duas
+      // metades são transições, e nunca valem as duas pro mesmo pedido.
       const ganhouRastreio = Boolean(rastreioCodigo) && !existente.rastreioCodigo;
+      const statusFinal = status ?? existente.status;
+      const podeAvisarDespacho =
+        statusFinal === 'ENVIADO' && (existente.status !== 'ENVIADO' || ganhouRastreio);
       await this.prisma.pedido.update({
         where: { id: existente.id },
         data: {
@@ -463,7 +483,7 @@ export class PedidoErpSyncService {
       // Total ou devolução podem ter mudado agora — refaz com os valores novos.
       await this.comissoes.recalcular(existente.id);
       if (viraEntregue) await this.dispararEntregue(empresaId, existente.id);
-      if (ganhouRastreio) await this.dispararRastreio(empresaId, existente.id);
+      if (podeAvisarDespacho) await this.dispararRastreio(empresaId, existente.id);
       // O site é dono da tela do cliente: sem este aviso, quem comprou lá fica
       // sem saber que o pedido foi faturado ou despachado.
       await this.site.notificar({
@@ -660,6 +680,18 @@ export class PedidoErpSyncService {
       },
     });
     if (!p?.rastreioCodigo) return;
+    // Sem link não sai aviso. Duas razões, e as duas doem: a mensagem mandaria
+    // um código sem dizer onde consultar, e o nó de envio derruba a execução
+    // inteira quando `{{rastreioUrl}}` não resolve (guarda de placeholder).
+    // Código sem link é código que não é de rastreio — vale o log, não o
+    // WhatsApp (o Olist já manda o código por e-mail de qualquer jeito).
+    if (!p.rastreioUrl) {
+      this.logger.warn(
+        `[erp] pedido ${p.numero}: rastreio "${p.rastreioCodigo}" sem link de consulta — ` +
+          `aviso de despacho NÃO enviado`,
+      );
+      return;
+    }
     void this.bus.disparar(empresaId, 'PEDIDO_RASTREIO_DISPONIVEL', {
       pedidoId: p.id,
       // `numeroSite` primeiro: quem comprou pelo site conhece o SB…, não o

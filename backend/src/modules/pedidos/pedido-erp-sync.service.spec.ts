@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PedidoErpSyncService, linkPublicoRastreio } from './pedido-erp-sync.service';
+import {
+  PedidoErpSyncService,
+  linkPublicoRastreio,
+  RASTREIO_OLIST,
+} from './pedido-erp-sync.service';
 
 /**
  * O caminho de VOLTA do ERP: o que nasce ou muda no Tiny precisa aparecer aqui.
@@ -16,6 +20,10 @@ function build(
     usuarios?: Array<{ id: string; nome: string }>;
     produto?: { id: string } | null;
     pendentes?: Array<{ numeroErp: string }>;
+    /** `null` = pedido com código mas SEM link de consulta. */
+    rastreioUrlGravado?: string | null;
+    /** O que está GRAVADO no pedido — `null` = pedido sem rastreio nenhum. */
+    rastreioGravado?: string | null;
   } = {},
 ) {
   const detalhe = opts.detalhe ?? {};
@@ -34,8 +42,9 @@ function build(
         total: 100,
         clienteId: 'cli-1',
         representanteId: null,
-        rastreioCodigo: opts.rastreioGravado ?? 'BR123456789BR',
-        rastreioUrl: 'https://rastreio/BR123456789BR',
+        rastreioCodigo: 'rastreioGravado' in opts ? opts.rastreioGravado : 'BR123456789BR',
+        rastreioUrl:
+          'rastreioUrlGravado' in opts ? opts.rastreioUrlGravado : 'https://rastreio/BR123456789BR',
         cliente: { id: 'cli-1', nome: 'Cliente X' },
       }),
       create: vi.fn().mockResolvedValue({ id: 'ped-novo', numero: 'PED-0009' }),
@@ -443,12 +452,13 @@ describe('pedidos que vêm do ERP', () => {
   });
 
   /**
-   * O rastreio aparece no DESPACHO, dias antes da entrega.
+   * O rastreio aparece no DESPACHO, dias antes da entrega — mas o aviso só pode
+   * sair quando o pedido REALMENTE saiu.
    *
-   * O único evento que existia neste caminho era o de ENTREGUE — então um fluxo
-   * pendurado nele mandaria o código de rastreio DEPOIS de a encomenda ter
-   * chegado na casa da pessoa. O gatilho novo dispara na transição
-   * vazio → preenchido, que é a condição real de "o rastreio existe".
+   * O Tiny preenche o código na COMPRA DA ETIQUETA (situação 7, "pronto para
+   * envio", que aqui é EM_SEPARACAO). Disparar na chegada do código mandava
+   * "seu Master Block foi despachado" com o pacote ainda na prateleira, e o
+   * rastreio abria sem movimentação nenhuma. O gatilho é a virada pra ENVIADO.
    */
   describe('gatilho de rastreio disponível', () => {
     const COM_RASTREIO = {
@@ -469,7 +479,52 @@ describe('pedidos que vêm do ERP', () => {
       rastreioUrl: null,
     };
 
-    it('dispara quando o rastreio passa a existir', async () => {
+    it('etiqueta comprada (situação 7) NÃO avisa — o pacote ainda está na prateleira', async () => {
+      const { svc, bus } = build({
+        detalhe: {
+          ...COM_RASTREIO,
+          situacao: 7, // "pronto para envio" → EM_SEPARACAO
+        },
+        pedidoExistente: semRastreio,
+      });
+
+      await svc.sincronizar('emp-1');
+
+      expect(
+        bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
+      ).toBeUndefined();
+    });
+
+    it('pedido que JÁ estava ENVIADO e só agora ganhou código também avisa', async () => {
+      // O ERP às vezes preenche fora de ordem — era o motivo do desenho antigo,
+      // e continua coberto sem trazer de volta o aviso adiantado.
+      const { svc, bus } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: { ...semRastreio, status: 'ENVIADO' },
+      });
+
+      await svc.sincronizar('emp-1');
+
+      expect(
+        bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
+      ).toBeDefined();
+    });
+
+    it('código SEM link de consulta não vira aviso — o nó de envio morreria no {{rastreioUrl}}', async () => {
+      const { svc, bus } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: semRastreio,
+        rastreioUrlGravado: null,
+      });
+
+      await svc.sincronizar('emp-1');
+
+      expect(
+        bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
+      ).toBeUndefined();
+    });
+
+    it('dispara quando o pedido vira ENVIADO com rastreio', async () => {
       const { svc, bus } = build({ detalhe: COM_RASTREIO, pedidoExistente: semRastreio });
 
       await svc.sincronizar('emp-1');
@@ -526,6 +581,7 @@ describe('pedidos que vêm do ERP', () => {
       const { svc, bus } = build({
         detalhe: { ...PEDIDO_ERP, situacao: 5 },
         pedidoExistente: semRastreio,
+        rastreioGravado: null, // o ERP não mandou código, então não há o que gravar
       });
 
       await svc.sincronizar('emp-1');
@@ -539,14 +595,12 @@ describe('pedidos que vêm do ERP', () => {
   describe('linkPublicoRastreio', () => {
     // O `urlRastreamento` do Tiny vem vazio na maioria dos envios; sem isto a
     // mensagem de despacho sai com o código e sem lugar nenhum pra clicar.
-    it('monta o link público quando o envio é Olist Envios (Melhor Envio por baixo)', () => {
-      expect(linkPublicoRastreio('XX999888777BR', { nome: 'Olist Envios' })).toBe(
-        'https://www.melhorrastreio.com.br/rastreio/XX999888777BR',
-      );
+    it('aponta pra consulta do OLIST — não pro Melhor Rastreio, que não é mais o fornecedor', () => {
+      expect(linkPublicoRastreio('XX999888777BR', { nome: 'Olist Envios' })).toBe(RASTREIO_OLIST);
     });
 
     it('monta pelo formato do código, mesmo sem saber a forma de envio', () => {
-      expect(linkPublicoRastreio('AA123456789BR')).toContain('melhorrastreio.com.br');
+      expect(linkPublicoRastreio('AA123456789BR')).toBe(RASTREIO_OLIST);
     });
 
     it('transportadora própria com código fora do padrão NÃO ganha link', () => {
