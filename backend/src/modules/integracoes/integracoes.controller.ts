@@ -18,6 +18,8 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { SERVICO_METADATA, type ServicoEmpresa } from './integracoes.constants';
 import {
   type ConectarDto,
+  type EmailTesteDto,
+  emailTesteSchema,
   type ListConexoesDto,
   conectarSchema,
   listConexoesSchema,
@@ -71,9 +73,14 @@ export class IntegracoesController {
   @Post('email/teste')
   @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'email_teste', resource: 'integracao' })
-  @ApiOperation({ summary: 'Envia um e-mail de teste pro próprio usuário e registra o resultado' })
-  enviarEmailTeste(@CurrentUser() user: AuthenticatedUser) {
-    return this.integracoes.enviarEmailTeste(user, Date.now());
+  @ApiOperation({
+    summary: 'Envia um e-mail de teste (ou a amostra de um template real, com a marca do tenant)',
+  })
+  enviarEmailTeste(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(emailTesteSchema)) dto: EmailTesteDto,
+  ) {
+    return this.integracoes.enviarEmailTeste(user, Date.now(), dto);
   }
 
   @Get(':servico')

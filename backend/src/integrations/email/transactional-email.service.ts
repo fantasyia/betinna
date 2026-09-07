@@ -19,6 +19,24 @@ import {
 } from './email-templates';
 
 /**
+ * Templates que a amostra sabe renderizar — um por e-mail que o sistema manda
+ * de verdade. Fica aqui (e não numa lista solta) pra o dia em que entrar um
+ * template novo o compilador cobrar o caso no `switch`.
+ */
+export const TEMPLATES_AMOSTRA = [
+  'recuperar-senha',
+  'boas-vindas',
+  'convite',
+  'rastreio',
+  'comissao',
+  'ocorrencia',
+  'aprovacao',
+  'amostra',
+] as const;
+
+export type TemplateAmostra = (typeof TEMPLATES_AMOSTRA)[number];
+
+/**
  * TransactionalEmailService — fachada de alto nível pros e-mails do sistema.
  *
  * Encapsula:
@@ -468,5 +486,100 @@ export class TransactionalEmailService {
   </div>
 </body></html>`;
     return this.send(params.para, params.assunto, html, undefined, params.idempotencyKey);
+  }
+
+  /**
+   * Amostra de um template REAL, com a marca do tenant, pra um endereço.
+   *
+   * Existe porque **preview de navegador e e-mail colado no Gmail não valem
+   * como teste**: o compositor do Gmail sanitiza o HTML na saída e come o fundo
+   * do botão — com rótulo branco, o CTA some sem deixar rastro, e quem revisa
+   * acha que o template está errado. Só o caminho real (mesmo HTML, mesmo
+   * provedor, mesma caixa) pega sanitização e bloqueio de imagem.
+   *
+   * Dados são fictícios de propósito: isto valida LAYOUT, não conteúdo. E a
+   * marca é a do tenant de verdade — é o ponto do teste.
+   */
+  async enviarAmostraDeTemplate(
+    empresaId: string,
+    para: string,
+    template: TemplateAmostra,
+    idempotencyKey?: string,
+  ): Promise<{ ok: boolean; motivo?: string; id?: string | null; assunto: string }> {
+    const marca = await this.marcaDeEmail(empresaId);
+    const nomeVisivel = marca?.empresaNome ?? 'sua empresa';
+    const app = this.frontendUrl();
+    const { assunto, html } = ((): { assunto: string; html: string } => {
+      switch (template) {
+        case 'recuperar-senha':
+          return templateRecuperarSenha({
+            nome: 'Fulano de Tal',
+            resetUrl: `${app}/welcome#amostra`,
+            marca,
+          });
+        case 'boas-vindas':
+          return templateBoasVindas({
+            nome: 'Fulano de Tal',
+            empresaNome: nomeVisivel,
+            loginUrl: `${app}/login`,
+            marca,
+          });
+        case 'convite':
+          return templateReenvioConvite({
+            nome: 'Fulano de Tal',
+            empresaNome: nomeVisivel,
+            inviteUrl: `${app}/welcome#amostra`,
+            marca,
+          });
+        case 'rastreio':
+          return templatePedidoRastreio({
+            nome: 'Fulano de Tal',
+            numeroPedido: 'SB1042',
+            codigo: 'AA123456789BR',
+            url: 'https://envios.olist.com/rastreios',
+            marca,
+          });
+        case 'comissao':
+          return templateComissaoFechada({
+            repNome: 'Fulano de Tal',
+            mes: 8,
+            ano: 2026,
+            totalVendas: 184500,
+            totalComissao: 11070,
+            comissoesUrl: `${app}/comissoes`,
+            marca,
+          });
+        case 'ocorrencia':
+          return templateOcorrenciaCritica({
+            destinatarioNome: 'Fulano de Tal',
+            numero: 'OC-2026-0042',
+            titulo: 'Equipamento entregue com avaria',
+            severidade: 'CRITICA',
+            slaHoras: 4,
+            ocorrenciaUrl: `${app}/ocorrencias`,
+            marca,
+          });
+        case 'aprovacao':
+          return templateAprovacaoResolvida({
+            repNome: 'Fulano de Tal',
+            pedidoNumero: 'SB1042',
+            status: 'APROVADA',
+            comentario: 'Aprovado com o desconto pedido.',
+            pedidoUrl: `${app}/pedidos`,
+            marca,
+          });
+        case 'amostra':
+          return templateAmostraFollowup({
+            repNome: 'Fulano de Tal',
+            clienteNome: 'Indústria Exemplo Ltda',
+            produtoNome: 'Produto de exemplo',
+            diasDesdeEnvio: 7,
+            amostrasUrl: `${app}/amostras`,
+            marca,
+          });
+      }
+    })();
+    const r = await this.send(para, assunto, html, undefined, idempotencyKey, empresaId);
+    return { ...r, assunto };
   }
 }

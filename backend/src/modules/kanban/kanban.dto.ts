@@ -228,6 +228,11 @@ export const API_TOKEN_ESCOPOS = [
   // agendar e reenviar seguem barrados no guard: fazem e-mail sair pra base real
   // e não têm desfazer.
   'campanhas',
+  // email = /integracoes/email/{status,teste}, e SÓ essas duas rotas (o resto
+  // de /integracoes é DIRECTOR-only por D45). Serve pra quem desenha e-mail
+  // conferir o layout na caixa de verdade: preview de navegador e mensagem
+  // colada no Gmail não pegam a sanitização do cliente, que é onde o botão some.
+  'email',
 ] as const;
 
 export const createApiTokenSchema = z.object({

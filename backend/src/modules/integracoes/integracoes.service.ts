@@ -16,6 +16,10 @@ import type { ConectarDto, ListConexoesDto } from './integracoes.dto';
 import { servicoRequerDirector, type ServicoEmpresa } from './integracoes.constants';
 import { IntegracaoStatusService } from './integracao-status.service';
 import { EvolutionService } from '@integrations/evolution/evolution.service';
+import {
+  TransactionalEmailService,
+  type TemplateAmostra,
+} from '@integrations/email/transactional-email.service';
 
 /** Mascara o local-part de um e-mail pra exibição (contato@x → co***@x). */
 function mascararEmail(email: string): string {
@@ -75,6 +79,7 @@ export class IntegracoesService {
     // ver reconciliarWhatsapp. EvolutionService não depende deste módulo
     // (só de http/env/redis), então não fecha ciclo.
     private readonly evolution: EvolutionService,
+    private readonly email: TransactionalEmailService,
   ) {
     this.crypto = new CryptoUtil(env.get('ENCRYPTION_KEY'));
   }
@@ -125,14 +130,26 @@ export class IntegracoesService {
   }
 
   /**
-   * Envia um e-mail de TESTE pro próprio usuário logado (não aceita destinatário
-   * arbitrário) e registra o resultado no semáforo. Serve pra validar a config
-   * do Resend pela UI sem depender de um envio real de negócio.
+   * Envia um e-mail de TESTE e registra o resultado no semáforo.
+   *
+   * Dois usos, e o segundo é o que importa pra quem desenha e-mail:
+   *  - sem `template`: a mensagem genérica "está funcionando", pra validar a
+   *    config do Resend pela UI;
+   *  - com `template`: uma AMOSTRA do template real, com a marca do tenant.
+   *    Preview de navegador e e-mail colado no Gmail não valem como teste — o
+   *    compositor do Gmail sanitiza o HTML e come o fundo do botão, e o CTA
+   *    some sem deixar rastro. Só o caminho real pega isso.
+   *
+   * `para` é opcional e cai no e-mail do próprio usuário. Aceitar endereço de
+   * terceiro é decisão consciente (o Léo pediu em 07/09): quem revisa layout
+   * quase nunca é quem tem o token. Não vira canal de envio à toa — é UM
+   * e-mail por chamada, com corpo fixo e auditado.
    */
   async enviarEmailTeste(
     user: AuthenticatedUser,
     agoraMs: number,
-  ): Promise<{ ok: boolean; para: string }> {
+    opcoes?: { para?: string; template?: TemplateAmostra },
+  ): Promise<{ ok: boolean; para: string; template?: TemplateAmostra; assunto?: string }> {
     const empresaId = this.requireEmpresa(user);
     if (!this.resend.isConfigured()) {
       throw new BusinessRuleException(
@@ -140,12 +157,29 @@ export class IntegracoesService {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
-    const para = user.email;
+    const para = opcoes?.para?.trim() || user.email;
     if (!para) {
       throw new BusinessRuleException(
-        'Seu usuário não tem e-mail cadastrado pra receber o teste.',
+        'Informe um destinatário ou cadastre um e-mail no seu usuário.',
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
+    }
+    if (opcoes?.template) {
+      const r = await this.email.enviarAmostraDeTemplate(
+        empresaId,
+        para,
+        opcoes.template,
+        `email-amostra:${empresaId}:${opcoes.template}:${agoraMs}`,
+      );
+      if (!r.ok) {
+        void this.status.registrarErro(empresaId, 'email', r.motivo ?? 'falha no envio');
+        throw new BusinessRuleException(
+          `Não deu pra enviar a amostra: ${r.motivo ?? 'falha no provedor'}`,
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      void this.status.registrarSucesso(empresaId, 'email');
+      return { ok: true, para, template: opcoes.template, assunto: r.assunto };
     }
     try {
       await this.resend.enviar({

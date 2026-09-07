@@ -326,3 +326,88 @@ describe('AuthGuard — token de API (bkt_) em /campanhas', () => {
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+describe('AuthGuard — token de API (bkt_) em /integracoes/email', () => {
+  let guard: AuthGuard;
+  let prisma: {
+    kanbanApiToken: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    usuario: { findUnique: ReturnType<typeof vi.fn> };
+  };
+
+  const comEscopo = (escopo: string[]) => {
+    prisma.kanbanApiToken.findUnique.mockResolvedValue({
+      id: 'tok-1',
+      empresaId: 'emp-1',
+      usuarioId: 'u1',
+      escopo,
+      revogado: false,
+    });
+  };
+
+  beforeEach(() => {
+    prisma = {
+      kanbanApiToken: { findUnique: vi.fn(), update: vi.fn().mockResolvedValue({}) },
+      usuario: { findUnique: vi.fn().mockResolvedValue(bktUser) },
+    };
+    comEscopo(['email']);
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setNxEx: vi.fn().mockResolvedValue(true),
+      eval: vi.fn().mockResolvedValue(1),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const reflector = { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector;
+    guard = new AuthGuard(
+      reflector,
+      {} as never,
+      prisma as never,
+      redis as never,
+      { get: () => 300 } as never,
+    );
+  });
+
+  it('as DUAS rotas de e-mail passam, com e sem prefixo da API', async () => {
+    const rotas: Array<[string, string]> = [
+      ['GET', '/integracoes/email/status'],
+      ['POST', '/integracoes/email/teste'],
+      ['POST', '/api/v1/integracoes/email/teste'],
+    ];
+    for (const [method, path] of rotas) {
+      const ctx = fakeContext({ method, path, headers: { authorization: 'Bearer bkt_abc' } });
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    }
+  });
+
+  it('o RESTO de /integracoes continua fechado — é DIRECTOR-only por D45', async () => {
+    // OAuth de marketplace, WhatsApp da empresa e redes sociais carregam
+    // responsabilidade contratual e risco de ban do número. Liberar o módulo
+    // inteiro pra pegar duas rotas seria pagar caro por conveniência.
+    for (const path of [
+      '/integracoes',
+      '/integracoes/conectar',
+      '/integracoes/whatsapp/qr',
+      '/integracoes/email',
+      '/integracoes/email/teste/extra',
+    ]) {
+      const ctx = fakeContext({
+        method: 'POST',
+        path,
+        headers: { authorization: 'Bearer bkt_abc' },
+      });
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+    }
+  });
+
+  it('token sem o escopo "email" não entra nem no status', async () => {
+    // O escopo fica GRAVADO no token: quem já tem um precisa gerar outro. Foi
+    // o que aconteceu quando `campanhas` entrou.
+    comEscopo(['kanban', 'campanhas']);
+    const ctx = fakeContext({
+      method: 'GET',
+      path: '/integracoes/email/status',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});

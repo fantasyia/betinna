@@ -141,6 +141,10 @@ export class AuthGuard implements CanActivate {
    *    agente escreve), mas **`disparar`, `agendar` e `reenviar-erros` NUNCA**:
    *    os três fazem e-mail sair pra base real e não têm desfazer — é decisão
    *    de gente, na tela.
+   *  - `/integracoes` é DIRECTOR-only (D45) e segue fechado, com DUAS exceções
+   *    por rota exata: `GET /integracoes/email/status` e
+   *    `POST /integracoes/email/teste` (escopo `email`). É UM e-mail por
+   *    chamada, auditado — não é canal de envio.
    *  - Carrega o dono (com role/empresa) e injeta req.user — assim @Roles e o
    *    filtro multi-tenant dos controllers continuam valendo sem mudança.
    *  - Atualiza ultimoUso com throttle de 60s (best-effort).
@@ -166,6 +170,7 @@ export class AuthGuard implements CanActivate {
       | 'tags'
       | 'inbox'
       | 'campanhas'
+      | 'email'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -205,10 +210,23 @@ export class AuthGuard implements CanActivate {
     // do template nunca era alcançada. Casar só /campanhas deixaria o escopo sem
     // acesso justamente ao que o agente vem escrever.
     else if (/^\/(campanhas|campanha-templates)(\/|$)/.test(rel)) moduloRequerido = 'campanhas';
+    // /integracoes/email/{status,teste} — e SÓ elas dentro de /integracoes.
+    //
+    // O módulo inteiro é DIRECTOR-only por D45 (OAuth de marketplace, WhatsApp
+    // da empresa, redes sociais: responsabilidade contratual e risco de ban).
+    // Um token de agente não tem o que fazer lá. Estas duas são de outra
+    // natureza: dizem se o Resend está de pé e mandam UM e-mail de teste.
+    //
+    // Por que isto existe: revisar layout de e-mail por preview de navegador ou
+    // colando no Gmail NÃO vale — o compositor do Gmail sanitiza o HTML e come
+    // o fundo do botão; com rótulo branco, o CTA some sem deixar rastro e quem
+    // revisa conclui que o template está quebrado. Só o caminho real pega isso.
+    else if (/^\/integracoes\/email\/(status|teste)\/?$/.test(rel)) moduloRequerido = 'email';
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
-          '/conhecimento, /tags, /inbox, /campanhas e /mullerbot/prompts|persona',
+          '/conhecimento, /tags, /inbox, /campanhas, /integracoes/email/{status,teste} ' +
+          'e /mullerbot/prompts|persona',
       );
     }
 
