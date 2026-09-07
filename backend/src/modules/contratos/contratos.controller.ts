@@ -10,6 +10,7 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type ListContratosDto, listContratosSchema } from './contratos.dto';
 import { ContratosService } from './contratos.service';
+import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 
@@ -35,7 +36,27 @@ export class ContratosController {
     private readonly contratos: ContratosService,
     private readonly mensalidades: ContratoMensalidadeSyncService,
     private readonly erp: ContratoErpService,
+    private readonly aprovacao: ContratoAprovacaoJob,
   ) {}
+
+  /**
+   * Confere no ERP quais orçamentos já foram aprovados e cria o contrato
+   * recorrente dos que passaram. A varredura de 30 em 30min faz isto sozinha —
+   * o endpoint é pra conferir na hora, logo depois de aprovar.
+   *
+   * Existe porque o Tiny NÃO tem webhook de orçamento (os eventos são de
+   * pedido, nota e estoque): sem perguntar, o app nunca fica sabendo.
+   */
+  @Post('verificar-aprovacoes')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'verificar_aprovacoes', resource: 'contrato' })
+  @ApiOperation({ summary: 'Vê quais orçamentos foram aprovados no ERP e cria os contratos.' })
+  verificarAprovacoes(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.aprovacao.varrer(user.empresaIdAtiva);
+  }
 
   /**
    * Sobe o contrato assinado pro ERP como contrato recorrente.

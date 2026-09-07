@@ -4,6 +4,7 @@ import { TinyModule } from '@integrations/tiny/tiny.module';
 import { ContratosController } from './contratos.controller';
 import { ContratosService } from './contratos.service';
 import { ContratoComodatoService } from './contrato-comodato.service';
+import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 
@@ -19,12 +20,14 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
     ContratoComodatoService,
     ContratoErpService,
     ContratoMensalidadeSyncService,
+    ContratoAprovacaoJob,
   ],
   exports: [
     ContratosService,
     ContratoComodatoService,
     ContratoErpService,
     ContratoMensalidadeSyncService,
+    ContratoAprovacaoJob,
   ],
 })
 export class ContratosModule {}
