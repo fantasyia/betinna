@@ -51,3 +51,10 @@ CREATE INDEX IF NOT EXISTS "KnowledgeChunk_embedding_hnsw_idx"
 CREATE INDEX IF NOT EXISTS "Conversation_alertaEsquecidaEm_idx"
   ON "Conversation" ("empresaId", "alertaEsquecidaEm")
   WHERE "alertaEsquecidaEm" IS NOT NULL;
+
+-- ── Execuções VIVAS por empresa (20260907170000) ─────────────────────
+-- Alimenta `turnoDeIaAberto`, que roda a cada passo de fluxo. Parcial: a tabela
+-- guarda o histórico todo, as vivas são poucas dezenas.
+CREATE INDEX IF NOT EXISTS "FluxoExecucao_empresaId_vivas_idx"
+  ON "FluxoExecucao" ("empresaId")
+  WHERE status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO');

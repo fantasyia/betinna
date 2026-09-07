@@ -36,6 +36,7 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 // os dois caminhos não divergirem (a IA solta "Nao e lead"/"Não é lead"
 // indistintamente; um acento a menos desviava tudo pro ramo errado).
 import { normalizarValor } from './normalizar-valor.util';
+import { turnoDeIaAberto } from './turno-ia-aberto.util';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -2872,32 +2873,62 @@ export class FluxoExecutorService {
    *
    * Sem conversa nenhuma, vale o default da empresa — é o estado que a conversa
    * teria ao nascer com a mensagem que está prestes a sair.
+   *
+   * ⚠️ `ia_aguardando` NÃO sai da Conversation: quem responde "tem alguém
+   * conduzindo agora" é a EXECUÇÃO viva parada no nó de IA (ver
+   * `turnoDeIaAberto`). Antes disto, os fluxos perguntavam isso pela ETAPA do
+   * lead — e a etapa erra nos dois sentidos: `Calculadora enviada` é etapa
+   * TERMINAL do consultivo, então quem voltava com dúvida depois do link ficava
+   * sem resposta, porque o RT achava que havia conversa em andamento (07/09).
    */
   private async estadoDaConversa(
     empresaId: string,
     ctx: Record<string, unknown>,
     botDaEmpresa: boolean,
-  ): Promise<{ bot_ligado: boolean; precisa_humano: boolean; tem_dono: boolean }> {
-    const padrao = { bot_ligado: botDaEmpresa, precisa_humano: false, tem_dono: false };
+  ): Promise<{
+    bot_ligado: boolean;
+    precisa_humano: boolean;
+    tem_dono: boolean;
+    ia_aguardando: boolean;
+  }> {
+    const padrao = {
+      bot_ligado: botDaEmpresa,
+      precisa_humano: false,
+      tem_dono: false,
+      ia_aguardando: false,
+    };
     try {
       const conversationId =
         typeof ctx.conversationId === 'string' ? (ctx.conversationId as string) : undefined;
       const leadId = typeof ctx.leadId === 'string' ? (ctx.leadId as string) : undefined;
       if (!conversationId && !leadId) return padrao;
 
-      const conv = await this.prisma.conversation.findFirst({
-        where: conversationId
-          ? { id: conversationId, empresaId }
-          : { empresaId, leadId, canal: 'WHATSAPP', proprietarioId: null },
-        orderBy: { ultimaMsgEm: 'desc' },
-        select: { botLigado: true, precisaHumano: true, proprietarioId: true },
-      });
-      if (!conv) return padrao;
+      const [conv, iaAberta] = await Promise.all([
+        this.prisma.conversation.findFirst({
+          where: conversationId
+            ? { id: conversationId, empresaId }
+            : { empresaId, leadId, canal: 'WHATSAPP', proprietarioId: null },
+          orderBy: { ultimaMsgEm: 'desc' },
+          select: { botLigado: true, precisaHumano: true, proprietarioId: true },
+        }),
+        // Independente da Conversation: o que responde "tem alguém conduzindo"
+        // é a EXECUÇÃO viva, não a linha da conversa. Catch PRÓPRIO de
+        // propósito — se esta consulta falhar, `bot_ligado`/`precisa_humano`
+        // (que valem mais) não podem cair junto pro default "pode falar".
+        turnoDeIaAberto(this.prisma, empresaId, { conversationId, leadId }).catch((err) => {
+          this.logger.warn(
+            `conversa.ia_aguardando não veio: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return false;
+        }),
+      ]);
+      if (!conv) return { ...padrao, ia_aguardando: iaAberta };
 
       return {
         bot_ligado: conv.botLigado ?? botDaEmpresa,
         precisa_humano: conv.precisaHumano ?? false,
         tem_dono: conv.proprietarioId != null,
+        ia_aguardando: iaAberta,
       };
     } catch (err) {
       // Best-effort como o resto do enriquecimento — mas o default aqui é

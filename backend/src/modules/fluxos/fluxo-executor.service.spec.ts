@@ -110,6 +110,21 @@ const makePrismaMock = () => ({
   $queryRaw: vi.fn().mockResolvedValue([]),
 });
 
+/**
+ * `$queryRaw` responde a DUAS perguntas neste caminho: "tem turno de IA aberto
+ * nesta conversa?" (roda a cada passo, no enriquecimento do contexto) e o match
+ * de lead por sufixo de telefone (D18). Por isso o roteamento por SQL — com
+ * `mockResolvedValueOnce` a resposta ia pra quem chamasse primeiro, e o teste
+ * passava a depender da ordem interna do executor.
+ */
+const matchPorSufixo = (
+  prisma: { $queryRaw: ReturnType<typeof vi.fn> },
+  linhas: Array<{ id: string }>,
+) =>
+  prisma.$queryRaw.mockImplementation((sql: TemplateStringsArray) =>
+    Promise.resolve(sql.join(' ').includes('CONVERSAR_IA') ? [] : linhas),
+  );
+
 const makeWhatsappMock = () => ({
   // Gate anterior ao envio: instância fora do ar não pode fechar o passo
   // como CONCLUIDO. Default conectado — os testes que exercitam a queda
@@ -412,7 +427,7 @@ describe('FluxoExecutorService', () => {
         funilId: 'funil-triagem',
         tipo: 'ATIVA',
       });
-      prisma.$queryRaw.mockResolvedValueOnce([]);
+      matchPorSufixo(prisma, []);
 
       await service.executarPasso('exec-1', 'no-1', 'job-1');
 
@@ -429,7 +444,7 @@ describe('FluxoExecutorService', () => {
         conversaComAnuncio({ leadId: 'lead-apagado' }),
       );
       prisma.lead.findFirst.mockResolvedValue(null); // lead não existe mais
-      prisma.$queryRaw.mockResolvedValueOnce([]); // e o telefone não é lead
+      matchPorSufixo(prisma, []); // e o telefone não é lead
       prisma.funilEtapa.findFirst.mockResolvedValue({
         id: 'et-triagem',
         funilId: 'funil-triagem',
@@ -451,7 +466,7 @@ describe('FluxoExecutorService', () => {
     it('IDEMPOTENTE: telefone que já é lead só AMARRA (match por sufixo D18)', async () => {
       prepararNo({ funilEtapaId: 'et-triagem' });
       prisma.conversation.findFirst.mockResolvedValue(conversaComAnuncio());
-      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-existente' }]);
+      matchPorSufixo(prisma, [{ id: 'lead-existente' }]);
 
       await service.executarPasso('exec-1', 'no-1', 'job-test');
 

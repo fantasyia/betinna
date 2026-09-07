@@ -12,6 +12,7 @@ import {
 import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
 import { matchFiltroPayload, type FiltroPayload } from './match-payload-filtro.util';
 import { normalizarValor } from './normalizar-valor.util';
+import { turnoDeIaAberto } from './turno-ia-aberto.util';
 import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
@@ -95,43 +96,21 @@ export class FluxoEventBusService {
   }
 
   /**
-   * Existe turno de IA ABERTO nesta conversa (ou neste lead)?
+   * Existe turno de IA aberto na conversa deste evento?
    *
-   * Aberto = execução viva parada NO nó "Conversar com IA" (`aguardandoNoId`
-   * aponta pra ele: está esperando a resposta do cliente) ou com o lock do
-   * turno tomado (`processandoTurno`: a IA está gerando a resposta agora). Os
-   * dois se soltam sozinhos — timeout do nó e reaper de lock órfão —, então
-   * isto não trava a régua pra sempre se uma execução ficar presa.
-   *
-   * De propósito NÃO é "qualquer execução viva": um DELAY de 3 dias no meio de
-   * um fluxo qualquer emudeceria a conversa inteira em silêncio.
+   * A definição de "aberto" mora em `turnoDeIaAberto` — a MESMA que o
+   * `{{conversa.ia_aguardando}}` das condições usa. Duas expressões pra mesma
+   * pergunta dariam duas respostas.
    */
   private async turnoDeIaAberto(
     empresaId: string,
     contexto: Record<string, unknown>,
   ): Promise<boolean> {
-    const conversationId =
-      typeof contexto['conversationId'] === 'string' ? (contexto['conversationId'] as string) : '';
-    const leadId = typeof contexto['leadId'] === 'string' ? (contexto['leadId'] as string) : '';
-    if (!conversationId && !leadId) return false;
     try {
-      // RAW porque o filtro precisa do nó em que a execução parou e não existe
-      // relação Prisma FluxoExecucao→FluxoNo por `aguardandoNoId`. String vazia
-      // no lugar de NULL evita "could not determine data type of parameter", e
-      // nenhum contexto tem chave igual a ''.
-      const abertos = await this.prisma.$queryRaw<Array<{ id: string }>>`
-        SELECT e.id
-        FROM "FluxoExecucao" e
-        LEFT JOIN "FluxoNo" n ON n.id = e."aguardandoNoId"
-        WHERE e."empresaId" = ${empresaId}
-          AND e.status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
-          AND (
-            (e.contexto #>> '{conversationId}') = ${conversationId}
-            OR (e.contexto #>> '{leadId}') = ${leadId}
-          )
-          AND (n."acaoTipo" = 'CONVERSAR_IA' OR e."processandoTurno" = true)
-        LIMIT 1`;
-      return abertos.length > 0;
+      return await turnoDeIaAberto(this.prisma, empresaId, {
+        conversationId: contexto['conversationId'] as string | undefined,
+        leadId: contexto['leadId'] as string | undefined,
+      });
     } catch (err) {
       // Fail-open, igual ao resto do bus: um hiccup de banco não pode calar a
       // régua inteira. O estrago de falar por cima é menor que o de emudecer.

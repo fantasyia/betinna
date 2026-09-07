@@ -185,7 +185,7 @@ export function CondicaoEditor({
         <>
           <Field
             label="Variável / campo"
-            hint="Ex: classificacao_final, lead.tags, conversa.bot_ligado"
+            hint="Ex: classificacao_final, lead.tags, conversa.ia_aguardando"
           >
             <div>
               <Input
@@ -211,6 +211,11 @@ export function CondicaoEditor({
                 <option value="conversa.bot_ligado" />
                 <option value="conversa.precisa_humano" />
                 <option value="conversa.tem_dono" />
+                {/* "Tem alguém conduzindo AGORA?" — pergunte isto, não a etapa
+                    do lead: etapa como `Calculadora enviada` é TERMINAL do
+                    consultivo, e usá-la como proxy calava o reengajamento
+                    justamente de quem voltava com dúvida (07/09). */}
+                <option value="conversa.ia_aguardando" />
                 {variaveis.map((v) => (
                   <option key={v.id} value={v.chave} />
                 ))}

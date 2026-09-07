@@ -1575,7 +1575,12 @@ const fluxoNoInput = z.object({
         "ESTADO DA CONVERSA (fresco a cada passo): `conversa.bot_ligado` (bool — PAUSAR_IA derruba; " +
         "conversa nova resolve pelo default da empresa, não como desligado) · " +
         "`conversa.precisa_humano` (bool — TRANSFERIR_ATENDIMENTO liga) · `conversa.tem_dono` " +
-        "(bool — conversa é de WhatsApp pessoal de um rep). ⚠️ Régua com espera LONGA (DELAY de " +
+        "(bool — conversa é de WhatsApp pessoal de um rep) · `conversa.ia_aguardando` (bool — TEM " +
+        "TURNO DE IA ABERTO nesta conversa: execução viva parada no nó Conversar com IA ou com o " +
+        "turno em processamento). ⚠️ Pra perguntar \"já tem alguém conduzindo?\" use ISTO, nunca a " +
+        "ETAPA do lead: etapa é proxy ruim e erra nos DOIS sentidos — etapa terminal do consultivo " +
+        "(ex.: Calculadora enviada) parece \"em andamento\" sem ter execução nenhuma, e o " +
+        "reengajamento se cala justamente com quem voltou com dúvida (medido 07/09). ⚠️ Régua com espera LONGA (DELAY de " +
         "dias) deve checar `conversa.bot_ligado` antes de mandar: sem isso o toque seguinte fala " +
         "por cima do atendente que assumiu no meio. ENVIAR_WHATSAPP não checa nada sozinho. " +
         "CONVERSAR_IA aceita `maxBaloes` (int): teto de mensagens no WhatsApp DESTE nó, " +

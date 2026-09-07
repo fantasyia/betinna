@@ -16,7 +16,14 @@ vi.mock('@shared/utils/safe-request', () => ({
  * antes; e `ctx.conversa`, apesar do nome, era montado a partir das variáveis
  * do LEAD — `botLigado` e `precisaHumano` nunca chegavam ao contexto.
  */
-const prismaMock = (conv: Record<string, unknown> | null, botDaEmpresa = true) => ({
+const prismaMock = (
+  conv: Record<string, unknown> | null,
+  botDaEmpresa = true,
+  turnoAberto = false,
+) => ({
+  // `ia_aguardando` não sai da Conversation: quem responde "tem alguém
+  // conduzindo" é a EXECUÇÃO viva parada no nó de IA.
+  $queryRaw: vi.fn().mockResolvedValue(turnoAberto ? [{ id: 'exec-ia' }] : []),
   empresa: {
     findUnique: vi.fn().mockResolvedValue({ nome: 'Somatec', botWhatsappAtivo: botDaEmpresa }),
   },
@@ -34,8 +41,8 @@ const prismaMock = (conv: Record<string, unknown> | null, botDaEmpresa = true) =
   conversation: { findFirst: vi.fn().mockResolvedValue(conv) },
 });
 
-function build(conv: Record<string, unknown> | null, botDaEmpresa = true) {
-  const prisma = prismaMock(conv, botDaEmpresa);
+function build(conv: Record<string, unknown> | null, botDaEmpresa = true, turnoAberto = false) {
+  const prisma = prismaMock(conv, botDaEmpresa, turnoAberto);
   const svc = new FluxoExecutorService(
     prisma as never,
     { get: () => 'test', isProduction: false } as never,
@@ -160,6 +167,44 @@ describe('estado da conversa no contexto da CONDICAO', () => {
     });
 
     expect((await conversa()).bot_ligado).toBe(false);
+  });
+
+  it('turno de IA ABERTO na conversa → conversa.ia_aguardando true', async () => {
+    // O RT usava a ETAPA como proxy de "tem alguém conduzindo" e a etapa erra
+    // nos dois sentidos. Agora a condição pergunta o que importa.
+    const { conversa } = build(
+      { botLigado: true, precisaHumano: false, proprietarioId: null },
+      true,
+      true,
+    );
+
+    expect((await conversa()).ia_aguardando).toBe(true);
+  });
+
+  it('etapa TERMINAL do consultivo, sem execução viva → ia_aguardando false', async () => {
+    // 07/09: lead em `Calculadora enviada` (etapa terminal do C1, zero execuções
+    // vivas). O RT achou que havia conversa em andamento e se calou — quem abriu
+    // o link e voltou com dúvida ficou sem resposta.
+    const { conversa } = build(
+      { botLigado: true, precisaHumano: false, proprietarioId: null },
+      true,
+      false,
+    );
+
+    expect((await conversa()).ia_aguardando).toBe(false);
+  });
+
+  it('falha SÓ na consulta do turno não derruba bot_ligado — o que vale mais fica de pé', async () => {
+    const { prisma, conversa } = build({
+      botLigado: false,
+      precisaHumano: false,
+      proprietarioId: null,
+    });
+    prisma.$queryRaw.mockRejectedValue(new Error('banco fora'));
+
+    const c = await conversa();
+    expect(c.ia_aguardando).toBe(false);
+    expect(c.bot_ligado).toBe(false);
   });
 
   it('falha de banco não cala a régua — cai no default "pode falar"', async () => {
