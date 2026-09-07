@@ -5,6 +5,8 @@ import {
   templateBoasVindas,
   templateComissaoFechada,
   templateOcorrenciaCritica,
+  templateRecuperarSenha,
+  templateReenvioConvite,
 } from './email-templates';
 
 describe('Email templates', () => {
@@ -168,6 +170,45 @@ describe('Email templates', () => {
       expect(r.html).toContain('Padaria do Zé');
       expect(r.html).toContain('Açúcar Refinado 5kg');
       expect(r.html).toContain('7 dias');
+    });
+  });
+
+  // Regressão: o nome do APP não pode vazar pra dentro de um e-mail já vestido
+  // com a marca do TENANT. É a mesma classe do "Master Block" no rastreio, na
+  // direção oposta — e escapou porque o layout foi consertado e a copy não.
+  describe('vazamento de marca (tenant × app)', () => {
+    const marca = {
+      empresaNome: 'Somatec Blocking',
+      logoUrl: 'https://exemplo.com/logo.png',
+      corPrimaria: '#00416E',
+      corAcao: '#F39200',
+    };
+
+    it('nenhum template com marca de tenant cita o nome do app', () => {
+      const saidas = [
+        templateBoasVindas({
+          nome: 'Ana',
+          empresaNome: 'Somatec Blocking',
+          loginUrl: 'https://x',
+          marca,
+        }),
+        templateReenvioConvite({
+          nome: 'Ana',
+          empresaNome: 'Somatec Blocking',
+          inviteUrl: 'https://x',
+          marca,
+        }),
+        templateRecuperarSenha({ nome: 'Ana', resetUrl: 'https://x', marca }),
+      ];
+      for (const { assunto, html } of saidas) {
+        expect(assunto).not.toContain('Betinna');
+        expect(html).not.toContain('Betinna');
+      }
+    });
+
+    it('sem marca, o layout genérico continua sendo o do app', () => {
+      const { html } = templateRecuperarSenha({ nome: 'Ana', resetUrl: 'https://x' });
+      expect(html).toContain('Betinna.ai');
     });
   });
 });

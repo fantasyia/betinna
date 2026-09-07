@@ -176,21 +176,31 @@ export interface BoasVindasParams {
 }
 
 /**
+ * Nome que aparece PRO DESTINATÁRIO. Com marca de tenant, é a empresa dele;
+ * sem marca, é o app. Cravar "Betinna.ai" no texto vazava o nome do produto
+ * para dentro de um e-mail já vestido com a marca do cliente — mesma classe do
+ * "Master Block" no template de rastreio, na direção oposta.
+ */
+function nomeVisivel(marca?: MarcaEmail, empresaNome?: string): string {
+  return marca?.empresaNome ?? empresaNome ?? 'Betinna.ai';
+}
+
+/**
  * Template: Boas-vindas (novo usuário acabou de aceitar convite).
  */
 export function templateBoasVindas(p: BoasVindasParams): { assunto: string; html: string } {
   return {
-    assunto: `Bem-vindo(a) ao Betinna.ai, ${p.nome}!`,
+    assunto: `Bem-vindo(a) ao ${nomeVisivel(p.marca, p.empresaNome)}, ${p.nome}!`,
     html: layout({
       marca: p.marca,
       preheader: `Seu acesso ao ${p.empresaNome} está pronto.`,
       title: `Bem-vindo(a), ${p.nome}!`,
       bodyHtml: `
         <p>Sua conta no <strong>${escapeHtml(p.empresaNome)}</strong> está ativa.</p>
-        <p>O Betinna.ai centraliza CRM, pedidos, atendimento multicanal e automação comercial em um único app — adaptado pra forma como sua empresa vende.</p>
+        <p>Aqui ficam CRM, pedidos, atendimento multicanal e automação comercial num app só — adaptado pra forma como sua empresa vende.</p>
         <p>Acesse agora pra completar o tour de onboarding e configurar seu perfil:</p>
       `,
-      ctaText: 'Acessar Betinna.ai',
+      ctaText: 'Acessar minha conta',
       ctaUrl: p.loginUrl,
     }),
   };
@@ -216,13 +226,13 @@ export function templateReenvioConvite(p: ReenvioConviteParams): {
   html: string;
 } {
   return {
-    assunto: `Reenvio do convite — Betinna.ai (${p.empresaNome})`,
+    assunto: `Reenvio do convite — ${p.empresaNome}`,
     html: layout({
       marca: p.marca,
       preheader: `Clique pra definir sua senha e acessar o ${p.empresaNome}.`,
       title: `Olá, ${escapeHtml(p.nome)} 👋`,
       bodyHtml: `
-        <p>Você foi convidado(a) pra acessar o <strong>${escapeHtml(p.empresaNome)}</strong> no Betinna.ai.</p>
+        <p>Você foi convidado(a) pra acessar o <strong>${escapeHtml(p.empresaNome)}</strong>.</p>
         <p>Como o convite anterior expirou ou não foi finalizado, segue um link novo válido por 24h:</p>
         <p style="font-size:13px;color:#6b6580;">Se você não esperava este e-mail, pode ignorar.</p>
       `,
@@ -252,13 +262,13 @@ export function templateRecuperarSenha(p: RecuperarSenhaParams): {
   html: string;
 } {
   return {
-    assunto: 'Redefinir sua senha — Betinna.ai',
+    assunto: `Redefinir sua senha — ${nomeVisivel(p.marca)}`,
     html: layout({
       marca: p.marca,
-      preheader: 'Link pra criar uma senha nova no Betinna.ai.',
+      preheader: 'Link pra criar uma senha nova.',
       title: `Olá, ${escapeHtml(p.nome)}`,
       bodyHtml: `
-        <p>Recebemos um pedido pra redefinir a senha da sua conta no Betinna.ai.</p>
+        <p>Recebemos um pedido pra redefinir a senha da sua conta.</p>
         <p>Clique no botão abaixo pra criar uma senha nova. O link vale por 1 hora e só pode ser usado uma vez.</p>
         <p style="font-size:13px;color:#6b6580;">Se não foi você que pediu, ignore este e-mail — sua senha atual continua valendo e nada muda.</p>
       `,
