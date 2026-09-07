@@ -359,11 +359,32 @@ const funilEtapasSchema = z
  * - formaEnvioId/formaFreteId: transportadora padrão — sem ela o pedido nasce
  *   "Forma de envio: Não definida" e a separação não manda pra expedição.
  */
+/**
+ * Contrato de locação no ERP. Os dados fiscais são OPT-IN e ficam vazios de
+ * propósito: código da lista de serviço, natureza da operação e ISS são decisão
+ * da contabilidade do tenant — default nosso sairia como imposto errado numa
+ * NFS-e real. Sem eles o contrato entra e cobra, só não emite nota.
+ */
+const contratoLocacaoSchema = z
+  .object({
+    /** Quando a cobrança do período vence: C mês corrente · S seguinte · P dois meses. */
+    vencimento: z.enum(['C', 'S', 'P']).nullable().optional(),
+    emiteNota: z.boolean().nullable().optional(),
+    codigoListaServico: z.string().max(10).nullable().optional(),
+    naturezaOperacao: z.string().max(120).nullable().optional(),
+    percentualIss: z.number().min(0).max(100).nullable().optional(),
+    /** Serviço cadastrado no ERP que dá nome/código à cobrança. */
+    servicoCodigo: z.string().max(60).nullable().optional(),
+    servicoNome: z.string().max(120).nullable().optional(),
+  })
+  .strip();
+
 const erpSchema = z
   .object({
     ecommerceId: z.number().int().positive().nullable().optional(),
     formaEnvioId: z.number().int().positive().nullable().optional(),
     formaFreteId: z.number().int().positive().nullable().optional(),
+    contratoLocacao: contratoLocacaoSchema.nullable().optional(),
   })
   .strip();
 

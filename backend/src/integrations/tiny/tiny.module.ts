@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { TinyClientService } from './tiny-client.service';
+import { TinyV2ClientService } from './tiny-v2-client.service';
+import { TinyContratosService } from './tiny-contratos.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
@@ -33,6 +35,8 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
     TinyMapeamentoService,
     TinyOAuthService,
     TinyClientService,
+    TinyV2ClientService,
+    TinyContratosService,
     TinyContaService,
     TinyProdutosService,
     TinyPedidosService,
@@ -49,6 +53,8 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
   exports: [
     TinyOAuthService,
     TinyClientService,
+    TinyV2ClientService,
+    TinyContratosService,
     TinyContaService,
     TinyProdutosService,
     TinyPedidosService,

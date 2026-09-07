@@ -10,6 +10,7 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type ListContratosDto, listContratosSchema } from './contratos.dto';
 import { ContratosService } from './contratos.service';
+import { ContratoErpService } from './contrato-erp.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 
 /**
@@ -33,7 +34,27 @@ export class ContratosController {
   constructor(
     private readonly contratos: ContratosService,
     private readonly mensalidades: ContratoMensalidadeSyncService,
+    private readonly erp: ContratoErpService,
   ) {}
+
+  /**
+   * Sobe o contrato assinado pro ERP como contrato recorrente.
+   *
+   * É POST porque cria coisa do outro lado, mas não é escrita no contrato do
+   * app: o documento continua sendo o que o cliente assinou. Fica restrito a
+   * ADMIN/DIRECTOR porque, uma vez lá, a cobrança mensal começa e a v2 do Tiny
+   * não tem como excluir — só encerrar.
+   */
+  @Post(':id/enviar-erp')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'enviar_erp', resource: 'contrato', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Cria o contrato recorrente no ERP (só depois de assinado).' })
+  enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.erp.enviar(id, user.empresaIdAtiva);
+  }
 
   /**
    * Lê no ERP quais mensalidades de locação foram pagas e libera a comissão do
