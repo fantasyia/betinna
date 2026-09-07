@@ -124,3 +124,44 @@ describe('onde o link entra no corpo do e-mail', () => {
     expect(bloco).toContain('Avisos sobre pedidos');
   });
 });
+
+describe('layout com a marca do tenant', () => {
+  // Opt-in por empresa: sem logo E cor configuradas, sai o layout genérico —
+  // senão a faixa colorida apareceria com a logo quebrada, que é pior.
+  it('sem marca: mantém o layout genérico de hoje', async () => {
+    const { templatePedidoRastreio } = await import('@integrations/email/email-templates');
+
+    const { html } = templatePedidoRastreio({
+      nome: 'Fulano',
+      numeroPedido: 'SB1',
+      codigo: 'BR1',
+      url: 'https://x',
+    });
+
+    expect(html).toContain('Betinna.ai');
+    expect(html).not.toContain('background-image');
+  });
+
+  it('com marca: usa cor, logo e o laranja da AÇÃO no botão', async () => {
+    const { templatePedidoRastreio } = await import('@integrations/email/email-templates');
+
+    const { html } = templatePedidoRastreio({
+      nome: 'Fulano',
+      numeroPedido: 'SB1',
+      codigo: 'BR1',
+      url: 'https://x',
+      marca: {
+        empresaNome: 'Somatec Blocking',
+        logoUrl: 'https://www.somatecblocking.com.br/logo-somatec-white.png',
+        corPrimaria: '#00416E',
+        corAcao: '#F39200',
+      },
+    });
+
+    expect(html).toContain('#00416E');
+    // O botão é o laranja da ação, não a cor primária — regra específica da
+    // Somatec ("laranja marca a informação que importa").
+    expect(html).toContain('background:#F39200');
+    expect(html).toContain('logo-somatec-white.png');
+  });
+});

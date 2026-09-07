@@ -12,6 +12,7 @@ import {
   templateRecuperarSenha,
   templateReenvioConvite,
   templatePedidoRastreio,
+  type MarcaEmail,
   rodapeDescadastro,
   linkDescadastroInline,
   SLOT_DESCADASTRO,
@@ -79,6 +80,49 @@ export class TransactionalEmailService {
     return `${base}${safe}`;
   }
 
+  /**
+   * Marca do tenant pro e-mail — opt-in por empresa.
+   *
+   * Só devolve algo quando a empresa configurou **logo E cor**: sem os dois, o
+   * layout do tenant sairia com uma faixa colorida e uma imagem quebrada no
+   * lugar da logo, o que é pior que o layout genérico. Assim ninguém acorda com
+   * o e-mail diferente — vira `PATCH /empresas/config` quando a empresa quiser.
+   *
+   * ⚠️ A logo vem de `config.marca.logoEmailUrl`, NÃO de `Empresa.logoUrl`: o
+   * segundo é path do Storage, e resolver pra signed URL quebraria a logo de
+   * todo e-mail antigo quando a assinatura expirasse — o e-mail fica na caixa
+   * da pessoa para sempre.
+   */
+  private async marcaDeEmail(empresaId?: string): Promise<MarcaEmail | undefined> {
+    if (!empresaId) return undefined;
+    try {
+      const empresa = await this.prisma.empresa.findUnique({
+        where: { id: empresaId },
+        select: { nome: true, config: true },
+      });
+      const m = ((empresa?.config as Record<string, unknown> | null)?.marca ?? {}) as {
+        corPrimaria?: string;
+        corAcao?: string;
+        logoEmailUrl?: string;
+        headerImgUrl?: string;
+        rodape?: string;
+      };
+      if (!m.logoEmailUrl || !m.corPrimaria) return undefined;
+      return {
+        empresaNome: empresa?.nome ?? '',
+        logoUrl: m.logoEmailUrl,
+        corPrimaria: m.corPrimaria,
+        corAcao: m.corAcao ?? undefined,
+        headerImgUrl: m.headerImgUrl ?? undefined,
+        rodape: m.rodape ?? undefined,
+      };
+    } catch (err) {
+      // Marca é enfeite: falhar aqui não pode impedir o e-mail de sair.
+      this.logger.warn(`Marca do tenant não resolveu (${String(err)}) — layout genérico`);
+      return undefined;
+    }
+  }
+
   private async send(
     para: string,
     assunto: string,
@@ -143,7 +187,8 @@ export class TransactionalEmailService {
     codigo: string;
     url: string;
   }) {
-    const { assunto, html } = templatePedidoRastreio(params);
+    const marca = await this.marcaDeEmail(params.empresaId);
+    const { assunto, html } = templatePedidoRastreio({ ...params, marca });
     return this.send(
       params.para,
       assunto,

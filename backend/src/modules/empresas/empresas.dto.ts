@@ -327,6 +327,26 @@ const marcaSchema = z
       .optional(),
     /** Uma linha no rodapé: site, telefone — como o cliente responde. */
     rodape: z.string().max(120).nullable().optional(),
+    /**
+     * Cor do BOTÃO. Separada da secundária de propósito: na Somatec o laranja
+     * `#F39200` marca a ação (CTA, número-dinheiro, diferencial) e o ciano é
+     * fio e destaque fino — usar a secundária no botão apaga essa distinção.
+     */
+    corAcao: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'cor deve ser hex, ex. #F39200')
+      .nullable()
+      .optional(),
+    /**
+     * Logo PARA E-MAIL: URL pública e ESTÁVEL, não o path do Storage.
+     *
+     * `Empresa.logoUrl` guarda caminho do bucket, e resolver isso pra signed URL
+     * quebraria a logo de todo e-mail antigo quando a assinatura expirar — o
+     * e-mail fica no arquivo da pessoa para sempre. Por isso é campo próprio.
+     */
+    logoEmailUrl: z.string().url().max(300).nullable().optional(),
+    /** Faixa do cabeçalho (textura assada em imagem — Outlook não faz gradiente). */
+    headerImgUrl: z.string().url().max(300).nullable().optional(),
   })
   .partial()
   .optional();

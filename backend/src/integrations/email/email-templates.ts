@@ -26,6 +26,25 @@ const COLOR_BG = '#f8fafc';
 const COLOR_DANGER = '#dc2626';
 const COLOR_SUCCESS = '#16a34a';
 
+/**
+ * Marca do TENANT no e-mail. Vem de `Empresa.config.marca` + `Empresa.nome`.
+ *
+ * Só entra quando a empresa configurou logo E cor: sem isso o layout do tenant
+ * sairia com uma faixa colorida e uma imagem quebrada no lugar da logo, o que é
+ * pior que o layout genérico. Ou seja, é opt-in por tenant e ninguém acorda com
+ * o e-mail diferente.
+ */
+export interface MarcaEmail {
+  empresaNome: string;
+  logoUrl: string;
+  corPrimaria: string;
+  /** Cor do BOTÃO — na Somatec o laranja da ação, não o ciano do fio. */
+  corAcao?: string;
+  /** Faixa do cabeçalho: textura ASSADA em imagem (Outlook não faz gradiente). */
+  headerImgUrl?: string;
+  rodape?: string;
+}
+
 interface BaseLayoutParams {
   preheader?: string;
   title: string;
@@ -33,13 +52,60 @@ interface BaseLayoutParams {
   ctaText?: string;
   ctaUrl?: string;
   footerNote?: string;
+  marca?: MarcaEmail;
 }
 
 /**
  * Layout master — todos templates passam pelo mesmo wrapper pra manter
  * identidade visual consistente.
  */
-function layout({
+function layout(p: BaseLayoutParams): string {
+  return p.marca ? layoutDoTenant(p, p.marca) : layoutGenerico(p);
+}
+
+/**
+ * Layout com a marca da empresa — o que o cliente final vê.
+ *
+ * Três decisões que não são estéticas, e que quebram em silêncio se alguém
+ * "melhorar" depois:
+ *  - **textura do cabeçalho é IMAGEM, nunca CSS**: Outlook não renderiza
+ *    gradiente, e há `background-color` por trás — quem bloqueia imagem vê a cor
+ *    sólida, não branco;
+ *  - **sem webfont**: cliente de e-mail não carrega, então a pilha é a do sistema;
+ *  - **botão em `<table>`**, não `<a>` solto: Outlook ignora padding em link inline.
+ */
+function layoutDoTenant(
+  { preheader, title, bodyHtml, ctaText, ctaUrl, footerNote }: BaseLayoutParams,
+  m: MarcaEmail,
+): string {
+  const acao = m.corAcao ?? m.corPrimaria;
+  const textura = m.headerImgUrl
+    ? `background-image:url('${escapeAttr(m.headerImgUrl)}');background-size:600px 90px;background-repeat:no-repeat;`
+    : '';
+  return `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#e9eef3;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+${preheader ? `<div style="display:none;font-size:1px;max-height:0;opacity:0;overflow:hidden">${escapeHtml(preheader)}</div>` : ''}
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#e9eef3;"><tr>
+<td align="center" style="padding:32px 12px;">
+<table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;background:#ffffff;">
+ <tr><td style="background-color:${escapeAttr(m.corPrimaria)};${textura}padding:22px 44px;"><img src="${escapeAttr(m.logoUrl)}" height="40" alt="${escapeAttr(m.empresaNome)}" style="display:block;border:0;height:40px;width:auto;"></td></tr>
+ <tr><td style="padding:40px 44px 6px 44px;">
+   <p style="margin:0 0 20px 0;font-size:20px;line-height:1.4;color:${escapeAttr(m.corPrimaria)};font-weight:600;">${escapeHtml(title)}</p>
+   ${bodyHtml}</td></tr>
+ ${
+   ctaText && ctaUrl
+     ? `<tr><td style="padding:14px 44px 44px 44px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:${escapeAttr(acao)};"><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:15px 30px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:.2px;">${escapeHtml(ctaText)}</a></td></tr></table></td></tr>`
+     : ''
+ }
+ <tr><td style="background:${escapeAttr(m.corPrimaria)};padding:26px 44px;">
+   <p style="margin:0 0 8px 0;font-size:11px;color:#ffffff;font-weight:700;letter-spacing:1.4px;">${escapeHtml(m.empresaNome)}</p>
+   <p style="margin:0;font-size:11px;line-height:1.7;color:#93a4b5;">${escapeHtml(footerNote ?? m.rodape ?? '')}</p></td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+function layoutGenerico({
   preheader,
   title,
   bodyHtml,
@@ -105,6 +171,8 @@ export interface BoasVindasParams {
   nome: string;
   empresaNome: string;
   loginUrl: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 /**
@@ -114,6 +182,7 @@ export function templateBoasVindas(p: BoasVindasParams): { assunto: string; html
   return {
     assunto: `Bem-vindo(a) ao Betinna.ai, ${p.nome}!`,
     html: layout({
+      marca: p.marca,
       preheader: `Seu acesso ao ${p.empresaNome} está pronto.`,
       title: `Bem-vindo(a), ${p.nome}!`,
       bodyHtml: `
@@ -132,6 +201,8 @@ export interface ReenvioConviteParams {
   empresaNome: string;
   /** URL completa do action link do Supabase (já com token embutido). */
   inviteUrl: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 /**
@@ -147,6 +218,7 @@ export function templateReenvioConvite(p: ReenvioConviteParams): {
   return {
     assunto: `Reenvio do convite — Betinna.ai (${p.empresaNome})`,
     html: layout({
+      marca: p.marca,
       preheader: `Clique pra definir sua senha e acessar o ${p.empresaNome}.`,
       title: `Olá, ${escapeHtml(p.nome)} 👋`,
       bodyHtml: `
@@ -164,6 +236,8 @@ export interface RecuperarSenhaParams {
   nome: string;
   /** URL completa do action link do Supabase (já com token embutido). */
   resetUrl: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 /**
@@ -180,6 +254,7 @@ export function templateRecuperarSenha(p: RecuperarSenhaParams): {
   return {
     assunto: 'Redefinir sua senha — Betinna.ai',
     html: layout({
+      marca: p.marca,
       preheader: 'Link pra criar uma senha nova no Betinna.ai.',
       title: `Olá, ${escapeHtml(p.nome)}`,
       bodyHtml: `
@@ -199,6 +274,8 @@ export interface AprovacaoResolvidaParams {
   status: 'APROVADA' | 'REJEITADA';
   comentario?: string | null;
   pedidoUrl: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 /**
@@ -215,6 +292,7 @@ export function templateAprovacaoResolvida(p: AprovacaoResolvidaParams): {
   return {
     assunto: `Pedido ${p.pedidoNumero} ${label}`,
     html: layout({
+      marca: p.marca,
       preheader: `Seu pedido ${p.pedidoNumero} foi ${label}.`,
       title: `Pedido ${p.pedidoNumero} ${label}`,
       bodyHtml: `
@@ -244,6 +322,8 @@ export interface ComissaoFechadaParams {
   totalVendas: number;
   totalComissao: number;
   comissoesUrl: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 export function templateComissaoFechada(p: ComissaoFechadaParams): {
@@ -254,6 +334,7 @@ export function templateComissaoFechada(p: ComissaoFechadaParams): {
   return {
     assunto: `Comissão ${mesNome}/${p.ano} fechada`,
     html: layout({
+      marca: p.marca,
       preheader: `Sua comissão de ${mesNome}/${p.ano} está disponível.`,
       title: `Comissão ${mesNome}/${p.ano} fechada`,
       bodyHtml: `
@@ -284,6 +365,8 @@ export interface OcorrenciaCriticaParams {
   severidade: 'CRITICA' | 'ALTA';
   slaHoras: number;
   ocorrenciaUrl: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 export function templateOcorrenciaCritica(p: OcorrenciaCriticaParams): {
@@ -293,6 +376,7 @@ export function templateOcorrenciaCritica(p: OcorrenciaCriticaParams): {
   return {
     assunto: `[${p.severidade}] ${p.numero}: ${truncate(p.titulo, 60)}`,
     html: layout({
+      marca: p.marca,
       preheader: `Ocorrência ${p.severidade.toLowerCase()} aberta — SLA ${p.slaHoras}h.`,
       title: `Ocorrência ${p.severidade.toLowerCase()} aberta`,
       bodyHtml: `
@@ -315,6 +399,8 @@ export interface AmostraFollowupParams {
   produtoNome: string;
   diasDesdeEnvio: number;
   amostrasUrl: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 export function templateAmostraFollowup(p: AmostraFollowupParams): {
@@ -324,6 +410,7 @@ export function templateAmostraFollowup(p: AmostraFollowupParams): {
   return {
     assunto: `Follow-up: amostra ${p.produtoNome} para ${p.clienteNome}`,
     html: layout({
+      marca: p.marca,
       preheader: `${p.diasDesdeEnvio} dias desde o envio — hora de fazer follow-up.`,
       title: 'Hora de fazer follow-up',
       bodyHtml: `
@@ -394,6 +481,8 @@ export interface PedidoRastreioParams {
   numeroPedido: string;
   codigo: string;
   url: string;
+  /** Marca do tenant (opt-in): sem ela, o layout genérico. */
+  marca?: MarcaEmail;
 }
 
 /**
@@ -413,6 +502,7 @@ export function templatePedidoRastreio(p: PedidoRastreioParams): {
   return {
     assunto: `Seu pedido ${p.numeroPedido} foi despachado`,
     html: layout({
+      marca: p.marca,
       preheader: `Código de rastreio ${p.codigo}`,
       title: 'Seu Master Block foi despachado',
       bodyHtml: `
