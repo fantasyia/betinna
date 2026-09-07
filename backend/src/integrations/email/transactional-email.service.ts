@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { ResendService } from '@integrations/resend/resend.service';
+import { DescadastroService } from '@shared/descadastro/descadastro.service';
 import {
   templateAmostraFollowup,
   templateAprovacaoResolvida,
@@ -10,6 +11,7 @@ import {
   templateOcorrenciaCritica,
   templateRecuperarSenha,
   templateReenvioConvite,
+  rodapeDescadastro,
 } from './email-templates';
 
 /**
@@ -31,6 +33,7 @@ export class TransactionalEmailService {
     private readonly resend: ResendService,
     private readonly env: EnvService,
     private readonly prisma: PrismaService,
+    private readonly descadastro: DescadastroService,
   ) {}
 
   /**
@@ -80,6 +83,8 @@ export class TransactionalEmailService {
     attachments?: Array<{ filename: string; content: string }>,
     idempotencyKey?: string,
     empresaId?: string,
+    /** Cabeçalhos da mensagem (List-Unsubscribe do marketing). */
+    headers?: Record<string, string>,
   ): Promise<{ ok: boolean; motivo?: string; id?: string | null }> {
     // Resend é o ÚNICO provedor transacional do sistema (SendGrid removido).
     const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
@@ -103,6 +108,7 @@ export class TransactionalEmailService {
         idempotencyKey,
         fromNome: remetente.fromNome,
         replyTo: remetente.replyTo,
+        headers,
       });
       const ok = r.status >= 200 && r.status < 300;
       if (!ok) {
@@ -132,14 +138,40 @@ export class TransactionalEmailService {
     idempotencyKey?: string;
     /** Quando informado, usa o remetente por-tenant (Empresa.config.emailTransacional). */
     empresaId?: string;
+    /**
+     * Destinatário do e-mail de MARKETING (campanha, régua de nutrição).
+     * Informando isto, a mensagem ganha rodapé de "cancelar o envio" e os
+     * cabeçalhos `List-Unsubscribe` — que é o que faz o Gmail mostrar o botão
+     * nativo em vez de a pessoa clicar em SPAM.
+     *
+     * ⛔ Transacional (pedido, rastreio, convite, senha) NÃO passa isto: quem
+     * saiu da lista continua precisando saber onde está a encomenda.
+     */
+    descadastro?: { empresaId: string; leadId?: string; clienteId?: string };
   }) {
+    // Marketing: rodapé + cabeçalhos de descadastro na MESMA passada — o token
+    // é por destinatário, então não dá pra montar isso no corpo da campanha.
+    let html = params.html;
+    let headers: Record<string, string> | undefined;
+    if (params.descadastro) {
+      const token = this.descadastro.gerarToken({ ...params.descadastro, email: params.para });
+      const url = this.descadastro.urlDescadastro(token);
+      html = [html, rodapeDescadastro(url)].join('\n');
+      headers = {
+        'List-Unsubscribe': `<${url}>`,
+        // RFC 8058: com isto o provedor POSTa sozinho no clique do botão nativo,
+        // sem levar a pessoa pra lugar nenhum.
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      };
+    }
     return this.send(
       params.para,
       params.assunto,
-      params.html,
+      html,
       undefined,
       params.idempotencyKey,
       params.empresaId,
+      headers,
     );
   }
 

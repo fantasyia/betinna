@@ -1701,13 +1701,32 @@ export class FluxoExecutorService {
     // Resend sistêmico — envia 1 e-mail por destinatário resolvido. Chave de idempotência
     // por destinatário (Resend deduplica nativamente por 24h) → retry não duplica e-mail.
     const messageIds: string[] = [];
+    // Descadastro vai SÓ pro e-mail do contato. `resolverDestinatarios` também
+    // devolve gente de dentro (`user:<id>`, `papel:REP`) — pendurar o link num
+    // aviso interno seria pior que não ter: o rep clica por engano e quem sai da
+    // lista é o LEAD.
+    const emailContatoLgpd = await this.emailDoContato(
+      empresaId,
+      ctx['leadId'] as string | undefined,
+      ctx['clienteId'] as string | undefined,
+    );
     for (const para of emails) {
+      const ehContato = !!emailContatoLgpd && para.trim().toLowerCase() === emailContatoLgpd;
       const r = await this.emailSvc.enviarHtmlLivre({
         para,
         assunto,
         html: corpo,
         idempotencyKey: `${idemBase}:${para}`,
         empresaId, // remetente por-tenant (Empresa.config.emailTransacional)
+        ...(ehContato
+          ? {
+              descadastro: {
+                empresaId,
+                leadId: ctx['leadId'] as string | undefined,
+                clienteId: ctx['clienteId'] as string | undefined,
+              },
+            }
+          : {}),
       });
       if (!r.ok) {
         throw new Error(`Falha ao enviar e-mail para ${para}: ${r.motivo ?? 'erro no provedor'}`);

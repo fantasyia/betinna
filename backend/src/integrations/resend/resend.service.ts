@@ -64,6 +64,14 @@ export class ResendService {
      * a chave esses reenvios poderiam duplicar mesmo sem crash.
      */
     idempotencyKey?: string;
+    /**
+     * Cabeçalhos extras da MENSAGEM (não da requisição). Existe pro
+     * `List-Unsubscribe` + `List-Unsubscribe-Post`: é o que faz Gmail/Outlook
+     * mostrarem o botão nativo de cancelar inscrição. Sem ele, o caminho de quem
+     * se irrita é o botão de SPAM — e aí o domínio inteiro paga, inclusive a
+     * confirmação de pedido.
+     */
+    headers?: Record<string, string>;
   }): Promise<{ id: string | null; status: number }> {
     const apiKey = this.env.get('RESEND_API_KEY');
     const fromEmail = this.env.get('RESEND_FROM_EMAIL');
@@ -93,6 +101,9 @@ export class ResendService {
       ...(params.texto ? { text: params.texto } : {}),
       ...(params.attachments && params.attachments.length > 0
         ? { attachments: params.attachments }
+        : {}),
+      ...(params.headers && Object.keys(params.headers).length > 0
+        ? { headers: params.headers }
         : {}),
     };
 

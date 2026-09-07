@@ -271,6 +271,13 @@ export class CampanhaEnvioProcessor extends WorkerHost {
                 assunto,
                 html: mensagemEmailFinal,
                 empresaId: dest.campanha.empresaId, // remetente por-tenant
+                // Campanha é MARKETING: leva rodapé de descadastro e
+                // List-Unsubscribe. Sem isso o provedor trata como bulk e o
+                // domínio inteiro paga — inclusive o e-mail de pedido.
+                descadastro: {
+                  empresaId: dest.campanha.empresaId,
+                  clienteId: dest.clienteId ?? undefined,
+                },
               });
               if (!r.ok) throw new Error(r.motivo ?? 'falha ao enviar e-mail da campanha');
               // O id do Resend é o ELO com o webhook de engajamento: sem guardar

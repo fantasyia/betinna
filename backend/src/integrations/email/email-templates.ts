@@ -11,7 +11,9 @@
  *  - Sem CSS externo (alguns clientes strip <style>)
  *  - Width 600px (padrão)
  *  - CTA único (botão) — tira atrito
- *  - Footer com unsubscribe placeholder (sistema ainda não tem opt-out)
+ *  - Footer: transacional NÃO leva descadastro (confirmação de pedido, rastreio,
+ *    convite e senha precisam chegar mesmo pra quem saiu da lista de marketing);
+ *    e-mail de marketing leva, via `rodapeDescadastro` (ver DescadastroService)
  *
  * Helpers tipados — payload obrigatório por template, validado em compile-time.
  */
@@ -376,4 +378,25 @@ function nomeMes(m: number): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1).trimEnd() + '…';
+}
+
+/**
+ * Rodapé de descadastro — só pra e-mail de MARKETING (campanha, régua de
+ * nutrição). Transacional não recebe: quem saiu da lista continua precisando
+ * saber onde está o pedido que fez.
+ *
+ * Vai como bloco anexado ao HTML já montado, porque o corpo do marketing é
+ * escrito fora daqui (editor de campanha / nó do fluxo) e não passa pelo
+ * `layout()`.
+ */
+export function rodapeDescadastro(url: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:16px auto 0;">
+  <tr><td style="padding:12px 28px 20px 28px;border-top:1px solid ${COLOR_BORDER};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <p style="margin:0;font-size:11px;color:${COLOR_MUTED};line-height:1.5;">
+      Não quer mais receber estes e-mails?
+      <a href="${escapeAttr(url)}" style="color:${COLOR_MUTED};text-decoration:underline;">Cancelar o envio</a>.
+      Avisos sobre pedidos que você fizer continuam chegando.
+    </p>
+  </td></tr>
+</table>`;
 }
