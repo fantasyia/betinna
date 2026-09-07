@@ -72,7 +72,10 @@ function layout(p: BaseLayoutParams): string {
  *    gradiente, e há `background-color` por trás — quem bloqueia imagem vê a cor
  *    sólida, não branco;
  *  - **sem webfont**: cliente de e-mail não carrega, então a pilha é a do sistema;
- *  - **botão em `<table>`**, não `<a>` solto: Outlook ignora padding em link inline;
+ *  - **botão em `<table>`**, não `<a>` solto: Outlook ignora padding em link inline.
+ *    E a cor vai no ATRIBUTO `bgcolor` além do CSS: cliente que sanitiza estilo
+ *    (o compositor do próprio Gmail faz isso) apagava o fundo e o rótulo BRANCO
+ *    ficava branco no branco — o CTA sumia inteiro, sem deixar rastro;
  *  - **rodapé em DUAS linhas fixas**: o motivo (por que a pessoa recebeu) e a
  *    identidade (domínio do tenant). Antes o `footerNote` de um template
  *    SUBSTITUÍA o `rodape` da config — o rastreio dizia o motivo e omitia o
@@ -101,7 +104,7 @@ ${preheader ? `<div style="display:none;font-size:1px;max-height:0;opacity:0;ove
    ${bodyHtml}</td></tr>
  ${
    ctaText && ctaUrl
-     ? `<tr><td style="padding:14px 44px 44px 44px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:${escapeAttr(acao)};"><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:15px 30px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:.2px;">${escapeHtml(ctaText)}</a></td></tr></table></td></tr>`
+     ? `<tr><td style="padding:14px 44px 44px 44px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${escapeAttr(acao)}" style="background-color:${escapeAttr(acao)};"><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:15px 30px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:.2px;">${escapeHtml(ctaText)}</a></td></tr></table></td></tr>`
      : ''
  }
  <tr><td style="background:${escapeAttr(m.corPrimaria)};padding:26px 44px;">

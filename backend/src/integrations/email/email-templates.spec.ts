@@ -229,6 +229,15 @@ describe('Email templates', () => {
       expect(semNota).toContain('somatecblocking.com.br');
     });
 
+    it('CTA leva a cor no ATRIBUTO bgcolor, não só no CSS', () => {
+      // Cliente que sanitiza estilo apagava o fundo e o rótulo branco sumia no
+      // branco — CTA invisível, sem nada na tela indicando que faltou algo.
+      const { html } = templateRecuperarSenha({ nome: 'Ana', resetUrl: 'https://x', marca });
+      expect(html).toContain('bgcolor="#F39200"');
+      expect(html).toContain('background-color:#F39200');
+      expect(html).not.toContain('style="background:#F39200');
+    });
+
     it('sem marca, o layout genérico continua sendo o do app', () => {
       const { html } = templateRecuperarSenha({ nome: 'Ana', resetUrl: 'https://x' });
       expect(html).toContain('Betinna.ai');
