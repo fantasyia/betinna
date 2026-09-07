@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { carregarMarca, comAlfa, logoDaMarca, marca, paletaPublica } from '@/lib/marca';
 import { setSession } from '@/lib/auth-store';
 import type { AuthenticatedUser } from '@/types/auth';
 
@@ -33,20 +34,17 @@ import type { AuthenticatedUser } from '@/types/auth';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 
-// Tokens oficiais brandbook — usados inline pra independer do html.dark
-const COLORS = {
-  navy: '#201554',
-  navyDeep: '#15093c',
-  cyan: '#2bcae5',
-  cyanHover: '#1ba8c0',
-  magenta: '#bd1fbf',
-  magentaHover: '#a01aa1',
-  magentaLight: '#d33dd5',
-  white: '#F8F7F2',
-  danger: '#ee5a5a',
-} as const;
-
 export default function LoginPage() {
+  // A marca vem do DOMÍNIO — esta tela existe antes de haver usuário, então não
+  // dá pra tirar da sessão. Cores inline (e não tokens do CSS) porque o desenho
+  // desta tela independe do html.dark.
+  const [marcaAtual, setMarcaAtual] = useState(marca());
+  useEffect(() => {
+    // 1ª visita do navegador: o boot ainda não tinha cache, então a marca certa
+    // chega aqui e a tela se repinta.
+    void carregarMarca().then(setMarcaAtual);
+  }, []);
+  const COLORS = paletaPublica(marcaAtual);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -243,18 +241,18 @@ export default function LoginPage() {
           noValidate
           className="rounded-[10px] p-8 sm:p-10 border"
           style={{
-            background: 'rgba(32, 21, 84, 0.88)', // #201554 com leve transparência
-            borderColor: 'rgba(43, 202, 229, 0.18)', // cyan sutil
+            background: comAlfa(COLORS.navy, 0.88),
+            borderColor: comAlfa(COLORS.cyan, 0.18),
             boxShadow:
-              '0 0 0 1px rgba(189, 31, 191, 0.12), 0 20px 60px -20px rgba(189, 31, 191, 0.4), 0 8px 32px -8px rgba(0, 0, 0, 0.55)',
+              `0 0 0 1px ${comAlfa(COLORS.magenta, 0.12)}, 0 20px 60px -20px ${comAlfa(COLORS.magenta, 0.4)}, 0 8px 32px -8px rgba(0, 0, 0, 0.55)`,
             backdropFilter: 'blur(10px)',
           }}
         >
           {/* Logo horizontal */}
           <div className="flex justify-center mb-7">
             <img
-              src="/betinna-horizontal.svg"
-              alt="Betinna.ai"
+              src={logoDaMarca('/betinna-horizontal.svg')}
+              alt={marcaAtual.nome}
               className="h-10 sm:h-12 w-auto"
               draggable={false}
             />
@@ -276,7 +274,7 @@ export default function LoginPage() {
               className="mt-2 text-sm"
               style={{ color: COLORS.cyan, fontFamily: '"Cabin", sans-serif' }}
             >
-              Entre na sua conta Betinna.ai
+              Entre na sua conta {marcaAtual.nome}
             </p>
           </div>
 
@@ -452,7 +450,7 @@ export default function LoginPage() {
             className="text-center text-xs mt-6"
             style={{ color: 'rgba(248, 247, 242, 0.45)', fontFamily: '"Cabin", sans-serif' }}
           >
-            Plataforma comercial B2B · Betinna.ai
+            Plataforma comercial B2B · {marcaAtual.nome}
           </p>
         </form>
       </div>

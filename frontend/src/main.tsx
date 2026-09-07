@@ -10,6 +10,7 @@ import { bootstrapAuthFromBackend } from '@/lib/auth-store';
 import { registerPwa } from '@/lib/pwa';
 import { initI18n } from '@/lib/i18n';
 import { bootstrapTheme } from '@/hooks/useTheme';
+import { aplicarMarcaCacheada, carregarMarca } from '@/lib/marca';
 import './index.css';
 
 /**
@@ -46,6 +47,12 @@ import './index.css';
 
 // Aplica tema (light/dark) ANTES de renderizar pra evitar flash
 bootstrapTheme();
+
+// Marca do tenant (white-label por domínio): o cache entra ANTES do render pra
+// não piscar a marca do produto na cara de quem acessa pelo domínio próprio; a
+// revalidação vem logo atrás, sem segurar a tela.
+aplicarMarcaCacheada();
+void carregarMarca();
 
 initSentry();
 initI18n();

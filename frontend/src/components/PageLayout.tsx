@@ -40,6 +40,7 @@ import { clearSession } from '@/lib/auth-store';
 import { useRole, usePermission, type ModuloName } from '@/hooks/usePermission';
 import { getPermissoes, subscribePermissoes } from '@/lib/permissions-store';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
+import { logoDaMarca, marca } from '@/lib/marca';
 import { useBadges, type BadgeCounts } from '@/hooks/useBadges';
 import { NotificationBell } from '@/components/NotificationBell';
 import { EmpresaSwitcher } from '@/components/EmpresaSwitcher';
@@ -270,6 +271,10 @@ function SidebarLogo({
   onAlternar?: () => void;
 }) {
   const { logoUrl } = useEmpresaLogo();
+  // Nome que aparece é o do TENANT (white-label por domínio). Só o sufixo depois
+  // do ponto ganha a cor de acento — marca sem ponto sai inteira, sem gambiarra.
+  const { nome } = marca();
+  const ponto = nome.lastIndexOf('.');
 
   // Recolhida: só o símbolo, e ele VIRA o botão de expandir. Um ícone de logo
   // que não faz nada, numa tira de 60px, seria o único elemento morto da coluna.
@@ -286,8 +291,8 @@ function SidebarLogo({
           className="group relative flex h-9 w-9 items-center justify-center rounded-md hover:bg-primary/8 transition-colors"
         >
           <img
-            src={logoUrl || '/betinna-symbol.svg'}
-            alt="Betinna.ai"
+            src={logoUrl || logoDaMarca('/betinna-symbol.svg')}
+            alt={nome}
             className="h-7 w-7 object-contain group-hover:opacity-0 transition-opacity"
             draggable={false}
           />
@@ -314,8 +319,8 @@ function SidebarLogo({
           />
         ) : (
           <img
-            src="/betinna-symbol.svg"
-            alt="Betinna.ai"
+            src={logoDaMarca('/betinna-symbol.svg')}
+            alt={nome}
             className="h-8 w-8 shrink-0"
             draggable={false}
           />
@@ -325,7 +330,14 @@ function SidebarLogo({
             className="text-base font-extrabold leading-tight tracking-tight text-text"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            Betinna<span className="text-magenta">.ai</span>
+            {ponto > 0 ? (
+              <>
+                {nome.slice(0, ponto)}
+                <span className="text-magenta">{nome.slice(ponto)}</span>
+              </>
+            ) : (
+              nome
+            )}
           </strong>
           <span className="text-[10px] text-muted leading-tight uppercase tracking-wider">
             {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { carregarMarca, logoDaMarca, marca, paletaPublica } from '@/lib/marca';
 import { setSession } from '@/lib/auth-store';
 import type { AuthenticatedUser } from '@/types/auth';
 
@@ -25,17 +26,6 @@ import type { AuthenticatedUser } from '@/types/auth';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 
-const COLORS = {
-  navy: '#201554',
-  navyDeep: '#15093c',
-  cyan: '#2bcae5',
-  cyanHover: '#1ba8c0',
-  magenta: '#bd1fbf',
-  magentaHover: '#a01aa1',
-  white: '#F8F7F2',
-  danger: '#ee5a5a',
-  success: '#4cc984',
-} as const;
 
 interface HashParams {
   accessToken: string | null;
@@ -68,6 +58,13 @@ function parseHashParams(): HashParams {
 }
 
 export default function WelcomePage() {
+  // Mesma regra do login: a marca vem do DOMÍNIO, e esta tela roda antes de o
+  // convidado ter conta.
+  const [marcaAtual, setMarcaAtual] = useState(marca());
+  useEffect(() => {
+    void carregarMarca().then(setMarcaAtual);
+  }, []);
+  const COLORS = paletaPublica(marcaAtual);
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -205,8 +202,8 @@ export default function WelcomePage() {
           {/* Logo */}
           <div className="flex justify-center mb-7">
             <img
-              src="/betinna-horizontal.svg"
-              alt="Betinna.ai"
+              src={logoDaMarca('/betinna-horizontal.svg')}
+              alt={marcaAtual.nome}
               className="h-10 sm:h-12 w-auto"
               draggable={false}
             />
@@ -228,7 +225,7 @@ export default function WelcomePage() {
               className="mt-2 text-sm"
               style={{ color: COLORS.cyan, fontFamily: '"Cabin", sans-serif' }}
             >
-              Defina uma senha para acessar a sua conta Betinna.ai
+              Defina uma senha para acessar a sua conta {marcaAtual.nome}
             </p>
           </div>
 
