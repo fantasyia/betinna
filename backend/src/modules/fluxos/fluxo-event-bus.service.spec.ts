@@ -27,6 +27,8 @@ const makePrismaMock = () => ({
     findFirst: vi.fn(),
     updateMany: vi.fn().mockResolvedValue({ count: 0 }),
   } satisfies MockModel,
+  // Guard de turno de IA aberto (gatilho proativo) — sem turno aberto por padrão.
+  $queryRaw: vi.fn().mockResolvedValue([]),
   // Supersede anti-duplicata IA usa $executeRaw (IS DISTINCT FROM trata _ramoFilha ausente).
   $executeRaw: vi.fn().mockResolvedValue(0),
   // Fallback de nome de etiqueta (evento antigo, sem tagNome no payload).

@@ -1,3 +1,5 @@
+import type { FluxoTriggerTipo } from '@prisma/client';
+
 /** Nome da fila BullMQ de execução de fluxos. */
 export const FLUXO_QUEUE = 'fluxo-execucao';
 
@@ -6,6 +8,23 @@ export interface FluxoStepJobData {
   execucaoId: string;
   noId: string;
 }
+
+/** Nome do job que RE-dispara um gatilho proativo adiado (ver FluxoEventBusService). */
+export const FLUXO_JOB_REDISPARO = 'redisparo';
+
+/**
+ * Payload do re-disparo adiado: o MESMO evento, guardado inteiro pra ser
+ * republicado no bus quando a conversa ficar livre. `contexto._redisparo`
+ * conta as tentativas.
+ */
+export interface FluxoRedisparoJobData {
+  empresaId: string;
+  triggerTipo: FluxoTriggerTipo;
+  contexto: Record<string, unknown>;
+}
+
+/** O que trafega na fila `fluxo-execucao`: um passo ou um re-disparo. */
+export type FluxoJobData = FluxoStepJobData | FluxoRedisparoJobData;
 
 /** Unidade de tempo (DELAY, espera de encerramento do nó de IA, etc.). */
 export type UnidadeTempo = 'segundos' | 'minutos' | 'horas' | 'dias';

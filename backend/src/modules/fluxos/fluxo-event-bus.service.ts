@@ -3,7 +3,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import type { FluxoTriggerTipo, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
-import { FLUXO_QUEUE, type FluxoStepJobData } from './fluxo-executor.types';
+import {
+  FLUXO_JOB_REDISPARO,
+  FLUXO_QUEUE,
+  type FluxoJobData,
+  type FluxoStepJobData,
+} from './fluxo-executor.types';
 import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
 import { matchFiltroPayload, type FiltroPayload } from './match-payload-filtro.util';
 import { normalizarValor } from './normalizar-valor.util';
@@ -11,6 +16,30 @@ import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
+
+/**
+ * Gatilhos PROATIVOS — o sistema decidiu falar, ninguém pediu. São os únicos
+ * que o guard de turno de IA aberto segura (ver `turnoDeIaAberto`).
+ *
+ * Ficam de fora, de propósito: os REATIVOS (LEAD_RESPONDEU, MENSAGEM_CANAL,
+ * LEAD_CRIADO, LEAD_REENGAJOU_SITE — o lead acabou de falar), o IA_CLASSIFICOU
+ * e o LEAD_ETAPA_MUDOU (o próprio turno de IA os emite; segurá-los quebraria o
+ * handoff entre fluxos, que é o caminho normal) e os TRANSACIONAIS (PEDIDO_*,
+ * OCORRENCIA_ABERTA, WEBHOOK_RECEBIDO — fato novo que o cliente espera receber
+ * na hora, não conversa puxada do nada).
+ */
+const GATILHOS_PROATIVOS: ReadonlySet<FluxoTriggerTipo> = new Set<FluxoTriggerTipo>([
+  'LEAD_RECEBEU_TAG',
+  'LEAD_SEM_RESPOSTA',
+  'CLIENTE_INATIVO_30D',
+  'AMOSTRA_FOLLOWUP',
+  'CRON_AGENDADO',
+]);
+
+/** De quanto em quanto tempo o gatilho adiado tenta de novo. */
+const REDISPARO_DELAY_MS = 30 * 60_000;
+/** Teto de re-disparos: 30min x 48 = 24h, o mesmo horizonte do turno de IA. */
+const REDISPARO_MAX = 48;
 
 /**
  * FluxoEventBusService — ponte entre domínio e BullMQ.
@@ -31,7 +60,7 @@ export class FluxoEventBusService {
 
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
+    @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoJobData>,
   ) {}
 
   /**
@@ -63,6 +92,96 @@ export class FluxoEventBusService {
       );
       return contexto;
     }
+  }
+
+  /**
+   * Existe turno de IA ABERTO nesta conversa (ou neste lead)?
+   *
+   * Aberto = execução viva parada NO nó "Conversar com IA" (`aguardandoNoId`
+   * aponta pra ele: está esperando a resposta do cliente) ou com o lock do
+   * turno tomado (`processandoTurno`: a IA está gerando a resposta agora). Os
+   * dois se soltam sozinhos — timeout do nó e reaper de lock órfão —, então
+   * isto não trava a régua pra sempre se uma execução ficar presa.
+   *
+   * De propósito NÃO é "qualquer execução viva": um DELAY de 3 dias no meio de
+   * um fluxo qualquer emudeceria a conversa inteira em silêncio.
+   */
+  private async turnoDeIaAberto(
+    empresaId: string,
+    contexto: Record<string, unknown>,
+  ): Promise<boolean> {
+    const conversationId =
+      typeof contexto['conversationId'] === 'string' ? (contexto['conversationId'] as string) : '';
+    const leadId = typeof contexto['leadId'] === 'string' ? (contexto['leadId'] as string) : '';
+    if (!conversationId && !leadId) return false;
+    try {
+      // RAW porque o filtro precisa do nó em que a execução parou e não existe
+      // relação Prisma FluxoExecucao→FluxoNo por `aguardandoNoId`. String vazia
+      // no lugar de NULL evita "could not determine data type of parameter", e
+      // nenhum contexto tem chave igual a ''.
+      const abertos = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT e.id
+        FROM "FluxoExecucao" e
+        LEFT JOIN "FluxoNo" n ON n.id = e."aguardandoNoId"
+        WHERE e."empresaId" = ${empresaId}
+          AND e.status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
+          AND (
+            (e.contexto #>> '{conversationId}') = ${conversationId}
+            OR (e.contexto #>> '{leadId}') = ${leadId}
+          )
+          AND (n."acaoTipo" = 'CONVERSAR_IA' OR e."processandoTurno" = true)
+        LIMIT 1`;
+      return abertos.length > 0;
+    } catch (err) {
+      // Fail-open, igual ao resto do bus: um hiccup de banco não pode calar a
+      // régua inteira. O estrago de falar por cima é menor que o de emudecer.
+      this.logger.warn(
+        `Guard de turno de IA não pôde consultar: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Gatilho proativo suprimido volta pra fila — não é descartado.
+   *
+   * Descartar seria trocar um bug por outro: a etiqueta `parado:<etapa>` é
+   * aplicada UMA vez (`createMany` + `skipDuplicates`) e a varredura de SLA
+   * exclui quem já a tem, então quem estivesse conversando na hora do estouro
+   * nunca mais seria reabordado. Re-disparamos o MESMO evento a cada 30min até
+   * a conversa ficar livre, com teto de 24h — turno de IA que passa disso é
+   * anomalia, e o aviso fica no log em vez de virar loop eterno.
+   */
+  private async reagendarProativo(
+    empresaId: string,
+    triggerTipo: FluxoTriggerTipo,
+    contexto: Record<string, unknown>,
+  ): Promise<void> {
+    const tentativa =
+      (typeof contexto['_redisparo'] === 'number' ? (contexto['_redisparo'] as number) : 0) + 1;
+    if (tentativa > REDISPARO_MAX) {
+      this.logger.warn(
+        `${triggerTipo} desistiu após ${REDISPARO_MAX} re-disparos (empresa ${empresaId}): ` +
+          `o turno de IA da conversa segue aberto há ~24h`,
+      );
+      return;
+    }
+    await this.queue.add(
+      FLUXO_JOB_REDISPARO,
+      { empresaId, triggerTipo, contexto: { ...contexto, _redisparo: tentativa } },
+      {
+        delay: REDISPARO_DELAY_MS,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: { count: 500 },
+        removeOnFail: { count: 200 },
+      },
+    );
+    this.logger.log(
+      `${triggerTipo} adiado (empresa ${empresaId}): turno de IA aberto na conversa — ` +
+        `re-disparo ${tentativa}/${REDISPARO_MAX} em ${REDISPARO_DELAY_MS / 60_000}min`,
+    );
   }
 
   /**
@@ -127,6 +246,30 @@ export class FluxoEventBusService {
       // Resolver aqui cobre a família inteira de eventos de lead de uma vez, em
       // vez de lembrar de propagar em cada disparo (e esquecer no próximo).
       const contextoEnriquecido = await this.comConversaDoLead(empresaId, contexto);
+
+      // ── Não fale por cima de um turno de IA aberto (RB.10) ────────────────
+      //
+      // Medido em prod 07/09: o SLA da etapa e o timeout do nó de IA correm no
+      // MESMO relógio de 24h, então a reabordagem (etiqueta `parado:<etapa>`)
+      // estoura exatamente enquanto o consultivo espera a resposta do cliente.
+      // 01:23 a IA perguntou a corrente do disjuntor; 01:25 a reabordagem
+      // mandou "já dou sequência e a gente retoma de onde parou"; 01:25:10 o
+      // supersede de re-entrada cancelou o turno aberto e a pergunta veio de
+      // novo. Pro cliente: sumiram com ele e perguntaram a mesma coisa.
+      //
+      // Não dá pra resolver no grafo: o nó "conversa já está em andamento?"
+      // compara ETAPA, e a reabordagem existe justamente pra quem está parado
+      // NAS etapas de conversa — usar o mesmo nó desligaria o fluxo inteiro. O
+      // critério certo é "tem turno de IA aberto nesta conversa?", a mesma
+      // regra que já cala o bot geral (`fluxoConduzindoConversa`), aplicada
+      // agora ENTRE fluxos — e no motor, pra valer pra toda régua futura sem
+      // depender de alguém lembrar de pôr um nó no desenho.
+      if (GATILHOS_PROATIVOS.has(triggerTipo)) {
+        if (await this.turnoDeIaAberto(empresaId, contextoEnriquecido)) {
+          await this.reagendarProativo(empresaId, triggerTipo, contextoEnriquecido);
+          return;
+        }
+      }
 
       this.logger.debug(
         `FluxoEventBus: ${triggerTipo} em empresa ${empresaId} → ${fluxos.length} fluxo(s)`,
@@ -619,7 +762,17 @@ export class FluxoEventBusService {
       'prioritized',
       'waiting-children',
     ]);
-    return new Set(jobs.map((j) => j?.data?.execucaoId).filter((id): id is string => Boolean(id)));
+    return new Set(
+      jobs
+        // Job de re-disparo não carrega execução (o evento ainda nem virou uma)
+        // — não entra na conta do reaper.
+        .map((j) =>
+          j?.name === FLUXO_JOB_REDISPARO
+            ? undefined
+            : (j?.data as FluxoStepJobData | undefined)?.execucaoId,
+        )
+        .filter((id): id is string => Boolean(id)),
+    );
   }
 
   async dispararDireto(
