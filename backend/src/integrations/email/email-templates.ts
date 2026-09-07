@@ -126,12 +126,23 @@ ${preheader ? `<div style="display:none;font-size:1px;max-height:0;opacity:0;ove
  */
 function rodapeSemAutolink(rodape: string): string {
   const dominio = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
-  const partes = rodape.split(/(\s+)/).map((parte) => {
-    if (!dominio.test(parte)) return escapeHtml(parte);
-    const url = `https://${parte}`;
-    return `<a href="${escapeAttr(url)}" style="color:#93a4b5;text-decoration:none;">${escapeHtml(parte)}</a>`;
-  });
-  return partes.join('');
+  // Quebra de linha vem como \n na config e vira <br> AQUI — a config nunca
+  // carrega HTML. A identificação legal (razão social, CNPJ, endereço) ocupa
+  // mais de uma linha, e deixar a config mandar `<br>` cru abriria injeção por
+  // um campo que hoje é texto puro.
+  return rodape
+    .split(/\r?\n/)
+    .map((linha) =>
+      linha
+        .split(/(\s+)/)
+        .map((parte) => {
+          if (!dominio.test(parte)) return escapeHtml(parte);
+          const url = `https://${parte}`;
+          return `<a href="${escapeAttr(url)}" style="color:#93a4b5;text-decoration:none;">${escapeHtml(parte)}</a>`;
+        })
+        .join(''),
+    )
+    .join('<br>');
 }
 
 function layoutGenerico({

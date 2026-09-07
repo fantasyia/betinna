@@ -250,6 +250,25 @@ describe('Email templates', () => {
       );
     });
 
+    it('rodapé multi-linha: \n vira <br>, e a config nunca injeta HTML', () => {
+      const { html } = templateRecuperarSenha({
+        nome: 'Ana',
+        resetUrl: 'https://x',
+        marca: {
+          ...marca,
+          rodape: 'Somatecblocking UF Eletroeletrônicos LTDA\nsomatecblocking.com.br',
+        },
+      });
+      expect(html).toContain('Somatecblocking UF Eletroeletrônicos LTDA<br>');
+      // HTML vindo da config sai ESCAPADO, não renderizado
+      const { html: injetado } = templateRecuperarSenha({
+        nome: 'Ana',
+        resetUrl: 'https://x',
+        marca: { ...marca, rodape: '<script>alert(1)</script>' },
+      });
+      expect(injetado).not.toContain('<script>alert(1)</script>');
+    });
+
     it('sem marca, o layout genérico continua sendo o do app', () => {
       const { html } = templateRecuperarSenha({ nome: 'Ana', resetUrl: 'https://x' });
       expect(html).toContain('Betinna.ai');
