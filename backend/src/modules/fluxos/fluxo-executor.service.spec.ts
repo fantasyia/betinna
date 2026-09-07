@@ -1026,6 +1026,65 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('CONDICAO roteia por conversa.ia_aguardando — é o critério que o RT usa no lugar da etapa', async () => {
+      // O RT pergunta "já tem alguém conduzindo?" com {campo: conversa.ia_aguardando,
+      // operador: eq, valor: "true"}. O valor no contexto é BOOLEANO e o config é
+      // TEXTO: se essa comparação não casasse, o nó cairia sempre no "Não" e o RT
+      // voltaria a atropelar conversa em andamento — o RB.10, pelo outro lado.
+      const condicaoNo = fakeNo({
+        id: 'no-cond',
+        tipo: 'CONDICAO',
+        config: { campo: 'conversa.ia_aguardando', operador: 'eq', valor: 'true' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(condicaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('no-cond', 'no-encerra', 'Sim'),
+        fakeEdge('no-cond', 'no-reengaja', 'Não'),
+      ]);
+      // Turno de IA ABERTO: a consulta do `turnoDeIaAberto` acha execução viva.
+      prisma.$queryRaw.mockImplementation((sql: TemplateStringsArray) =>
+        Promise.resolve(sql.join(' ').includes('CONVERSAR_IA') ? [{ id: 'exec-ia' }] : []),
+      );
+
+      await service.executarPasso('exec-1', 'no-cond', 'job-test');
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-encerra' },
+        expect.any(Object),
+      );
+    });
+
+    it('sem turno de IA aberto, a MESMA condição libera o reengajamento', async () => {
+      // Etapa terminal do consultivo (ex.: "Calculadora enviada") não tem execução
+      // nenhuma — é o caso de 07/09 em que o cliente voltou com dúvida e ninguém
+      // respondeu, porque a etapa dizia "em andamento".
+      const condicaoNo = fakeNo({
+        id: 'no-cond',
+        tipo: 'CONDICAO',
+        config: { campo: 'conversa.ia_aguardando', operador: 'eq', valor: 'true' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(condicaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('no-cond', 'no-encerra', 'Sim'),
+        fakeEdge('no-cond', 'no-reengaja', 'Não'),
+      ]);
+
+      await service.executarPasso('exec-1', 'no-cond', 'job-test');
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-reengaja' },
+        expect.any(Object),
+      );
+    });
+
     it('CONDICAO simples com operador numérico NÃO vira comparação de texto', async () => {
       const condicaoNo = fakeNo({
         id: 'no-cond',
