@@ -294,6 +294,9 @@ export class AuthSessionService {
           return neutro;
         }
         await this.redis.setEx(chaveToken, tokenHash, RESET_TOKEN_CACHE_S);
+        // Mapa reverso: na hora de redefinir só se tem o hash, e qualquer
+        // tentativa de usá-lo (com ou sem sucesso) precisa derrubar o cache.
+        await this.redis.setEx(`auth:reset:hash:${tokenHash}`, alvo, RESET_TOKEN_CACHE_S);
       } else {
         this.logger.log(`[reset] ${alvo}: reenviando o MESMO link (ainda válido)`);
       }
@@ -354,6 +357,11 @@ export class AuthSessionService {
       access_token?: string;
       user?: { email?: string };
     } | null;
+    // O verify CONSOME o token no Supabase, dê certo ou não. Se o cache
+    // continuasse apontando pra ele, o próximo "esqueci" reenviaria um link
+    // morto por até 55min. Foi o que armou o 06/09: o verify passou, o
+    // welcomeFinalize deu 403 e o token gasto ficou no cache.
+    await this.esquecerTokenEmCache(tokenHash, body?.user?.email);
     if (!r.ok || !body?.access_token) {
       this.logger.warn(
         `[reset] verify falhou (HTTP ${r.status}) — token usado, expirado ou inválido`,
@@ -364,12 +372,19 @@ export class AuthSessionService {
         ErrorCode.AUTH_INVALID_TOKEN,
       );
     }
-    const resultado = await this.welcomeFinalize(body.access_token, password, res, 'reset');
-    // Senha gravada: o token morreu no Supabase, então some do cache também —
-    // senão o próximo "esqueci" reenviaria um link já gasto.
-    const emailDoToken = body.user?.email?.toLowerCase();
-    if (emailDoToken) await this.redis.del(`auth:reset:token:${emailDoToken}`).catch(() => 0);
-    return resultado;
+    return this.welcomeFinalize(body.access_token, password, res, 'reset');
+  }
+
+  /** Derruba o token do cache pelos dois lados: pelo hash e pelo e-mail dono. */
+  private async esquecerTokenEmCache(tokenHash: string, emailConhecido?: string): Promise<void> {
+    try {
+      const chaveHash = `auth:reset:hash:${tokenHash}`;
+      const email = (emailConhecido ?? (await this.redis.get(chaveHash)) ?? '').toLowerCase();
+      const chaves = [chaveHash, ...(email ? [`auth:reset:token:${email}`] : [])];
+      await this.redis.del(...chaves);
+    } catch {
+      /* best-effort: o pior caso é reenviar um link morto até o TTL vencer */
+    }
   }
 
   async welcomeFinalize(

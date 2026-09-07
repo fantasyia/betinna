@@ -83,6 +83,12 @@ describe('AuthSessionService.esqueciSenha', () => {
       'pkce_hash_abc123',
       55 * 60,
     );
+    // e o mapa reverso, pra derrubar o cache na hora de usar o token
+    expect(redis.setEx).toHaveBeenCalledWith(
+      'auth:reset:hash:pkce_hash_abc123',
+      'leandro@betinna.ai',
+      55 * 60,
+    );
   });
 
   it('pedir de novo dentro da hora REENVIA O MESMO link — não gera token novo', async () => {
@@ -178,7 +184,7 @@ describe('AuthSessionService.redefinirSenha', () => {
       expiresAt: 1,
       userId: 'u1',
     }));
-    const redis = { del: vi.fn(async () => 1) };
+    const redis = { del: vi.fn(async () => 1), get: vi.fn(async () => 'leandro@betinna.ai') };
     // `supabaseUrl`/`supabaseAnonKey` são getters que leem o env — mocka a fonte.
     Object.assign(svc, {
       env: {
@@ -215,7 +221,10 @@ describe('AuthSessionService.redefinirSenha', () => {
     expect(r.accessToken).toBe('app-token');
     // senha gravada = token morto no Supabase = some do cache, senão o próximo
     // "esqueci" reenviaria um link já gasto
-    expect(redis.del).toHaveBeenCalledWith('auth:reset:token:leandro@betinna.ai');
+    expect(redis.del).toHaveBeenCalledWith(
+      'auth:reset:hash:pkce_hash_abc123_long_enough',
+      'auth:reset:token:leandro@betinna.ai',
+    );
   });
 
   it('token já usado/expirado/substituído: erro legível em português, sem gravar senha', async () => {
@@ -229,6 +238,26 @@ describe('AuthSessionService.redefinirSenha', () => {
       svc.redefinirSenha('pkce_hash_abc123_long_enough', 'senha-nova-8', {} as never),
     ).rejects.toThrow(/já foi usado, expirou ou foi substituído/);
     expect(welcomeFinalize).not.toHaveBeenCalled();
+  });
+
+  it('verify que FALHA também derruba o cache — o hash acha o e-mail pelo mapa reverso', async () => {
+    // Caso real de 06/09: verify passou, welcomeFinalize deu 403, e o token
+    // gasto ficou 55min no cache sendo reenviado morto a cada "esqueci".
+    const { svc, redis } = buildReset({
+      ok: false,
+      status: 403,
+      body: { msg: 'One-time token not found' },
+    });
+
+    await svc
+      .redefinirSenha('pkce_hash_abc123_long_enough', 'senha-nova-8', {} as never)
+      .catch(() => undefined);
+
+    expect(redis.get).toHaveBeenCalledWith('auth:reset:hash:pkce_hash_abc123_long_enough');
+    expect(redis.del).toHaveBeenCalledWith(
+      'auth:reset:hash:pkce_hash_abc123_long_enough',
+      'auth:reset:token:leandro@betinna.ai',
+    );
   });
 
   it('senha curta é barrada ANTES de gastar o token', async () => {
