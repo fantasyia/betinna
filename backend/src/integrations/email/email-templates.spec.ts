@@ -238,6 +238,18 @@ describe('Email templates', () => {
       expect(html).not.toContain('style="background:#F39200');
     });
 
+    it('domínio do rodapé já sai como link com a cor do rodapé', () => {
+      // Solto, o cliente auto-linka com o azul dele — ilegível sobre o navy.
+      const { html } = templateRecuperarSenha({
+        nome: 'Ana',
+        resetUrl: 'https://x',
+        marca: { ...marca, rodape: 'somatecblocking.com.br' },
+      });
+      expect(html).toContain(
+        '<a href="https://somatecblocking.com.br" style="color:#93a4b5;text-decoration:none;">somatecblocking.com.br</a>',
+      );
+    });
+
     it('sem marca, o layout genérico continua sendo o do app', () => {
       const { html } = templateRecuperarSenha({ nome: 'Ana', resetUrl: 'https://x' });
       expect(html).toContain('Betinna.ai');

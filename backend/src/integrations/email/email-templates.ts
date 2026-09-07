@@ -111,8 +111,27 @@ ${preheader ? `<div style="display:none;font-size:1px;max-height:0;opacity:0;ove
    <p style="margin:0 0 8px 0;font-size:11px;color:#ffffff;font-weight:700;letter-spacing:1.4px;">${escapeHtml(m.empresaNome)}</p>
    <p style="margin:0;font-size:11px;line-height:1.7;color:#93a4b5;">${escapeHtml(
      footerNote ?? `Você está recebendo este e-mail porque tem uma conta na ${m.empresaNome}.`,
-   )}${m.rodape ? `<br>${escapeHtml(m.rodape)}` : ''}</p></td></tr>
+   )}${m.rodape ? `<br>${rodapeSemAutolink(m.rodape)}` : ''}</p></td></tr>
 </table></td></tr></table></body></html>`;
+}
+
+/**
+ * Domínio solto no rodapé vira link AUTOMÁTICO no cliente de e-mail — e com a
+ * cor padrão dele, que é azul. Sobre o navy do rodapé isso fica ilegível e
+ * parece acidente (visto em teste real de caixa, 07/09).
+ *
+ * A saída é entregar o link JÁ PRONTO, com a cor do rodapé: cliente que
+ * encontra um `<a>` não auto-linka por cima. Quem não for domínio segue como
+ * texto normal.
+ */
+function rodapeSemAutolink(rodape: string): string {
+  const dominio = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
+  const partes = rodape.split(/(\s+)/).map((parte) => {
+    if (!dominio.test(parte)) return escapeHtml(parte);
+    const url = `https://${parte}`;
+    return `<a href="${escapeAttr(url)}" style="color:#93a4b5;text-decoration:none;">${escapeHtml(parte)}</a>`;
+  });
+  return partes.join('');
 }
 
 function layoutGenerico({
