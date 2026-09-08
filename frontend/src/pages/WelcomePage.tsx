@@ -203,7 +203,7 @@ export default function WelcomePage() {
         >
           {/* Logo */}
           <div className="flex justify-center mb-7">
-            {logoQuebrou || !logoDaMarca('/betinna-horizontal.png') ? (
+            {logoQuebrou || !logoDaMarca('/betinna-horizontal.png', 'escuro') ? (
               // Sem logo utilizável, o NOME — nunca o logotipo do produto, que
               // seria a marca de outra empresa na tela de quem entra aqui.
               <span
@@ -214,7 +214,7 @@ export default function WelcomePage() {
               </span>
             ) : (
               <img
-                src={logoDaMarca('/betinna-horizontal.png') ?? undefined}
+                src={logoDaMarca('/betinna-horizontal.png', 'escuro') ?? undefined}
                 alt={marcaAtual.nome}
                 className="h-10 sm:h-12 w-auto"
                 draggable={false}

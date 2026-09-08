@@ -10,7 +10,21 @@ export interface Branding {
   nomeCurto: string;
   /** Domínio próprio do tenant, sem esquema (ex.: `app.somatecblocking.com.br`). */
   dominio: string | null;
+  /**
+   * Logo pra fundo CLARO (a colorida). Barra lateral no tema claro, favicon,
+   * ícone do atalho.
+   */
   logoUrl: string | null;
+  /**
+   * Logo pra fundo ESCURO (a versão negativa/branca). Tela de login, tema
+   * escuro, faixa do e-mail.
+   *
+   * ⚠️ Duas variantes porque UMA não serve às duas superfícies: a logo branca
+   * sobre fundo branco carrega e **não aparece** — parece imagem quebrada, e foi
+   * assim que apareceu na barra lateral. A colorida sobre o navy do login some
+   * do mesmo jeito.
+   */
+  logoNegativoUrl: string | null;
   cores: { primaria: string; secundaria: string; acao: string };
 }
 
@@ -26,6 +40,7 @@ export const BRANDING_PADRAO: Branding = {
   nomeCurto: 'Betinna',
   dominio: null,
   logoUrl: null,
+  logoNegativoUrl: null,
   cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
 };
 
@@ -88,6 +103,7 @@ export class BrandingService {
       nomeCurto?: string;
       dominio?: string;
       logoUrl?: string;
+      logoNegativoUrl?: string;
       cores?: { primaria?: string; secundaria?: string; acao?: string };
     };
     const nome = cfg.nome?.trim() || empresa?.nome?.trim() || BRANDING_PADRAO.nome;
@@ -96,6 +112,9 @@ export class BrandingService {
       nomeCurto: cfg.nomeCurto?.trim() || nome.split(' ')[0] || BRANDING_PADRAO.nomeCurto,
       dominio: this.normalizarHost(cfg.dominio) ?? null,
       logoUrl: cfg.logoUrl?.trim() || null,
+      // Sem negativa configurada, a clara é usada nos dois — é o que existia
+      // antes, e continua melhor que não mostrar logo nenhuma.
+      logoNegativoUrl: cfg.logoNegativoUrl?.trim() || cfg.logoUrl?.trim() || null,
       cores: {
         primaria: cfg.cores?.primaria || BRANDING_PADRAO.cores.primaria,
         secundaria: cfg.cores?.secundaria || BRANDING_PADRAO.cores.secundaria,

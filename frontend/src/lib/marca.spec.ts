@@ -24,7 +24,8 @@ const SOMATEC = {
   nome: 'Somatec Blocking',
   nomeCurto: 'Somatec',
   dominio: 'app.somatecblocking.com.br',
-  logoUrl: 'https://x/logo.png',
+  logoUrl: 'https://x/logo-colorida.png',
+  logoNegativoUrl: 'https://x/logo-branca.png',
   cores: { primaria: '#00416E', secundaria: '#008CC8', acao: '#F39200' },
 };
 
@@ -60,13 +61,32 @@ describe('marca do tenant', () => {
     expect(marca().nome).toBe('Somatec Blocking');
     expect(document.title).toBe('Somatec Blocking');
     expect(cssDaMarca()).toContain('--primary: #00416E');
-    expect(logoDaMarca('/betinna-horizontal.png')).toBe('https://x/logo.png');
+    expect(logoDaMarca('/betinna-horizontal.png')).toBe('https://x/logo-colorida.png');
+  });
+
+  it('cada fundo pede a SUA variante — a branca some no claro, a colorida some no escuro', async () => {
+    // Não é capricho: logo branca sobre fundo branco carrega e não aparece.
+    // Parece imagem quebrada, e foi assim que ela apareceu na barra lateral.
+    vi.stubGlobal('fetch', responder(SOMATEC));
+
+    await carregarMarca();
+
+    expect(logoDaMarca('/x.png', 'claro')).toBe('https://x/logo-colorida.png');
+    expect(logoDaMarca('/x.png', 'escuro')).toBe('https://x/logo-branca.png');
+  });
+
+  it('sem a negativa configurada, a clara serve os dois fundos', async () => {
+    vi.stubGlobal('fetch', responder({ ...SOMATEC, logoNegativoUrl: null }));
+
+    await carregarMarca();
+
+    expect(logoDaMarca('/x.png', 'escuro')).toBe('https://x/logo-colorida.png');
   });
 
   it('tenant com marca própria e SEM logo não mostra o logotipo do produto', async () => {
     // Vazamento mais visível que existe: símbolo do Betinna dentro do app da
     // Somatec. Sem logo utilizável, quem chama escreve o NOME.
-    vi.stubGlobal('fetch', responder({ ...SOMATEC, logoUrl: null }));
+    vi.stubGlobal('fetch', responder({ ...SOMATEC, logoUrl: null, logoNegativoUrl: null }));
 
     await carregarMarca();
 
@@ -133,7 +153,10 @@ describe('marca do tenant', () => {
 
     await carregarMarca();
 
-    expect(document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href).toContain('logo.png');
+    // Favicon usa a CLARA: aba de navegador tem fundo claro.
+    expect(document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href).toContain(
+      'logo-colorida.png',
+    );
     expect(document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.href).toContain(
       '/public/manifest.webmanifest?host=',
     );

@@ -331,8 +331,20 @@ const brandingSchema = z
      * marca só aparece depois do login.
      */
     dominio: z.string().max(120).nullable().optional(),
-    /** Logo em URL pública e estável (o app não resolve path de Storage aqui). */
+    /**
+     * Logo pra fundo CLARO, em URL pública e estável (o app não resolve path de
+     * Storage aqui). Barra lateral no tema claro, favicon e ícone do atalho.
+     */
     logoUrl: z.string().url().max(300).nullable().optional(),
+    /**
+     * Logo pra fundo ESCURO (versão negativa/branca): tela de login, tema
+     * escuro, faixa do e-mail.
+     *
+     * ⚠️ Existe porque UMA logo não serve às duas superfícies: a branca sobre
+     * fundo branco carrega e não aparece — parece imagem quebrada. Sem esta, a
+     * clara é usada nos dois lugares.
+     */
+    logoNegativoUrl: z.string().url().max(300).nullable().optional(),
     cores: z
       .object({
         primaria: z

@@ -40,7 +40,7 @@ import { clearSession } from '@/lib/auth-store';
 import { useRole, usePermission, type ModuloName } from '@/hooks/usePermission';
 import { getPermissoes, subscribePermissoes } from '@/lib/permissions-store';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
-import { logoDaMarca, marca } from '@/lib/marca';
+import { logoDaMarca, marca, temaEscuro } from '@/lib/marca';
 import { useBadges, type BadgeCounts } from '@/hooks/useBadges';
 import { NotificationBell } from '@/components/NotificationBell';
 import { EmpresaSwitcher } from '@/components/EmpresaSwitcher';
@@ -275,6 +275,15 @@ function SidebarLogo({
   // do ponto ganha a cor de acento — marca sem ponto sai inteira, sem gambiarra.
   const { nome } = marca();
   const ponto = nome.lastIndexOf('.');
+  // A barra lateral muda de fundo com o tema: a variante errada some (logo
+  // branca no tema claro carrega e não aparece).
+  const [tema, setTema] = useState<'claro' | 'escuro'>(temaEscuro() ? 'escuro' : 'claro');
+  useEffect(() => {
+    const obs = new MutationObserver(() => setTema(temaEscuro() ? 'escuro' : 'claro'));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+  const logoMarca = logoDaMarca('/betinna-symbol.png', tema);
 
   // Recolhida: só o símbolo, e ele VIRA o botão de expandir. Um ícone de logo
   // que não faz nada, numa tira de 60px, seria o único elemento morto da coluna.
@@ -290,9 +299,11 @@ function SidebarLogo({
           title="Expandir menu"
           className="group relative flex h-9 w-9 items-center justify-center rounded-md hover:bg-primary/8 transition-colors"
         >
-          {logoUrl || logoDaMarca('/betinna-symbol.png') ? (
+          {logoMarca || logoUrl ? (
             <img
-              src={logoUrl || (logoDaMarca('/betinna-symbol.png') ?? undefined)}
+              // A logo da MARCA vem primeiro: ela tem variante por tema. A do
+              // Storage (upload antigo) é uma só e pode sumir no tema errado.
+              src={logoMarca ?? logoUrl ?? undefined}
               alt={nome}
               className="h-7 w-7 object-contain group-hover:opacity-0 transition-opacity"
               draggable={false}
@@ -313,9 +324,9 @@ function SidebarLogo({
   return (
     <div className="flex items-center justify-between gap-2 px-3.5 py-3 border-b border-border">
       <div className="flex items-center gap-2 min-w-0">
-        {logoUrl ? (
+        {logoMarca ?? logoUrl ? (
           <img
-            src={logoUrl}
+            src={logoMarca ?? logoUrl ?? undefined}
             alt="Logo da empresa"
             className="h-8 w-8 shrink-0 object-contain rounded-[4px]"
             draggable={false}
@@ -324,9 +335,9 @@ function SidebarLogo({
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
           />
-        ) : logoDaMarca('/betinna-symbol.png') ? (
+        ) : logoMarca ? (
           <img
-            src={logoDaMarca('/betinna-symbol.png') ?? undefined}
+            src={logoMarca ?? undefined}
             alt={nome}
             className="h-8 w-8 shrink-0"
             draggable={false}

@@ -25,7 +25,10 @@ export interface Marca {
   nomeCurto: string;
   /** Domínio próprio. `null` = tenant sem white-label (usa o app padrão). */
   dominio: string | null;
+  /** Logo pra fundo CLARO (a colorida). */
   logoUrl: string | null;
+  /** Logo pra fundo ESCURO (a negativa/branca). */
+  logoNegativoUrl: string | null;
   cores: CoresDaMarca;
 }
 
@@ -35,6 +38,7 @@ export const MARCA_PADRAO: Marca = {
   nomeCurto: 'Betinna',
   dominio: null,
   logoUrl: null,
+  logoNegativoUrl: null,
   cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
 };
 
@@ -62,9 +66,18 @@ export function temMarcaPropria(): boolean {
  * existe, e o oposto do que o white-label promete. Sem logo utilizável, o nome
  * da marca em texto é sempre melhor que o logo de outra empresa.
  */
-export function logoDaMarca(padraoDoProduto: string): string | null {
-  if (atual.dominio) return atual.logoUrl || null;
-  return atual.logoUrl || padraoDoProduto;
+export function logoDaMarca(padraoDoProduto: string, fundo: 'claro' | 'escuro' = 'claro'): string | null {
+  // Logo branca sobre fundo branco CARREGA e não aparece: parece imagem
+  // quebrada, e é assim que ela aparecia na barra lateral. Cada superfície
+  // escolhe a variante; sem a negativa configurada, a clara serve as duas.
+  const doTenant = fundo === 'escuro' ? atual.logoNegativoUrl || atual.logoUrl : atual.logoUrl;
+  if (atual.dominio) return doTenant || null;
+  return doTenant || padraoDoProduto;
+}
+
+/** `true` quando o tema escuro está ativo — decide a variante da logo. */
+export function temaEscuro(): boolean {
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 }
 
 // ─── Cor: helpers pequenos, sem dependência ────────────────────────────────
@@ -220,6 +233,8 @@ function aplicarIdentidade(m: Marca): void {
 
   if (!m.dominio) return;
 
+  // Favicon e ícone do atalho usam a variante CLARA: aba de navegador tem fundo
+  // claro, e a negativa sumiria ali do mesmo jeito que sumia na barra lateral.
   if (m.logoUrl) {
     for (const rel of ['icon', 'apple-touch-icon']) {
       const link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
