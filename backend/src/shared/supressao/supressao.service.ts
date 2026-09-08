@@ -17,6 +17,16 @@ export class SupressaoService {
   /** Tag canônica de supressão. Mesma string aplicada pelo nó MUDAR_TAG do hard-stop LGPD. */
   static readonly TAG_LGPD = 'Não Reabordar - LGPD ⛔';
 
+  /**
+   * Endereço de e-mail MORTO (hard bounce) ou que reclamou de spam.
+   *
+   * Tag SEPARADA da LGPD de propósito, e a diferença não é burocracia: a LGPD
+   * cala TODO outbound — WhatsApp, IA, campanha. Caixa de e-mail inexistente não
+   * diz nada sobre o telefone da pessoa; misturar as duas silenciaria o canal
+   * que ainda funciona por causa do que quebrou no outro.
+   */
+  static readonly TAG_EMAIL_INVALIDO = 'E-mail inválido ⛔';
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -80,6 +90,101 @@ export class SupressaoService {
       );
       throw err;
     }
+  }
+
+  /**
+   * O e-mail deste contato está queimado? (hard bounce ou reclamação)
+   *
+   * Vale SÓ pro canal e-mail — o telefone segue liberado. FAIL-OPEN ao
+   * contrário da LGPD: aqui o custo de errar é mandar pra uma caixa morta (o
+   * provedor já ignora), não violar pedido de remoção. Travar o envio inteiro
+   * por causa de uma checagem instável seria pior.
+   */
+  async emailSuprimido(empresaId: string, email?: string | null): Promise<boolean> {
+    const alvo = (email ?? '').trim().toLowerCase();
+    if (!alvo) return false;
+    try {
+      const tag = await this.acharTag(empresaId, SupressaoService.TAG_EMAIL_INVALIDO, 'invalido');
+      if (!tag) return false;
+      const n = await this.prisma.leadTag.count({
+        where: {
+          tagId: tag.id,
+          lead: { empresaId, contatoEmail: { equals: alvo, mode: 'insensitive' } },
+        },
+      });
+      return n > 0;
+    } catch (err) {
+      this.logger.warn(`Falha ao checar e-mail suprimido (${alvo}): ${String(err)}`);
+      return false;
+    }
+  }
+
+  /**
+   * Marca o endereço como queimado em TODOS os leads que o usam neste tenant.
+   *
+   * Por endereço, e não por lead: o mesmo e-mail costuma estar em duas fichas
+   * (importação + formulário), e suprimir só a que recebeu o bounce deixa a
+   * outra continuar mirando a mesma caixa morta.
+   */
+  async marcarEmailInvalido(
+    empresaId: string,
+    email: string,
+    motivo: 'bounce' | 'reclamacao',
+  ): Promise<number> {
+    const alvo = email.trim().toLowerCase();
+    if (!alvo) return 0;
+    const tag = await this.prisma.tag.upsert({
+      where: {
+        empresaId_nome: { empresaId, nome: SupressaoService.TAG_EMAIL_INVALIDO },
+      },
+      create: { empresaId, nome: SupressaoService.TAG_EMAIL_INVALIDO, categoria: 'alerta' },
+      update: {},
+    });
+    const leads = await this.prisma.lead.findMany({
+      where: { empresaId, contatoEmail: { equals: alvo, mode: 'insensitive' } },
+      select: { id: true, variaveis: true },
+    });
+    if (leads.length === 0) return 0;
+
+    await this.prisma.leadTag.createMany({
+      data: leads.map((l) => ({ leadId: l.id, tagId: tag.id, origem: `email:${motivo}` })),
+      skipDuplicates: true,
+    });
+    // Rastro no lead: a tag diz "não mande"; o carimbo diz o que aconteceu e
+    // quando — é o que permite auditar depois sem cruzar log de provedor.
+    for (const l of leads) {
+      const base = (l.variaveis as Record<string, unknown> | null) ?? {};
+      await this.prisma.lead
+        .update({
+          where: { id: l.id },
+          data: {
+            variaveis: {
+              ...base,
+              emailInvalidoEm: new Date().toISOString(),
+              emailInvalidoMotivo: motivo,
+            },
+          },
+        })
+        .catch(() => undefined);
+    }
+    this.logger.warn(
+      `E-mail ${alvo} marcado como inválido (${motivo}) em ${leads.length} lead(s) da empresa ${empresaId}`,
+    );
+    return leads.length;
+  }
+
+  /** Busca genérica por nome normalizado — a de LGPD é um caso dela. */
+  private async acharTag(
+    empresaId: string,
+    nomeCanonico: string,
+    fragmento: string,
+  ): Promise<{ id: string } | null> {
+    const alvoNorm = this.normalizar(nomeCanonico);
+    const candidatas = await this.prisma.tag.findMany({
+      where: { empresaId, nome: { contains: fragmento, mode: 'insensitive' } },
+      select: { id: true, nome: true },
+    });
+    return candidatas.find((t) => this.normalizar(t.nome) === alvoNorm) ?? candidatas[0] ?? null;
   }
 
   /**

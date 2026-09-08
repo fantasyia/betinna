@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { SupressaoService } from '@shared/supressao/supressao.service';
 
 /** Eventos que dizem algo sobre o destinatário. O resto o Resend manda e ignoramos. */
 export type EventoResend =
@@ -39,6 +40,7 @@ export class ResendWebhookService {
   constructor(
     private readonly env: EnvService,
     private readonly prisma: PrismaService,
+    private readonly supressao: SupressaoService,
   ) {}
 
   get configurado(): boolean {
@@ -92,7 +94,7 @@ export class ResendWebhookService {
   async aplicar(evento: {
     type?: string;
     data?: { email_id?: string; to?: string[] };
-  }): Promise<'aplicado' | 'ignorado' | 'semDestinatario'> {
+  }): Promise<'aplicado' | 'ignorado' | 'semDestinatario' | 'emailSuprimido'> {
     const tipo = evento.type ?? '';
     const emailId = evento.data?.email_id;
     if (!emailId) return 'ignorado';
@@ -106,11 +108,54 @@ export class ResendWebhookService {
       data: patch,
     });
     if (r.count === 0) {
-      // Normal: e-mail transacional (convite, comissão) também gera evento e não
-      // tem destinatário de campanha. Não é erro.
+      // E-mail de FLUXO não tem linha em `campanhaDestinatario` — e era aqui que
+      // o evento morria. Pra bounce e reclamação isso não é "normal": o endereço
+      // está morto e continuava sendo alvo, régua após régua. Provedor lê
+      // "insiste em caixa inexistente" como marca de lista comprada, e é o sinal
+      // que mais rápido queima um domínio de envio.
+      if (tipo === 'email.bounced' || tipo === 'email.complained') {
+        return (await this.suprimirDestinatarios(evento.data?.to, tipo))
+          ? 'emailSuprimido'
+          : 'semDestinatario';
+      }
+      // Aí sim é normal: transacional (convite, comissão) gera entrega e
+      // abertura, e não tem destinatário de campanha.
       return 'semDestinatario';
     }
     return 'aplicado';
+  }
+
+  /**
+   * Marca o endereço como queimado nos leads que o usam — em QUALQUER tenant.
+   *
+   * O webhook é global e não diz de quem é o e-mail; quem sabe é a base. Caixa
+   * inexistente é inexistente pra todo mundo, então a marca vale por endereço,
+   * em cada empresa onde ele aparece. A tag é a de E-MAIL, não a de LGPD: caixa
+   * morta não diz nada sobre o telefone da pessoa.
+   */
+  private async suprimirDestinatarios(para: string[] | undefined, tipo: string): Promise<boolean> {
+    const enderecos = (para ?? []).map((p) => p.trim().toLowerCase()).filter(Boolean);
+    if (enderecos.length === 0) return false;
+    const motivo = tipo === 'email.complained' ? 'reclamacao' : 'bounce';
+    let marcou = 0;
+    for (const email of enderecos) {
+      const leads = await this.prisma.lead
+        .findMany({
+          where: { contatoEmail: { equals: email, mode: 'insensitive' } },
+          select: { empresaId: true },
+          distinct: ['empresaId'],
+        })
+        .catch(() => [] as Array<{ empresaId: string }>);
+      for (const { empresaId } of leads) {
+        marcou += await this.supressao
+          .marcarEmailInvalido(empresaId, email, motivo)
+          .catch((err) => {
+            this.logger.warn(`[resend] falha ao suprimir ${email}: ${String(err)}`);
+            return 0;
+          });
+      }
+    }
+    return marcou > 0;
   }
 
   /** O que cada evento muda. `null` = evento que não nos diz nada. */

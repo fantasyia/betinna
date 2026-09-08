@@ -234,7 +234,11 @@ describe('FluxoExecutorService', () => {
       integracaoStatus as never,
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
-      { suprimido: vi.fn(async () => false) } as never, // supressao
+      {
+        suprimido: vi.fn(async () => false),
+        // Supressão por CANAL (bounce/reclamação): endereço vivo por padrão.
+        emailSuprimido: vi.fn(async () => false),
+      } as never, // supressao
       notificacoes as never,
       inbox as never,
     );
@@ -2361,7 +2365,10 @@ describe('FluxoExecutorService — lead resolvido pelo cliente', () => {
       { marcarDesconectado: vi.fn() } as never,
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never,
-      { suprimido: vi.fn(async () => false) } as never,
+      {
+        suprimido: vi.fn(async () => false),
+        emailSuprimido: vi.fn(async () => false),
+      } as never,
       { criarParaUsuario: vi.fn(), criarParaRole: vi.fn() } as never,
       { processarMensagemEntrante: vi.fn() } as never,
     );

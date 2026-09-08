@@ -1684,6 +1684,25 @@ export class FluxoExecutorService {
       }
     }
 
+    // ENDEREÇO QUEIMADO (hard bounce / reclamação de spam): sai da lista.
+    //
+    // É supressão de CANAL, não de contato: a pessoa segue alcançável por
+    // WhatsApp. Insistir numa caixa inexistente é o sinal que mais rápido
+    // queima a reputação do domínio de envio — o provedor lê como lista
+    // comprada, e quem para de chegar junto é o transacional.
+    const vivos: string[] = [];
+    for (const e of emails) {
+      if (await this.supressao.emailSuprimido(empresaId, e)) {
+        this.logger.log(`ENVIAR_EMAIL: ${e} está marcado como inválido — fora da lista`);
+        continue;
+      }
+      vivos.push(e);
+    }
+    if (vivos.length === 0) {
+      return { suprimido: true, motivo: 'e-mail inválido (bounce/reclamação)', canal: 'email' };
+    }
+    emails = vivos;
+
     const assunto = interpolate(cfg.assunto, ctx);
     const corpo = interpolate(cfg.corpo, ctx);
     this.assertSemPlaceholder('ENVIAR_EMAIL', { assunto, corpo });
