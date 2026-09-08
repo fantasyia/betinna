@@ -26,6 +26,7 @@ const SOMATEC = {
   dominio: 'app.somatecblocking.com.br',
   logoUrl: 'https://x/logo-colorida.png',
   logoNegativoUrl: 'https://x/logo-branca.png',
+  siteUrl: 'https://www.somatecblocking.com.br',
   cores: { primaria: '#00416E', secundaria: '#008CC8', acao: '#F39200' },
 };
 
@@ -163,6 +164,25 @@ describe('marca do tenant', () => {
     expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe(
       '#F39200',
     );
+  });
+});
+
+describe('porta de saída da tela de login', () => {
+  it('o site vem da MARCA — domínio de tenant não mora no código', async () => {
+    vi.stubGlobal('fetch', responder(SOMATEC));
+
+    await carregarMarca();
+
+    expect(marca().siteUrl).toBe('https://www.somatecblocking.com.br');
+  });
+
+  it('tenant sem site configurado não ganha link nenhum', async () => {
+    // Melhor não ter a porta do que ter uma que leva ao site de outra empresa.
+    vi.stubGlobal('fetch', responder({ ...SOMATEC, siteUrl: null }));
+
+    await carregarMarca();
+
+    expect(marca().siteUrl).toBeNull();
   });
 });
 

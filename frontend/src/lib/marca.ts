@@ -29,6 +29,8 @@ export interface Marca {
   logoUrl: string | null;
   /** Logo pra fundo ESCURO (a negativa/branca). */
   logoNegativoUrl: string | null;
+  /** Site institucional do tenant — o "voltar para o site" da tela de login. */
+  siteUrl: string | null;
   cores: CoresDaMarca;
 }
 
@@ -39,6 +41,7 @@ export const MARCA_PADRAO: Marca = {
   dominio: null,
   logoUrl: null,
   logoNegativoUrl: null,
+  siteUrl: null,
   cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
 };
 

@@ -459,6 +459,24 @@ export default function LoginPage() {
             )}
           </button>
 
+          {/* Porta de saída: o site institucional redireciona pra cá, então quem
+              chega e NÃO é representante ficava sem caminho de volta (e quem
+              abriu por link direto nem tem histórico pra usar o botão voltar).
+              O endereço vem da marca do tenant — nada de domínio fixo no código.
+              Discreto de propósito: não compete com o botão de entrar. */}
+          {marcaAtual.siteUrl && (
+            <p className="text-center mt-5">
+              <a
+                href={marcaAtual.siteUrl}
+                data-testid="voltar-ao-site"
+                className="text-sm hover:underline"
+                style={{ color: COLORS.cyan, fontFamily: '"Cabin", sans-serif' }}
+              >
+                ← Voltar para o site
+              </a>
+            </p>
+          )}
+
           {/* Rodapé sutil */}
           <p
             className="text-center text-xs mt-6"

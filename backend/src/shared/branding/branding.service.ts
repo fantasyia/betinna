@@ -25,6 +25,15 @@ export interface Branding {
    * do mesmo jeito.
    */
   logoNegativoUrl: string | null;
+  /**
+   * Site institucional do tenant — a porta de saída da tela de login.
+   *
+   * Vem da config e não do código: quem chega no app do representante sem ser
+   * representante precisa de um caminho de volta, e esse caminho é DIFERENTE
+   * por tenant. `null` = a tela não mostra o link (é o caso do produto, que não
+   * tem site institucional ligado ao app).
+   */
+  siteUrl: string | null;
   cores: { primaria: string; secundaria: string; acao: string };
 }
 
@@ -41,6 +50,7 @@ export const BRANDING_PADRAO: Branding = {
   dominio: null,
   logoUrl: null,
   logoNegativoUrl: null,
+  siteUrl: null,
   cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
 };
 
@@ -104,6 +114,7 @@ export class BrandingService {
       dominio?: string;
       logoUrl?: string;
       logoNegativoUrl?: string;
+      siteUrl?: string;
       cores?: { primaria?: string; secundaria?: string; acao?: string };
     };
     const nome = cfg.nome?.trim() || empresa?.nome?.trim() || BRANDING_PADRAO.nome;
@@ -115,6 +126,7 @@ export class BrandingService {
       // Sem negativa configurada, a clara é usada nos dois — é o que existia
       // antes, e continua melhor que não mostrar logo nenhuma.
       logoNegativoUrl: cfg.logoNegativoUrl?.trim() || cfg.logoUrl?.trim() || null,
+      siteUrl: cfg.siteUrl?.trim() || null,
       cores: {
         primaria: cfg.cores?.primaria || BRANDING_PADRAO.cores.primaria,
         secundaria: cfg.cores?.secundaria || BRANDING_PADRAO.cores.secundaria,
