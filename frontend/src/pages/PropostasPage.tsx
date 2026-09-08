@@ -79,6 +79,7 @@ interface Proposta {
   criadoEm: string;
   pedidoId?: string | null;
   orcamentoErpId?: string | null;
+  pedidoErpId?: string | null;
   modalidade?: 'VENDA' | 'LOCACAO';
 }
 
@@ -609,6 +610,29 @@ function PropostaDetailDrawer({
     }
   }
 
+  /**
+   * Orçamento aprovado → pedido de venda, no ERP.
+   *
+   * Só aparece com a proposta ACEITA e já no ERP: é a ordem real do ciclo. E
+   * some depois de gerar — o Tiny cria um pedido NOVO a cada chamada, sem
+   * reclamar da segunda, e o duplicado só aparece na hora de faturar.
+   */
+  async function gerarPedidoErp() {
+    setExportBusy('pedido-erp');
+    setActionError(null);
+    try {
+      const r = await api.post<{ numeroPedido?: string; pedidoErpId: string }>(
+        `/propostas/${id}/gerar-pedido-erp`,
+      );
+      toast.success(`Pedido ${r.numeroPedido ?? r.pedidoErpId} gerado no ERP`);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao gerar o pedido no ERP');
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
   async function doConverter() {
     setBusy(true);
     setActionError(null);
@@ -624,7 +648,7 @@ function PropostaDetailDrawer({
   }
 
   // ─── C2 — Exportar / enviar ──────────────────────────────────────────
-  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'aceite' | 'erp' | null>(
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'aceite' | 'erp' | 'pedido-erp' | null>(
     null,
   );
   // C3 — link de aceite externo gerado
@@ -772,6 +796,29 @@ function PropostaDetailDrawer({
                 >
                   Enviar pro ERP
                 </Button>
+              )}
+              {data.orcamentoErpId && data.status === 'ACEITA' && !data.pedidoErpId && podeAprovar && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="proposta-gerar-pedido-erp"
+                  loading={exportBusy === 'pedido-erp'}
+                  disabled={exportBusy !== null}
+                  onClick={() => void gerarPedidoErp()}
+                  leftIcon={<Upload className="h-3.5 w-3.5" />}
+                  title="Gera o pedido de venda no ERP com os itens e valores do orçamento aprovado — sem redigitar."
+                >
+                  Gerar pedido no ERP
+                </Button>
+              )}
+              {data.pedidoErpId && (
+                <span
+                  className="inline-flex items-center px-2.5 py-1 rounded-md bg-success/10 border border-success/30 text-xs text-text-subtle"
+                  data-testid="proposta-pedido-erp-ok"
+                  title="O pedido nasceu do orçamento aprovado: mesmos itens, mesmos valores."
+                >
+                  Pedido {data.pedidoErpId} no ERP
+                </span>
               )}
               {data.orcamentoErpId && (
                 <span

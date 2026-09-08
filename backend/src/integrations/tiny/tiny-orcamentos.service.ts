@@ -48,13 +48,19 @@ export interface ResultadoOrcamento {
   numeroProposta?: string;
 }
 
+/** O que o Tiny devolve ao transformar o orçamento em pedido de venda. */
+export interface ResultadoVenda {
+  id: number;
+  numeroPedido?: string;
+}
+
 /**
  * Propostas comerciais (orçamentos) no Tiny.
  *
  * A proposta já existia só no Betinna — o cliente recebia PDF daqui e, quando
  * aceitava, alguém redigitava o pedido no ERP. Subir a proposta faz o ERP ser
- * dono do ciclo inteiro: o orçamento vira pedido lá com **um** clique
- * (`/orcamentos/{id}/gerar-pedido`), sem redigitação e sem o pedido nascer com
+ * dono do ciclo inteiro: o orçamento vira pedido lá com **uma** chamada
+ * (`POST /orcamentos/{id}/venda`), sem redigitação e sem o pedido nascer com
  * valores diferentes dos que o cliente aprovou.
  *
  * **Duas diferenças em relação ao pedido**, ambas do contrato da API:
@@ -133,5 +139,33 @@ export class TinyOrcamentosService {
 
   obter(empresaId: string, idOrcamento: number): Promise<Record<string, unknown>> {
     return this.client.get(empresaId, `/orcamentos/${idOrcamento}`);
+  }
+
+  /**
+   * Orçamento aprovado → PEDIDO DE VENDA, dentro do próprio Tiny.
+   *
+   * É o passo que fechava o ciclo à mão: alguém abria o orçamento aprovado e
+   * relançava os itens como pedido. Relançar é onde o valor diverge do que o
+   * cliente aprovou — e a divergência só aparece na nota.
+   *
+   * O Tiny copia itens, contato, vendedor e condições do orçamento; por isso o
+   * corpo é VAZIO (a spec não declara requestBody). Mandar um corpo aqui não
+   * "melhora" nada: campo desconhecido o Tiny ignora em silêncio, e a
+   * expectativa de que ele foi aplicado é o que engana depois.
+   *
+   * ⚠️ Não é idempotente do lado do Tiny: chamar duas vezes gera DOIS pedidos
+   * pro mesmo orçamento. Quem chama tem que travar antes (é o que o
+   * `PropostaErpService` faz, guardando o id do pedido gerado).
+   */
+  async gerarVenda(empresaId: string, idOrcamento: number): Promise<ResultadoVenda> {
+    const r = await this.client.post<ResultadoVenda>(
+      empresaId,
+      `/orcamentos/${idOrcamento}/venda`,
+      {},
+    );
+    this.logger.log(
+      `[tiny] orçamento ${idOrcamento} virou pedido id=${r?.id} numero=${r?.numeroPedido ?? '?'}`,
+    );
+    return r;
   }
 }

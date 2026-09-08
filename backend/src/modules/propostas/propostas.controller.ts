@@ -159,6 +159,18 @@ export class PropostasController {
     return this.erp.enviar(id, user.empresaIdAtiva!);
   }
 
+  @Post(':id/gerar-pedido-erp')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'gerar_pedido_erp', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Transforma o orçamento APROVADO em pedido de venda no ERP. Exige proposta ACEITA ' +
+      'e recusa a segunda chamada — o ERP geraria um pedido duplicado sem reclamar.',
+  })
+  gerarPedidoErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.erp.gerarPedido(id, user.empresaIdAtiva!);
+  }
+
   @Delete(':id')
   @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'propostas', action: 'delete' })

@@ -1062,6 +1062,12 @@ model Proposta {
   /// Orçamento correspondente no ERP (Tiny). Presente = já subiu; é o que impede
   /// o reenvio criar uma segunda proposta pro mesmo negócio.
   orcamentoErpId String?
+  /// Pedido de venda gerado NO ERP a partir do orçamento aprovado.
+  /// Guardado porque o Tiny não é idempotente aqui: chamar `/orcamentos/{id}/venda`
+  /// duas vezes cria DOIS pedidos pro mesmo negócio, e o segundo só aparece na
+  /// hora de faturar. Este campo é a trava.
+  pedidoErpId    String?
+  pedidoErpEm    DateTime?
   enviadaErpEm   DateTime?
 
   /// Lote 6 / C3 — Aceite externo do cliente via link público.

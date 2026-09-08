@@ -6,6 +6,13 @@ import { NotificacoesService } from '@modules/notificacoes/notificacoes.service'
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
+export interface ResultadoPedidoErp {
+  propostaId: string;
+  /** Id do pedido de venda no ERP. */
+  pedidoErpId: string;
+  numeroPedido?: string;
+}
+
 export interface ResultadoPropostaErp {
   propostaId: string;
   orcamentoErpId: string;
@@ -182,6 +189,91 @@ export class PropostaErpService {
       orcamentoErpId: String(r.id),
       numeroProposta: r.numeroProposta,
       ...(vendedorErpId ? { vendedorErpId } : {}),
+    };
+  }
+
+  /**
+   * Orçamento aprovado no ERP → PEDIDO DE VENDA, sem redigitar.
+   *
+   * A aprovação é do diretor, no painel do Tiny (regra do Léo, 29/08). Depois
+   * dela sobrava um passo manual: relançar o orçamento como pedido. Relançar é
+   * onde o valor diverge do que o cliente aprovou, e a divergência só aparece
+   * na nota.
+   *
+   * A trava do pedido duplicado é DAQUI: o Tiny gera um pedido novo a cada
+   * chamada, sem reclamar da segunda.
+   */
+  async gerarPedido(propostaId: string, empresaId: string): Promise<ResultadoPedidoErp> {
+    const proposta = await this.prisma.proposta.findFirst({
+      where: { id: propostaId, empresaId },
+      select: {
+        id: true,
+        numero: true,
+        status: true,
+        orcamentoErpId: true,
+        pedidoErpId: true,
+        cliente: { select: { nome: true } },
+      },
+    });
+    if (!proposta) throw new BusinessRuleException('Proposta não encontrada');
+    if (!proposta.orcamentoErpId) {
+      throw new BusinessRuleException(
+        'Proposta ainda não está no ERP — suba o orçamento antes (Enviar para o ERP).',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    if (proposta.pedidoErpId) {
+      throw new BusinessRuleException(
+        `Esta proposta já virou o pedido ${proposta.pedidoErpId} no ERP.`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    if (proposta.status !== 'ACEITA') {
+      // Gerar pedido de proposta que o cliente não aceitou é criar demanda de
+      // faturamento pra um negócio que ainda está em negociação.
+      throw new BusinessRuleException(
+        `A proposta precisa estar ACEITA pelo cliente (está ${proposta.status}).`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+
+    const r = await this.orcamentos.gerarVenda(empresaId, Number(proposta.orcamentoErpId));
+    if (!r?.id) {
+      throw new BusinessRuleException(
+        'O ERP não devolveu o pedido gerado — confira o orçamento no painel antes de tentar de novo.',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+
+    await this.prisma.proposta.update({
+      where: { id: proposta.id },
+      data: { pedidoErpId: String(r.id), pedidoErpEm: new Date() },
+    });
+
+    await this.notificacoes
+      .criarParaRole({
+        empresaId,
+        roles: ['DIRECTOR', 'ADMIN'],
+        // O enum não tem "pedido gerado no ERP"; PEDIDO_APROVADO é o que já
+        // significa "virou pedido lá" pro resto do app.
+        tipo: 'PEDIDO_APROVADO',
+        titulo: `Proposta ${proposta.numero} virou pedido no ERP`,
+        mensagem:
+          `${proposta.cliente.nome} — pedido ${r.numeroPedido ?? r.id} gerado a partir do ` +
+          'orçamento aprovado, com os valores que o cliente aceitou.',
+        prioridade: 'NORMAL',
+        link: `/propostas?highlight=${proposta.id}`,
+        metadata: { pedidoErpId: String(r.id), propostaId: proposta.id },
+      })
+      .catch(() => undefined);
+
+    this.logger.log(
+      `Proposta ${proposta.numero} → pedido Tiny ${r.numeroPedido ?? r.id} (id ${r.id})`,
+    );
+    return {
+      propostaId: proposta.id,
+      pedidoErpId: String(r.id),
+      numeroPedido: r.numeroPedido,
     };
   }
 

@@ -22,6 +22,12 @@ export const envSchema = z
     // Assinatura eletrônica do contrato (ClickSign). O TEXTO do contrato não
     // mora aqui: é um Modelo dentro do ClickSign, e a chave dele é o que o app
     // precisa saber. Trocar o contrato vira edição no painel, sem deploy.
+    /**
+     * Segredo do webhook de ENTRADA de e-mail (`/webhooks/email-entrada`).
+     * Sem ele a rota recusa tudo — ingestão aberta deixaria qualquer um forjar
+     * "resposta" de lead, parando régua e criando tarefa pra representante.
+     */
+    EMAIL_INBOUND_SECRET: z.string().min(16).optional(),
     CLICKSIGN_API_URL: z.string().url().optional(),
     CLICKSIGN_ACCESS_TOKEN: z.string().optional(),
     CLICKSIGN_TEMPLATE_KEY: z.string().optional(),
