@@ -27,6 +27,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api, ApiError } from '@/lib/api';
+import { marca } from '@/lib/marca';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
@@ -102,18 +103,31 @@ const ETAPA_TIPO_VARIANT: Record<EtapaTipo, 'success' | 'danger' | 'primary'> = 
   PERDIDO: 'danger',
 };
 
-const CORES_SUGERIDAS = [
-  '#201554',
-  '#bd1fbf',
-  '#2bcae5',
-  '#5C88DA',
+/**
+ * Paleta sugerida — as três primeiras são as cores da MARCA em vigor.
+ *
+ * Função, e não constante: a cor escolhida vai pro BANCO (é a cor da etapa, que
+ * o gráfico do funil pinta), então precisa ser HEX de verdade. `var(--primary)`
+ * pintaria certo na tela e viraria lixo em qualquer lugar que leia o dado fora
+ * do navegador — export de PNG, PDF, e-mail.
+ *
+ * Chamada no render (e não no import) porque a marca é resolvida no boot,
+ * depois que os módulos já foram avaliados.
+ */
+const coresSugeridas = (): string[] => {
+  const { primaria, secundaria, acao } = marca().cores;
+  return [
+  primaria,
+  acao,
+  secundaria,
   '#2d8f5e',
   '#b07820',
   '#c43c3c',
   '#7c3aed',
   '#0891b2',
   '#6b6580',
-];
+  ];
+};
 
 export default function FunisPage() {
   const toast = useToast();
@@ -661,7 +675,7 @@ function FunilFormDialog({
 }) {
   const [nome, setNome] = useState(funil?.nome ?? '');
   const [descricao, setDescricao] = useState(funil?.descricao ?? '');
-  const [cor, setCor] = useState(funil?.cor ?? '#201554');
+  const [cor, setCor] = useState(funil?.cor ?? marca().cores.primaria);
   const [isPadrao, setIsPadrao] = useState(funil?.isPadrao ?? false);
   const [protegido, setProtegido] = useState(funil?.protegido ?? false);
   const [triagem, setTriagem] = useState(funil?.triagem ?? false);
@@ -1056,7 +1070,7 @@ function ColorPicker({
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <div className="flex items-center gap-1.5 flex-wrap">
-        {CORES_SUGERIDAS.map((c) => (
+        {coresSugeridas().map((c) => (
           <button
             key={c}
             type="button"

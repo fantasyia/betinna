@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { carregarMarca, logoDaMarca, marca, paletaPublica } from '@/lib/marca';
+import { carregarMarca, comAlfa, logoDaMarca, marca, paletaPublica } from '@/lib/marca';
 import { setSession } from '@/lib/auth-store';
 import type { AuthenticatedUser } from '@/types/auth';
 
@@ -195,10 +195,10 @@ export default function WelcomePage() {
         <div
           className="rounded-[10px] p-8 sm:p-10 border"
           style={{
-            background: 'rgba(32, 21, 84, 0.88)',
-            borderColor: 'rgba(43, 202, 229, 0.18)',
+            background: comAlfa(COLORS.navy, 0.88),
+            borderColor: comAlfa(COLORS.cyan, 0.18),
             boxShadow:
-              '0 0 0 1px rgba(189, 31, 191, 0.12), 0 20px 60px -20px rgba(189, 31, 191, 0.4), 0 8px 32px -8px rgba(0, 0, 0, 0.55)',
+              `0 0 0 1px ${comAlfa(COLORS.magenta, 0.12)}, 0 20px 60px -20px ${comAlfa(COLORS.magenta, 0.4)}, 0 8px 32px -8px rgba(0, 0, 0, 0.55)`,
           }}
         >
           {/* Logo */}
@@ -286,7 +286,7 @@ export default function WelcomePage() {
                   style={{
                     background: COLORS.navyDeep,
                     color: COLORS.white,
-                    border: '2px solid rgba(43, 202, 229, 0.18)',
+                    border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                     borderRadius: 10,
                     padding: '0.75rem 1rem',
                     fontFamily: '"Cabin", sans-serif',
@@ -318,7 +318,7 @@ export default function WelcomePage() {
                   style={{
                     background: COLORS.navyDeep,
                     color: COLORS.white,
-                    border: '2px solid rgba(43, 202, 229, 0.18)',
+                    border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                     borderRadius: 10,
                     padding: '0.75rem 1rem',
                     fontFamily: '"Cabin", sans-serif',

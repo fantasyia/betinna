@@ -7,10 +7,12 @@ import { getSession, subscribe } from '@/lib/auth-store';
 
 // Brandbook
 const BRAND = {
-  navy: '#201554',
-  cyan: '#2bcae5',
-  magenta: '#bd1fbf',
-  bgDark: '#221551',
+  navy: 'var(--navy)',
+  cyan: 'var(--secondary)',
+  magenta: 'var(--magenta)',
+  // `--navy` (e não `--surface`): o cartão do tour é escuro NOS DOIS temas, e o
+  // texto dele é claro. Com `--surface` viraria branco no branco no tema claro.
+  bgDark: 'var(--navy)',
 } as const;
 
 /**

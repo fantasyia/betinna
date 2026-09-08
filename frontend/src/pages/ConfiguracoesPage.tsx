@@ -30,9 +30,9 @@ import {
 
 // Cores oficiais brandbook usadas no tabs strip
 const BRAND = {
-  navy: '#201554',
-  cyan: '#2bcae5',
-  magenta: '#bd1fbf',
+  navy: 'var(--navy)',
+  cyan: 'var(--secondary)',
+  magenta: 'var(--magenta)',
 } as const;
 
 type Tab = 'empresas' | 'avancado';

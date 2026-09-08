@@ -1,3 +1,4 @@
+import { marca } from '@/lib/marca';
 /**
  * Tipos e helpers do módulo Quadros (Kanban estilo Trello).
  * Espelham as respostas do backend (/kanban/*).
@@ -245,13 +246,18 @@ export function descreverAtividade(a: KAtividade): string {
   }
 }
 
-/** Paleta de cores de fundo do quadro (estilo Trello + cores da marca). */
-export const BOARD_CORES = [
+/**
+ * Paleta de fundo do quadro (estilo Trello + cores da marca EM VIGOR).
+ *
+ * Função porque a cor escolhida é gravada no banco: tem que ser HEX. E a marca
+ * só é resolvida no boot, depois da avaliação dos módulos — uma constante
+ * congelaria as cores do produto.
+ */
+export const boardCores = (): string[] => [
   '#0079BF', // azul Trello (default)
-  '#201554', // navy Betinna
-  '#2bcae5', // cyan Betinna
-  '#bd1fbf', // magenta Betinna
-  '#5C88DA', // blue Betinna
+  marca().cores.primaria,
+  marca().cores.secundaria,
+  marca().cores.acao,
   '#519839', // verde
   '#B04632', // terracota
   '#89609E', // roxo
@@ -259,7 +265,7 @@ export const BOARD_CORES = [
   '#4BBF6B', // verde claro
   '#00AECC', // ciano
   '#838C91', // cinza
-] as const;
+];
 
 /** Posição fracionária entre vizinhos (mesma técnica do backend). */
 export function posicaoEntre(antes: number | null, depois: number | null): number {

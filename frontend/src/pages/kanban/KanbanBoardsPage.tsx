@@ -17,7 +17,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Button, Dialog, Field, Input, Textarea, Tooltip } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { BOARD_CORES, type KBoardResumo } from './kanban-types';
+import { boardCores, type KBoardResumo } from './kanban-types';
 
 /**
  * Home dos Quadros (estilo home do Trello): grade de cartões coloridos.
@@ -60,7 +60,7 @@ export default function KanbanBoardsPage() {
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState('');
   const [descricao, setDescricao] = useState('');
-  const [corFundo, setCorFundo] = useState<string>(BOARD_CORES[0]);
+  const [corFundo, setCorFundo] = useState<string>(boardCores()[0]);
 
   const repNoLimite = useMemo(
     () => role === 'REP' && (boards ?? []).some((b) => b.criadoPorId === meuId),
@@ -259,7 +259,7 @@ export default function KanbanBoardsPage() {
           </Field>
           <Field label="Cor de fundo">
             <div className="flex flex-wrap gap-2">
-              {BOARD_CORES.map((cor) => (
+              {boardCores().map((cor) => (
                 <button
                   key={cor}
                   type="button"
@@ -268,7 +268,7 @@ export default function KanbanBoardsPage() {
                   className={cn(
                     'h-8 w-12 rounded-[6px] transition-transform',
                     corFundo === cor
-                      ? 'ring-2 ring-offset-2 ring-[var(--color-primary,#201554)] scale-105'
+                      ? 'ring-2 ring-offset-2 ring-primary scale-105'
                       : 'hover:scale-105',
                   )}
                   style={{ background: cor }}

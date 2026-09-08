@@ -338,11 +338,11 @@ function DeadLetterSection() {
 
 // Cores oficiais brandbook — usadas inline em destaques (ex: alertas do DB health)
 const BRAND = {
-  navy: '#201554',
-  cyan: '#2bcae5',
-  magenta: '#bd1fbf',
-  magentaHover: '#a01aa1',
-  danger: '#c43c3c',
+  navy: 'var(--navy)',
+  cyan: 'var(--secondary)',
+  magenta: 'var(--magenta)',
+  magentaHover: 'var(--magenta-hover)',
+  danger: 'var(--danger)',
 } as const;
 
 // ─── DB Health (tamanho do Postgres) ──────────────────────────────────
@@ -660,7 +660,7 @@ function AuditLogSection() {
       key: 'acao',
       header: 'Ação',
       render: (e) => (
-        <span className="inline-flex items-center rounded-full px-[9px] py-0.5 font-semibold leading-[1.6] tracking-[0.2px] bg-[#2bcae5]/12 text-[#2bcae5] border border-[#2bcae5]/19 font-mono text-[10px]">
+        <span className="inline-flex items-center rounded-full px-[9px] py-0.5 font-semibold leading-[1.6] tracking-[0.2px] bg-secondary/12 text-secondary border border-secondary/20 font-mono text-[10px]">
           {e.acao}
         </span>
       ),

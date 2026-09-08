@@ -379,7 +379,7 @@ function CalendarioConteudo({
       : nomeMes;
 
   const chipCard = (c: CalCard | TabelaCard, dataStr?: string) => {
-    const cor = ('corCapa' in c ? c.corCapa : null) ?? c.etiquetas[0]?.etiqueta.cor ?? '#5C88DA';
+    const cor = ('corCapa' in c ? c.corCapa : null) ?? c.etiquetas[0]?.etiqueta.cor ?? 'var(--blue)';
     const ehCase = c.etiquetas.some((e) => /case/i.test(e.etiqueta.nome ?? ''));
     const arco = arcoDoCard.get(c.id);
     const impuls = impulsDoCard.get(c.id);

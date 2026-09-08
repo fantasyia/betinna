@@ -317,7 +317,7 @@ export default function LoginPage() {
               style={{
                 background: COLORS.navyDeep,
                 color: COLORS.white,
-                border: '2px solid rgba(43, 202, 229, 0.18)',
+                border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                 borderRadius: 10,
                 padding: '0.75rem 1rem',
                 fontFamily: '"Cabin", sans-serif',
@@ -351,7 +351,7 @@ export default function LoginPage() {
               style={{
                 background: COLORS.navyDeep,
                 color: COLORS.white,
-                border: '2px solid rgba(43, 202, 229, 0.18)',
+                border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                 borderRadius: 10,
                 padding: '0.75rem 1rem',
                 fontFamily: '"Cabin", sans-serif',
@@ -425,7 +425,7 @@ export default function LoginPage() {
               fontFamily: '"Fira Sans", "Cabin", sans-serif',
               cursor: loading ? 'not-allowed' : 'pointer',
               transition: 'transform 150ms, background-color 150ms, box-shadow 150ms',
-              boxShadow: loading ? 'none' : '0 6px 20px -6px rgba(189, 31, 191, 0.6)',
+              boxShadow: loading ? 'none' : `0 6px 20px -6px ${comAlfa(COLORS.magenta, 0.6)}`,
             }}
             onMouseEnter={(e) => {
               if (!loading) {
@@ -441,12 +441,12 @@ export default function LoginPage() {
             }}
             onFocus={(e) => {
               e.currentTarget.style.boxShadow =
-                '0 0 0 3px rgba(43, 202, 229, 0.45), 0 6px 20px -6px rgba(189, 31, 191, 0.6)';
+                `0 0 0 3px ${comAlfa(COLORS.cyan, 0.45)}, 0 6px 20px -6px ${comAlfa(COLORS.magenta, 0.6)}`;
             }}
             onBlur={(e) => {
               e.currentTarget.style.boxShadow = loading
                 ? 'none'
-                : '0 6px 20px -6px rgba(189, 31, 191, 0.6)';
+                : `0 6px 20px -6px ${comAlfa(COLORS.magenta, 0.6)}`;
             }}
           >
             {loading ? (
@@ -495,10 +495,10 @@ export default function LoginPage() {
           }
           .login-input:focus {
             border-color: ${COLORS.cyan} !important;
-            box-shadow: 0 0 0 3px rgba(43, 202, 229, 0.22) !important;
+            box-shadow: 0 0 0 3px ${comAlfa(COLORS.cyan, 0.22)} !important;
           }
           .login-input:hover:not(:focus) {
-            border-color: rgba(43, 202, 229, 0.35);
+            border-color: ${comAlfa(COLORS.cyan, 0.35)};
           }
           @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(10px); }

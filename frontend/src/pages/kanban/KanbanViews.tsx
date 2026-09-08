@@ -263,7 +263,7 @@ function CardCalendario({ card, onAbrir }: { card: CalCard; onAbrir: () => void 
     }
     onAbrir();
   }
-  const cor = card.corCapa ?? card.etiquetas[0]?.etiqueta.cor ?? '#5C88DA';
+  const cor = card.corCapa ?? card.etiquetas[0]?.etiqueta.cor ?? 'var(--blue)';
   return (
     <button
       ref={setNodeRef}
@@ -533,7 +533,7 @@ export function DashboardView({ board }: { board: KBoardCompleto }) {
   const venc = [
     { nome: 'Vencidos', total: data.vencimento.vencidos, cor: '#ef4444' },
     { nome: 'Próximos 7 dias', total: data.vencimento.proximos7dias, cor: '#f59e0b' },
-    { nome: 'No prazo', total: data.vencimento.noPrazo, cor: '#5C88DA' },
+    { nome: 'No prazo', total: data.vencimento.noPrazo, cor: 'var(--blue)' },
     { nome: 'Sem data', total: data.vencimento.semData, cor: '#838C91' },
     { nome: 'Concluídos', total: data.vencimento.concluidos, cor: '#10b981' },
   ];
@@ -551,7 +551,7 @@ export function DashboardView({ board }: { board: KBoardCompleto }) {
             id: m.id,
             nome: m.nome,
             total: m.total,
-            cor: '#2bcae5',
+            cor: 'var(--secondary)',
           })),
           ...(data.semMembro > 0
             ? [{ nome: 'Sem membro', total: data.semMembro, cor: '#838C91' }]

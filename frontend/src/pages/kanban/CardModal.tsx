@@ -35,7 +35,7 @@ import {
 import { cn } from '@/lib/cn';
 import { StateView } from '@/components/StateView';
 import {
-  BOARD_CORES,
+  boardCores,
   descreverAtividade,
   statusPrazo,
   type KBoardCompleto,
@@ -354,7 +354,7 @@ export function CardModal({
           {secao === 'capa' && (
             <div className="rounded-[8px] border border-border p-2">
               <div className="flex flex-wrap gap-1.5">
-                {BOARD_CORES.map((cor) => (
+                {boardCores().map((cor) => (
                   <button
                     key={cor}
                     type="button"
@@ -471,7 +471,7 @@ function EtiquetasPanel({
 }) {
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState('');
-  const [cor, setCor] = useState<string>(BOARD_CORES[5]);
+  const [cor, setCor] = useState<string>(boardCores()[5]);
 
   return (
     <div className="rounded-[8px] border border-border p-2 flex flex-col gap-1">
@@ -509,7 +509,7 @@ function EtiquetasPanel({
             autoFocus
           />
           <div className="flex flex-wrap gap-1">
-            {BOARD_CORES.slice(0, 8).map((c) => (
+            {boardCores().slice(0, 8).map((c) => (
               <button
                 key={c}
                 type="button"

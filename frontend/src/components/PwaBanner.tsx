@@ -23,9 +23,10 @@ import { RefreshCw } from 'lucide-react';
  */
 
 const BRAND = {
-  navy: '#221551',
-  magenta: '#bd1fbf',
-  cyan: '#2bcae5',
+  navy: 'var(--navy)',
+  magenta: 'var(--magenta)',
+  cyan: 'var(--secondary)',
+  // Neutro, não é cor de marca — fica.
   offWhite: '#F8F7F2',
 } as const;
 

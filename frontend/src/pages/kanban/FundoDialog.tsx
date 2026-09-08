@@ -5,7 +5,7 @@ import { getSession, getStoredEmpresaId } from '@/lib/auth-store';
 import { useToast } from '@/components/toast';
 import { Button, Dialog, Field } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { BOARD_CORES, type KBoardCompleto } from './kanban-types';
+import { boardCores, type KBoardCompleto } from './kanban-types';
 
 /**
  * "Personalizar fundo" do quadro: paleta de cores + upload de imagem
@@ -140,7 +140,7 @@ export function FundoDialog({
           hint={board.imagemFundoUrl ? 'A cor fica como fallback enquanto a imagem existir' : undefined}
         >
           <div className="flex flex-wrap gap-2">
-            {BOARD_CORES.map((cor) => (
+            {boardCores().map((cor) => (
               <button
                 key={cor}
                 type="button"

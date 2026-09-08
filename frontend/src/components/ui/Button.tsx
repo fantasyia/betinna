@@ -38,10 +38,11 @@ const buttonVariants = cva(
       variant: {
         primary: [
           'bg-primary text-white font-semibold',
-          // Sombra = navy #201554 (rgb 32,21,84) tintado. Antes usava 49,19,124
+          // Sombra tintada pela PRIMÁRIA da marca (era o navy do produto cravado
+          // em rgb, que num tenant deixava um halo roxo embaixo do botão dele).
           // (#31137C, o roxo ERRADO que o BRANDBOOK proíbe).
-          'shadow-[0_1px_2px_0_rgba(32,21,84,0.3),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
-          'hover:bg-primary-hover hover:shadow-[0_2px_8px_0_rgba(32,21,84,0.35),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
+          'shadow-[0_1px_2px_0_color-mix(in_srgb,var(--primary)_30%,transparent),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
+          'hover:bg-primary-hover hover:shadow-[0_2px_8px_0_color-mix(in_srgb,var(--primary)_35%,transparent),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
         ],
         secondary: [
           'bg-surface text-primary border border-primary/30 font-semibold',

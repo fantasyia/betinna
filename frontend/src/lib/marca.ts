@@ -194,6 +194,7 @@ function aplicarCss(m: Marca): void {
     `  --surface-hover: ${clarear(primaria, 0.94)};`,
     `  --chart-linha: ${primaria};`,
     `  --chart-barra: ${secundaria};`,
+    `  --chart-grade: ${clarear(primaria, 0.9)};`,
     '}',
     // Mesma relação do tema escuro original: os fundos nascem da cor primária
     // e a cor de AÇÃO assume o papel de primária (contraste em fundo escuro).
@@ -214,6 +215,11 @@ function aplicarCss(m: Marca): void {
     `  --magenta: ${acao};`,
     `  --magenta-hover: ${clarear(acao, 0.15)};`,
     `  --navy: ${primaria};`,
+    // Os gráficos também têm bloco próprio no tema escuro do produto — sem
+    // repetir aqui, a linha e a grade voltavam pro roxo/ciano do Betinna.
+    `  --chart-linha: ${clarear(secundaria, 0.25)};`,
+    `  --chart-barra: ${secundaria};`,
+    `  --chart-grade: ${escurecer(primaria, 0.15)};`,
     '}',
   ].join('\n');
   document.head.appendChild(est);

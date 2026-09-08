@@ -38,8 +38,10 @@ interface AceitePreview {
   itens: AceiteItem[];
 }
 
-const NAVY = '#201554';
-const CYAN = '#2bcae5';
+// Página aberta pelo CLIENTE do tenant: a marca aqui é a da empresa que mandou
+// a proposta, não a do produto. Resolvida pelo domínio, como no login.
+const NAVY = 'var(--navy)';
+const CYAN = 'var(--secondary)';
 
 function fmtDate(d: string | null): string {
   if (!d) return '—';
@@ -94,7 +96,7 @@ export default function PropostaAceitePage() {
     <div
       style={{
         minHeight: '100vh',
-        background: `linear-gradient(135deg, ${NAVY} 0%, #2d1f6e 100%)`,
+        background: `linear-gradient(135deg, ${NAVY} 0%, var(--surface-elevated) 100%)`,
         padding: '2rem 1rem',
         fontFamily: 'Cabin, system-ui, sans-serif',
       }}
