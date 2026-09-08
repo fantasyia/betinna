@@ -69,13 +69,35 @@ export function placeholdersPendentes(texto: string): string[] {
  * propósito — o que se procura tem cara de chave de template, não de frase.
  */
 export function lacunasDeExemplo(texto: string): string[] {
+  // TAG DE HTML NÃO É LACUNA — e essa lição custou caro: a primeira versão
+  // barrou TODO e-mail de fluxo em produção (`<head>`, `<html>`, `<body>`,
+  // `<table>`, `<strong>`… casavam todas). O `<b>` passava só por ter 1 letra,
+  // e isso deu a falsa sensação de que HTML estava coberto.
+  //
+  // Mas tirar QUALQUER `<coisa>` da conta seria cegar a guarda justamente onde
+  // ela precisa enxergar: `<nome_cliente>` é lacuna que o modelo produz. O que
+  // separa os dois é o FECHAMENTO — tag de verdade vem em par (`<head>` tem
+  // `</head>`); lacuna copiada de exemplo aparece sozinha.
+  //
+  // `<style>`/`<script>` saem inteiros antes: são código, e chave e colchete ali
+  // são sintaxe, não texto.
+  const semCodigo = texto.replace(/<(style|script)[^>]*>[\s\S]*?<\/>/gi, ' ');
   const delimitado = /[[<{%]{1,2}\s*[a-z][a-z0-9_.]{2,39}\s*[\]>}%]{1,2}/g;
   // `__chave__` não tem delimitador de abrir e fechar diferentes — vai separado
   // pra não afrouxar o padrão de cima, que é o que segura o falso positivo.
   const sublinhado = /__[a-z][a-z0-9_]{1,38}__/g;
-  const achados = [...texto.matchAll(delimitado), ...texto.matchAll(sublinhado)]
+  /** Elementos vazios: existem sem par de fechamento e não são lacuna. */
+  const VAZIOS = new Set(['br', 'hr', 'img', 'wbr', 'col', 'area', 'base', 'link', 'meta']);
+  const achados = [...semCodigo.matchAll(delimitado), ...semCodigo.matchAll(sublinhado)]
     .map((m) => m[0].trim())
     // `{{chave}}` é variável nossa e já tem dono: o `placeholdersPendentes`.
-    .filter((bruto) => !bruto.startsWith('{{'));
+    .filter((bruto) => !bruto.startsWith('{{'))
+    .filter((bruto) => {
+      const tag = /^<\s*([a-z][a-z0-9_.]*)\s*>$/.exec(bruto)?.[1];
+      if (!tag) return true;
+      if (VAZIOS.has(tag)) return false;
+      // Tem fechamento no texto? Então é HTML, não lacuna.
+      return !new RegExp(`</\s*${tag}\s*>`, 'i').test(semCodigo);
+    });
   return [...new Set(achados)];
 }
