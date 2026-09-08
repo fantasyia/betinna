@@ -168,6 +168,7 @@ export class AprovacoesService {
           pedidoNumero: result.pedido.numero,
           status: 'APROVADA',
           comentario: dto.comentario,
+          empresaId: result.pedido.empresaId,
         });
       }
     }
@@ -256,6 +257,7 @@ export class AprovacoesService {
           pedidoNumero: result.pedido.numero,
           status: 'REJEITADA',
           comentario: dto.comentario,
+          empresaId: result.pedido.empresaId,
         });
       }
     }

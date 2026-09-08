@@ -319,6 +319,7 @@ export class AuthSessionService {
         para: alvo,
         nome: usuario.nome,
         resetUrl,
+        empresaId: usuario.empresas?.[0]?.empresaId,
       });
       if (!enviado.ok) {
         this.logger.error(

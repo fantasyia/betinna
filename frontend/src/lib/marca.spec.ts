@@ -60,7 +60,21 @@ describe('marca do tenant', () => {
     expect(marca().nome).toBe('Somatec Blocking');
     expect(document.title).toBe('Somatec Blocking');
     expect(cssDaMarca()).toContain('--primary: #00416E');
-    expect(logoDaMarca('/betinna-horizontal.svg')).toBe('https://x/logo.png');
+    expect(logoDaMarca('/betinna-horizontal.png')).toBe('https://x/logo.png');
+  });
+
+  it('tenant com marca própria e SEM logo não mostra o logotipo do produto', async () => {
+    // Vazamento mais visível que existe: símbolo do Betinna dentro do app da
+    // Somatec. Sem logo utilizável, quem chama escreve o NOME.
+    vi.stubGlobal('fetch', responder({ ...SOMATEC, logoUrl: null }));
+
+    await carregarMarca();
+
+    expect(logoDaMarca('/betinna-horizontal.png')).toBeNull();
+  });
+
+  it('sem tenant, o logotipo do PRODUTO continua valendo', () => {
+    expect(logoDaMarca('/betinna-horizontal.png')).toBe('/betinna-horizontal.png');
   });
 
   it('tenant SEM marca própria não recebe folha de estilo nenhuma', async () => {

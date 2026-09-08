@@ -58,10 +58,13 @@ export default defineConfig({
         lang: 'pt-BR',
         icons: [
           {
-            src: '/betinna-symbol.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
+            // PNG 512×512 transparente (o SVG não é quadrado, e declarar
+            // "192x192 512x512" pra ele fazia o navegador recusar o ícone com
+            // erro de tamanho no console).
+            src: '/betinna-symbol.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
           },
           {
             src: '/favicon.ico',

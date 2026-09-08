@@ -290,12 +290,19 @@ function SidebarLogo({
           title="Expandir menu"
           className="group relative flex h-9 w-9 items-center justify-center rounded-md hover:bg-primary/8 transition-colors"
         >
-          <img
-            src={logoUrl || logoDaMarca('/betinna-symbol.svg')}
-            alt={nome}
-            className="h-7 w-7 object-contain group-hover:opacity-0 transition-opacity"
-            draggable={false}
-          />
+          {logoUrl || logoDaMarca('/betinna-symbol.png') ? (
+            <img
+              src={logoUrl || (logoDaMarca('/betinna-symbol.png') ?? undefined)}
+              alt={nome}
+              className="h-7 w-7 object-contain group-hover:opacity-0 transition-opacity"
+              draggable={false}
+            />
+          ) : (
+            // Marca própria sem logo: a INICIAL, não o símbolo do produto.
+            <span className="text-sm font-extrabold text-primary group-hover:opacity-0 transition-opacity">
+              {nome.slice(0, 1).toUpperCase()}
+            </span>
+          )}
           <PanelLeftOpen className="absolute h-4 w-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
         </button>
         <ThemeToggle />
@@ -317,14 +324,14 @@ function SidebarLogo({
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
           />
-        ) : (
+        ) : logoDaMarca('/betinna-symbol.png') ? (
           <img
-            src={logoDaMarca('/betinna-symbol.svg')}
+            src={logoDaMarca('/betinna-symbol.png') ?? undefined}
             alt={nome}
             className="h-8 w-8 shrink-0"
             draggable={false}
           />
-        )}
+        ) : null}
         <div className="flex flex-col min-w-0">
           <strong
             className="text-base font-extrabold leading-tight tracking-tight text-text"

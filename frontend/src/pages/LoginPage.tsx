@@ -44,6 +44,8 @@ export default function LoginPage() {
     // chega aqui e a tela se repinta.
     void carregarMarca().then(setMarcaAtual);
   }, []);
+  // Logo que não carrega vira o nome da marca, e não um ícone quebrado.
+  const [logoQuebrou, setLogoQuebrou] = useState(false);
   const COLORS = paletaPublica(marcaAtual);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -250,12 +252,24 @@ export default function LoginPage() {
         >
           {/* Logo horizontal */}
           <div className="flex justify-center mb-7">
-            <img
-              src={logoDaMarca('/betinna-horizontal.svg')}
-              alt={marcaAtual.nome}
-              className="h-10 sm:h-12 w-auto"
-              draggable={false}
-            />
+            {logoQuebrou || !logoDaMarca('/betinna-horizontal.png') ? (
+              // Sem logo utilizável, o NOME — nunca o logotipo do produto, que
+              // seria a marca de outra empresa na tela de quem entra aqui.
+              <span
+                className="text-2xl sm:text-3xl font-black tracking-tight"
+                style={{ color: COLORS.white, fontFamily: '"Fira Sans", "Cabin", sans-serif' }}
+              >
+                {marcaAtual.nome}
+              </span>
+            ) : (
+              <img
+                src={logoDaMarca('/betinna-horizontal.png') ?? undefined}
+                alt={marcaAtual.nome}
+                className="h-10 sm:h-12 w-auto"
+                draggable={false}
+                onError={() => setLogoQuebrou(true)}
+              />
+            )}
           </div>
 
           {/* Título + subtítulo */}

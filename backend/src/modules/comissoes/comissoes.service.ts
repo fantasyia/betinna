@@ -787,6 +787,7 @@ export class ComissoesService {
           ano,
           totalVendas: Number(c.totalVendas),
           totalComissao: Number(c.totalComissao),
+          empresaId,
         });
       }
     } catch (err) {

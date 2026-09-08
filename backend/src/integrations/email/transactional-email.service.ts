@@ -70,13 +70,18 @@ export class TransactionalEmailService {
     try {
       const empresa = await this.prisma.empresa.findUnique({
         where: { id: empresaId },
-        select: { config: true },
+        select: { nome: true, config: true },
       });
-      const cfg = (empresa?.config as { emailTransacional?: unknown } | null)?.emailTransacional as
-        | { fromNome?: string; replyTo?: string }
-        | undefined;
+      const conf = empresa?.config as Record<string, unknown> | null;
+      const cfg = conf?.emailTransacional as { fromNome?: string; replyTo?: string } | undefined;
+      const marcaCfg = conf?.branding as { nome?: string } | undefined;
       return {
-        fromNome: cfg?.fromNome?.trim() || undefined,
+        // Sem `fromNome` configurado, o nome que aparece é o DA EMPRESA — nunca
+        // o do produto. Um convite da Somatec chegando como "Betinna.ai" entrega
+        // pro representante um nome que ele nunca viu, e some com o white-label
+        // no lugar mais visível que existe: a linha do remetente.
+        fromNome:
+          cfg?.fromNome?.trim() || marcaCfg?.nome?.trim() || empresa?.nome?.trim() || undefined,
         replyTo: cfg?.replyTo?.trim() || undefined,
       };
     } catch {
@@ -90,6 +95,34 @@ export class TransactionalEmailService {
     if (fromEnv) return fromEnv.replace(/\/$/, '');
     const cors = this.env.get('CORS_ORIGINS').split(',')[0]?.trim();
     return (cors ?? 'http://localhost:3000').replace(/\/$/, '');
+  }
+
+  /**
+   * Deep-link no domínio DO TENANT.
+   *
+   * `FRONTEND_URL` é uma só no ambiente: sem isto, o botão "Acessar minha
+   * conta" do representante da Somatec aponta pro domínio do outro tenant. O
+   * link até abre — com a marca errada, e possivelmente fora da allowlist de
+   * redirect do Supabase.
+   */
+  private async urlDoTenant(path: string, empresaId?: string): Promise<string> {
+    if (!empresaId) return this.safeUrl(path);
+    try {
+      const empresa = await this.prisma.empresa.findUnique({
+        where: { id: empresaId },
+        select: { config: true },
+      });
+      const dominio = (
+        (empresa?.config as Record<string, unknown> | null)?.branding as { dominio?: string }
+      )?.dominio
+        ?.trim()
+        .replace(/^https?:\/\//, '')
+        .replace(/\/+$/, '');
+      if (!dominio) return this.safeUrl(path);
+      return `https://${dominio}${path.startsWith('/') ? path : `/${path}`}`;
+    } catch {
+      return this.safeUrl(path);
+    }
   }
 
   private safeUrl(path: string): string {
@@ -319,13 +352,26 @@ export class TransactionalEmailService {
   // "sua comissão fechou" duas vezes. A chave é determinística por evento —
   // mesmo evento, mesma chave, Resend deduplica.
 
-  async enviarBoasVindas(params: { para: string; nome: string; empresaNome: string }) {
+  async enviarBoasVindas(params: {
+    para: string;
+    nome: string;
+    empresaNome: string;
+    empresaId?: string;
+  }) {
     const { assunto, html } = templateBoasVindas({
       nome: params.nome,
       empresaNome: params.empresaNome,
-      loginUrl: this.safeUrl('/login'),
+      loginUrl: await this.urlDoTenant('/login', params.empresaId),
+      marca: await this.marcaDeEmail(params.empresaId),
     });
-    return this.send(params.para, assunto, html, undefined, `boas-vindas:${params.para}`);
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `boas-vindas:${params.para}`,
+      params.empresaId,
+    );
   }
 
   async enviarReenvioConvite(params: {
@@ -333,11 +379,13 @@ export class TransactionalEmailService {
     nome: string;
     empresaNome: string;
     inviteUrl: string;
+    empresaId?: string;
   }) {
     const { assunto, html } = templateReenvioConvite({
       nome: params.nome,
       empresaNome: params.empresaNome,
       inviteUrl: params.inviteUrl,
+      marca: await this.marcaDeEmail(params.empresaId),
     });
     // O convite PODE ser reenviado de propósito — a chave inclui a URL, que muda
     // a cada novo convite gerado.
@@ -347,13 +395,20 @@ export class TransactionalEmailService {
       html,
       undefined,
       `convite:${params.para}:${params.inviteUrl.slice(-24)}`,
+      params.empresaId,
     );
   }
 
-  async enviarRecuperacaoSenha(params: { para: string; nome: string; resetUrl: string }) {
+  async enviarRecuperacaoSenha(params: {
+    para: string;
+    nome: string;
+    resetUrl: string;
+    empresaId?: string;
+  }) {
     const { assunto, html } = templateRecuperarSenha({
       nome: params.nome,
       resetUrl: params.resetUrl,
+      marca: await this.marcaDeEmail(params.empresaId),
     });
     // A chave inclui a URL: pedir de novo gera link novo e DEVE mandar de novo
     // (quem pediu duas vezes está esperando o segundo e-mail). O que segura
@@ -364,6 +419,7 @@ export class TransactionalEmailService {
       html,
       undefined,
       `reset-senha:${params.para}:${params.resetUrl.slice(-24)}`,
+      params.empresaId,
     );
   }
 
@@ -374,13 +430,15 @@ export class TransactionalEmailService {
     pedidoNumero: string;
     status: 'APROVADA' | 'REJEITADA';
     comentario?: string | null;
+    empresaId?: string;
   }) {
     const { assunto, html } = templateAprovacaoResolvida({
       repNome: params.repNome,
       pedidoNumero: params.pedidoNumero,
       status: params.status,
       comentario: params.comentario,
-      pedidoUrl: this.safeUrl(`/pedidos/${params.pedidoId}`),
+      pedidoUrl: await this.urlDoTenant(`/pedidos/${params.pedidoId}`, params.empresaId),
+      marca: await this.marcaDeEmail(params.empresaId),
     });
     return this.send(
       params.para,
@@ -388,6 +446,7 @@ export class TransactionalEmailService {
       html,
       undefined,
       `aprovacao:${params.pedidoId}:${params.status}`,
+      params.empresaId,
     );
   }
 
@@ -398,6 +457,7 @@ export class TransactionalEmailService {
     ano: number;
     totalVendas: number;
     totalComissao: number;
+    empresaId?: string;
   }) {
     const { assunto, html } = templateComissaoFechada({
       repNome: params.repNome,
@@ -405,7 +465,8 @@ export class TransactionalEmailService {
       ano: params.ano,
       totalVendas: params.totalVendas,
       totalComissao: params.totalComissao,
-      comissoesUrl: this.safeUrl('/comissoes'),
+      comissoesUrl: await this.urlDoTenant('/comissoes', params.empresaId),
+      marca: await this.marcaDeEmail(params.empresaId),
     });
     return this.send(
       params.para,
@@ -413,6 +474,7 @@ export class TransactionalEmailService {
       html,
       undefined,
       `comissao-fechada:${params.para}:${params.ano}-${params.mes}`,
+      params.empresaId,
     );
   }
 
@@ -424,6 +486,7 @@ export class TransactionalEmailService {
     titulo: string;
     severidade: 'CRITICA' | 'ALTA';
     slaHoras: number;
+    empresaId?: string;
   }) {
     const { assunto, html } = templateOcorrenciaCritica({
       destinatarioNome: params.destinatarioNome,
@@ -431,7 +494,11 @@ export class TransactionalEmailService {
       titulo: params.titulo,
       severidade: params.severidade,
       slaHoras: params.slaHoras,
-      ocorrenciaUrl: this.safeUrl(`/ocorrencias?highlight=${params.ocorrenciaId}`),
+      ocorrenciaUrl: await this.urlDoTenant(
+        `/ocorrencias?highlight=${params.ocorrenciaId}`,
+        params.empresaId,
+      ),
+      marca: await this.marcaDeEmail(params.empresaId),
     });
     return this.send(
       params.para,
@@ -439,6 +506,7 @@ export class TransactionalEmailService {
       html,
       undefined,
       `ocorrencia-critica:${params.ocorrenciaId}:${params.para}`,
+      params.empresaId,
     );
   }
 
@@ -448,13 +516,15 @@ export class TransactionalEmailService {
     clienteNome: string;
     produtoNome: string;
     diasDesdeEnvio: number;
+    empresaId?: string;
   }) {
     const { assunto, html } = templateAmostraFollowup({
       repNome: params.repNome,
       clienteNome: params.clienteNome,
       produtoNome: params.produtoNome,
       diasDesdeEnvio: params.diasDesdeEnvio,
-      amostrasUrl: this.safeUrl('/amostras'),
+      amostrasUrl: await this.urlDoTenant('/amostras', params.empresaId),
+      marca: await this.marcaDeEmail(params.empresaId),
     });
     // Follow-up é por AMOSTRA e por marco de dias — o cron reavalia todo dia.
     return this.send(
@@ -463,6 +533,7 @@ export class TransactionalEmailService {
       html,
       undefined,
       `amostra-followup:${params.para}:${params.clienteNome}:${params.diasDesdeEnvio}`,
+      params.empresaId,
     );
   }
 

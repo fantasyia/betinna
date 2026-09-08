@@ -478,6 +478,7 @@ export class OcorrenciasService {
           titulo: ocorrencia.titulo,
           severidade: ocorrencia.severidade as 'CRITICA' | 'ALTA',
           slaHoras,
+          empresaId,
         });
       }
     } catch (err) {

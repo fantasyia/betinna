@@ -53,9 +53,18 @@ export function temMarcaPropria(): boolean {
   return atual.dominio !== null;
 }
 
-/** Logo da marca, com o do produto como reserva. */
-export function logoDaMarca(padrao: string): string {
-  return atual.logoUrl || padrao;
+/**
+ * Logo a mostrar — ou `null`, e aí quem chama escreve o NOME.
+ *
+ * ⛔ **Marca de tenant nunca cai no logotipo do produto.** Era o que acontecia:
+ * tenant com marca própria e sem logo (ou com o arquivo fora do ar) exibia o
+ * símbolo do Betinna dentro do app da Somatec — o vazamento mais visível que
+ * existe, e o oposto do que o white-label promete. Sem logo utilizável, o nome
+ * da marca em texto é sempre melhor que o logo de outra empresa.
+ */
+export function logoDaMarca(padraoDoProduto: string): string | null {
+  if (atual.dominio) return atual.logoUrl || null;
+  return atual.logoUrl || padraoDoProduto;
 }
 
 // ─── Cor: helpers pequenos, sem dependência ────────────────────────────────

@@ -1058,6 +1058,7 @@ export class FluxoTriggersJob {
           clienteNome: amostra.cliente.nome,
           produtoNome: amostra.produtoNome,
           diasDesdeEnvio,
+          empresaId,
         });
       }
     }

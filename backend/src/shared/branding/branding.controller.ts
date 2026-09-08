@@ -80,15 +80,27 @@ export class BrandingController {
         scope: '/',
         start_url: '/dashboard',
         lang: 'pt-BR',
-        icons: iconesDaMarca(b.logoUrl),
+        icons: iconesDaMarca(b),
       }),
     );
   }
 }
 
-/** Ícone do tenant, com o símbolo do produto como reserva. */
-function iconesDaMarca(logoUrl: string | null): Array<Record<string, string>> {
-  const src = logoUrl || '/betinna-symbol.svg';
+/**
+ * Ícone do manifest.
+ *
+ * ⛔ Tenant NUNCA cai no ícone do produto: o atalho da Somatec na tela do
+ * celular com o símbolo do Betinna é o vazamento mais visível que existe.
+ * Sem logo próprio, o manifest vai SEM ícone — o navegador desenha a inicial
+ * do nome, que já é a marca certa.
+ *
+ * O `sizes` também não pode mentir: declarar 192x192 pra uma imagem de outra
+ * dimensão faz o navegador recusar o ícone com erro no console (foi o "erro ao
+ * renderizar a imagem" relatado em 07/09).
+ */
+function iconesDaMarca(b: Branding): Array<Record<string, string>> {
+  const src = b.logoUrl || (b.dominio ? null : '/betinna-symbol.png');
+  if (!src) return [];
   const ext = (src.split('?')[0] ?? '').split('.').pop()?.toLowerCase() ?? '';
   const type =
     ext === 'svg'
@@ -98,5 +110,7 @@ function iconesDaMarca(logoUrl: string | null): Array<Record<string, string>> {
         : ext === 'webp'
           ? 'image/webp'
           : 'image/png';
-  return [{ src, sizes: '192x192 512x512', type, purpose: 'any' }];
+  // `any`: o tamanho real do arquivo do tenant é desconhecido aqui, e chutar
+  // um número é exatamente o que quebra.
+  return [{ src, sizes: 'any', type, purpose: 'any' }];
 }

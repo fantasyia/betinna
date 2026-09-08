@@ -76,6 +76,18 @@ describe('BrandingController', () => {
     expect(corpo().display).toBe('browser');
   });
 
+  it('tenant SEM logo próprio vai sem ícone — nunca com o do produto', async () => {
+    // Atalho da Somatec na tela do celular com o símbolo do Betinna é o
+    // vazamento mais visível que existe. Sem ícone, o navegador desenha a
+    // inicial do nome — que já é a marca certa.
+    const { ctrl } = build({ ...SOMATEC, logoUrl: null });
+    const { res, corpo } = resposta();
+
+    await ctrl.manifest(res, undefined, 'app.somatecblocking.com.br');
+
+    expect(corpo().icons).toEqual([]);
+  });
+
   it('ícone do tenant leva o type certo pela extensão', async () => {
     const { ctrl } = build();
     const { res, corpo } = resposta();
@@ -83,7 +95,9 @@ describe('BrandingController', () => {
     await ctrl.manifest(res, undefined, 'app.somatecblocking.com.br');
 
     expect(corpo().icons).toEqual([
-      expect.objectContaining({ src: SOMATEC.logoUrl, type: 'image/png' }),
+      // `sizes: 'any'` porque o tamanho real do arquivo do tenant é desconhecido
+      // aqui — declarar 192x192 faz o navegador RECUSAR o ícone com erro.
+      expect.objectContaining({ src: SOMATEC.logoUrl, type: 'image/png', sizes: 'any' }),
     ]);
   });
 
@@ -95,7 +109,7 @@ describe('BrandingController', () => {
 
     expect(corpo()).toMatchObject({ name: 'Betinna.ai', short_name: 'Betinna' });
     expect(corpo().icons).toEqual([
-      expect.objectContaining({ src: '/betinna-symbol.svg', type: 'image/svg+xml' }),
+      expect.objectContaining({ src: '/betinna-symbol.png', type: 'image/png' }),
     ]);
   });
 });

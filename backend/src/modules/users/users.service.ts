@@ -397,6 +397,10 @@ export class UsersService {
       para: created.email,
       nome: created.nome,
       empresaNome,
+      // Sem isto o e-mail sai com o layout e o REMETENTE do produto — o rep da
+      // Somatec recebe "Betinna.ai" convidando pra uma empresa que ele conhece
+      // por outro nome.
+      empresaId: created.empresas?.[0]?.empresaId,
     });
 
     const serialized = this.serialize(created);
@@ -661,8 +665,8 @@ export class UsersService {
 
     // Busca o nome da empresa pra contexto do e-mail (best-effort)
     let empresaNome = 'sua empresa';
+    const primeiraEmpresa = userScope.empresas[0]?.empresaId;
     try {
-      const primeiraEmpresa = userScope.empresas[0]?.empresaId;
       if (primeiraEmpresa) {
         const emp = await this.prisma.empresa.findUnique({
           where: { id: primeiraEmpresa },
@@ -679,6 +683,7 @@ export class UsersService {
       nome: userScope.nome,
       empresaNome,
       inviteUrl,
+      empresaId: primeiraEmpresa,
     });
     if (!sent.ok) {
       // A falha do e-mail era silenciosa (best-effort), e virar "sucesso" no
