@@ -292,9 +292,13 @@ cd C:\Users\Dell\dev\betinna\backend
 & "C:\Program Files\nodejs\npm.cmd" run start:dev
 ```
 
-**Credenciais admin (criadas pelo seed):**
-- Email: `admin@betinna.ai`
-- Senha: a de `SEED_ADMIN_PASSWORD` em `backend/.env.local` (gitignored — **nunca no repo**)
+**Credenciais de acesso:**
+- ⚠️ O `admin@betinna.ai` do seed **não existe mais** no Supabase Auth (conferido em
+  08/09/2026: as contas são `leonardo.hbeltran@gmail.com`, `ribeltmarketplace@gmail.com`,
+  `marketing@somatecblocking.com.br` e `harada@ig.com.br`). Tentar logar com ele dá
+  "Invalid login credentials", que parece senha errada e não é.
+- Pra ferramenta local (screenshot em prod): `BET_EMAIL`/`BET_SENHA` em
+  `frontend/.env.local` (gitignored — **senha nunca no repo**).
 
 **Endpoints:**
 - `GET /api/v1/health` (público)
@@ -303,7 +307,7 @@ cd C:\Users\Dell\dev\betinna\backend
 
 **Login via Supabase** (pra testar API com token real):
 ```powershell
-$body = @{ email = "admin@betinna.ai"; password = "<SEED_ADMIN_PASSWORD de .env.local>" } | ConvertTo-Json
+$body = @{ email = "<uma conta REAL do Supabase>"; password = "<a senha dela>" } | ConvertTo-Json
 $r = Invoke-RestMethod -Method POST `
   -Uri "https://grdiuggfklaoqhvnctto.supabase.co/auth/v1/token?grant_type=password" `
   -Headers @{ "apikey" = "<ANON_KEY de .env.local>"; "Content-Type" = "application/json" } `

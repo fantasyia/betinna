@@ -23,7 +23,14 @@ function envLocal(chave) {
 }
 
 const BASE = process.env.BASE || 'https://frontend-production-fd70.up.railway.app';
-const EMAIL = process.env.BET_EMAIL || envLocal('BET_EMAIL') || 'admin@betinna.ai';
+// Sem default de conta: o `admin@betinna.ai` do seed NÃO existe mais no
+// Supabase Auth, e um default que não loga faz o script falhar dizendo
+// "credencial inválida" quando o problema é a conta não existir.
+const EMAIL = process.env.BET_EMAIL || envLocal('BET_EMAIL');
+if (!EMAIL) {
+  console.error('BET_EMAIL ausente — defina no env ou em frontend/.env.local (gitignored)');
+  process.exit(1);
+}
 const SENHA = process.env.BET_SENHA || envLocal('BET_SENHA');
 if (!SENHA) {
   console.error('BET_SENHA ausente — defina no env ou em frontend/.env.local (gitignored)');
