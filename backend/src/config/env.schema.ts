@@ -125,6 +125,14 @@ export const envSchema = z
      */
     IA_JANELA_RAJADA_MS: z.coerce.number().int().min(0).max(30000).default(5000),
     /**
+     * Minutos que a conversa fica pausada depois de uma FALHA da IA (provedor
+     * fora, saldo, timeout) antes de tentar de novo sozinha.
+     *
+     * A pausa com prazo é o que separa "deu ruim, tenta depois" de "isto é caso
+     * pra humano": sem prazo, a conversa ficava muda até alguém abrir a inbox.
+     */
+    IA_RETOMADA_MIN: z.coerce.number().int().min(1).max(240).default(10),
+    /**
      * Testes E2E / dev: quando `true`, o MullerBot devolve uma resposta fake
      * (de um conjunto de templates) em vez de chamar a OpenAI. Economiza custo e
      * evita poluir a auditoria do bot durante a varredura automatizada. Default

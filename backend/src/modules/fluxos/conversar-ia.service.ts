@@ -573,6 +573,12 @@ const TIMEOUT_TURNO_MS = 2 * 60 * 1000;
  * já leva ~10s e porque responder ao conjunto é o que a pessoa espera.
  * `IA_JANELA_RAJADA_MS=0` desliga.
  */
+/**
+ * Minutos de pausa depois de uma falha da IA, antes de a conversa tentar de
+ * novo sozinha. Curto de propósito: o cliente já mandou a mensagem dele.
+ */
+const RETOMADA_MIN_PADRAO = 10;
+
 const JANELA_RAJADA_MS_PADRAO = 5000;
 
 /** Valores que significam "não informado" — ausência, não resposta. */
@@ -959,14 +965,33 @@ export class ConversarIaService implements OnModuleDestroy {
         }),
         this.prisma.conversation.findUnique({
           where: { id: convIdGate },
-          select: { botLigado: true, precisaHumano: true },
+          select: { botLigado: true, precisaHumano: true, botPausadoAte: true },
         }),
       ]);
       const ligado = convCfg?.botLigado ?? empresaCfg?.botWhatsappAtivo ?? false;
-      if (!ligado || convCfg?.precisaHumano) {
+      // Pausa VENCIDA não é escalada: é o "tenta de novo" da falha de IA. Sem
+      // isto o nó nem tentava — foi o que a bateria mediu, três minutos depois
+      // da queda: `{"motivo":"conversa já escalada pra humano","pulado":true}`.
+      const pausaVenceu =
+        !!convCfg?.precisaHumano &&
+        !!convCfg.botPausadoAte &&
+        convCfg.botPausadoAte.getTime() <= Date.now();
+      if (pausaVenceu) {
+        await this.prisma.conversation
+          .update({
+            where: { id: convIdGate },
+            data: { precisaHumano: false, botPausadoAte: null },
+          })
+          .catch(() => undefined);
+        this.logger.log(
+          `CONVERSAR_IA: pausa da conversa ${convIdGate} venceu — retomando sozinha ` +
+            `(exec ${execucaoId})`,
+        );
+      }
+      if (!ligado || (convCfg?.precisaHumano && !pausaVenceu)) {
         const motivo = !ligado
           ? 'bot desligado nesta conversa (ou no global da empresa)'
-          : 'conversa já escalada pra humano (precisaHumano)';
+          : 'conversa escalada pra humano (precisaHumano sem prazo)';
         this.logger.log(`CONVERSAR_IA: ${motivo} — nó pulado (exec ${execucaoId})`);
         return { aguardando: false, pulado: true, motivo };
       }
@@ -3357,13 +3382,30 @@ export class ConversarIaService implements OnModuleDestroy {
         );
       }
       if (!convId) return;
+      // PAUSA COM PRAZO, não escalada permanente.
+      //
+      // O log antigo dizia "o lead não pode ficar no silêncio" e o efeito era o
+      // oposto: `precisaHumano` sem prazo só é limpo por gente na inbox, então
+      // a conversa ficava muda até alguém perceber — e o único aviso era uma
+      // tarefa que pode esperar horas. Falha de IA é quase sempre transitória
+      // (provedor fora, saldo, timeout).
+      //
+      // O PRAZO é o que codifica o motivo: pausa com data é "tenta de novo";
+      // sem data é handoff de verdade (áudio ilegível, teto de custo, pedido do
+      // operador, transferência) e continua exigindo humano. Mesmo padrão que o
+      // bot geral já usa no anti-spam.
+      // Direto do process.env, como a janela de rajada logo abaixo: este
+      // serviço não injeta o EnvService, e o schema segue validando o valor.
+      const minutos = Number(process.env.IA_RETOMADA_MIN) || RETOMADA_MIN_PADRAO;
+      const retomaEm = new Date(Date.now() + minutos * 60_000);
       await this.prisma.conversation.update({
         where: { id: convId },
-        data: { precisaHumano: true, status: 'PENDENTE' },
+        data: { precisaHumano: true, status: 'PENDENTE', botPausadoAte: retomaEm },
       });
       this.logger.warn(
-        `CONVERSAR_IA: conversa ${convId} marcada PRECISA HUMANO (${tipo_erro}, exec ${execucaoId}) ` +
-          `— o lead não pode ficar no silêncio`,
+        `CONVERSAR_IA: conversa ${convId} pausada até ${retomaEm.toISOString()} ` +
+          `(${tipo_erro}, exec ${execucaoId}) — a tarefa pro humano é rede, não pré-requisito: ` +
+          'passado o prazo, a conversa retoma sozinha',
       );
     } catch (err) {
       this.logger.warn(

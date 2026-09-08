@@ -291,6 +291,73 @@ export class FluxoTriggersJob {
       );
     }
     await this.retomarExecucoesParadas();
+    // Uma varredura que estoura não pode levar o cron junto: o alarme de fila
+    // parada é o que avisa quando o motor inteiro cai, e ele roda antes daqui.
+    await this.retomarConversasPausadas().catch((err) =>
+      this.logger.warn(`[ia] varredura de pausas falhou: ${String(err)}`),
+    );
+  }
+
+  /**
+   * Conversa que a IA pausou e cujo prazo já venceu — retoma sozinha.
+   *
+   * O gate do nó já destrava quando chega mensagem NOVA. Mas o caso que dói é o
+   * outro: o cliente mandou a mensagem, a IA caiu, e ele não escreveu de novo —
+   * ficou esperando. Sem esta varredura, a conversa só voltaria a andar quando
+   * ele insistisse, ou quando alguém abrisse a inbox.
+   *
+   * Só toca em pausa COM PRAZO VENCIDO. `precisaHumano` sem prazo é handoff de
+   * verdade (áudio ilegível, teto de custo, pedido do operador, transferência)
+   * e continua esperando gente — o prazo é o que separa os dois casos.
+   */
+  private async retomarConversasPausadas(): Promise<void> {
+    const conversas = await this.prisma.conversation
+      ?.findMany({
+        where: { precisaHumano: true, botPausadoAte: { not: null, lte: new Date() } },
+        select: { id: true, empresaId: true },
+        take: 200,
+      })
+      .catch((err) => {
+        this.logger.warn(`[ia] varredura de pausas falhou: ${String(err)}`);
+        return [] as Array<{ id: string; empresaId: string }>;
+      });
+    if (!conversas?.length) return;
+
+    for (const conv of conversas) {
+      // Destrava ANTES de varrer: a varredura processa um turno, e o turno
+      // passa pelo mesmo gate que a flag fecharia.
+      await this.prisma.conversation
+        .update({ where: { id: conv.id }, data: { precisaHumano: false, botPausadoAte: null } })
+        .catch(() => undefined);
+
+      // A execução que ficou esperando resposta nesta conversa. Se não houver,
+      // destravar já basta: a próxima mensagem do cliente entra normalmente.
+      const execucao = await this.prisma.fluxoExecucao
+        .findFirst({
+          where: {
+            empresaId: conv.empresaId,
+            status: 'AGUARDANDO',
+            contexto: { path: ['conversationId'], equals: conv.id },
+          },
+          orderBy: { criadoEm: 'desc' },
+          select: { id: true },
+        })
+        .catch(() => null);
+      if (!execucao) continue;
+
+      // Reusa a varredura do reaper: ela responde a mensagem que ficou pendurada
+      // — destravar sem responder é recuperação só no papel.
+      const respondeu = await this.conversarIa
+        .varrerPendentesAposDestravar(execucao.id)
+        .catch((err) => {
+          this.logger.warn(`[ia] retomada da conversa ${conv.id} falhou: ${String(err)}`);
+          return false;
+        });
+      this.logger.log(
+        `[ia] conversa ${conv.id} retomada após a pausa (exec ${execucao.id}` +
+          `${respondeu ? ', pendências varridas' : ''})`,
+      );
+    }
   }
 
   /**

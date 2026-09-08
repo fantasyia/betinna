@@ -23,7 +23,7 @@ import { InboxService } from '@modules/inbox/inbox.service';
 import { Prisma } from '@prisma/client';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
-import { interpolate, placeholdersPendentes } from '@shared/utils/interpolate';
+import { interpolate, lacunasDeExemplo, placeholdersPendentes } from '@shared/utils/interpolate';
 import { registrarTransicaoEtapa } from '@modules/leads/lead-etapa-historico.util';
 import {
   type CtwaReferral,
@@ -2927,16 +2927,31 @@ export class FluxoExecutorService {
    */
   private assertSemPlaceholder(acao: string, campos: Record<string, string>): void {
     const faltando = new Set<string>();
+    const lacunas = new Set<string>();
     for (const texto of Object.values(campos)) {
       for (const ph of placeholdersPendentes(texto ?? '')) faltando.add(ph);
+      // Lacuna que o MODELO copiou do exemplo do prompt (`[fonte_prospeccao]`).
+      // A checagem de cima protege contra variável nossa sem valor; esta é
+      // sobre o que o modelo escreveu — e sem ela o texto sai bonito pro
+      // sistema e quebrado pro cliente, sem virar erro em lugar nenhum.
+      for (const l of lacunasDeExemplo(texto ?? '')) lacunas.add(l);
     }
-    if (!faltando.size) return;
-    const lista = [...faltando].map((v) => `{{${v}}}`).join(', ');
-    throw new BusinessRuleException(
-      `${acao} NÃO enviado: o texto ficou com variável sem valor (${lista}). ` +
-        `Corrija o nó — variáveis do lead são {{lead.*}}, as gravadas pela IA ` +
-        `são {{custom.*}}, e nome cru só resolve se o gatilho mandar essa chave.`,
-    );
+    if (faltando.size) {
+      const lista = [...faltando].map((v) => `{{${v}}}`).join(', ');
+      throw new BusinessRuleException(
+        `${acao} NÃO enviado: o texto ficou com variável sem valor (${lista}). ` +
+          `Corrija o nó — variáveis do lead são {{lead.*}}, as gravadas pela IA ` +
+          `são {{custom.*}}, e nome cru só resolve se o gatilho mandar essa chave.`,
+      );
+    }
+    if (lacunas.size) {
+      throw new BusinessRuleException(
+        `${acao} NÃO enviado: o texto tem lacuna de exemplo não preenchida ` +
+          `(${[...lacunas].join(', ')}). Isso costuma vir do PROMPT: quando o exemplo ` +
+          `usa colchete como espaço a preencher, o modelo às vezes copia o exemplo ` +
+          `inteiro. Troque a lacuna por uma frase fixa ou por uma variável {{...}}.`,
+      );
+    }
   }
 
   /**
