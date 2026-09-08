@@ -20,12 +20,14 @@ const build = (over: { leads?: Array<{ empresaId: string }> } = {}) => {
     lead: { findMany: vi.fn().mockResolvedValue(over.leads ?? [{ empresaId: 'emp-1' }]) },
   };
   const supressao = { marcarEmailInvalido: vi.fn().mockResolvedValue(1) };
+  const inbound = { registrar: vi.fn().mockResolvedValue({ efeito: 'registrado' }) };
   const svc = new ResendWebhookService(
     { get: () => '' } as never,
     prisma as never,
     supressao as never,
+    inbound as never,
   );
-  return { svc, prisma, supressao };
+  return { svc, prisma, supressao, inbound };
 };
 
 const evento = (type: string, to = ['morto@empresa.com.br']) => ({
@@ -99,5 +101,32 @@ describe('a tag de e-mail é SEPARADA da de LGPD', () => {
     // e-mail morta não diz nada sobre o telefone da pessoa: reusar a tag de
     // LGPD silenciaria o canal que ainda funciona.
     expect(SupressaoService.TAG_EMAIL_INVALIDO).not.toBe(SupressaoService.TAG_LGPD);
+  });
+});
+
+describe('e-mail RECEBIDO chega pelo mesmo webhook', () => {
+  it('evento de recebimento vai pra ingestão, não pro fluxo de campanha', async () => {
+    // O "Enable Receiving" do domínio no Resend entrega inbound por webhook —
+    // o mesmo já assinado. Então a resposta do lead vira evento sem rota nova
+    // nem segredo separado.
+    const { svc, inbound, supressao } = build();
+
+    const r = await svc.aplicar({
+      type: 'email.received',
+      data: { from: 'anna@x.com', to: ['comercial@y.com'], text: 'pode ligar' },
+    } as never);
+
+    expect(inbound.registrar).toHaveBeenCalled();
+    expect(r).toBe('entrada:registrado');
+    // Recebimento não é bounce: não pode encostar na supressão.
+    expect(supressao.marcarEmailInvalido).not.toHaveBeenCalled();
+  });
+
+  it('os eventos de ENTREGA seguem no caminho de sempre', async () => {
+    const { svc, inbound } = build();
+
+    await svc.aplicar(evento('email.delivered'));
+
+    expect(inbound.registrar).not.toHaveBeenCalled();
   });
 });

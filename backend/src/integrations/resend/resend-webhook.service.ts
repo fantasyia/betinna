@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { SupressaoService } from '@shared/supressao/supressao.service';
+import { EmailInboundService } from '@integrations/email/email-inbound.service';
 
 /** Eventos que dizem algo sobre o destinatário. O resto o Resend manda e ignoramos. */
 export type EventoResend =
@@ -41,6 +42,7 @@ export class ResendWebhookService {
     private readonly env: EnvService,
     private readonly prisma: PrismaService,
     private readonly supressao: SupressaoService,
+    private readonly inbound: EmailInboundService,
   ) {}
 
   get configurado(): boolean {
@@ -94,8 +96,18 @@ export class ResendWebhookService {
   async aplicar(evento: {
     type?: string;
     data?: { email_id?: string; to?: string[] };
-  }): Promise<'aplicado' | 'ignorado' | 'semDestinatario' | 'emailSuprimido'> {
+  }): Promise<'aplicado' | 'ignorado' | 'semDestinatario' | 'emailSuprimido' | string> {
     const tipo = evento.type ?? '';
+
+    // E-MAIL RECEBIDO (o "Enable Receiving" do domínio no Resend). Chega pelo
+    // MESMO webhook, já assinado — então a resposta do lead vira evento sem
+    // precisar de rota nova nem de segredo separado. A ingestão em si mora no
+    // `EmailInboundService`, que é agnóstico de provedor: se um dia a entrada
+    // vier por outro caminho, só o transporte muda.
+    if (/received|inbound/i.test(tipo)) {
+      const r = await this.inbound.registrar(evento as unknown as Record<string, unknown>);
+      return `entrada:${r.efeito}`;
+    }
     const emailId = evento.data?.email_id;
     if (!emailId) return 'ignorado';
 
