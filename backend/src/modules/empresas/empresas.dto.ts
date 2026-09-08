@@ -346,6 +346,16 @@ const brandingSchema = z
      */
     logoNegativoUrl: z.string().url().max(300).nullable().optional(),
     /**
+     * ÍCONE quadrado, só o símbolo, SEM texto — aba, atalho do celular e PWA.
+     * Não é o logo reduzido: logo com o nome dentro vira borrão em 16px.
+     */
+    iconeUrl: z.string().url().max(300).nullable().optional(),
+    /**
+     * Nome do APP na aba e no atalho instalado (ex.: "APP Somatec Blocking").
+     * Separado do `nome`, que é a EMPRESA e aparece nos e-mails.
+     */
+    tituloApp: z.string().max(60).nullable().optional(),
+    /**
      * Site institucional do tenant. Vira o "voltar para o site" da tela de
      * login — quem cai no app do representante sem ser representante precisa de
      * saída, ainda mais agora que o site redireciona pra cá.

@@ -29,6 +29,10 @@ export interface Marca {
   logoUrl: string | null;
   /** Logo pra fundo ESCURO (a negativa/branca). */
   logoNegativoUrl: string | null;
+  /** Ícone QUADRADO, só o símbolo — aba, atalho, PWA. Não é o logo reduzido. */
+  iconeUrl: string | null;
+  /** Nome do APP na aba e no atalho (o `nome` é a EMPRESA, e vai nos e-mails). */
+  tituloApp: string | null;
   /** Site institucional do tenant — o "voltar para o site" da tela de login. */
   siteUrl: string | null;
   cores: CoresDaMarca;
@@ -41,6 +45,8 @@ export const MARCA_PADRAO: Marca = {
   dominio: null,
   logoUrl: null,
   logoNegativoUrl: null,
+  iconeUrl: null,
+  tituloApp: null,
   siteUrl: null,
   cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
 };
@@ -235,20 +241,23 @@ function aplicarCss(m: Marca): void {
  */
 function aplicarIdentidade(m: Marca): void {
   if (typeof document === 'undefined') return;
-  document.title = m.nome;
+  // Título da ABA = nome do APP. O `nome` sozinho é a empresa, e é o que vai
+  // nos e-mails e nos textos de tela.
+  document.title = m.tituloApp || m.nome;
 
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) meta.content = m.dominio ? m.cores.acao : MARCA_PADRAO.cores.acao;
 
   if (!m.dominio) return;
 
-  // Favicon e ícone do atalho usam a variante CLARA: aba de navegador tem fundo
-  // claro, e a negativa sumiria ali do mesmo jeito que sumia na barra lateral.
-  if (m.logoUrl) {
+  // Favicon e atalho usam o ÍCONE (quadrado, só o símbolo). Com o logo
+  // horizontal ali, o que aparecia na aba era o nome espremido em 16px —
+  // ilegível, e parecendo imagem quebrada.
+  if (m.iconeUrl) {
     for (const rel of ['icon', 'apple-touch-icon']) {
       const link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
       if (!link) continue;
-      link.href = m.logoUrl;
+      link.href = m.iconeUrl;
       link.removeAttribute('type');
     }
   }

@@ -8,6 +8,10 @@ const SOMATEC: Branding = {
   nomeCurto: 'Somatec',
   dominio: 'app.somatecblocking.com.br',
   logoUrl: 'https://www.somatecblocking.com.br/logo.png',
+  logoNegativoUrl: null,
+  iconeUrl: 'https://www.somatecblocking.com.br/icon.png',
+  tituloApp: 'APP Somatec Blocking',
+  siteUrl: null,
   cores: { primaria: '#00416E', secundaria: '#008CC8', acao: '#F39200' },
 };
 
@@ -59,7 +63,8 @@ describe('BrandingController', () => {
     await ctrl.manifest(res, undefined, 'app.somatecblocking.com.br');
 
     expect(corpo()).toMatchObject({
-      name: 'Somatec Blocking',
+      // O atalho instalado leva o nome do APP, não o da empresa.
+      name: 'APP Somatec Blocking',
       short_name: 'Somatec',
       theme_color: '#F39200',
       background_color: '#00416E',
@@ -80,7 +85,7 @@ describe('BrandingController', () => {
     // Atalho da Somatec na tela do celular com o símbolo do Betinna é o
     // vazamento mais visível que existe. Sem ícone, o navegador desenha a
     // inicial do nome — que já é a marca certa.
-    const { ctrl } = build({ ...SOMATEC, logoUrl: null });
+    const { ctrl } = build({ ...SOMATEC, iconeUrl: null });
     const { res, corpo } = resposta();
 
     await ctrl.manifest(res, undefined, 'app.somatecblocking.com.br');
@@ -95,9 +100,10 @@ describe('BrandingController', () => {
     await ctrl.manifest(res, undefined, 'app.somatecblocking.com.br');
 
     expect(corpo().icons).toEqual([
-      // `sizes: 'any'` porque o tamanho real do arquivo do tenant é desconhecido
-      // aqui — declarar 192x192 faz o navegador RECUSAR o ícone com erro.
-      expect.objectContaining({ src: SOMATEC.logoUrl, type: 'image/png', sizes: 'any' }),
+      // O ÍCONE quadrado, nunca o logo horizontal. E `sizes: 'any'` porque o
+      // tamanho real do arquivo do tenant é desconhecido aqui — declarar
+      // 192x192 faz o navegador RECUSAR o ícone com erro.
+      expect.objectContaining({ src: SOMATEC.iconeUrl, type: 'image/png', sizes: 'any' }),
     ]);
   });
 

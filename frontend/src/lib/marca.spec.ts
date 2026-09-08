@@ -26,6 +26,8 @@ const SOMATEC = {
   dominio: 'app.somatecblocking.com.br',
   logoUrl: 'https://x/logo-colorida.png',
   logoNegativoUrl: 'https://x/logo-branca.png',
+  iconeUrl: 'https://x/icone-quadrado.png',
+  tituloApp: 'APP Somatec Blocking',
   siteUrl: 'https://www.somatecblocking.com.br',
   cores: { primaria: '#00416E', secundaria: '#008CC8', acao: '#F39200' },
 };
@@ -60,7 +62,8 @@ describe('marca do tenant', () => {
     await carregarMarca();
 
     expect(marca().nome).toBe('Somatec Blocking');
-    expect(document.title).toBe('Somatec Blocking');
+    // A ABA leva o nome do APP; o `nome` (a empresa) é o que vai nos e-mails.
+    expect(document.title).toBe('APP Somatec Blocking');
     expect(cssDaMarca()).toContain('--primary: #00416E');
     expect(logoDaMarca('/betinna-horizontal.png')).toBe('https://x/logo-colorida.png');
   });
@@ -154,15 +157,37 @@ describe('marca do tenant', () => {
 
     await carregarMarca();
 
-    // Favicon usa a CLARA: aba de navegador tem fundo claro.
+    // Favicon usa o ÍCONE quadrado, não o logo: logo horizontal com o nome
+    // dentro fica ilegível em 16px, que é o tamanho real da aba.
     expect(document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href).toContain(
-      'logo-colorida.png',
+      'icone-quadrado.png',
     );
     expect(document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.href).toContain(
       '/public/manifest.webmanifest?host=',
     );
     expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe(
       '#F39200',
+    );
+  });
+});
+
+describe('ícone e título do app', () => {
+  it('sem tituloApp, a aba cai no nome da empresa', async () => {
+    vi.stubGlobal('fetch', responder({ ...SOMATEC, tituloApp: null }));
+
+    await carregarMarca();
+
+    expect(document.title).toBe('Somatec Blocking');
+  });
+
+  it('sem ícone próprio, o favicon do produto NÃO é usado no tenant', async () => {
+    // Símbolo do Betinna na aba da Somatec é o mesmo vazamento de sempre.
+    vi.stubGlobal('fetch', responder({ ...SOMATEC, iconeUrl: null }));
+
+    await carregarMarca();
+
+    expect(document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href).toContain(
+      'favicon.svg',
     );
   });
 });

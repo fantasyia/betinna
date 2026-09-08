@@ -68,7 +68,8 @@ export class BrandingController {
       .setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
     res.send(
       JSON.stringify({
-        name: b.nome,
+        // O nome do APP (o atalho instalado), que não é o nome da empresa.
+        name: b.tituloApp || b.nome,
         short_name: b.nomeCurto,
         theme_color: b.cores.acao,
         background_color: b.cores.primaria,
@@ -99,7 +100,9 @@ export class BrandingController {
  * renderizar a imagem" relatado em 07/09).
  */
 function iconesDaMarca(b: Branding): Array<Record<string, string>> {
-  const src = b.logoUrl || (b.dominio ? null : '/betinna-symbol.png');
+  // SÓ o ícone quadrado. O logo horizontal, com o nome dentro, vira um borrão
+  // ilegível no atalho — melhor a inicial que o navegador desenha sozinho.
+  const src = b.iconeUrl || (b.dominio ? null : '/betinna-symbol.png');
   if (!src) return [];
   const ext = (src.split('?')[0] ?? '').split('.').pop()?.toLowerCase() ?? '';
   const type =

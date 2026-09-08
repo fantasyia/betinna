@@ -26,6 +26,23 @@ export interface Branding {
    */
   logoNegativoUrl: string | null;
   /**
+   * ÍCONE — quadrado, só o símbolo, sem texto. Aba do navegador, atalho do
+   * celular, manifest.
+   *
+   * Não é o logo reduzido: logo horizontal com o nome dentro fica ilegível em
+   * 16px, e é isso que aparece na aba. São imagens com funções diferentes.
+   */
+  iconeUrl: string | null;
+  /**
+   * Nome do APP na aba e no atalho instalado.
+   *
+   * Separado do `nome` porque este identifica o PRODUTO pra quem já é usuário
+   * ("APP Somatec Blocking"), enquanto o `nome` é a EMPRESA e aparece em e-mail
+   * e texto de tela ("Bem-vindo ao Somatec Blocking"). Cravar o "APP" no nome
+   * vazaria pra dentro dos e-mails.
+   */
+  tituloApp: string | null;
+  /**
    * Site institucional do tenant — a porta de saída da tela de login.
    *
    * Vem da config e não do código: quem chega no app do representante sem ser
@@ -50,6 +67,8 @@ export const BRANDING_PADRAO: Branding = {
   dominio: null,
   logoUrl: null,
   logoNegativoUrl: null,
+  iconeUrl: null,
+  tituloApp: null,
   siteUrl: null,
   cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
 };
@@ -114,6 +133,8 @@ export class BrandingService {
       dominio?: string;
       logoUrl?: string;
       logoNegativoUrl?: string;
+      iconeUrl?: string;
+      tituloApp?: string;
       siteUrl?: string;
       cores?: { primaria?: string; secundaria?: string; acao?: string };
     };
@@ -126,6 +147,8 @@ export class BrandingService {
       // Sem negativa configurada, a clara é usada nos dois — é o que existia
       // antes, e continua melhor que não mostrar logo nenhuma.
       logoNegativoUrl: cfg.logoNegativoUrl?.trim() || cfg.logoUrl?.trim() || null,
+      iconeUrl: cfg.iconeUrl?.trim() || null,
+      tituloApp: cfg.tituloApp?.trim() || null,
       siteUrl: cfg.siteUrl?.trim() || null,
       cores: {
         primaria: cfg.cores?.primaria || BRANDING_PADRAO.cores.primaria,
