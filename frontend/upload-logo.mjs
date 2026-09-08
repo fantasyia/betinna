@@ -17,7 +17,7 @@ function envLocal(chave) {
   }
 }
 
-const API = process.env.BET_API || 'https://api-production-9426.up.railway.app/api/v1';
+const API = process.env.BET_API || 'https://api.somatecblocking.com.br/api/v1';
 const EMAIL = process.env.BET_EMAIL || envLocal('BET_EMAIL') || 'admin@betinna.ai';
 const SENHA = process.env.BET_SENHA || envLocal('BET_SENHA');
 

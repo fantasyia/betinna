@@ -39,7 +39,7 @@ const lerEnv = (caminho) =>
 
 const env = lerEnv(join(BACKEND, '.env.local'));
 const envFront = lerEnv(join(FRONTEND, '.env.local'));
-const API = env.E2E_API_URL ?? 'https://api-production-9426.up.railway.app/api/v1';
+const API = env.E2E_API_URL ?? 'https://api.somatecblocking.com.br/api/v1';
 
 /** Onde o cliente do teste recebe a proposta e o contrato (e-mails do Léo). */
 const EMAIL_CLIENTE = 'pedidos@somatecblocking.com.br';
