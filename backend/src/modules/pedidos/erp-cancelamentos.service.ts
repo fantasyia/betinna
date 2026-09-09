@@ -74,7 +74,10 @@ export class ErpCancelamentosService {
       where: {
         empresaId,
         status: 'CANCELADO',
-        numeroErp: { not: null },
+        // O vínculo com o ERP é o id OU o número. Filtrar só por número deixava
+        // de fora exatamente o pedido cujo rótulo colidiu com um importado — a
+        // rede de segurança tinha o mesmo buraco que ela existe pra cobrir.
+        OR: [{ erpPedidoId: { not: null } }, { numeroErp: { not: null } }],
         atualizadoEm: { gte: desde },
       },
       select: {
@@ -82,6 +85,7 @@ export class ErpCancelamentosService {
         numero: true,
         numeroSite: true,
         numeroErp: true,
+        erpPedidoId: true,
         enviadoErpEm: true,
         observacoes: true,
         contasReceberErp: true,
@@ -203,19 +207,21 @@ export class ErpCancelamentosService {
    */
   private async conferirNoErp(
     empresaId: string,
-    p: { numero: string; numeroSite: string | null; numeroErp: string | null },
+    p: {
+      numero: string;
+      numeroSite: string | null;
+      numeroErp: string | null;
+      erpPedidoId: string | null;
+    },
     r: ResultadoCancelamentos,
   ): Promise<{ idErp: number | null; notaViva: boolean }> {
-    if (!p.numeroErp) return { idErp: null, notaViva: false };
-    const achado = await this.tiny.listar(empresaId, { numero: p.numeroErp, limit: 5 });
-    const exato = achado.itens.find((i) => String(i.numeroPedido ?? i.id) === p.numeroErp);
-    if (!exato?.id) {
-      r.avisos.push(`${p.numero}: pedido ${p.numeroErp} não existe mais no ERP`);
-      return { idErp: null, notaViva: false };
-    }
+    const idErp = await this.resolverIdNoErp(empresaId, p, r);
+    if (!idErp) return { idErp: null, notaViva: false };
     let notaViva = false;
-    const d = await this.tiny.obter(empresaId, exato.id);
-    const rotulo = [p.numeroSite, p.numero, `ERP ${p.numeroErp}`].filter(Boolean).join(' / ');
+    const d = await this.tiny.obter(empresaId, idErp);
+    const rotulo = [p.numeroSite, p.numero, p.numeroErp ? `ERP ${p.numeroErp}` : `ERP id ${idErp}`]
+      .filter(Boolean)
+      .join(' / ');
 
     // Nota fiscal viva num pedido cancelado: alguém tem que estornar. Isto é o
     // que o financeiro NÃO pode descobrir por acaso.
@@ -233,11 +239,34 @@ export class ErpCancelamentosService {
     // Cancelado aqui e ainda aberto lá: o cancelamento na hora pode ter falhado
     // (token vencido, ERP fora) e o aviso ficou só na observação. Fecha agora.
     if (Number(d.situacao) !== SITUACAO_CANCELADA) {
-      await this.tiny.cancelar(empresaId, exato.id);
+      await this.tiny.cancelar(empresaId, idErp);
       r.canceladosNoErp += 1;
       this.logger.log(`[erp] ${rotulo}: estava aberto no ERP — cancelado agora`);
     }
-    return { idErp: exato.id, notaViva };
+    return { idErp, notaViva };
+  }
+
+  /**
+   * O id do pedido no ERP: prefere o VÍNCULO (`erpPedidoId`) e só procura pelo
+   * número quando não há id — pedido anterior à coluna.
+   *
+   * Procurar por número é duas coisas ruins de uma vez: uma chamada a mais, e
+   * um rótulo que o Tiny REAPROVEITA. Com o id não há o que resolver.
+   */
+  private async resolverIdNoErp(
+    empresaId: string,
+    p: { numero: string; numeroErp: string | null; erpPedidoId: string | null },
+    r: ResultadoCancelamentos,
+  ): Promise<number | null> {
+    if (p.erpPedidoId) return Number(p.erpPedidoId);
+    if (!p.numeroErp) return null;
+    const achado = await this.tiny.listar(empresaId, { numero: p.numeroErp, limit: 5 });
+    const exato = achado.itens.find((i) => String(i.numeroPedido ?? i.id) === p.numeroErp);
+    if (!exato?.id) {
+      r.avisos.push(`${p.numero}: pedido ${p.numeroErp} não existe mais no ERP`);
+      return null;
+    }
+    return exato.id;
   }
 
   /**

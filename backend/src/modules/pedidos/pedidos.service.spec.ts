@@ -78,6 +78,7 @@ describe('PedidosService', () => {
     };
     erpPedidos = {
       cancelarNoErp: vi.fn(async () => undefined),
+      cancelarNoErpPorRef: vi.fn(async () => undefined),
       enviarPedido: vi.fn(async (id: string) => ({
         pedidoId: id,
         numeroErp: 'ERP-FAKE',
@@ -353,7 +354,10 @@ describe('PedidosService', () => {
 
     await svc.cancelar(fakeUser({ role: 'ADMIN' }), 'ped-1', { motivo: 'teste' } as never);
 
-    expect(erpPedidos.cancelarNoErp).toHaveBeenCalledWith('emp-1', '5');
+    expect(erpPedidos.cancelarNoErpPorRef).toHaveBeenCalledWith('emp-1', {
+      erpPedidoId: undefined,
+      numeroErp: '5',
+    });
   });
 
   it('ERP fora do ar não impede o cancelamento — o aviso vai pra observação', async () => {
@@ -368,12 +372,58 @@ describe('PedidosService', () => {
       itens: [],
     });
     prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
-    erpPedidos.cancelarNoErp.mockRejectedValueOnce(new Error('502 timeout'));
+    erpPedidos.cancelarNoErpPorRef.mockRejectedValueOnce(new Error('502 timeout'));
 
     await svc.cancelar(fakeUser({ role: 'ADMIN' }), 'ped-1', {} as never);
 
     const obs = prisma.pedido.updateMany.mock.calls[0][0].data.observacoes as string;
     expect(obs).toMatch(/Não consegui cancelar no ERP/i);
+  });
+
+  it('pedido SEM número mas COM id do ERP ainda cancela lá', async () => {
+    // PED-0081/0082 (09/09): o número do Tiny colidiu com um pedido importado,
+    // então o app ficou com o vínculo (id) e sem rótulo. A condição antiga
+    // olhava só o rótulo: o cancelamento no ERP era pulado INTEIRO — sem
+    // tentativa e sem aviso — e o sync do dia seguinte trazia o pedido de volta
+    // como aberto.
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      numero: 'PED-0081',
+      numeroErp: null,
+      erpPedidoId: '338953522',
+      status: 'ENVIADO_ERP',
+      observacoes: null,
+      representanteId: 'rep-1',
+      itens: [],
+    });
+    prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.cancelar(fakeUser({ role: 'ADMIN' }), 'ped-1', {} as never);
+
+    expect(erpPedidos.cancelarNoErpPorRef).toHaveBeenCalledWith('emp-1', {
+      erpPedidoId: '338953522',
+      numeroErp: null,
+    });
+  });
+
+  it('pedido sem vestígio de ERP não tenta cancelar lá', async () => {
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      numero: 'PED-0090',
+      numeroErp: null,
+      erpPedidoId: null,
+      status: 'RASCUNHO',
+      observacoes: null,
+      representanteId: 'rep-1',
+      itens: [],
+    });
+    prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.cancelar(fakeUser({ role: 'ADMIN' }), 'ped-1', {} as never);
+
+    expect(erpPedidos.cancelarNoErpPorRef).not.toHaveBeenCalled();
   });
 
   it('rep NÃO abre pedido quando o tenant não permite (o caminho dele é a proposta)', async () => {

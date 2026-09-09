@@ -666,13 +666,21 @@ export class PedidosService {
     //
     // Falhar aqui não impede o cancelamento local (o usuário mandou cancelar):
     // o aviso vai pra observação, que é onde quem abrir o pedido vai olhar.
+    // A condição olha o ID, não o número: quando o número do Tiny colide com
+    // um pedido importado, o app fica com o VÍNCULO (id) e sem rótulo. Testando
+    // só o rótulo, o cancelamento no ERP era pulado inteiro — sem tentativa e
+    // sem aviso, que é a pior das duas falhas possíveis aqui.
     let avisoERP = '';
-    if (existing.numeroErp) {
+    const refErp = { erpPedidoId: existing.erpPedidoId, numeroErp: existing.numeroErp };
+    if (refErp.erpPedidoId || refErp.numeroErp) {
       try {
-        await this.erpPedidos.cancelarNoErp(existing.empresaId, existing.numeroErp);
+        await this.erpPedidos.cancelarNoErpPorRef(existing.empresaId, refErp);
       } catch (err) {
+        const como = refErp.erpPedidoId
+          ? `id ${refErp.erpPedidoId}`
+          : `nº ${String(refErp.numeroErp)}`;
         avisoERP =
-          `\n[ATENÇÃO] Não consegui cancelar no ERP (nº ${existing.numeroErp}): ` +
+          `\n[ATENÇÃO] Não consegui cancelar no ERP (${como}): ` +
           `${err instanceof Error ? err.message : String(err)} — cancele lá, senão ele continua faturando.`;
       }
     }

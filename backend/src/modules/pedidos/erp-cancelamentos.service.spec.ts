@@ -65,6 +65,54 @@ const CANCELADO = {
 describe('varredura diária de cancelamentos', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  /**
+   * Pedido vinculado SÓ pelo id — sem rótulo, porque o número que o Tiny
+   * devolveu já pertencia a um pedido importado (PED-0081/0082, 09/09).
+   *
+   * O filtro da varredura era `numeroErp: { not: null }`: justamente esse
+   * pedido ficava INVISÍVEL pra rede de segurança que existe pra cobrir a
+   * falha do cancelamento na hora.
+   */
+  describe('pedido vinculado só pelo id do ERP', () => {
+    const SO_ID = {
+      id: 'ped-2',
+      numero: 'PED-0081',
+      numeroSite: 'SB2609DXM33K',
+      numeroErp: null,
+      erpPedidoId: '338953522',
+      enviadoErpEm: new Date('2026-09-09T04:45:00Z'),
+      observacoes: null,
+    };
+
+    it('entra na varredura e é cancelado no ERP pelo id', async () => {
+      const { svc, tiny } = build({ cancelados: [SO_ID], erp: { situacao: 3 } });
+
+      await svc.varrer('emp-1');
+
+      expect(tiny.cancelar).toHaveBeenCalledWith('emp-1', 338953522);
+    });
+
+    it('NÃO procura pelo número — id não precisa ser resolvido', async () => {
+      // E procurar seria pior que inútil: o Tiny reaproveita numeração, então
+      // buscar por rótulo pode achar OUTRO pedido e cancelar o errado.
+      const { svc, tiny } = build({ cancelados: [SO_ID], erp: { situacao: 3 } });
+
+      await svc.varrer('emp-1');
+
+      expect(tiny.listar).not.toHaveBeenCalled();
+    });
+
+    it('o filtro do banco aceita quem tem id OU número', async () => {
+      const { svc, prisma } = build({ cancelados: [] });
+
+      await svc.varrer('emp-1');
+
+      const where = prisma.pedido.findMany.mock.calls[0][0].where as Record<string, unknown>;
+      expect(where.OR).toEqual([{ erpPedidoId: { not: null } }, { numeroErp: { not: null } }]);
+      expect(where.numeroErp).toBeUndefined();
+    });
+  });
+
   it('cancelado aqui e ABERTO no ERP → cancela lá e some com a linha de comissão', async () => {
     const { svc, tiny, comissoesPedido } = build({ cancelados: [CANCELADO], erp: { situacao: 3 } });
 

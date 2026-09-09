@@ -89,6 +89,31 @@ export class TinyPedidoPushService {
   }
 
   /**
+   * Cancela no ERP, preferindo o ID — que é o vínculo — e caindo pro número só
+   * quando não há id (pedido antigo, anterior ao `erpPedidoId`).
+   *
+   * Sem isto o cancelamento vazava em SILÊNCIO. Quando o número do Tiny colide
+   * com um pedido importado, o app guarda o id e fica sem rótulo — e o caminho
+   * de cancelamento só olhava o rótulo. Resultado: cancelar aqui não cancelava
+   * lá, sem nem o aviso, e o sync do dia seguinte trazia o pedido de volta como
+   * aberto. Foi o que aconteceu com PED-0081 e PED-0082 (Tiny 47 e 48, números
+   * já ocupados por PED-0075/0076).
+   */
+  async cancelarNoErpPorRef(
+    empresaId: string,
+    ref: { erpPedidoId?: string | null; numeroErp?: string | null },
+  ): Promise<void> {
+    if (ref.erpPedidoId) {
+      // Id é identidade: não precisa procurar, e não tem como acertar o pedido
+      // errado — que é o risco de resolver por rótulo reaproveitado.
+      await this.pedidos.cancelar(empresaId, Number(ref.erpPedidoId));
+      return;
+    }
+    if (!ref.numeroErp) throw new Error('pedido sem vínculo com o ERP (nem id, nem número)');
+    await this.cancelarNoErp(empresaId, ref.numeroErp);
+  }
+
+  /**
    * Cancela no ERP o pedido correspondente ao número guardado aqui.
    *
    * Recebe o NÚMERO do ERP (o que o app guarda) e resolve o id interno — são
