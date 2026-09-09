@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/node';
-import { sanitize } from '@shared/utils/sanitize-pii';
+import { sanitize, sanitizarTexto } from '@shared/utils/sanitize-pii';
 
 /**
  * Inicialização do Sentry (Sprint 3 FIX 5 + APM 2026-05-17).
@@ -15,7 +15,8 @@ import { sanitize } from '@shared/utils/sanitize-pii';
  *    (0–1, default 0.1 em prod, 1.0 em dev). Integrações auto-instrumentam
  *    Express (rotas), HTTP (requests externos), Prisma (queries SQL) e
  *    Redis — sem código manual. Spans aparecem na timeline do Performance.
- *  - `beforeSend` aplica `sanitize()` em data + remove `user.email/ip_address`
+ *  - `beforeSend` limpa o TEXTO da mensagem/exceção (PII escrito pelo nosso
+ *    código), aplica `sanitize()` em data e remove `user.email/ip_address`
  *  - Captura uncaught exceptions e unhandled rejections automaticamente
  */
 export function initSentry(): void {
@@ -46,6 +47,25 @@ export function initSentry(): void {
     integrations: [Sentry.prismaIntegration()],
     sendDefaultPii: false, // Sentry não envia PII automaticamente
     beforeSend(event) {
+      // A MENSAGEM DO ERRO — por onde o PII escapava.
+      //
+      // `sendDefaultPii: false` cuida do que o SDK coleta sozinho, e o
+      // `sanitize` abaixo cuida dos payloads estruturados. Nenhum dos dois
+      // olhava o texto que o NOSSO código escreve, e é nele que está o
+      // vazamento: em 09/09 nasceu aqui um erro que carrega o corpo cru do
+      // provedor — `Destinatário inválido no WhatsApp: {"jid":"5511…@s.whatsapp
+      // .net","number":"5511…"}` — e ele ia inteiro pro Sentry, que é um
+      // terceiro.
+      //
+      // ⚠️ A ESTRUTURA É PRESERVADA: tipo, pilha e frames continuam intactos, e
+      // só o TEXTO de dentro é limpo. Filtro que come a própria exceção entrega
+      // uma lista de nada — e ninguém descobre até o dia de precisar do rastro.
+      if (typeof event.message === 'string') {
+        event.message = sanitizarTexto(event.message);
+      }
+      for (const ex of event.exception?.values ?? []) {
+        if (typeof ex.value === 'string') ex.value = sanitizarTexto(ex.value);
+      }
       // Strip PII do usuário (mesmo que sendDefaultPii=false, defesa em profundidade)
       if (event.user) {
         delete event.user.email;

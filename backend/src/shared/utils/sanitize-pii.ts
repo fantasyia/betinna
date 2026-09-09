@@ -93,7 +93,51 @@ const RX_CPF = /^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/;
 const RX_CNPJ = /^\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}$/;
 
 /**
- * Sanitiza um valor. Profundidade máxima 5 (evita loop em circular refs).
+ * PII DENTRO DE TEXTO CORRIDO — a mensagem de erro, o log, a exceção.
+ *
+ * O `sanitize` acima cuida de VALORES: ele mascara quando a string INTEIRA é um
+ * e-mail, um telefone, um documento. Mas o nosso código escreve frases:
+ *
+ *   "Falha ao entregar lead joao@empresa.com.br"
+ *   "Destinatário inválido: {"jid":"5511999990000@s.whatsapp.net","exists":false}"
+ *
+ * Nenhuma das duas casa os regex ancorados, e as duas viajavam inteiras pro
+ * Sentry — que é um terceiro. Numa base com conversa de WhatsApp e telefone em
+ * quase todo payload, isso é exportação de base, não observabilidade.
+ *
+ * ⚠️ CONSERVADOR DE PROPÓSITO. Limpar demais é o outro jeito de estragar isto:
+ * a sessão do site perdeu tempo com um filtro que comia a própria exceção
+ * (`exCEPtion` contém `cep`) e o evento chegava sem mensagem e sem pilha —
+ * compilando e com teste verde. Aqui só entram padrões que não confundem com
+ * id, número de pedido, timestamp ou trace: e-mail, documento COM pontuação,
+ * jid do WhatsApp e valor de chave sensível em JSON embutido.
+ *
+ * Sequência de dígitos solta NÃO é tocada — ela é id, número de pedido ou
+ * timestamp com muito mais frequência do que telefone.
+ */
+export function sanitizarTexto(texto: string): string {
+  return (
+    texto
+      // e-mail em qualquer posição
+      .replace(/[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}/gi, (m) => maskEmail(m))
+      // CPF/CNPJ COM pontuação (sem pontuação seria indistinguível de id)
+      .replace(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g, (m) => `***-${m.slice(-2)}`)
+      .replace(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/g, (m) => `***-${m.slice(-2)}`)
+      // jid do WhatsApp: o "@s.whatsapp.net" é o que torna os dígitos um telefone
+      .replace(
+        /\b(\d{8,15})@(s\.whatsapp\.net|c\.us|g\.us)/g,
+        (_m, d: string, dom: string) => `${maskPhone(d)}@${dom}`,
+      )
+      // valor de chave sensível em JSON embutido na mensagem
+      .replace(
+        /"(telefone|phone|number|email|cpf|cnpj|senha|password|token|secret)"\s*:\s*"([^"]*)"/gi,
+        (_m, chave: string) => `"${chave}":"${REDACTED}"`,
+      )
+  );
+}
+
+/**
+ * Sanitiza um valor. Profundidade m\u00e1xima 5 (evita loop em circular refs).
  */
 export function sanitize(value: unknown, depth = 0): unknown {
   if (depth > 5) return '[depth-cut]';
