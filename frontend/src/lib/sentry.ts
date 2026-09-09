@@ -44,13 +44,60 @@ const REDACT_PATH_PATTERNS: Array<[RegExp, string]> = [
   [/\/propostas?\/aceite\/[^/?#\s]+/gi, '/proposta/aceite/[REDACTED]'],
 ];
 
-function redact(s: string): string {
+/**
+ * PII DE PESSOA em texto corrido — e-mail, telefone, documento.
+ *
+ * Os patterns acima cobrem SEGREDO (`token=`, `bearer`, o path de aceite). Esta
+ * lista cobre PESSOA, que é o que este app tem em quase toda tela: o CRM
+ * mostra telefone e CPF, e a mensagem de erro que sobe daqui carrega o que
+ * estava na mão — inclusive o texto de erro que veio da API.
+ *
+ * ⚠️ CONSERVADOR, e a razão é esta redação rodar também sobre a PILHA. Limpar
+ * demais entrega um evento sem rastro, que é pior que não ter evento: some sem
+ * ninguém notar, e só aparece no dia de precisar. Sequência de dígitos solta NÃO
+ * é tocada — ela é id, número de pedido ou timestamp muito mais vezes que
+ * telefone. Mesma regra do backend (`sanitize-pii.ts`), de propósito: duas
+ * definições diferentes pro mesmo risco dariam duas respostas.
+ */
+const REDACT_PESSOA: Array<[RegExp, (m: string) => string]> = [
+  // e-mail em qualquer posição — mantém o domínio, que ajuda a debugar
+  [
+    /[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}/gi,
+    (m) => {
+      const i = m.indexOf('@');
+      const local = m.slice(0, i);
+      const visivel = local.length <= 2 ? local[0] : `${local[0]}***${local[local.length - 1]}`;
+      return `${visivel}${m.slice(i)}`;
+    },
+  ],
+  // CPF/CNPJ COM pontuação (sem ela seria indistinguível de id)
+  [/(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)/g, (m) => `***-${m.slice(-2)}`],
+  [/(?<!\d)\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}(?!\d)/g, (m) => `***-${m.slice(-2)}`],
+  // jid do WhatsApp: o domínio é o que torna os dígitos um telefone
+  [
+    /(?<!\d)\d{8,15}@(?:s\.whatsapp\.net|c\.us|g\.us)/g,
+    (m) => {
+      const [d, dom] = m.split('@');
+      return `${d.slice(0, 2)}${'*'.repeat(Math.max(0, d.length - 3))}${d.slice(-1)}@${dom}`;
+    },
+  ],
+];
+
+/**
+ * Exportado SÓ pra teste: esta função roda sobre a PILHA, e o jeito de errar
+ * aqui é silencioso — um evento sem rastro parece um evento normal. Testá-la
+ * direto é mais honesto que montar um evento inteiro pra inferir o efeito.
+ */
+export function redact(s: string): string {
   let out = s;
   for (const p of REDACT_PATTERNS) {
     out = out.replace(p, (m) => m.split('=')[0] + '=[REDACTED]');
   }
   for (const [p, repl] of REDACT_PATH_PATTERNS) {
     out = out.replace(p, repl);
+  }
+  for (const [p, fn] of REDACT_PESSOA) {
+    out = out.replace(p, (m) => fn(m));
   }
   return out;
 }
@@ -200,9 +247,19 @@ export function initSentry(): void {
       (
         window as unknown as { __BETINNA_TEST_SENTRY__?: () => Promise<string | null> }
       ).__BETINNA_TEST_SENTRY__ = async () => {
-        const eventId = S.captureException(new Error(`Teste Sentry · ${new Date().toISOString()}`), {
-          tags: { source: '__BETINNA_TEST_SENTRY__' },
-        });
+        // PII de mentira DE PROPÓSITO: `Error('teste')` chega no Sentry e não
+        // prova nada. Erro de verdade neste app carrega e-mail, telefone e CPF,
+        // e a pergunta é se ISSO chega limpo — e se o que serve pra debugar
+        // (número do pedido, id, pilha) SOBREVIVE.
+        // Dados inertes: `.invalid` é TLD reservado (RFC 2606) e não resolve, o
+        // telefone é só zeros e o CPF também.
+        const eventId = S.captureException(
+          new Error(
+            `Teste Sentry · ${new Date().toISOString()} · pedido SB2609TESTE / ERP 99 · ` +
+              `comprador@exemplo.invalid · 5500000000000@s.whatsapp.net · 000.000.000-00`,
+          ),
+          { tags: { source: '__BETINNA_TEST_SENTRY__' } },
+        );
 
         console.info(`[Sentry test] eventId=${eventId} — forçando flush (2s)...`);
         try {
