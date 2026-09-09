@@ -2,26 +2,28 @@ import { describe, expect, it, vi } from 'vitest';
 import { turnoDeIaAberto } from './turno-ia-aberto.util';
 
 /**
- * Três mensagens seguidas não podem virar três vezes a mesma pergunta.
+ * ⛔ A JANELA ENTRE COMEÇAR E ESTACIONAR NO NÓ DE IA — o que NÃO pode entrar aqui.
  *
- * Medido em 09/09 com uma rajada de 3 mensagens:
+ * Este arquivo nasceu como "consertei a rajada". Ele agora trava o contrário: a
+ * tentativa de fechar aquela janela alargando esta função, que quebrou produção
+ * duas vezes em 09/09, cada vez com efeito pior que o anterior.
  *
- *   20:00:18  cliente → "opa, e o disjuntor geral aqui e de 63A"
- *   20:00:21  cliente → "a tensao e 220V"
- *   20:00:25  BOT     → "Consegue olhar no quadro de luz…? Qual aparece?"
- *   20:00:34  BOT     → "Consegue olhar no quadro de luz…? Qual aparece?"
- *   20:00:39  BOT     → "Consegue olhar no quadro de luz…? Qual aparece?"
+ *   antes      3 mensagens seguidas → 3 vezes a mesma pergunta
+ *   1ddb08b    → nenhuma resposta por 30 min (o bus segurava e redisparava)
+ *   5783164    → nenhuma resposta, ponto (o RT encerrava, sem redisparo)
  *
- * A mesma pergunta três vezes, para quem já tinha respondido na primeira linha.
- * E as variáveis do lead no fim: `{}` — nada do que ele escreveu foi guardado.
+ * O proxy que eu usei — "existe execução viva num fluxo que TEM nó de IA" —
+ * erra de duas formas:
  *
- * A causa era uma JANELA: a 2ª mensagem chega enquanto o consultivo ainda
- * caminha rumo ao nó de IA. Sem `aguardandoNoId` e sem `processandoTurno`, o
- * guard dizia "ninguém conduzindo", o RT concluía "sumiu e voltou" de quem
- * estava falando naquele instante, e o consultivo recomeçava do topo.
+ *  1. conta fluxo que JÁ PASSOU do nó (o T1 pula a IA quando o lead já foi
+ *     triado, mas o fluxo dele "tem" o nó);
+ *  2. conta A PRÓPRIA execução que pergunta (o RT tem um nó de IA, então ao
+ *     avaliar `{{conversa.ia_aguardando}}` ele se enxerga e responde "Sim").
  *
- * Mandar três mensagens seguidas é o que qualquer pessoa faz no WhatsApp — o
- * defeito estava no caso NORMAL, não no raro.
+ * A lição não é "faltou excluir a própria execução": é que "o fluxo tem um nó de
+ * IA" não responde "alguém está conduzindo AGORA". Quem for fechar a janela
+ * precisa de um sinal de POSIÇÃO — a execução ainda vai chegar ao nó? — e não de
+ * existência.
  */
 const capturarSql = () => {
   let sql = '';
@@ -34,38 +36,27 @@ const capturarSql = () => {
   return { prisma, sql: () => sql };
 };
 
-describe('a janela entre começar o fluxo e estacionar no nó de IA', () => {
-  it('execução CAMINHANDO conta como turno aberto', async () => {
+describe('definição de turno de IA aberto', () => {
+  it('conta execução parada NO nó de IA e turno em processamento', async () => {
     const { prisma, sql } = capturarSql();
 
     await turnoDeIaAberto(prisma as never, 'emp-1', { conversationId: 'conv-1' });
-
-    const q = sql().replace(/\s+/g, ' ');
-    expect(q).toContain("e.status IN ('PENDENTE', 'EM_EXECUCAO')");
-  });
-
-  it('mas SÓ em fluxo que tem nó de IA', async () => {
-    // Um fluxo de aviso (P1, P2) caminhando não conduz conversa nenhuma — se
-    // contasse, um aviso de rastreio calaria o atendimento.
-    const { prisma, sql } = capturarSql();
-
-    await turnoDeIaAberto(prisma as never, 'emp-1', { conversationId: 'conv-1' });
-
-    const q = sql().replace(/\s+/g, ' ');
-    expect(q).toContain('EXISTS');
-    expect(q).toContain('fn."fluxoId" = e."fluxoId" AND fn."acaoTipo" = \'CONVERSAR_IA\'');
-  });
-
-  it('os dois sinais antigos continuam valendo', async () => {
-    // Parado NO nó de IA (esperando o cliente) e lock do turno tomado (a IA
-    // está gerando agora). A janela nova SOMA, não substitui.
-    const { prisma, sql } = capturarSql();
-
-    await turnoDeIaAberto(prisma as never, 'emp-1', { leadId: 'lead-1' });
 
     const q = sql().replace(/\s+/g, ' ');
     expect(q).toContain('n."acaoTipo" = \'CONVERSAR_IA\'');
     expect(q).toContain('e."processandoTurno" = true');
+  });
+
+  it('NÃO conta execução só por o FLUXO dela ter um nó de IA', async () => {
+    // Foi este `EXISTS` que quebrou produção duas vezes. Ele conta o T1 que já
+    // passou da IA, e conta a própria execução que está perguntando.
+    const { prisma, sql } = capturarSql();
+
+    await turnoDeIaAberto(prisma as never, 'emp-1', { conversationId: 'conv-1' });
+
+    const q = sql().replace(/\s+/g, ' ');
+    expect(q).not.toContain('EXISTS');
+    expect(q).not.toContain("e.status IN ('PENDENTE', 'EM_EXECUCAO')");
   });
 
   it('sem conversa e sem lead, não pergunta ao banco', async () => {

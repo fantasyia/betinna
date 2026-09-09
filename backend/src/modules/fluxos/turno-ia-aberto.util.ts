@@ -30,28 +30,30 @@ export interface AlvoDaConversa {
  * aponta pra ele: está esperando a resposta do cliente) **ou** com o lock do
  * turno tomado (`processandoTurno`: a IA está gerando a resposta agora).
  *
- * **Aberto TAMBÉM** = execução viva CAMINHANDO num fluxo que tem nó de IA — a
- * janela entre começar e estacionar no nó. Ela dura frações de segundo e era
- * invisível aqui, o que produzia o pior atendimento que este sistema já deu:
+ * ⚠️ TENTEI ALARGAR ISTO EM 09/09 E QUEBREI PRODUÇÃO DUAS VEZES. Fica o registro,
+ * porque a ideia parece boa e vai ocorrer a alguém de novo.
  *
- *   20:00:18  cliente → "opa, e o disjuntor geral aqui e de 63A"
- *   20:00:21  cliente → "a tensao e 220V"
- *   20:00:25  BOT     → "Consegue olhar no quadro de luz…? Qual aparece?"
- *   20:00:34  BOT     → "Consegue olhar no quadro de luz…? Qual aparece?"
- *   20:00:39  BOT     → "Consegue olhar no quadro de luz…? Qual aparece?"
+ * O problema real: entre COMEÇAR uma execução e ela ESTACIONAR no nó de IA há
+ * uma janela de frações de segundo em que ninguém "conduz" por esta definição —
+ * e é nela que o texto fixo é enviado. Mensagem que chega nessa janela faz o RT
+ * concluir "sumiu e voltou" de quem está falando agora.
  *
- * A mesma pergunta três vezes, palavra por palavra, pra quem já tinha respondido
- * na primeira linha. Mandar três mensagens seguidas é o que qualquer pessoa faz
- * no WhatsApp — então o defeito estava no caso NORMAL, não no raro.
+ * O que eu fiz: contar também execução PENDENTE/EM_EXECUCAO cujo FLUXO tem um nó
+ * de IA. É um proxy, e ele erra de duas formas, as duas medidas em produção:
  *
- * O mecanismo: a 2ª mensagem chega enquanto o consultivo ainda caminha rumo ao
- * nó de IA. Sem `aguardandoNoId` e sem `processandoTurno`, esta função dizia
- * "ninguém conduzindo", o RT concluia "sumiu e voltou" de quem estava falando
- * NAQUELE instante, e o consultivo recomeçava do topo — reenviando o texto fixo
- * antes de o supersede alcançar a execução anterior.
+ *  1. Conta fluxo que JÁ PASSOU do nó de IA. O T1 pula a IA quando o lead já foi
+ *     triado, mas o fluxo dele "tem" o nó — então ele contava, e o RT era segurado
+ *     por 30 min. Cliente que voltava a escrever recebia silêncio.
+ *  2. Conta A PRÓPRIA execução que pergunta. O RT tem um nó de IA; quando a
+ *     execução do RT avalia `{{conversa.ia_aguardando}}`, ela se enxerga e
+ *     responde "Sim" — sempre, deterministicamente. O RT encerrava, o C1 nunca
+ *     era acionado, e não sobrava nem redisparo pra recuperar.
  *
- * O recorte é estreito de propósito: **só fluxo que TEM nó de IA**. Um fluxo de
- * aviso (P1, P2) caminhando não cala conversa nenhuma.
+ * Cada remendo produziu um estado pior que o anterior: 3 perguntas repetidas →
+ * 30 min de silêncio → silêncio permanente. A lição não é "faltou excluir a
+ * própria execução": é que "o fluxo tem um nó de IA" não responde à pergunta
+ * "alguém está conduzindo AGORA". Quem quiser fechar a janela precisa de um sinal
+ * de POSIÇÃO (a execução ainda vai chegar ao nó?), não de existência.
  *
  * De propósito NÃO é "qualquer execução viva": um DELAY de 3 dias no meio de um
  * fluxo qualquer emudeceria a conversa inteira em silêncio. E os três sinais se
@@ -85,19 +87,7 @@ export async function turnoDeIaAberto(
         (e.contexto #>> '{conversationId}') = ${conversationId}
         OR (e.contexto #>> '{leadId}') = ${leadId}
       )
-      AND (
-        n."acaoTipo" = 'CONVERSAR_IA'
-        OR e."processandoTurno" = true
-        -- A JANELA: execução ainda caminhando rumo ao nó de IA. Só vale pra
-        -- fluxo que TEM esse nó — fluxo de aviso caminhando não conduz conversa.
-        OR (
-          e.status IN ('PENDENTE', 'EM_EXECUCAO')
-          AND EXISTS (
-            SELECT 1 FROM "FluxoNo" fn
-            WHERE fn."fluxoId" = e."fluxoId" AND fn."acaoTipo" = 'CONVERSAR_IA'
-          )
-        )
-      )
+      AND (n."acaoTipo" = 'CONVERSAR_IA' OR e."processandoTurno" = true)
     LIMIT 1`;
   return abertos.length > 0;
 }
