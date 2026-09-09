@@ -114,6 +114,19 @@ export class TinyPedidoPushService {
     });
     if (!pedido) throw new BusinessRuleException(`Pedido ${pedidoId} não encontrado`);
 
+    // JÁ ESTÁ LÁ. Reenviar criaria um SEGUNDO pedido no ERP pro mesmo negócio —
+    // e o Tiny aceita sem reclamar, porque pra ele é um pedido novo.
+    //
+    // A trava é o id (estável), não o número: o Tiny reaproveita numeração, e
+    // foi por isso que dois pedidos ficaram sem `numeroErp` mesmo tendo subido.
+    if (pedido.erpPedidoId) {
+      throw new BusinessRuleException(
+        `Pedido ${pedido.numero} já está no ERP (id ${pedido.erpPedidoId}` +
+          `${pedido.numeroErp ? `, nº ${pedido.numeroErp}` : ''}). Reenviar criaria um duplicado.`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+
     const semSku = pedido.itens.filter((i) => !i.produto?.sku);
     if (semSku.length > 0) {
       // Falha ANTES de criar qualquer coisa no ERP: pedido com item faltando
@@ -256,16 +269,39 @@ export class TinyPedidoPushService {
     }
 
     const numeroErp = String(r.numeroPedido ?? r.id);
+
+    // O VÍNCULO primeiro, e sozinho: id do ERP + status. Este write não pode
+    // falhar por causa de um rótulo.
+    //
+    // Aconteceu em 09/09: o Tiny devolveu os números 44 e 45, que PED-0072 e
+    // PED-0073 (importados do ERP) já ocupavam. O `@@unique([empresaId,
+    // numeroErp])` estourou, a exceção subiu, e os pedidos ficaram RASCUNHO
+    // aqui **com o pedido já criado lá** — estado em que um reenvio manual
+    // duplica. O número do Tiny é rótulo, não identidade: ele reaproveita
+    // numeração.
     await this.prisma.pedido.update({
       where: { id: pedido.id },
       data: {
         status: 'ENVIADO_ERP',
-        numeroErp,
+        erpPedidoId: String(r.id),
         // Preserva a data do PRIMEIRO envio: reenvio não pode remarcar, senão a
         // comissão do mês seria recontada em outro fechamento.
         enviadoErpEm: pedido.enviadoErpEm ?? new Date(),
+        erpErro: null,
+        erpErroEm: null,
       },
     });
+
+    // O número é gravado à parte e best-effort: se colidir com um pedido
+    // importado, perde-se o RÓTULO — nunca o vínculo.
+    await this.prisma.pedido
+      .update({ where: { id: pedido.id }, data: { numeroErp } })
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `[erp] ${pedido.numero}: número ${numeroErp} já está em uso por outro pedido — ` +
+            `vínculo mantido pelo id ${r.id}. (${err instanceof Error ? err.message.slice(0, 120) : ''})`,
+        ),
+      );
 
     // Saúde, não sync: `registrarSyncOk` avançaria o cursor do incremental e o
     // próximo sync pularia tudo que mudou no ERP no meio do caminho.

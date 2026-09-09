@@ -152,9 +152,15 @@ export class PedidoSiteService {
     // agora, amarrada a ESTE pedido — e não num agregado do fim do mês.
     await this.comissoes.recalcular(pedido.id);
 
-    // Sobe pro ERP na hora: pedido do site que fica esperando a rodada diária é
-    // pedido que o cliente pagou e a expedição não vê. Falha aqui NÃO derruba a
-    // resposta — o pedido existe, e a rodada diária reenvia.
+    // Sobe pro ERP na hora: pedido do site que fica esperando é pedido que o
+    // cliente pagou e a expedição não vê. Falha aqui NÃO derruba a resposta —
+    // o pedido existe no app de qualquer jeito.
+    //
+    // ⚠️ NÃO existe reenvio automático. O cron diário (`erp-sync-diario`) é
+    // ERP→app: ele importa o que mudou lá, não empurra o que falhou aqui. O
+    // comentário anterior prometia essa rede e ela nunca existiu — por isso a
+    // falha agora fica gravada no pedido e vira notificação: quem reenvia é
+    // gente, pelo botão.
     let numeroErp: string | null = null;
     try {
       const r = await this.erpPush.enviarPedido(pedido.id, empresaId);
@@ -189,7 +195,7 @@ export class PedidoSiteService {
           titulo: `Pedido ${pedido.numero} do site não subiu ao ERP`,
           mensagem:
             `${dto.numeroSite} — ${motivo.slice(0, 180)}. ` +
-            'O pedido existe no app e a rodada diária tenta de novo; se persistir, é caso de olhar.',
+            'O pedido existe no app, mas NÃO há reenvio automático — abra o pedido e use "Enviar pro ERP".',
           prioridade: 'ALTA',
           link: `/pedidos/${pedido.id}`,
           metadata: { pedidoId: pedido.id, numeroSite: dto.numeroSite },

@@ -854,6 +854,16 @@ model Pedido {
   id              String  @id @default(cuid())
   numero          String // PED-XXXX — unicidade por empresa (@@unique abaixo)
   numeroErp       String? // unicidade POR EMPRESA (@@unique abaixo) — não global
+  /// ID do pedido no ERP — o vínculo ESTÁVEL, e a chave que a v3 endereça.
+  ///
+  /// O `numeroErp` não serve como identificador: o Tiny REAPROVEITA numeração.
+  /// Medido em 09/09 — PED-0072 e PED-0073 (importados do ERP) já ocupavam os
+  /// números 44 e 45, e os dois pedidos que o app criou naquele dia voltaram
+  /// com os MESMOS números. A gravação do write-back batia no
+  /// `@@unique([empresaId, numeroErp])`, estourava, e o pedido ficava RASCUNHO
+  /// aqui **com o pedido já criado lá** — o pior estado possível, porque um
+  /// reenvio manual duplicaria.
+  erpPedidoId     String?
   empresaId       String
   clienteId       String
   representanteId String?
@@ -946,6 +956,7 @@ model Pedido {
 
   @@unique([empresaId, numero])
   @@unique([empresaId, numeroErp])
+  @@unique([empresaId, erpPedidoId])
   @@index([clienteId])
   @@index([representanteId])
   @@index([status])
