@@ -11,6 +11,7 @@ import type { Request, Response } from 'express';
 import { AppException } from '../errors/app-exception';
 import { ErrorCode } from '../errors/error-codes';
 import { captureException as sentryCapture } from '@shared/observability/sentry';
+import { redigirCaminho } from '@shared/utils/redigir-caminho';
 
 interface ErrorResponseBody {
   success: false;
@@ -48,17 +49,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error(
-        `${request.method} ${request.url} → ${status} ${body.error.code}`,
+        `${request.method} ${redigirCaminho(request.url)} → ${status} ${body.error.code}`,
         exception instanceof Error ? exception.stack : undefined,
       );
       // Sprint 3 FIX 5: captura no Sentry só para 5xx (4xx = client error, não nosso bug)
       sentryCapture(exception, {
-        path: request.url,
+        path: redigirCaminho(request.url),
         method: request.method,
         requestId: request.id,
       });
     } else {
-      this.logger.warn(`${request.method} ${request.url} → ${status} ${body.error.code}`);
+      this.logger.warn(
+        `${request.method} ${redigirCaminho(request.url)} → ${status} ${body.error.code}`,
+      );
     }
 
     response.status(status).json(body);
@@ -69,7 +72,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     request: Request & { id?: string },
   ): { status: number; body: ErrorResponseBody } {
     const meta = {
-      path: request.url,
+      path: redigirCaminho(request.url),
       method: request.method,
       timestamp: new Date().toISOString(),
       requestId: request.id,

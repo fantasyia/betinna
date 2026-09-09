@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { type Observable, map } from 'rxjs';
+import { redigirCaminho } from '@shared/utils/redigir-caminho';
 
 export interface SuccessResponse<T> {
   success: true;
@@ -67,7 +68,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, SuccessRespons
           success: true as const,
           data,
           meta: {
-            path: request.url,
+            path: redigirCaminho(request.url),
             method: request.method,
             timestamp: new Date().toISOString(),
             requestId: request.id,

@@ -10,7 +10,12 @@ import { TinyWebhookController } from './tiny-webhook.controller';
  * O endpoint existe desde já porque o painel valida a URL antes de salvar
  * ("Não foi possível acessar a URL"): sem 200 respondendo, nem dá pra cadastrar.
  */
-const SEGREDO = 'cqPBvP6SQKnKuUnDhzpd5E2b8z6paxug';
+// Valor de teste, INVENTADO. Aqui morava o segredo de PRODUÇÃO, copiado do
+// Railway — e este repositório é público. Como o Tiny não assina o webhook,
+// esse segmento da URL é a autenticação inteira do endpoint: quem lesse o
+// arquivo podia forjar evento de ERP. Segredo de verdade nunca vira fixture;
+// o teste só precisa que os dois lados batam.
+const SEGREDO = 'segredo-de-teste-nao-usar-em-producao';
 
 function build(secretConfigurado = SEGREDO, marcas: Record<string, string> = {}) {
   const redis = {
