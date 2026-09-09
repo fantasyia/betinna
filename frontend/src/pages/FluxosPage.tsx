@@ -980,6 +980,8 @@ interface ExecLog {
   erroMsg?: string | null;
   output?: Record<string, unknown> | null;
   iniciadoEm: string;
+  /** Fim do passo. Nulo enquanto ele está rodando. */
+  terminadoEm?: string | null;
 }
 interface ExecItem {
   id: string;
@@ -1017,6 +1019,29 @@ function fmtData(s?: string | null): string {
   } catch {
     return s;
   }
+}
+
+/**
+ * Quanto o passo demorou.
+ *
+ * É o que separava dois vermelhos idênticos no painel: um turno de IA que
+ * estourou o teto de 2 minutos e um passo que falhou em 0,2s apareciam iguais
+ * — mesmo status, mesma mensagem. O que os distingue é o tempo.
+ *
+ * Vírgula decimal porque é pt-BR; abaixo de 1s vai em milissegundos, que é a
+ * faixa onde a maioria dos passos vive e onde "0,0s" não diria nada.
+ */
+export function fmtDuracaoPasso(inicio?: string | null, fim?: string | null): string | null {
+  if (!inicio || !fim) return null;
+  const ms = new Date(fim).getTime() - new Date(inicio).getTime();
+  // Relógio de container pode andar pra trás entre dois writes; negativo é
+  // ruído, não informação.
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1).replace('.', ',')}s`;
+  const min = Math.floor(ms / 60_000);
+  const seg = Math.round((ms % 60_000) / 1000);
+  return `${min}min${seg ? ` ${seg}s` : ''}`;
 }
 
 /** Resumo do histórico: contagens por status + leads distintos processados. */
@@ -1167,6 +1192,7 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
                           ? (l.output.motivo as string)
                           : null;
                       const ruim = l.status === 'FALHOU';
+                      const duracao = fmtDuracaoPasso(l.iniciadoEm, l.terminadoEm);
                       return (
                         <li
                           key={l.id}
@@ -1198,6 +1224,14 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
                                 ruim ? 'text-danger' : 'text-muted',
                               )}
                             >
+                              {duracao && (
+                                <span
+                                  className="mr-2 normal-case tracking-normal text-muted"
+                                  data-testid="exec-passo-duracao"
+                                >
+                                  {duracao}
+                                </span>
+                              )}
                               {ruim ? 'falhou' : motivo ? 'pulado' : 'ok'}
                             </span>
                           </div>

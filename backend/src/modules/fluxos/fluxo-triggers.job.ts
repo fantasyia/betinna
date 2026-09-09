@@ -544,7 +544,16 @@ export class FluxoTriggersJob {
       select: { id: true },
       take: 50,
     });
-    if (travadas.length === 0) return;
+    if (travadas.length === 0) {
+      // `debug`, não `log`: este reaper roda a cada 2 min, e uma linha por
+      // rodada sem novidade esconderia justamente a linha que importa — é a
+      // mesma razão pela qual o `ErpWebhooksJob` só fala quando leu algo.
+      // Mas silêncio TOTAL fazia "varri e não havia nada" e "não rodei"
+      // ficarem indistinguíveis, e foi por aí que três investigações se
+      // perderam num sistema que estava certo e mudo.
+      this.logger.debug('[reaper] varredura sem turno órfão');
+      return;
+    }
 
     await this.prisma.fluxoExecucao.updateMany({
       where: { id: { in: travadas.map((e) => e.id) } },
