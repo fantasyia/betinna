@@ -14,6 +14,7 @@ import {
 import {
   DestinatarioInvalidoError,
   WhatsappIndisponivelError,
+  numeroInvalidoDoErro,
 } from '@integrations/evolution/whatsapp-indisponivel.error';
 import type { DestinatarioModo, Remetente } from './remetente-whatsapp.util';
 import { resolverRemetente } from './remetente-whatsapp.util';
@@ -699,6 +700,18 @@ export class FluxoExecutorService {
         this.logger.warn(
           `Execução ${execucaoId} nó ${noId}: ${err.message} — passo não enviado, fluxo segue`,
         );
+        // Carimba o contato: sem isso o fato morre no log deste passo e ninguém
+        // olhando o lead descobre que aquele telefone não recebe WhatsApp.
+        // Best-effort — estamos tratando uma falha, e falhar aqui não pode
+        // piorar a que já aconteceu. O número sai do que o PROVEDOR recusou.
+        const numeroRuim = numeroInvalidoDoErro(err);
+        if (numeroRuim) {
+          await this.supressao
+            .marcarWhatsappInvalido(execucao.empresaId, numeroRuim)
+            .catch((e: unknown) =>
+              this.logger.warn(`não consegui marcar ${numeroRuim} como sem WhatsApp: ${String(e)}`),
+            );
+        }
       } else {
         sucesso = false;
         erroMsg = err instanceof Error ? err.message : String(err);

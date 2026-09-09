@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ehDestinatarioInvalido, ehIndisponibilidade } from './whatsapp-indisponivel.error';
+import {
+  ehDestinatarioInvalido,
+  ehIndisponibilidade,
+  numeroInvalidoDoErro,
+} from './whatsapp-indisponivel.error';
 import { HttpClientError } from '@shared/http/http-client.types';
 
 /**
@@ -75,5 +79,35 @@ describe('destinatário inválido no WhatsApp', () => {
     expect(ehDestinatarioInvalido(new Error('alguma coisa deu errado'))).toBe(false);
     expect(ehDestinatarioInvalido(erro400({ message: 'media upload failed' }))).toBe(false);
     expect(ehDestinatarioInvalido(undefined)).toBe(false);
+  });
+});
+
+describe('o número que o provedor recusou', () => {
+  it('sai do corpo do erro, não do que a gente mandou', () => {
+    // Quem sabe qual endereço foi recusado é quem respondeu — e o normalizador
+    // já mexeu no número que saiu daqui.
+    expect(
+      numeroInvalidoDoErro(
+        erro400({
+          message: [
+            { jid: '5511999990000@s.whatsapp.net', exists: false, number: '5511999990000' },
+          ],
+        }),
+      ),
+    ).toBe('5511999990000');
+  });
+
+  it('cai pro jid quando não vem o campo `number`', () => {
+    expect(
+      numeroInvalidoDoErro(
+        erro400({ message: [{ jid: '5511997524483@s.whatsapp.net', exists: false }] }),
+      ),
+    ).toBe('5511997524483');
+  });
+
+  it('sem número no corpo, devolve null — e ninguém é carimbado', () => {
+    // Carimbar o contato errado como "sem WhatsApp" é pior que não carimbar.
+    expect(numeroInvalidoDoErro(new Error('number does not exist'))).toBeNull();
+    expect(numeroInvalidoDoErro(erro400({ message: 'invalid number' }))).toBeNull();
   });
 });

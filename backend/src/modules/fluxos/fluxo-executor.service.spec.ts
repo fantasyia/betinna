@@ -209,6 +209,11 @@ describe('FluxoExecutorService', () => {
   };
   /** Gravação da saída na conversa (não depende mais do eco do WhatsApp). */
   let inbox: { processarMensagemEntrante: ReturnType<typeof vi.fn> };
+  let supressao: {
+    suprimido: ReturnType<typeof vi.fn>;
+    emailSuprimido: ReturnType<typeof vi.fn>;
+    marcarWhatsappInvalido: ReturnType<typeof vi.fn>;
+  };
   let service: FluxoExecutorService;
 
   beforeEach(() => {
@@ -225,6 +230,12 @@ describe('FluxoExecutorService', () => {
       criarParaRole: vi.fn().mockResolvedValue(0),
     };
     inbox = { processarMensagemEntrante: vi.fn().mockResolvedValue({}) };
+    supressao = {
+      suprimido: vi.fn(async () => false),
+      // Supressão por CANAL (bounce/reclamação): endereço vivo por padrão.
+      emailSuprimido: vi.fn(async () => false),
+      marcarWhatsappInvalido: vi.fn(async () => 1),
+    };
     service = new FluxoExecutorService(
       prisma as never,
       makeEnvMock() as never,
@@ -237,11 +248,7 @@ describe('FluxoExecutorService', () => {
       integracaoStatus as never,
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
-      {
-        suprimido: vi.fn(async () => false),
-        // Supressão por CANAL (bounce/reclamação): endereço vivo por padrão.
-        emailSuprimido: vi.fn(async () => false),
-      } as never, // supressao
+      supressao as never,
       notificacoes as never,
       inbox as never,
     );
@@ -1578,6 +1585,23 @@ describe('FluxoExecutorService', () => {
             }),
           }),
         );
+      });
+
+      it('carimba o contato como SEM WhatsApp, com o número que o provedor recusou', async () => {
+        // Sem isto o fato morre no log do passo: quem abre o lead depois não
+        // tem como saber que aquele telefone não recebe WhatsApp.
+        setupNumeroInexistente();
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+        expect(supressao.marcarWhatsappInvalido).toHaveBeenCalledWith('emp-1', '5511999990000');
+      });
+
+      it('falhar ao carimbar NÃO piora a falha que já está sendo tratada', async () => {
+        setupNumeroInexistente();
+        supressao.marcarWhatsappInvalido.mockRejectedValue(new Error('banco fora'));
+
+        await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).resolves.toBeUndefined();
       });
 
       it('a execução NÃO é encerrada como "pulada"', async () => {

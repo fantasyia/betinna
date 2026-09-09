@@ -91,6 +91,20 @@ export function ehDestinatarioInvalido(err: unknown): boolean {
 }
 
 /**
+ * O número que o provedor disse não existir.
+ *
+ * Vem do corpo do Evolution (`number` ou o `jid`), não do que a gente MANDOU:
+ * quem responde é quem sabe qual endereço foi recusado, e o normalizador já
+ * mexeu no que saiu daqui.
+ */
+export function numeroInvalidoDoErro(err: unknown): string | null {
+  const corpo = err instanceof HttpClientError && err.body ? JSON.stringify(err.body) : '';
+  const cru = `${err instanceof Error ? err.message : String(err ?? '')} ${corpo}`;
+  const m = /"number"\s*:\s*"(\d{8,})"/.exec(cru) ?? /(\d{10,})@s\.whatsapp\.net/.exec(cru);
+  return m?.[1] ?? null;
+}
+
+/**
  * Marcas de indisponibilidade no corpo/mensagem do erro.
  *
  * Lista explícita, e não "tudo que não reconheço é transitório": errar pro lado

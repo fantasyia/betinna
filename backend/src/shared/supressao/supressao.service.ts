@@ -27,6 +27,17 @@ export class SupressaoService {
    */
   static readonly TAG_EMAIL_INVALIDO = 'E-mail inválido ⛔';
 
+  /**
+   * Número que NÃO EXISTE no WhatsApp (o provedor respondeu `exists:false`).
+   *
+   * É uma OBSERVAÇÃO, não um pedido — e a diferença decide o que ela faz. A tag
+   * de LGPD cala todo outbound porque a pessoa PEDIU. Esta aqui só diz o que o
+   * provedor respondeu num instante, e isso muda: quem não tinha WhatsApp
+   * instala, quem trocou de chip volta. Por isso ela marca e mostra, e não
+   * bloqueia: quem decide tirar do canal é gente, olhando.
+   */
+  static readonly TAG_WHATSAPP_INVALIDO = 'WhatsApp inválido ⛔';
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -171,6 +182,61 @@ export class SupressaoService {
       `E-mail ${alvo} marcado como inválido (${motivo}) em ${leads.length} lead(s) da empresa ${empresaId}`,
     );
     return leads.length;
+  }
+
+  /**
+   * Marca o telefone como sem WhatsApp, no lead E no cliente.
+   *
+   * Casa por SUFIXO de 8 dígitos (D18) porque é assim que telefone bate neste
+   * sistema: o mesmo número aparece com e sem +55, com e sem o 9. `contains`
+   * casaria número de OUTRA pessoa.
+   *
+   * Best-effort de propósito — quem chama está no meio de tratar uma falha de
+   * envio, e falhar aqui não pode piorar o erro que já está sendo tratado.
+   */
+  async marcarWhatsappInvalido(empresaId: string, telefone: string): Promise<number> {
+    const suf = this.sufixoTelefone(telefone);
+    if (!suf) return 0;
+    const tag = await this.prisma.tag.upsert({
+      where: { empresaId_nome: { empresaId, nome: SupressaoService.TAG_WHATSAPP_INVALIDO } },
+      create: { empresaId, nome: SupressaoService.TAG_WHATSAPP_INVALIDO, categoria: 'alerta' },
+      update: {},
+    });
+
+    const leads = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Lead"
+       WHERE "empresaId" = ${empresaId}
+         AND RIGHT(REGEXP_REPLACE(COALESCE("contatoTelefone",''),'[^0-9]','','g'), 8) = ${suf}`;
+    const clientes = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Cliente"
+       WHERE "empresaId" = ${empresaId}
+         AND RIGHT(REGEXP_REPLACE(COALESCE(telefone,''),'[^0-9]','','g'), 8) = ${suf}`;
+
+    if (leads.length) {
+      await this.prisma.leadTag.createMany({
+        data: leads.map((l) => ({ leadId: l.id, tagId: tag.id, origem: 'whatsapp:inexistente' })),
+        skipDuplicates: true,
+      });
+    }
+    if (clientes.length) {
+      await this.prisma.clienteTag.createMany({
+        data: clientes.map((c) => ({
+          clienteId: c.id,
+          tagId: tag.id,
+          origem: 'whatsapp:inexistente',
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    const total = leads.length + clientes.length;
+    if (total > 0) {
+      this.logger.warn(
+        `Telefone ...${suf} marcado como SEM WhatsApp em ${leads.length} lead(s) e ` +
+          `${clientes.length} cliente(s) da empresa ${empresaId}`,
+      );
+    }
+    return total;
   }
 
   /** Busca genérica por nome normalizado — a de LGPD é um caso dela. */
