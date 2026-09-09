@@ -20,7 +20,8 @@ const build = (achaContrato = true) => {
     },
     contratoComissao: { count: vi.fn().mockResolvedValue(3) },
   };
-  const comissoes = { recalcular: vi.fn().mockResolvedValue(undefined) };
+  // `recalcular` devolve o que NÃO pôde ser corrigido (linha já no ERP).
+  const comissoes = { recalcular: vi.fn().mockResolvedValue([]) };
   const svc = new ContratosService(
     prisma as never,
     // O construtor monta um client do Supabase Storage; sem URL/chave ele
@@ -39,8 +40,30 @@ describe('recalcular comissões de um contrato', () => {
     await expect(svc.recalcularComissoes('emp-1', 'ctr-1')).resolves.toEqual({
       contratoId: 'ctr-1',
       linhas: 3,
+      divergentes: [],
     });
     expect(comissoes.recalcular).toHaveBeenCalledWith('ctr-1');
+  });
+
+  it('devolve o que NÃO pôde ser corrigido — é o que exige gente', async () => {
+    // Medido em 09/09: a regra virou 10% pro representante, o recálculo rodou, e
+    // dois meses seguiram a 5% porque já tinham conta a pagar no ERP. O app não
+    // reescreve o que a contabilidade lançou — mas calar sobre isso deixa
+    // dinheiro errado parado até a conciliação do mês.
+    const { svc, comissoes } = build();
+    const pendente = {
+      usuarioId: 'harada',
+      competencia: new Date('2026-09-01T00:00:00Z'),
+      tipo: 'REP',
+      percentualAtual: 5,
+      percentualEsperado: 10,
+      contaPagarErpId: '338321069',
+    };
+    comissoes.recalcular.mockResolvedValue([pendente]);
+
+    const r = await svc.recalcularComissoes('emp-1', 'ctr-1');
+
+    expect(r.divergentes).toEqual([pendente]);
   });
 
   it('contrato de OUTRA empresa não recalcula', async () => {

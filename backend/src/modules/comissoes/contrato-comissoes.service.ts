@@ -2,6 +2,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 
+/**
+ * Linha que o recálculo NÃO pôde corrigir porque ela já virou conta a pagar no
+ * ERP. O app não reescreve o que a contabilidade já lançou — mas também não
+ * pode ficar calado, senão o mês segue pagando a % velha e ninguém sabe.
+ */
+export interface ComissaoDivergente {
+  usuarioId: string;
+  competencia: Date;
+  tipo: string;
+  /** O que está gravado (e já foi pro ERP). */
+  percentualAtual: number;
+  /** O que a regra de hoje manda. `null` = a pessoa deixou de ter direito. */
+  percentualEsperado: number | null;
+  contaPagarErpId: string;
+}
+
 /** Contrato nesses estados não gera comissão nenhuma — e zera a que existia. */
 const SEM_COMISSAO = new Set(['CANCELADO', 'RASCUNHO', 'AGUARDANDO_ASSINATURA']);
 
@@ -34,19 +50,20 @@ export class ContratoComissoesService {
    * derrubar a ativação de um contrato por causa dela seria trocar um problema
    * pequeno por um grande.
    */
-  async recalcular(contratoId: string): Promise<void> {
+  async recalcular(contratoId: string): Promise<ComissaoDivergente[]> {
     try {
-      await this.executar(contratoId);
+      return await this.executar(contratoId);
     } catch (err) {
       this.logger.error(
         `Falha calculando comissões do contrato ${contratoId}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
+      return [];
     }
   }
 
-  private async executar(contratoId: string): Promise<void> {
+  private async executar(contratoId: string): Promise<ComissaoDivergente[]> {
     const contrato = await this.prisma.contrato.findUnique({
       where: { id: contratoId },
       select: {
@@ -60,11 +77,11 @@ export class ContratoComissoesService {
         representanteId: true,
       },
     });
-    if (!contrato) return;
+    if (!contrato) return [];
 
     if (SEM_COMISSAO.has(contrato.status)) {
       await this.zerarPendentes(contratoId, 'contrato sem comissão a pagar');
-      return;
+      return [];
     }
 
     // A regra da locação (Léo, 09/09), textual: "5% pro Leonardo, 5% pro Harada
@@ -117,7 +134,7 @@ export class ContratoComissoesService {
 
     if (linhasAtivas.length === 0) {
       await this.zerarPendentes(contratoId, 'nenhum beneficiário ativo pela regra de locação');
-      return;
+      return [];
     }
 
     // Mês 1 = primeira cobrança (depois de qualquer carência), não a assinatura:
@@ -199,6 +216,53 @@ export class ContratoComissoesService {
         );
       }
     }
+
+    // O que o recálculo NÃO conseguiu corrigir, e por que isso precisa gritar.
+    //
+    // Linha que já virou conta a pagar no ERP não é reescrita — e está certo:
+    // app não muda em silêncio o que a contabilidade já lançou. Só que ficar
+    // calado sobre isso é pior. Medido em 09/09: a regra virou 10% pro
+    // representante, o recálculo rodou, e dois meses seguiram a 5% porque já
+    // tinham conta no ERP. Nada no retorno, nada no log — dinheiro errado
+    // parado, esperando a conciliação do mês descobrir.
+    const esperado = new Map(linhasAtivas.map((b) => [`${b.id}|${b.tipo}`, b.percentual]));
+    const comConta = await this.prisma.contratoComissao.findMany({
+      where: { contratoId, contaPagarErpId: { not: null } },
+      select: {
+        usuarioId: true,
+        tipo: true,
+        competencia: true,
+        percentual: true,
+        contaPagarErpId: true,
+      },
+    });
+    const divergentes: ComissaoDivergente[] = comConta
+      .map((l) => ({
+        usuarioId: l.usuarioId,
+        competencia: l.competencia,
+        tipo: String(l.tipo),
+        percentualAtual: l.percentual,
+        percentualEsperado: esperado.get(`${l.usuarioId}|${String(l.tipo)}`) ?? null,
+        contaPagarErpId: String(l.contaPagarErpId),
+      }))
+      .filter((d) => d.percentualEsperado !== d.percentualAtual);
+
+    if (divergentes.length > 0) {
+      this.logger.warn(
+        `Contrato ${contratoId}: ${divergentes.length} linha(s) de comissão JÁ no ERP ` +
+          `divergem da regra atual e NÃO foram reescritas — ` +
+          divergentes
+            .map(
+              (d) =>
+                `${d.competencia.toISOString().slice(0, 7)} ${d.tipo} ` +
+                `${d.percentualAtual}%→${d.percentualEsperado ?? 'sem direito'} ` +
+                `(conta ${d.contaPagarErpId})`,
+            )
+            .join('; ') +
+          '. Corrija no painel do ERP: a API do Tiny não altera nem apaga conta.',
+      );
+    }
+    return divergentes;
   }
 
   /**

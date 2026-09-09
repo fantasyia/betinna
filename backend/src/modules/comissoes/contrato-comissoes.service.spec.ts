@@ -219,8 +219,11 @@ describe('ContratoComissoesService', () => {
   });
 
   it('falha no banco não derruba quem chamou (best-effort, igual à venda)', async () => {
+    // Best-effort: engole o erro e devolve lista vazia de divergências — quem
+    // chamou (ativação de contrato, NF de comodato) não pode cair por causa da
+    // comissão, que se conserta recalculando.
     prisma.contrato.findUnique.mockRejectedValue(new Error('banco fora'));
-    await expect(svc.recalcular('ctr-1')).resolves.toBeUndefined();
+    await expect(svc.recalcular('ctr-1')).resolves.toEqual([]);
   });
 
   describe('registrarMensalidadeRecebida — o gatilho da locação', () => {

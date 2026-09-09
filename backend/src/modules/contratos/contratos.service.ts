@@ -11,7 +11,10 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
-import { ContratoComissoesService } from '@modules/comissoes/contrato-comissoes.service';
+import {
+  type ComissaoDivergente,
+  ContratoComissoesService,
+} from '@modules/comissoes/contrato-comissoes.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { ListContratosDto } from './contratos.dto';
@@ -158,16 +161,19 @@ export class ContratosService {
   async recalcularComissoes(
     empresaId: string,
     contratoId: string,
-  ): Promise<{ contratoId: string; linhas: number }> {
+  ): Promise<{ contratoId: string; linhas: number; divergentes: ComissaoDivergente[] }> {
     const contrato = await this.prisma.contrato.findFirst({
       where: { id: contratoId, empresaId },
       select: { id: true },
     });
     if (!contrato) throw new NotFoundException('Contrato', contratoId);
 
-    await this.comissoes.recalcular(contratoId);
+    const divergentes = await this.comissoes.recalcular(contratoId);
 
     const linhas = await this.prisma.contratoComissao.count({ where: { contratoId } });
-    return { contratoId, linhas };
+    // `divergentes` = o que o recálculo NÃO pôde corrigir porque já virou conta a
+    // pagar no ERP. Vai na resposta porque é a única coisa aqui que exige ação
+    // humana — e a API do Tiny não altera nem apaga conta.
+    return { contratoId, linhas, divergentes };
   }
 }
