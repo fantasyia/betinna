@@ -228,9 +228,10 @@ export class PropostaErpService {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
-    if (proposta.status !== 'ACEITA') {
-      // Gerar pedido de proposta que o cliente não aceitou é criar demanda de
-      // faturamento pra um negócio que ainda está em negociação.
+    // ACEITA (venda) ou ASSINADA (locação, contrato de volta). Gerar pedido de
+    // proposta que o cliente não aceitou é criar demanda de faturamento pra um
+    // negócio que ainda está em negociação.
+    if (proposta.status !== 'ACEITA' && proposta.status !== 'ASSINADA') {
       throw new BusinessRuleException(
         `A proposta precisa estar ACEITA pelo cliente (está ${proposta.status}).`,
         ErrorCode.BUSINESS_RULE_VIOLATION,

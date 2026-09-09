@@ -60,6 +60,7 @@ type PropostaStatus =
   | 'NEGOCIACAO'
   | 'AGUARDANDO_ASSINATURA'
   | 'ACEITA'
+  | 'ASSINADA'
   | 'RECUSADA'
   | 'EXPIRADA';
 
@@ -135,6 +136,7 @@ const STATUS_VARIANT: Record<
   NEGOCIACAO: 'warning',
   AGUARDANDO_ASSINATURA: 'primary',
   ACEITA: 'success',
+  ASSINADA: 'success',
   RECUSADA: 'danger',
   EXPIRADA: 'neutral',
 };
@@ -145,6 +147,10 @@ const STATUS_LABEL: Record<PropostaStatus, string> = {
   NEGOCIACAO: 'Em negociação',
   AGUARDANDO_ASSINATURA: 'Aguard. assinatura',
   ACEITA: 'Aceita',
+  // Locação: o contrato voltou assinado. "Aceita" é o cliente dizer que quer;
+  // "Assinada" é o documento existir — e é a partir daqui que o pedido trava e
+  // a comissão entra no cronograma.
+  ASSINADA: 'Assinada',
   RECUSADA: 'Recusada',
   EXPIRADA: 'Expirada',
 };
@@ -155,6 +161,7 @@ const STATUS_LIST: PropostaStatus[] = [
   'NEGOCIACAO',
   'AGUARDANDO_ASSINATURA',
   'ACEITA',
+  'ASSINADA',
   'RECUSADA',
   'EXPIRADA',
 ];

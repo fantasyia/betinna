@@ -494,7 +494,11 @@ export class PropostasService {
       ENVIADA: ['NEGOCIACAO', 'AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
       NEGOCIACAO: ['AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
       AGUARDANDO_ASSINATURA: ['ACEITA', 'RECUSADA', 'EXPIRADA'],
-      ACEITA: [], // final
+      // ACEITA deixou de ser final: na locação, o contrato ainda volta assinado.
+      // Quem move pra ASSINADA é o webhook da assinatura eletrônica, não a tela
+      // — por isso não há caminho de volta nem transição manual pra cá.
+      ACEITA: ['ASSINADA'],
+      ASSINADA: [], // final — o documento existe, não tem o que desfazer aqui
       RECUSADA: [], // final
       EXPIRADA: ['ENVIADA'], // pode reenviar
     };

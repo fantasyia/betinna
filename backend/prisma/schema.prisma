@@ -125,6 +125,17 @@ enum PropostaStatus {
   NEGOCIACAO
   AGUARDANDO_ASSINATURA
   ACEITA
+  /// Contrato VOLTOU ASSINADO da assinatura eletrônica.
+  ///
+  /// Separado de ACEITA porque são fatos diferentes com consequências
+  /// diferentes: aceite é o cliente dizendo "quero" (e o pedido nasce
+  /// rascunho); assinatura é o documento existindo (e aí o pedido trava, a
+  /// comissão entra no cronograma e o contrato sobe pro ERP). Com um status
+  /// só, olhar a proposta não dizia se o contrato voltou — era preciso abrir
+  /// o contrato pra saber.
+  ///
+  /// Vale só pra LOCAÇÃO, que gera contrato. Venda termina em ACEITA.
+  ASSINADA
   RECUSADA
   EXPIRADA
 }

@@ -92,6 +92,22 @@ export class ClickSignAssinaturaService implements OnModuleInit {
         (caminho ? ' — PDF guardado' : ' — sem PDF'),
     );
 
+    // A PROPOSTA acompanha o fato. Sem isto ela ficava ACEITA pra sempre, e
+    // quem olhasse a lista não sabia se o contrato tinha voltado assinado —
+    // precisava abrir o contrato pra descobrir. Best-effort: o contrato já está
+    // assinado, e falhar aqui não pode desfazer isso.
+    await this.prisma.proposta
+      .update({
+        where: { id: contrato.proposta.id },
+        data: { status: 'ASSINADA' },
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Contrato ${contrato.id} assinado, mas a proposta ${contrato.proposta.numero} ` +
+            `não mudou pra ASSINADA: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+
     // Cronograma de comissão do rep: uma linha por MÊS do contrato (locação
     // paga todo mês, não uma vez). Nasce aqui, na assinatura, pra o rep já ver
     // o que vem — cada mês só vira dinheiro quando a mensalidade daquele mês

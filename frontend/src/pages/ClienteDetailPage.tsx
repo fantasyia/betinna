@@ -830,6 +830,7 @@ type PropostaStatus =
   | 'NEGOCIACAO'
   | 'AGUARDANDO_ASSINATURA'
   | 'ACEITA'
+  | 'ASSINADA'
   | 'RECUSADA'
   | 'EXPIRADA';
 
@@ -849,6 +850,7 @@ const PROPOSTA_STATUS_LABEL: Record<PropostaStatus, string> = {
   NEGOCIACAO: 'Negociação',
   AGUARDANDO_ASSINATURA: 'Aguardando assinatura',
   ACEITA: 'Aceita',
+  ASSINADA: 'Assinada',
   RECUSADA: 'Recusada',
   EXPIRADA: 'Expirada',
 };
@@ -859,6 +861,7 @@ const PROPOSTA_STATUS_COLOR: Record<PropostaStatus, string> = {
   NEGOCIACAO: 'var(--warning)',
   AGUARDANDO_ASSINATURA: 'var(--warning)',
   ACEITA: 'var(--success)',
+  ASSINADA: 'var(--success)',
   RECUSADA: 'var(--danger)',
   EXPIRADA: 'var(--muted)',
 };

@@ -49,6 +49,8 @@ const corpo = (extra: Record<string, unknown> = {}) =>
 function montar(contrato: unknown = CONTRATO) {
   const prisma = {
     contrato: { findFirst: vi.fn(async () => contrato), update: vi.fn(async () => ({})) },
+    // A PROPOSTA acompanha o contrato: ACEITA → ASSINADA quando o documento volta.
+    proposta: { update: vi.fn(async () => ({})) },
     pedido: { updateMany: vi.fn(async () => ({ count: 1 })) },
   };
   const env = { get: vi.fn(() => 'x') };
@@ -79,6 +81,16 @@ beforeEach(() => {
 });
 
 describe('ClickSignAssinaturaService.registrarAssinado', () => {
+  it('a PROPOSTA passa de aceita pra ASSINADA — senão a lista não conta que o contrato voltou', async () => {
+    const { svc, prisma } = montar();
+
+    await svc.registrarAssinado(corpo());
+
+    expect(prisma.proposta.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'prop-1' }, data: { status: 'ASSINADA' } }),
+    );
+  });
+
   it('marca ASSINADO, trava o pedido, sobe pro ERP e move a etapa', async () => {
     const { svc, prisma, etapa, propostaErp } = montar();
 
