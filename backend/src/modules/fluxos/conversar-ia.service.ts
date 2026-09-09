@@ -2260,6 +2260,7 @@ export class ConversarIaService implements OnModuleDestroy {
 
     let r: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
+      this.falharSePedidoPorTeste(ctx);
       r = await this.muller.gerarRespostaIa(
         empresaId,
         systemPrompt + blocoRag,
@@ -3283,6 +3284,29 @@ export class ConversarIaService implements OnModuleDestroy {
    * então distinguimos só "sem chave configurada" do resto ("provedor indisponível":
    * erro de API / rate limit / HTTP). O detalhe fino vai sempre em `mensagem_erro`.
    */
+  /**
+   * Derruba a IA DE PROPÓSITO — só dentro de execução de TESTE.
+   *
+   * Sem isto não havia como exercitar a recuperação: pra ver a IA cair era
+   * preciso sabotar config de PRODUÇÃO (estourar o teto de tokens do prompt, ou
+   * apontar o nó pra um prompt que não existe). Testar quebrando o que está no
+   * ar é como se estraga o que funciona — e por isso o caminho de falha, que é
+   * justamente o que mais precisa de teste, era o menos testado.
+   *
+   * Duas travas, e as duas são necessárias: só vale com `_teste` (marca que o
+   * executor põe no contexto da execução de teste, nunca numa real) E com o
+   * pedido explícito `_testeFalharIa`. Execução de produção não tem a primeira,
+   * então nenhum valor de contexto de cliente consegue ligar isto.
+   *
+   * A mensagem é escolhida pra cair em `ia_indisponivel` (retomável) e não em
+   * `ia_sem_chave` — é a falha transitória que o `botPausadoAte` cobre.
+   */
+  private falharSePedidoPorTeste(ctx: ExecucaoContexto): void {
+    const c = ctx as Record<string, unknown>;
+    if (c['_teste'] !== true || c['_testeFalharIa'] !== true) return;
+    throw new Error('IA indisponivel (falha forcada por execucao de teste)');
+  }
+
   private tipoErroIa(err: unknown): 'ia_sem_chave' | 'ia_indisponivel' {
     const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
     return /chave|n[ãa]o configurad|api key|configure/.test(msg)
