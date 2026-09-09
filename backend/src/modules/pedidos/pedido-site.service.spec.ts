@@ -102,6 +102,27 @@ describe('pedido do site', () => {
       telefone: '11999990000',
     };
 
+    /**
+     * A cura do problema que o conserto do CNPJ só reduziu: com dois
+     * compradores na mesma empresa alternando pedidos, o cadastro fica com o
+     * contato do ÚLTIMO — e a mensagem do pedido do primeiro saía pro telefone
+     * do segundo. O contato de quem comprou passa a viver no PEDIDO.
+     */
+    it('o pedido guarda o contato de QUEM O FEZ, não o do cadastro', async () => {
+      const { svc, prisma } = build({
+        clientePorDoc: [{ id: 'cli-1' }],
+        clienteAtual: cadastroDoPrimeiro,
+      });
+
+      await svc.receber('emp-1', doOutroComprador as never);
+
+      expect(prisma.pedido.create.mock.calls[0][0].data).toMatchObject({
+        contatoNome: 'Marina Torres',
+        contatoEmail: 'marina@empresa.com.br',
+        contatoTelefone: '5511997524483',
+      });
+    });
+
     it('o telefone do pedido de AGORA passa a valer', async () => {
       // É pra este número que a confirmação e o rastreio deste pedido vão.
       const { svc, prisma } = build({

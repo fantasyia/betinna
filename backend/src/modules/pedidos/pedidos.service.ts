@@ -642,7 +642,8 @@ export class PedidosService {
         // (preserva o JSON como número, não string, pra interpolação/consumo).
         pedido: { id: pedido.id, numero: pedido.numero, total: Number(pedido.total) },
         clienteId: pedido.clienteId,
-        cliente: { id: pedido.cliente.id, nome: pedido.cliente.nome },
+        // Contato do PEDIDO (quem comprou) antes do cadastro da empresa.
+        cliente: { id: pedido.cliente.id, nome: pedido.contatoNome ?? pedido.cliente.nome },
         representanteId: pedido.representanteId,
       });
     }

@@ -698,6 +698,10 @@ export class PedidoErpSyncService {
         representanteId: true,
         rastreioCodigo: true,
         rastreioUrl: true,
+        // Quem fez ESTE pedido. O `Cliente` é a empresa e guarda o contato do
+        // último comprador — o aviso do pedido do A saía pro e-mail do B.
+        contatoNome: true,
+        contatoEmail: true,
         cliente: { select: { id: true, nome: true, email: true } },
       },
     });
@@ -721,7 +725,7 @@ export class PedidoErpSyncService {
       // pessoa nunca viu.
       pedido: { id: p.id, numero: p.numeroSite ?? p.numero, total: Number(p.total) },
       clienteId: p.clienteId,
-      cliente: { id: p.cliente.id, nome: p.cliente.nome },
+      cliente: { id: p.cliente.id, nome: p.contatoNome ?? p.cliente.nome },
       representanteId: p.representanteId,
       rastreioCodigo: p.rastreioCodigo,
       rastreioUrl: p.rastreioUrl,
@@ -730,13 +734,17 @@ export class PedidoErpSyncService {
     // 07/09: os dois canais). Transacional — sem descadastro. Best-effort: o
     // aviso por e-mail não pode derrubar a sincronização do pedido, e o WhatsApp
     // já saiu pelo evento acima.
-    if (p.cliente.email) {
+    // Contato do PEDIDO primeiro; cai no do cliente pra pedido anterior a 09/09,
+    // que não tem contato próprio.
+    const paraEmail = p.contatoEmail ?? p.cliente.email;
+    const paraNome = p.contatoNome ?? p.cliente.nome;
+    if (paraEmail) {
       await this.emailSvc
         .enviarPedidoRastreio({
-          para: p.cliente.email,
+          para: paraEmail,
           empresaId,
           pedidoId: p.id,
-          nome: p.cliente.nome,
+          nome: paraNome,
           numeroPedido: p.numeroSite ?? p.numero,
           codigo: p.rastreioCodigo,
           url: p.rastreioUrl,
@@ -762,6 +770,7 @@ export class PedidoErpSyncService {
         total: true,
         clienteId: true,
         representanteId: true,
+        contatoNome: true,
         cliente: { select: { id: true, nome: true } },
       },
     });
@@ -770,7 +779,7 @@ export class PedidoErpSyncService {
       pedidoId: p.id,
       pedido: { id: p.id, numero: p.numero, total: Number(p.total) },
       clienteId: p.clienteId,
-      cliente: { id: p.cliente.id, nome: p.cliente.nome },
+      cliente: { id: p.cliente.id, nome: p.contatoNome ?? p.cliente.nome },
       representanteId: p.representanteId,
     });
   }

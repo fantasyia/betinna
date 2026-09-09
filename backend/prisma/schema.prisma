@@ -909,6 +909,20 @@ model Pedido {
 
   numeroSite String?
 
+  /// QUEM fez ESTE pedido — não quem é o cliente hoje.
+  ///
+  /// Num B2B o `Cliente` é a EMPRESA, casada por documento, e guarda UM
+  /// contato. Com dois compradores na mesma empresa alternando pedidos, o
+  /// cadastro fica com o contato do último — e o rastreio do pedido do
+  /// primeiro saía pro telefone do segundo. O contato pertence ao pedido.
+  ///
+  /// Nullable de propósito: pedido antigo não tem, e quem lê cai no contato do
+  /// `Cliente` (mesma cascata do `resolverTelefoneLeadOuCliente`, que passa a
+  /// ser lead → PEDIDO → cliente). Backfill seria inventar dado.
+  contatoNome     String?
+  contatoEmail    String?
+  contatoTelefone String?
+
   /// Rastreio do ERP (Tiny → `transportador.codigoRastreamento` / `urlRastreamento`).
   /// Quem despacha é o ERP; aqui é espelho — o app nunca escreve rastreio por conta
   /// própria, senão a tela do cliente e a etiqueta real contariam histórias diferentes.

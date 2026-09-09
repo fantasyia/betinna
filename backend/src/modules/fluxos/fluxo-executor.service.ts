@@ -1647,6 +1647,19 @@ export class FluxoExecutorService {
       });
       if (lead?.contatoTelefone) return lead.contatoTelefone.replace(/[^\d+]/g, '');
     }
+    // PEDIDO antes de cliente. Num B2B o `Cliente` é a EMPRESA e guarda um
+    // contato só — o do último que comprou. Mensagem sobre o pedido do
+    // comprador A saía pro telefone do comprador B. Quem fez o pedido está
+    // gravado no próprio pedido desde 09/09; pedido antigo não tem, e aí a
+    // cascata segue pro cliente como antes.
+    const pedidoId = ctx['pedidoId'] as string | undefined;
+    if (pedidoId) {
+      const pedido = await this.prisma.pedido.findFirst({
+        where: { id: pedidoId, empresaId },
+        select: { contatoTelefone: true },
+      });
+      if (pedido?.contatoTelefone) return pedido.contatoTelefone.replace(/[^\d+]/g, '');
+    }
     const clienteId = ctx['clienteId'] as string | undefined;
     if (clienteId) {
       const cliente = await this.prisma.cliente.findFirst({
@@ -1663,6 +1676,7 @@ export class FluxoExecutorService {
     empresaId: string,
     leadId?: string,
     clienteId?: string,
+    pedidoId?: string,
   ): Promise<string | undefined> {
     if (leadId) {
       const l = await this.prisma.lead.findFirst({
@@ -1670,6 +1684,15 @@ export class FluxoExecutorService {
         select: { contatoEmail: true },
       });
       if (l?.contatoEmail) return l.contatoEmail.trim().toLowerCase();
+    }
+    // Mesma cascata do telefone: quem fez ESTE pedido vem antes do contato da
+    // empresa. Ver `resolverTelefoneLeadOuCliente`.
+    if (pedidoId) {
+      const p = await this.prisma.pedido.findFirst({
+        where: { id: pedidoId, empresaId },
+        select: { contatoEmail: true },
+      });
+      if (p?.contatoEmail) return p.contatoEmail.trim().toLowerCase();
     }
     if (clienteId) {
       const c = await this.prisma.cliente.findFirst({
@@ -1704,7 +1727,12 @@ export class FluxoExecutorService {
         clienteId: clienteIdSup,
       });
       if (suprimido) {
-        const emailContato = await this.emailDoContato(empresaId, leadIdSup, clienteIdSup);
+        const emailContato = await this.emailDoContato(
+          empresaId,
+          leadIdSup,
+          clienteIdSup,
+          ctx['pedidoId'] as string | undefined,
+        );
         if (emailContato) {
           const antes = emails.length;
           emails = emails.filter((e) => e.trim().toLowerCase() !== emailContato);
@@ -1765,6 +1793,7 @@ export class FluxoExecutorService {
       empresaId,
       ctx['leadId'] as string | undefined,
       ctx['clienteId'] as string | undefined,
+      ctx['pedidoId'] as string | undefined,
     );
     // Endereço de envio DESTE fluxo. Vazio = o do ambiente (o de hoje), então
     // fluxo antigo não muda de comportamento. Existe pra régua fria sair de um

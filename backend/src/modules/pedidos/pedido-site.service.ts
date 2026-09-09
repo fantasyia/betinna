@@ -105,6 +105,13 @@ export class PedidoSiteService {
         numero,
         numeroSite: dto.numeroSite,
         clienteId: cliente.id,
+        // QUEM fez ESTE pedido. O `Cliente` é a empresa e guarda um contato só:
+        // com dois compradores alternando pedidos, o cadastro fica com o do
+        // último e o rastreio do pedido do primeiro sairia pro telefone do
+        // segundo. O dado já estava em mãos aqui — só era jogado no Cliente.
+        contatoNome: dto.cliente.nome,
+        contatoEmail: dto.cliente.email ?? null,
+        contatoTelefone: dto.cliente.telefone ?? null,
         // Venda de canal: sem representante de propósito. Atribuir alguém aqui
         // criaria comissão de rep sobre venda que ninguém atendeu.
         representanteId: null,

@@ -179,7 +179,8 @@ export class AprovacoesService {
       pedidoId: pedido.id,
       pedido: { id: pedido.id, numero: pedido.numero, total: pedido.total },
       clienteId: pedido.clienteId,
-      cliente: { id: pedido.cliente.id, nome: pedido.cliente.nome },
+      // Contato do PEDIDO (quem comprou) antes do cadastro da empresa.
+      cliente: { id: pedido.cliente.id, nome: pedido.contatoNome ?? pedido.cliente.nome },
       representanteId: apr.representanteId,
       aprovadorId: user.id,
     });
