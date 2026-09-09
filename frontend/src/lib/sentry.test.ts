@@ -53,3 +53,35 @@ describe('redação de PII no front', () => {
     expect(redact('Unhandled exception na recepcao')).toBe('Unhandled exception na recepcao');
   });
 });
+
+describe('telefone com forma, solto na frase', () => {
+  // Mesmo buraco do backend, mesmo desenho de propósito: o `redact` cobria
+  // e-mail, CPF/CNPJ e jid, e deixava passar telefone escrito no meio de um
+  // texto. Aqui é a tela do CRM, onde telefone está em quase toda mensagem.
+
+  it.each([
+    ['Falha ao enviar para (11) 99999-0000', '(11) 99999-0000'],
+    ['Cliente pediu retorno no 11 99999-0000', '11 99999-0000'],
+    ['contato +55 11 99999-0000 nao atende', '+55 11 99999-0000'],
+  ])('mascara em %j', (frase, telefone) => {
+    expect(redact(frase)).not.toContain(telefone);
+  });
+
+  it('preserva os 4 últimos dígitos', () => {
+    expect(redact('erro em (11) 99999-1234')).toContain('1234');
+  });
+});
+
+describe('⛔ NÃO toca no que não é telefone', () => {
+  // Exigir forma é o ponto: dígito solto é id, pedido ou timestamp muito mais
+  // vezes que telefone. No site um padrão genérico comeu o trace id e o
+  // `sample_rand` do próprio Sentry, e o evento chegou sem rastro.
+  it.each([
+    'timestamp 1788966678797',
+    'trace 9702c7aa903a48c98a4ad2af0023b893',
+    'pedido PED-0086 valor 4350',
+    'ERP 99 / SB2609TESTE',
+  ])('deixa intacto: %s', (texto) => {
+    expect(redact(texto)).toBe(texto);
+  });
+});

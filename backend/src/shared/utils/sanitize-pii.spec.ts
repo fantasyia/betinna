@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitize } from './sanitize-pii';
+import { sanitize, sanitizarTexto } from './sanitize-pii';
 
 describe('sanitize PII', () => {
   it('redige chaves sensíveis (email, password, token, etc)', () => {
@@ -101,5 +101,49 @@ describe('sanitize PII', () => {
     expect(sanitize(undefined)).toBeUndefined();
     expect(sanitize(42)).toBe(42);
     expect(sanitize(true)).toBe(true);
+  });
+});
+
+describe('telefone com forma, solto na frase', () => {
+  // Telefone é o dado pessoal DOMINANTE deste app — base de reps e conversa de
+  // WhatsApp. E mensagem de erro escrita à mão ("Falha ao enviar para …") é
+  // exatamente onde ele aparece solto, fora de qualquer chave de objeto.
+  //
+  // Achado na conferência do filtro em 09/09: e-mail, CPF e jid já saíam
+  // mascarados; telefone com forma passava inteiro.
+
+  it.each([
+    ['Falha ao enviar para (11) 99999-0000', '(11) 99999-0000'],
+    ['Cliente pediu retorno no 11 99999-0000', '11 99999-0000'],
+    ['contato +55 11 99999-0000 nao atende', '+55 11 99999-0000'],
+    ['ligar para (11) 3333-4444 antes das 18h', '(11) 3333-4444'],
+  ])('mascara em %j', (frase, telefone) => {
+    const saida = sanitizarTexto(frase);
+    expect(saida).not.toContain(telefone);
+    // o resto da frase sobrevive — é ela que diz o que quebrou
+    expect(saida.length).toBeGreaterThan(10);
+  });
+
+  it('preserva os 4 últimos dígitos, como o resto do arquivo faz', () => {
+    // dá pra conferir com o cliente sem expor o número
+    expect(sanitizarTexto('erro em (11) 99999-1234')).toContain('1234');
+  });
+});
+
+describe('⛔ e o outro jeito de errar: NÃO tocar no que não é telefone', () => {
+  // Exigir FORMA é o ponto. Sequência de 10-11 dígitos solta é id, número de
+  // pedido ou timestamp muito mais vezes que telefone — e no site um padrão
+  // genérico chegou a comer o trace id e o `sample_rand` DO PRÓPRIO SENTRY,
+  // deixando o evento sem rastro. Erro sem rastro parece um erro normal.
+
+  it.each([
+    'timestamp 1788966678797',
+    'sample_rand 0.532593534',
+    'trace 9702c7aa903a48c98a4ad2af0023b893',
+    'pedido PED-0086 valor 4350',
+    'ERP 99 / SB2609TESTE',
+    'processou 12345678901 registros',
+  ])('deixa intacto: %s', (texto) => {
+    expect(sanitizarTexto(texto)).toBe(texto);
   });
 });

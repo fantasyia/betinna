@@ -89,6 +89,37 @@ function maskPhone(s: string): string {
 
 const RX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RX_PHONE = /^\+?\d[\d\s().-]{7,}$/;
+
+// =============================================================================
+// TELEFONE ESCRITO NO MEIO DE UMA FRASE — e por que a FORMA é obrigatória.
+//
+// O `RX_PHONE` acima só vale quando a string INTEIRA é um telefone. Não alcança
+// a frase que o nosso código escreve à mão:
+//
+//   "Falha ao enviar para (11) 99999-0000"
+//   "Cliente pediu retorno no 11 99999-0000"
+//
+// E telefone é o dado pessoal dominante deste app — base de reps e conversa de
+// WhatsApp. Mensagem de erro de envio é exatamente onde ele aparece solto.
+//
+// ⚠️ EXIGIR FORMA (parênteses, separador ou DDI) NÃO É DETALHE — é o que separa
+// esta regra de um vazamento de utilidade. Sequência de 10-11 dígitos solta é id,
+// número de pedido ou timestamp muito mais vezes que telefone. No site isso foi
+// pago em produção: um padrão genérico de 10-11 dígitos comeu o trace id e o
+// `sample_rand` DO PRÓPRIO SENTRY, e o evento chegava sem rastro.
+//
+// Limpar demais é o outro jeito de errar aqui, e é o mais silencioso: erro sem
+// pilha parece um erro normal até o dia de precisar dele.
+//
+// Portado de `somatec_web/src/lib/observabilidade/sentry-limpeza.ts`, onde os
+// dois já rodam em produção. Mesma definição de propósito: duas definições
+// diferentes pro mesmo risco dariam duas respostas.
+// =============================================================================
+
+/** (11) 99999-0000 · +55 (11) 99999 0000 */
+const RX_TELEFONE_COM_PARENTESES = /(?:\+?55[\s.-]?)?\(\d{2}\)[\s.-]?\d{4,5}[\s.-]?\d{4}\b/g;
+/** 11 99999-0000 · 11.99999.0000 · +55 11 99999-0000 */
+const RX_TELEFONE_COM_SEPARADOR = /(?:\+?55[\s.-])?\b\d{2}[\s.-]\d{4,5}[\s.-]\d{4}\b/g;
 const RX_CPF = /^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/;
 const RX_CNPJ = /^\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}$/;
 
@@ -133,6 +164,9 @@ export function sanitizarTexto(texto: string): string {
         /"(telefone|phone|number|email|cpf|cnpj|senha|password|token|secret)"\s*:\s*"([^"]*)"/gi,
         (_m, chave: string) => `"${chave}":"${REDACTED}"`,
       )
+      // TELEFONE COM FORMA, solto na frase — ver o bloco abaixo pro porquê da forma.
+      .replace(RX_TELEFONE_COM_PARENTESES, (m) => maskPhone(m))
+      .replace(RX_TELEFONE_COM_SEPARADOR, (m) => maskPhone(m))
   );
 }
 

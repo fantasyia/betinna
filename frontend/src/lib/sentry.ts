@@ -81,7 +81,28 @@ const REDACT_PESSOA: Array<[RegExp, (m: string) => string]> = [
       return `${d.slice(0, 2)}${'*'.repeat(Math.max(0, d.length - 3))}${d.slice(-1)}@${dom}`;
     },
   ],
+  // TELEFONE COM FORMA, solto na frase — "Falha ao enviar para (11) 99999-0000".
+  //
+  // ⚠️ A FORMA (parênteses, separador ou DDI) é obrigatória, e é ela que separa
+  // esta regra de um vazamento de utilidade: sequência de 10-11 dígitos solta é
+  // id, pedido ou timestamp muito mais vezes que telefone. No site um padrão
+  // genérico chegou a comer o trace id e o `sample_rand` do próprio Sentry, e o
+  // evento ficava sem rastro — que é o outro jeito de errar aqui, e o mais
+  // silencioso.
+  //
+  // Mesma definição do backend (`sanitize-pii.ts`) e do site, de propósito:
+  // duas definições diferentes pro mesmo risco dariam duas respostas.
+  [/(?:\+?55[\s.-]?)?\(\d{2}\)[\s.-]?\d{4,5}[\s.-]?\d{4}\b/g, mascararTelefone],
+  [/(?:\+?55[\s.-])?\b\d{2}[\s.-]\d{4,5}[\s.-]\d{4}\b/g, mascararTelefone],
 ];
+
+/** Mantém os 2 primeiros e os 4 últimos dígitos — dá pra conferir com o cliente
+ *  sem expor o número. Mesmo formato do `maskPhone` do backend. */
+function mascararTelefone(m: string): string {
+  const digitos = m.replace(/\D/g, '');
+  if (digitos.length < 6) return m;
+  return `${digitos.slice(0, 2)}****${digitos.slice(-4)}`;
+}
 
 /**
  * Exportado SÓ pra teste: esta função roda sobre a PILHA, e o jeito de errar
