@@ -96,6 +96,32 @@ export class ContratosController {
     return this.mensalidades.varrer(user.empresaIdAtiva);
   }
 
+  /**
+   * Refaz o cronograma de comissão do contrato pela regra ATUAL do tenant.
+   *
+   * Existe porque faltava a ponte entre "mudar a regra" e "aplicar a regra": a
+   * regra de locação vive em `Empresa.config.comissoes.locacao` e muda sem
+   * deploy, mas contrato existente só recalculava quando a NF de comodato
+   * chegava — um caminho que acontece UMA vez na vida do contrato. Trocar uma
+   * porcentagem e nada mudar é pior que não poder trocar: parece que aplicou.
+   *
+   * Seguro de repetir: o recálculo é idempotente e **não reescreve mês que já
+   * virou conta a pagar no ERP** — linha que perdeu o direito vira ZERO com o id
+   * da conta, que é o sinal pra alguém apagar lá (a API do Tiny não apaga).
+   *
+   * DIRECTOR/ADMIN por D46: mexer em comissão é decisão financeira.
+   */
+  @Post(':id/recalcular-comissoes')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'recalcular_comissoes', resource: 'contrato', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Refaz as comissões do contrato pela regra atual do tenant.' })
+  recalcularComissoes(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.contratos.recalcularComissoes(user.empresaIdAtiva, id);
+  }
+
   @Get()
   @RequirePermissions({ module: 'propostas', action: 'view' })
   @ApiOperation({ summary: 'Lista os contratos (rep vê os da carteira dele).' })

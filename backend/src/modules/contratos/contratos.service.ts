@@ -11,6 +11,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
+import { ContratoComissoesService } from '@modules/comissoes/contrato-comissoes.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { ListContratosDto } from './contratos.dto';
@@ -41,6 +42,7 @@ export class ContratosService {
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
     private readonly repScope: RepScopeService,
+    private readonly comissoes: ContratoComissoesService,
   ) {
     this.storage = createClient(
       this.env.get('SUPABASE_URL'),
@@ -146,5 +148,26 @@ export class ContratosService {
       expiraEmSegundos: URL_EXPIRA_S,
       nome: `contrato-${contrato.proposta.numero}.pdf`,
     };
+  }
+  /**
+   * Refaz as comissões do contrato pela regra ATUAL do tenant.
+   *
+   * Confere o tenant antes: recalcular contrato de outra empresa mexeria em
+   * dinheiro que não é de quem pediu.
+   */
+  async recalcularComissoes(
+    empresaId: string,
+    contratoId: string,
+  ): Promise<{ contratoId: string; linhas: number }> {
+    const contrato = await this.prisma.contrato.findFirst({
+      where: { id: contratoId, empresaId },
+      select: { id: true },
+    });
+    if (!contrato) throw new NotFoundException('Contrato', contratoId);
+
+    await this.comissoes.recalcular(contratoId);
+
+    const linhas = await this.prisma.contratoComissao.count({ where: { contratoId } });
+    return { contratoId, linhas };
   }
 }
