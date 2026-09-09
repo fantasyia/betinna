@@ -5,7 +5,12 @@ import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
 import { BusinessRuleException } from '@shared/errors/app-exception';
-import { WhatsappIndisponivelError, ehIndisponibilidade } from './whatsapp-indisponivel.error';
+import {
+  DestinatarioInvalidoError,
+  WhatsappIndisponivelError,
+  ehDestinatarioInvalido,
+  ehIndisponibilidade,
+} from './whatsapp-indisponivel.error';
 import { RedisService } from '@database/redis.service';
 
 /** O QR pode vir em vários campos dependendo da resposta do Evolution. */
@@ -780,6 +785,10 @@ export class EvolutionService {
       // Porta fechada ≠ mensagem ruim. A classificação mora AQUI, onde o corpo
       // cru da resposta está à mão — quem consome (fluxo, bot) não deve ficar
       // adivinhando string de provider pra saber se vale tentar de novo.
+      // Ordem importa: "não existe" é permanente e vem num 400, que é o mesmo
+      // envelope que o Evolution usa pra queda. Classificar depois deixaria o
+      // número inexistente cair no reagendamento — esperar pra sempre.
+      if (ehDestinatarioInvalido(err)) throw new DestinatarioInvalidoError(detalhe);
       if (ehIndisponibilidade(err)) throw new WhatsappIndisponivelError(detalhe);
       throw new BusinessRuleException(`Falha ao enviar pelo WhatsApp (Evolution): ${detalhe}`);
     }

@@ -28,6 +28,69 @@ export class WhatsappIndisponivelError extends BusinessRuleException {
 }
 
 /**
+ * O número NÃO EXISTE no WhatsApp — e nenhuma espera conserta isso.
+ *
+ * É o terceiro caso, e ele não é nem "porta fechada" nem "erro qualquer":
+ *  - indisponível → espera resolve (reagenda);
+ *  - destinatário inválido → esperar é repetir pra sempre;
+ *  - o resto → falha do nó, com retry.
+ *
+ * Medido em produção 09/09 (exec cmttkj84q005as1brr627ji8w): pedido de R$ 4.350
+ * fechado no site com um telefone que não existe no WhatsApp. O Evolution
+ * respondeu na hora e certo — `{"jid":"...","exists":false}` — mas pro motor
+ * isso era falha genérica: 3 tentativas, execução FALHOU, fim. O nó SEGUINTE
+ * era `Pausar IA — pedido é assunto de gente`, e ele nunca rodou.
+ *
+ * O estado que sobrou é o pior possível: as tags diziam que a pessoa comprou, a
+ * confirmação não chegou, o bot ficou LIGADO na conversa de quem acabou de
+ * gastar R$ 4.350, e ninguém foi avisado.
+ *
+ * O princípio: um canal que não dá pra usar não pode cancelar as decisões que
+ * NÃO dependem daquele canal. Pausar o bot e avisar um humano são exatamente
+ * isso — e é por isso que este erro faz o motor SEGUIR, não desistir.
+ */
+export class DestinatarioInvalidoError extends BusinessRuleException {
+  constructor(public readonly detalhe: string) {
+    super(`Destinatário inválido no WhatsApp: ${detalhe}`, ErrorCode.INTEGRATION_ERROR);
+    this.name = 'DestinatarioInvalidoError';
+  }
+}
+
+/**
+ * O Evolution diz "esse número não existe" de duas formas: o corpo estruturado
+ * com `exists:false` (o caso real de 09/09) e a frase solta em inglês, que
+ * varia com a versão.
+ *
+ * Deliberadamente ESTREITO. Errar pra cá é pior que errar pro outro lado: dar
+ * um número por inexistente faz o motor PULAR o envio e seguir, e o cliente
+ * nunca recebe a mensagem — sem retry e sem segunda chance. Na dúvida, cai no
+ * caminho de falha normal, que ao menos tenta de novo.
+ */
+export function ehDestinatarioInvalido(err: unknown): boolean {
+  if (err instanceof DestinatarioInvalidoError) return true;
+
+  const corpo =
+    err instanceof HttpClientError && err.body ? JSON.stringify(err.body).toLowerCase() : '';
+  // `"exists":false` é a resposta estruturada — a que não depende de tradução
+  // nem de versão do Evolution.
+  if (/"exists"\s*:\s*false/.test(corpo)) return true;
+
+  const msg = (
+    (err instanceof Error ? err.message : String(err ?? '')) +
+    ' ' +
+    corpo
+  ).toLowerCase();
+  return [
+    'number does not exist',
+    'number not exists',
+    'does not exist on whatsapp',
+    'not a valid whatsapp',
+    'invalid jid',
+    'invalid number',
+  ].some((m) => msg.includes(m));
+}
+
+/**
  * Marcas de indisponibilidade no corpo/mensagem do erro.
  *
  * Lista explícita, e não "tudo que não reconheço é transitório": errar pro lado

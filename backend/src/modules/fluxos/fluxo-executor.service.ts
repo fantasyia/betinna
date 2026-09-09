@@ -11,7 +11,10 @@ import {
   ForaDaJanelaEnvioError,
   INBOUND_RECENTE_HORAS,
 } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
-import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
+import {
+  DestinatarioInvalidoError,
+  WhatsappIndisponivelError,
+} from '@integrations/evolution/whatsapp-indisponivel.error';
 import type { DestinatarioModo, Remetente } from './remetente-whatsapp.util';
 import { resolverRemetente } from './remetente-whatsapp.util';
 import { SupressaoService } from '@shared/supressao/supressao.service';
@@ -521,6 +524,12 @@ export class FluxoExecutorService {
     // tratar como falha nem enfileirar sucessores.
     let pulado = false;
     let puladoMotivo: string | null = null;
+    // Destinatário que NÃO EXISTE no canal (número fora do WhatsApp). Não é
+    // "pulado" — pulado ENCERRA a execução, e é justamente isso que não pode
+    // acontecer: o nó seguinte costuma ser a decisão que não depende do canal
+    // (pausar o bot, criar tarefa). Aqui o passo fica VERMELHO no histórico e o
+    // fluxo SEGUE.
+    let destinatarioInvalido = false;
     // Nó "Conversar com IA" capturou erro de IA/WhatsApp e roteou pela saída "erro"
     // (já gravou tipo_erro/mensagem_erro + enfileirou o ramo "erro"). O executor não
     // deve enfileirar o caminho normal nem tratar como falha.
@@ -680,6 +689,16 @@ export class FluxoExecutorService {
         pulado = true;
         puladoMotivo = err.message;
         this.logger.log(`Execução ${execucaoId} nó ${noId}: ${err.message}`);
+      } else if (err instanceof DestinatarioInvalidoError) {
+        // Registra como FALHA (a mensagem NÃO saiu, e fingir verde aqui é o que
+        // faz ninguém olhar) mas NÃO relança: retry de número inexistente é
+        // repetir pra sempre. O fluxo continua pelo caminho normal.
+        destinatarioInvalido = true;
+        sucesso = false;
+        erroMsg = err.message;
+        this.logger.warn(
+          `Execução ${execucaoId} nó ${noId}: ${err.message} — passo não enviado, fluxo segue`,
+        );
       } else {
         sucesso = false;
         erroMsg = err instanceof Error ? err.message : String(err);
@@ -729,7 +748,10 @@ export class FluxoExecutorService {
         .catch(() => undefined);
     }
 
-    if (logStatus === 'CONCLUIDO') {
+    // `destinatarioInvalido` entra aqui junto com o sucesso: o claim precisa
+    // fechar pra que um retry não re-execute o nó — e não haverá retry, porque
+    // este caminho não relança.
+    if (logStatus === 'CONCLUIDO' || destinatarioInvalido) {
       // Marca o claim CONCLUIDO JUNTO com o log: qualquer throw DEPOIS daqui (update da
       // execução / queue.add dos sucessores) faz o BullMQ re-rodar o job, que acha o claim
       // CONCLUIDO no topo e pula o efeito — sem duplicar WhatsApp/email/opener.
@@ -746,7 +768,7 @@ export class FluxoExecutorService {
       await this.prisma.fluxoExecucaoLog.create({ data: logData });
     }
 
-    if (!sucesso) {
+    if (!sucesso && !destinatarioInvalido) {
       // Nó falhou — lança para o BullMQ re-tentar
       throw new Error(`Nó "${no.titulo}" falhou: ${erroMsg}`);
     }

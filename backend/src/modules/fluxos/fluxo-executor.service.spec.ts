@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { interpolate, FluxoExecutorService } from './fluxo-executor.service';
-import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
+import {
+  DestinatarioInvalidoError,
+  WhatsappIndisponivelError,
+} from '@integrations/evolution/whatsapp-indisponivel.error';
 
 // ---------------------------------------------------------------------------
 // Mock safeRequest (SSRF guard — não queremos chamadas de rede nos testes)
@@ -1515,6 +1518,80 @@ describe('FluxoExecutorService', () => {
         'Bom dia, time!',
         { idempotencyKey: 'fx:exec-1:no-wa:p0' },
       );
+    });
+
+    /**
+     * Número que NÃO EXISTE no WhatsApp não pode matar o resto do fluxo.
+     *
+     * Capturado em produção 09/09 (exec cmttkj84q005as1brr627ji8w): pedido de
+     * R$ 4.350 fechado no site com telefone inexistente. O Evolution respondeu
+     * certo (`exists:false`), mas pro motor era falha genérica — 3 tentativas e
+     * execução FALHOU. O nó SEGUINTE era `Pausar IA — pedido é assunto de
+     * gente`, e nunca rodou: as tags diziam que a pessoa comprou, a confirmação
+     * não chegou, o bot ficou LIGADO na conversa dela e ninguém foi avisado.
+     *
+     * Um canal que não dá pra usar não pode cancelar as decisões que NÃO
+     * dependem daquele canal.
+     */
+    describe('destinatário que não existe no WhatsApp', () => {
+      const setupNumeroInexistente = () => {
+        setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
+        prisma.fluxoEdge.findMany.mockResolvedValue([fakeEdge('no-wa', 'no-pausar-ia')]);
+        whatsapp.enviarTexto.mockRejectedValue(
+          new DestinatarioInvalidoError(
+            'HTTP 400 — {"message":[{"jid":"5511999990000@s.whatsapp.net","exists":false}]}',
+          ),
+        );
+      };
+
+      it('o fluxo SEGUE — o nó seguinte é enfileirado', async () => {
+        setupNumeroInexistente();
+
+        await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).resolves.toBeUndefined();
+
+        expect(queue.add).toHaveBeenCalledWith(
+          'step',
+          expect.objectContaining({ noId: 'no-pausar-ia' }),
+          expect.anything(),
+        );
+      });
+
+      it('NÃO relança — retry de número inexistente é repetir pra sempre', async () => {
+        setupNumeroInexistente();
+
+        // Contraste com indisponibilidade, que relança de propósito pra que as
+        // 3 tentativas curtas do BullMQ aconteçam.
+        await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).resolves.toBeUndefined();
+      });
+
+      it('o passo fica VERMELHO no histórico, com o motivo', async () => {
+        // Fingir verde aqui é o que faz ninguém olhar: a mensagem NÃO saiu.
+        setupNumeroInexistente();
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+        expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              status: 'FALHOU',
+              erroMsg: expect.stringMatching(/destinat[áa]rio inv[áa]lido/i),
+            }),
+          }),
+        );
+      });
+
+      it('a execução NÃO é encerrada como "pulada"', async () => {
+        // `pulado` (lead apagado) ENCERRA a execução — é o comportamento certo
+        // pra ele e o errado pra este caso. Se os dois caminhos se misturarem,
+        // o defeito volta com outra cara.
+        setupNumeroInexistente();
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+        expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
+        );
+      });
     });
   });
 
