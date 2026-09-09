@@ -14,6 +14,8 @@ function build(
     pedidoExistente?: Record<string, unknown> | null;
     produtos?: Array<{ id: string; sku: string; nome: string }>;
     clientePorDoc?: Array<{ id: string }>;
+    /** Como o cadastro já está no banco, pra testar o que o pedido novo sobrescreve. */
+    clienteAtual?: Record<string, unknown> | null;
     pushFalha?: boolean;
   } = {},
 ) {
@@ -32,7 +34,11 @@ function build(
     cliente: {
       create: vi.fn().mockResolvedValue({ id: 'cli-novo' }),
       update: vi.fn().mockResolvedValue({}),
-      findUnique: vi.fn().mockResolvedValue({ cnpj: null, email: null, telefone: null }),
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(
+          opts.clienteAtual ?? { nome: null, cnpj: null, email: null, telefone: null },
+        ),
     },
     $queryRaw: vi.fn().mockResolvedValue(opts.clientePorDoc ?? []),
   };
@@ -65,6 +71,106 @@ const PEDIDO = {
 
 describe('pedido do site', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  /**
+   * Dois compradores, um CNPJ.
+   *
+   * O casamento de cliente é por DOCUMENTO, então a segunda pessoa da mesma
+   * empresa cai no cadastro da primeira. Até 09/09 o telefone e o e-mail novos
+   * eram descartados em silêncio: confirmação, aviso de pagamento e código de
+   * rastreio do pedido do SEGUNDO iam todos pro WhatsApp do PRIMEIRO — e o
+   * segundo nunca recebia nada, achando que o pedido tinha sumido.
+   *
+   * Medido em 13 pedidos: o `(11) 99999-0000` entrou UMA vez, no primeiro, e
+   * os 12 seguintes herdaram — inclusive os feitos de propósito com o número
+   * certo. Duas sessões passaram o dia procurando quem tinha digitado.
+   */
+  describe('mesmo CNPJ, comprador diferente', () => {
+    const doOutroComprador = {
+      ...PEDIDO,
+      cliente: {
+        nome: 'Marina Torres',
+        cpfCnpj: '16774052000155',
+        email: 'marina@empresa.com.br',
+        telefone: '5511997524483',
+      },
+    };
+    const cadastroDoPrimeiro = {
+      nome: 'Carlos Aguiar',
+      cnpj: '16774052000155',
+      email: 'carlos@empresa.com.br',
+      telefone: '11999990000',
+    };
+
+    it('o telefone do pedido de AGORA passa a valer', async () => {
+      // É pra este número que a confirmação e o rastreio deste pedido vão.
+      const { svc, prisma } = build({
+        clientePorDoc: [{ id: 'cli-1' }],
+        clienteAtual: cadastroDoPrimeiro,
+      });
+
+      await svc.receber('emp-1', doOutroComprador as never);
+
+      expect(prisma.cliente.update.mock.calls[0][0].data).toMatchObject({
+        nome: 'Marina Torres',
+        email: 'marina@empresa.com.br',
+        telefone: '5511997524483',
+      });
+    });
+
+    it('o DOCUMENTO não é sobrescrito — identidade não vem de formulário', async () => {
+      const { svc, prisma } = build({
+        clientePorDoc: [{ id: 'cli-1' }],
+        clienteAtual: { ...cadastroDoPrimeiro, cnpj: '99999999000199' },
+      });
+
+      await svc.receber('emp-1', doOutroComprador as never);
+
+      expect(prisma.cliente.update.mock.calls[0][0].data.cnpj).toBeUndefined();
+    });
+
+    it('campo vazio no pedido NÃO apaga o que o cadastro já tem', async () => {
+      // Checkout que não pede e-mail não pode zerar o e-mail bom que existe.
+      const { svc, prisma } = build({
+        clientePorDoc: [{ id: 'cli-1' }],
+        clienteAtual: cadastroDoPrimeiro,
+      });
+
+      await svc.receber('emp-1', {
+        ...PEDIDO,
+        cliente: { nome: '  ', cpfCnpj: '16774052000155', telefone: '5511997524483' },
+      } as never);
+
+      const data = prisma.cliente.update.mock.calls[0][0].data;
+      expect(data.email).toBeUndefined();
+      expect(data.nome).toBeUndefined();
+      expect(data.telefone).toBe('5511997524483');
+    });
+
+    it('mesmo comprador de novo: nada a atualizar no contato', async () => {
+      // Sem isto, todo pedido repetido escreveria no banco e logaria "trocou"
+      // sem ter trocado nada.
+      const { svc, prisma } = build({
+        clientePorDoc: [{ id: 'cli-1' }],
+        clienteAtual: cadastroDoPrimeiro,
+      });
+
+      await svc.receber('emp-1', {
+        ...PEDIDO,
+        cliente: {
+          nome: 'Carlos Aguiar',
+          cpfCnpj: '16774052000155',
+          email: 'carlos@empresa.com.br',
+          telefone: '11999990000',
+        },
+      } as never);
+
+      const data = (prisma.cliente.update.mock.calls[0]?.[0].data ?? {}) as Record<string, unknown>;
+      expect(data.nome).toBeUndefined();
+      expect(data.email).toBeUndefined();
+      expect(data.telefone).toBeUndefined();
+    });
+  });
 
   it('pedido do site nasce Pix, vencimento 30 dias — é o que vira a conta a receber no ERP', async () => {
     const { svc, prisma } = build();

@@ -275,15 +275,36 @@ export class PedidoSiteService {
   }
 
   /**
-   * Cliente que já existe recebe o que veio novo — sem apagar o que já tinha.
+   * Cliente que já existe recebe o que veio novo. Duas regras, e a diferença
+   * entre elas é o que consertou um defeito caro.
    *
-   * Duas coisas dependem disto e falham CALADAS quando faltam: o CPF/CNPJ, sem
-   * o qual não se emite nota, e o endereço, sem o qual não se gera etiqueta.
-   * Quem comprou pelo rep e volta pelo site normalmente não tem nem um nem
-   * outro — e é justamente esse cadastro que trava o faturamento depois.
+   *  IDENTIDADE (documento) — só PREENCHE o que está vazio. Sobrescrever
+   *    CPF/CNPJ de cadastro antigo com o que veio de um formulário é como se
+   *    perde dado bom, e é o documento que decide em nome de quem sai a nota.
    *
-   * O endereço é sobrescrito de propósito: é o destino que a pessoa acabou de
-   * digitar pra ESTE pedido, e é pra lá que a etiqueta vai.
+   *  CONTATO (nome, e-mail, telefone) e ENDEREÇO — o que veio AGORA vale. A
+   *    pessoa acabou de digitar isso pra ESTE pedido: é pra esse telefone que a
+   *    confirmação e o rastreio têm que ir, e pra esse endereço que a etiqueta
+   *    vai. O endereço já funcionava assim; o contato não, e era o defeito.
+   *
+   * ⚠️ O QUE ISSO CONSERTA, medido em 13 pedidos de 09/09: o casamento é por
+   * DOCUMENTO, então dois compradores da mesma empresa caem no mesmo cadastro.
+   * Com a regra antiga, o telefone do PRIMEIRO ficava pra sempre e o do segundo
+   * era descartado em silêncio — confirmação, aviso de pagamento e código de
+   * rastreio do pedido do segundo iam todos pro WhatsApp do primeiro, e o
+   * segundo nunca recebia nada.
+   *
+   * Foi também o que espalhou o `(11) 99999-0000` por 13 pedidos: ele entrou
+   * UMA vez, no primeiro, e todos os seguintes herdaram — inclusive os que
+   * foram feitos de propósito com o número certo. Duas sessões passaram o dia
+   * procurando quem tinha digitado. Ninguém tinha.
+   *
+   * ⚠️ O que isto NÃO resolve: um `Cliente` guarda UM contato. Se A e B compram
+   * alternadamente pelo mesmo CNPJ, o cadastro fica com o do último, e uma
+   * mensagem sobre o pedido ANTIGO do A pode sair pro telefone do B. A cura
+   * disso é o contato viver no PEDIDO, não no cliente — mudança de modelo, com
+   * card próprio. Enquanto isso, "o último que comprou" é estritamente melhor
+   * que "o primeiro pra sempre": pelo menos quem está comprando recebe.
    */
   private async completar(
     id: string,
@@ -292,18 +313,38 @@ export class PedidoSiteService {
   ): Promise<{ id: string }> {
     const atual = await this.prisma.cliente.findUnique({
       where: { id },
-      select: { cnpj: true, email: true, telefone: true },
+      select: { nome: true, cnpj: true, email: true, telefone: true },
     });
+
+    /** Mudou de verdade? Campo vazio no payload NÃO apaga o que existe. */
+    const novo = (veio: string | undefined | null, tinha: string | null): boolean =>
+      Boolean(veio && veio.trim() && veio.trim() !== (tinha ?? '').trim());
+
+    const trocas: string[] = [];
+    if (novo(c.nome, atual?.nome ?? null)) trocas.push('nome');
+    if (novo(c.email, atual?.email ?? null)) trocas.push('e-mail');
+    if (novo(c.telefone, atual?.telefone ?? null)) trocas.push('telefone');
+
     const patch: Record<string, unknown> = {
       ...this.enderecoParaCliente(entrega),
-      // Só PREENCHE o que está vazio: sobrescrever documento de cadastro
-      // antigo com o que veio de um formulário é como se perde dado bom.
+      // Identidade: só preenche vazio.
       ...(!atual?.cnpj && c.cpfCnpj ? { cnpj: c.cpfCnpj } : {}),
-      ...(!atual?.email && c.email ? { email: c.email } : {}),
-      ...(!atual?.telefone && c.telefone ? { telefone: c.telefone } : {}),
+      // Contato: o do pedido de agora manda.
+      ...(novo(c.nome, atual?.nome ?? null) ? { nome: c.nome } : {}),
+      ...(novo(c.email, atual?.email ?? null) ? { email: c.email } : {}),
+      ...(novo(c.telefone, atual?.telefone ?? null) ? { telefone: c.telefone } : {}),
     };
+
     if (Object.keys(patch).length > 0) {
       await this.prisma.cliente.update({ where: { id }, data: patch });
+    }
+    // Trocar o contato de um cliente que já existe é exatamente o momento em que
+    // as mensagens passam a ir pra outra pessoa. Isso não pode acontecer calado.
+    if (trocas.length > 0) {
+      this.logger.log(
+        `[site] cliente ${id}: ${trocas.join(', ')} atualizado(s) com o que veio neste pedido ` +
+          `(mesmo documento, comprador diferente) — as mensagens deste pedido vão pro contato novo`,
+      );
     }
     return { id };
   }
