@@ -780,6 +780,7 @@ export class ConversarIaService implements OnModuleDestroy {
    * seguro → Perdido). Best-effort: qualquer falha cai em "Sem Sinergia".
    */
   private async classificarEncerramento(
+    ctx: ExecucaoContexto,
     empresaId: string,
     fluxoId: string,
     historico: HistoricoMsg[],
@@ -876,7 +877,8 @@ export class ConversarIaService implements OnModuleDestroy {
         `opções EXATAS: ${labels.map((l) => `"${l}"`).join(', ')}.\n` +
         `Na dúvida, ou se o contato não engajou de verdade, use "${fallback}".`;
     try {
-      const r = await this.muller.gerarRespostaIa(
+      const r = await this.chamarIa(
+        ctx,
         empresaId,
         prompt,
         '(classifique a conversa acima em UMA opção)',
@@ -1241,7 +1243,8 @@ export class ConversarIaService implements OnModuleDestroy {
 
     let abertura: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
-      abertura = await this.muller.gerarRespostaIa(
+      abertura = await this.chamarIa(
+        ctx,
         empresaId,
         systemPrompt + opener,
         mensagemDoTurno,
@@ -1290,16 +1293,15 @@ export class ConversarIaService implements OnModuleDestroy {
         `CONVERSAR_IA: resposta falava com o operador — regerando (${t}/${REGERAR_MAX}, ` +
           `exec ${execucaoId})`,
       );
-      const nova = await this.muller
-        .gerarRespostaIa(
-          empresaId,
-          systemPrompt + opener,
-          mensagemDoTurno,
-          historicoInicial,
-          undefined,
-          reativo ? { responseFormat: montarSchemaDoTurno(declaradasAbertura) } : {},
-        )
-        .catch(() => null);
+      const nova = await this.chamarIa(
+        ctx,
+        empresaId,
+        systemPrompt + opener,
+        mensagemDoTurno,
+        historicoInicial,
+        undefined,
+        reativo ? { responseFormat: montarSchemaDoTurno(declaradasAbertura) } : {},
+      ).catch(() => null);
       if (!nova) break;
       await this.custo.registrarUso(empresaId, nova.tokensIn ?? 0, nova.tokensOut ?? 0);
       turnoAbertura = parseTurnoIa(nova.texto);
@@ -2260,8 +2262,8 @@ export class ConversarIaService implements OnModuleDestroy {
 
     let r: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
-      this.falharSePedidoPorTeste(ctx);
-      r = await this.muller.gerarRespostaIa(
+      r = await this.chamarIa(
+        ctx,
         empresaId,
         systemPrompt + blocoRag,
         textoLead,
@@ -2409,6 +2411,7 @@ export class ConversarIaService implements OnModuleDestroy {
     // travava o funil. Só roda quando de fato houve despedida (conservador).
     if (!classificouEfetivo && !jaClassificou && respostaEhDespedida(respostaTexto)) {
       const rotulo = await this.classificarEncerramento(
+        ctx,
         empresaId,
         execucao.fluxoId,
         novoHist,
@@ -3284,6 +3287,26 @@ export class ConversarIaService implements OnModuleDestroy {
    * então distinguimos só "sem chave configurada" do resto ("provedor indisponível":
    * erro de API / rate limit / HTTP). O detalhe fino vai sempre em `mensagem_erro`.
    */
+  /**
+   * ÚNICA porta pra chamar a IA neste serviço.
+   *
+   * Existe por um motivo medido: o guard de falha forçada nasceu colado em UMA
+   * das quatro chamadas (`processarTurno`, o turno de resposta) e as outras três
+   * ficaram de fora — inclusive o OPENER, que é o caso que mais importa, porque
+   * IA que cai antes de falar deixa o cliente sem absolutamente nada. A sessão
+   * de testes foi usar e o teste do pós-venda passou reto.
+   *
+   * Com uma porta só, chamada nova nasce guardada por construção — em vez de
+   * depender de alguém lembrar.
+   */
+  private async chamarIa(
+    ctx: ExecucaoContexto,
+    ...args: Parameters<MullerBotService['gerarRespostaIa']>
+  ): Promise<Awaited<ReturnType<MullerBotService['gerarRespostaIa']>>> {
+    this.falharSePedidoPorTeste(ctx);
+    return this.muller.gerarRespostaIa(...args);
+  }
+
   /**
    * Derruba a IA DE PROPÓSITO — só dentro de execução de TESTE.
    *
