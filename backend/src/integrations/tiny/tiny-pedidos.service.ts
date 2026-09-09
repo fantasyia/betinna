@@ -44,6 +44,11 @@ export interface PedidoParaTiny {
   };
   pagamento?: {
     /** Id da forma no cadastro do tenant (`/formas-recebimento`). */
+    /**
+     * ⚠️ REMOVIDO do envio: `formaRecebimento.id` NÃO aceita o id do cadastro
+     * do tenant, e mandar o id errado faz o Tiny descartar `pagamento` inteiro
+     * (parcelas junto). Ver a nota no `criar`.
+     */
     formaRecebimentoId?: number;
     /** Enum do Tiny (15 = Pix, 5 = Boleto…) — o mesmo das contas. Sem ele o
      *  Tiny recusa: "Meio de pagamento não encontrado". */
@@ -57,8 +62,17 @@ export interface PedidoParaTiny {
   /** O que o CLIENTE pagou de frete (0 quando é frete grátis). */
   valorFrete?: number;
   observacoes?: string;
-  /** Marcadores/tags no pedido — ex.: o serviço de envio escolhido. */
-  marcadores?: string[];
+  /**
+   * ⚠️ `marcadores` NÃO existe no POST /pedidos — conferido na spec oficial
+   * (`docs/tiny/openapi.json`): os campos aceitos na criação são idContato,
+   * itens, pagamento, transportador, ecommerce, observacoes,
+   * observacoesInternas, valorFrete, vendedor, deposito e mais alguns. Marcador
+   * não está entre eles, e a API descarta campo desconhecido EM SILÊNCIO.
+   *
+   * Ficou aqui como aviso pra ninguém tentar de novo. Nota interna vai em
+   * `observacoesInternas`.
+   */
+  observacoesInternas?: string;
   /** Ids do ERP; sem eles o Tiny usa o padrão da conta quando permite. */
   depositoId?: number;
   vendedorId?: number;
@@ -217,11 +231,13 @@ export class TinyPedidosService {
       ...(pedido.pagamento
         ? {
             pagamento: {
-              ...(pedido.pagamento.formaRecebimentoId
-                ? { formaRecebimento: { id: pedido.pagamento.formaRecebimentoId } }
-                : {}),
               // `meioPagamento` NÃO é o id do cadastro de formas — é o enum do
               // Tiny (15 = Pix). Com o id do cadastro, ou sem nada, ele recusa.
+              //
+              // O MESMO vale pra `formaRecebimento`, e custou o pedido 53: mandar
+              // o id do cadastro do tenant ali faz o Tiny descartar o bloco
+              // `pagamento` inteiro em silêncio — PARCELAS JUNTO. Por isso o
+              // campo saiu daqui: sem certeza do enum, não se manda.
               ...(pedido.pagamento.meioPagamento
                 ? { meioPagamento: { id: pedido.pagamento.meioPagamento } }
                 : {}),
@@ -245,7 +261,7 @@ export class TinyPedidosService {
       ...(pedido.enderecoEntrega ? { enderecoEntrega: pedido.enderecoEntrega } : {}),
       ...(typeof pedido.valorFrete === 'number' ? { valorFrete: pedido.valorFrete } : {}),
       ...(pedido.observacoes ? { observacoes: pedido.observacoes } : {}),
-      ...(pedido.marcadores?.length ? { marcadores: pedido.marcadores } : {}),
+      ...(pedido.observacoesInternas ? { observacoesInternas: pedido.observacoesInternas } : {}),
     };
 
     const r = await this.client.post<ResultadoPedido>(empresaId, '/pedidos', corpo);

@@ -205,15 +205,18 @@ export class TinyPedidoPushService {
     // junto com a nota.
     const parcelas = dividirEmParcelas(Number(pedido.total), pedido.condicaoPagamento);
 
-    // O pedido quer as DUAS coisas: o enum ("que tipo de pagamento") e o id do
-    // cadastro DESTA conta ("qual forma"), que é onde o gateway fica pendurado.
-    // Resolvido por nome porque o id nasce por conta — o Pix desta empresa não
-    // é o Pix da próxima. Best-effort: sem id, manda só o enum.
+    // ⚠️ `formaRecebimento.id` NÃO aceita o id do cadastro do tenant.
+    //
+    // Eu mandei o id do cadastro (335196092, o "Pix" desta conta) e o Tiny
+    // DESCARTOU O BLOCO `pagamento` INTEIRO, em silêncio — levando as PARCELAS
+    // junto. Medido no pedido 53: `pagamento.parcelas: null`, quando o 49 (sem
+    // este campo) tinha a parcela de 30 dias. Parcela é o que gera a conta a
+    // receber; perdê-la é muito pior que ficar sem o rótulo.
+    //
+    // A pista estava do lado: o comentário do `meioPagamento` já dizia que ali
+    // vai o ENUM e não o cadastro. `formaRecebimento` é do mesmo espaço de ids
+    // (o GET devolve `{id: 1, nome: "Múltiplas"}`), e eu não conferi.
     const nomeForma = NOME_FORMA[pedido.formaPagamento];
-    const formaRecebimentoId =
-      erpCfg.meioPagamentoNoPedido && nomeForma
-        ? await this.contas.acharFormaRecebimento(pedido.empresaId, nomeForma).catch(() => null)
-        : null;
 
     const corpo: PedidoParaTiny = {
       cliente: {
@@ -277,15 +280,16 @@ export class TinyPedidoPushService {
         ...(erpCfg.meioPagamentoNoPedido && FORMA_TINY[pedido.formaPagamento]
           ? { meioPagamento: FORMA_TINY[pedido.formaPagamento] }
           : {}),
-        ...(formaRecebimentoId ? { formaRecebimentoId } : {}),
       },
-      // Enquanto o meio não vai no campo próprio, vai como MARCADOR: sem isto o
-      // pedido chega ao ERP como "múltiplas" e ninguém consegue conciliar a
-      // conta a receber com a cobrança do gateway. Marcador é texto livre — não
-      // tem como derrubar o pedido.
-      ...(NOME_FORMA[pedido.formaPagamento]
-        ? { marcadores: [NOME_FORMA[pedido.formaPagamento]] }
-        : {}),
+      // O meio de pagamento também em texto, porque o campo próprio depende do
+      // gateway estar ligado — e sem nenhum dos dois não dá pra conciliar a
+      // conta a receber com a cobrança.
+      //
+      // Vai em `observacoesInternas` (campo do POST, conferido na spec) e NÃO em
+      // `marcadores`: marcador NÃO EXISTE no POST /pedidos. Eu tinha posto lá e o
+      // Tiny descartou em silêncio — os campos aceitos na criação são outros, e
+      // "campo desconhecido ignorado sem erro" é a assinatura desta API.
+      ...(nomeForma ? { observacoesInternas: `Pagamento: ${nomeForma}` } : {}),
       // Data no fuso do Brasil. Sem este campo o Tiny aceitava o pedido com
       // `data: ""` — e o painel, que lista por período, não mostrava NENHUM
       // pedido vindo daqui. Existiam, em "preparando envio", invisíveis.

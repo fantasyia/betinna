@@ -67,16 +67,36 @@ const build = (over: { forma?: string; cfg?: Record<string, unknown> } = {}) => 
 };
 
 describe('forma de pagamento no pedido que sobe pro ERP', () => {
-  it('o meio vai como MARCADOR, sempre — é o que permite conciliar', async () => {
+  it('o meio vai em observacoesInternas, sempre — é o que permite conciliar', async () => {
     const { corpo } = build({ forma: 'CARTAO_CREDITO' });
 
-    expect((await corpo()).marcadores).toEqual(['Cartão de crédito']);
+    expect((await corpo()).observacoesInternas).toBe('Pagamento: Cartão de crédito');
   });
 
   it('Pix idem', async () => {
     const { corpo } = build({ forma: 'PIX' });
 
-    expect((await corpo()).marcadores).toEqual(['Pix']);
+    expect((await corpo()).observacoesInternas).toBe('Pagamento: Pix');
+  });
+
+  it('NÃO manda `marcadores` — o campo não existe no POST /pedidos', async () => {
+    // Conferido na spec oficial: marcador não está entre os campos aceitos na
+    // criação, e a API descarta campo desconhecido EM SILÊNCIO. Foi o que fez o
+    // rótulo "sumir" sem erro nenhum no pedido 53.
+    const { corpo } = build({ forma: 'PIX' });
+
+    expect((await corpo()).marcadores).toBeUndefined();
+  });
+
+  it('NÃO manda o id do cadastro como formaRecebimento — derruba as PARCELAS', async () => {
+    // Medido no pedido 53: com o id do cadastro do tenant (335196092), o Tiny
+    // descartou o bloco `pagamento` INTEIRO e as parcelas vieram null. Parcela
+    // é o que gera a conta a receber — perdê-la é pior que ficar sem o rótulo.
+    const { corpo } = build({ forma: 'PIX', cfg: { meioPagamentoNoPedido: true } });
+
+    const pag = (await corpo()).pagamento as Record<string, unknown>;
+    expect(pag.formaRecebimentoId).toBeUndefined();
+    expect(pag.parcelas).toBeDefined();
   });
 
   it('SEM a chave do tenant, o campo próprio NÃO vai', async () => {
@@ -100,25 +120,6 @@ describe('forma de pagamento no pedido que sobe pro ERP', () => {
     const { corpo } = build({ forma: 'PIX', cfg: { meioPagamentoNoPedido: true } });
 
     expect(((await corpo()).pagamento as Record<string, unknown>).meioPagamento).toBe(15);
-  });
-
-  it('COM a chave ligada, vai TAMBÉM o id do cadastro da conta', async () => {
-    // O enum diz "que tipo"; o id diz "qual forma DESTA conta" — e é nele que o
-    // gateway fica pendurado. O Tiny quer os dois.
-    const { corpo } = build({ forma: 'PIX', cfg: { meioPagamentoNoPedido: true } });
-
-    expect(((await corpo()).pagamento as Record<string, unknown>).formaRecebimentoId).toBe(
-      335196092,
-    );
-  });
-
-  it('SEM a chave, não procura forma nenhuma no ERP', async () => {
-    // Uma chamada a mais por pedido, pra um dado que não vai ser mandado.
-    const { corpo, contas } = build();
-
-    await corpo();
-
-    expect(contas.acharFormaRecebimento).not.toHaveBeenCalled();
   });
 
   it('as PARCELAS continuam indo em qualquer caso', async () => {
