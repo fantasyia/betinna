@@ -911,6 +911,16 @@ model Pedido {
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
   enviadoErpEm DateTime?
+  /// Por que o push pro ERP falhou, e quando foi a última tentativa.
+  ///
+  /// Existe porque a falha era INVISÍVEL: o pedido do site sobe pro ERP na hora
+  /// e a exceção é engolida de propósito (o cliente pagou, o pedido tem que
+  /// existir mesmo com o ERP fora). Só que o único registro era um
+  /// `logger.error` no container — passadas algumas horas, o log rotaciona e
+  /// sobra um RASCUNHO mudo. Em 09/09 dois pedidos de teste ficaram assim e não
+  /// foi possível dizer POR QUE não subiram.
+  erpErro      String?   @db.Text
+  erpErroEm    DateTime?
   pagoEm       DateTime?
   /// Setado no avancarStatus quando vira ENTREGUE — base da janela de devolução.
   entregueEm   DateTime?

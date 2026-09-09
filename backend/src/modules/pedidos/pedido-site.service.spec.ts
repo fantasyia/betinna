@@ -21,6 +21,8 @@ function build(
     pedido: {
       findFirst: vi.fn().mockResolvedValue(opts.pedidoExistente ?? null),
       create: vi.fn().mockResolvedValue({ id: 'ped-1', numero: 'PED-0009' }),
+      // Guarda (ou limpa) o motivo da falha de envio ao ERP.
+      update: vi.fn().mockResolvedValue({}),
     },
     produto: {
       findMany: vi
@@ -41,6 +43,7 @@ function build(
       ? vi.fn().mockRejectedValue(new Error('Tiny 500'))
       : vi.fn().mockResolvedValue({ numeroErp: '77' }),
   };
+  const notificacoes = { criarParaRole: vi.fn(async () => undefined) };
   const svc = new PedidoSiteService(
     prisma as never,
     captura as never,
@@ -48,8 +51,9 @@ function build(
     erpPush as never,
     // Comissão de canal: tem teste próprio no serviço dela.
     { recalcular: vi.fn(async () => undefined) } as never,
+    notificacoes as never,
   );
-  return { svc, prisma, captura, erpPush };
+  return { svc, prisma, captura, erpPush, notificacoes };
 }
 
 const PEDIDO = {
@@ -310,5 +314,48 @@ describe('pedido do site', () => {
 
       expect(prisma.cliente.create).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('falha de envio ao ERP deixa RASTRO', () => {
+  // Antes: o único registro era um `logger.error` no container. Passadas
+  // algumas horas o log rotaciona e sobra um RASCUNHO mudo — cliente pagou,
+  // expedição não vê, e não dá pra dizer por quê. Aconteceu em 09/09 com dois
+  // pedidos de teste, e foi impossível recuperar a causa.
+  it('grava o motivo NO pedido e avisa quem decide', async () => {
+    const { svc, prisma, erpPush, notificacoes } = build();
+    erpPush.enviarPedido.mockRejectedValue(new Error('contato recusado pelo ERP'));
+
+    const r = await svc.receber('blc_chave', PEDIDO);
+
+    // O pedido continua existindo: o cliente pagou.
+    expect(r.numero).toBe('PED-0009');
+    expect(prisma.pedido.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ erpErro: 'contato recusado pelo ERP' }),
+      }),
+    );
+    expect(notificacoes.criarParaRole).toHaveBeenCalledWith(
+      expect.objectContaining({ roles: ['DIRECTOR', 'ADMIN'], prioridade: 'ALTA' }),
+    );
+  });
+
+  it('quando sobe, limpa a marca — senão o pedido fica marcado pra sempre', async () => {
+    const { svc, prisma } = build();
+
+    await svc.receber('blc_chave', PEDIDO);
+
+    expect(prisma.pedido.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { erpErro: null, erpErroEm: null } }),
+    );
+  });
+
+  it('falha ao gravar o rastro não derruba a resposta do checkout', async () => {
+    // O pedido do cliente vale mais que o nosso registro dele.
+    const { svc, prisma, erpPush } = build();
+    erpPush.enviarPedido.mockRejectedValue(new Error('ERP fora'));
+    prisma.pedido.update.mockRejectedValue(new Error('banco instável'));
+
+    await expect(svc.receber('blc_chave', PEDIDO)).resolves.toMatchObject({ numero: 'PED-0009' });
   });
 });

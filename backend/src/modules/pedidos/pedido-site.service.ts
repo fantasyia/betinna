@@ -4,6 +4,7 @@ import { PrismaService } from '@database/prisma.service';
 import { LeadCaptureService } from '@modules/leads/lead-capture.service';
 import { TinyPedidoPushService } from '@integrations/tiny/tiny-pedido-push.service';
 import { PedidoComissoesService } from './pedido-comissoes.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { SequenceService } from '@shared/utils/sequence.service';
@@ -56,6 +57,7 @@ export class PedidoSiteService {
     private readonly sequence: SequenceService,
     private readonly erpPush: TinyPedidoPushService,
     private readonly comissoes: PedidoComissoesService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   async receber(
@@ -157,11 +159,42 @@ export class PedidoSiteService {
     try {
       const r = await this.erpPush.enviarPedido(pedido.id, empresaId);
       numeroErp = r.numeroErp;
+      // Tentativa anterior que falhou deixa de contar: sem limpar, um pedido
+      // que subiu no retry continuaria marcado como problema pra sempre.
+      await this.prisma.pedido
+        .update({ where: { id: pedido.id }, data: { erpErro: null, erpErroEm: null } })
+        .catch(() => undefined);
     } catch (err) {
+      const motivo = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `[site] pedido ${dto.numeroSite} criado (${pedido.numero}) mas NÃO subiu ao ERP: ` +
-          `${err instanceof Error ? err.message : String(err)}`,
+        `[site] pedido ${dto.numeroSite} criado (${pedido.numero}) mas NÃO subiu ao ERP: ${motivo}`,
       );
+      // O MOTIVO fica no pedido. Antes só existia nesta linha de log — que
+      // rotaciona em horas e deixa um RASCUNHO mudo: cliente pagou, expedição
+      // não vê, e nem dá pra dizer por quê.
+      await this.prisma.pedido
+        .update({
+          where: { id: pedido.id },
+          data: { erpErro: motivo.slice(0, 2000), erpErroEm: new Date() },
+        })
+        .catch(() => undefined);
+      // E alguém precisa SABER. Pedido de site é dinheiro que entrou: ficar
+      // esperando a rodada diária sem avisar é o que transforma uma falha
+      // recuperável em pedido esquecido.
+      await this.notificacoes
+        .criarParaRole({
+          empresaId,
+          roles: ['DIRECTOR', 'ADMIN'],
+          tipo: 'GENERICO',
+          titulo: `Pedido ${pedido.numero} do site não subiu ao ERP`,
+          mensagem:
+            `${dto.numeroSite} — ${motivo.slice(0, 180)}. ` +
+            'O pedido existe no app e a rodada diária tenta de novo; se persistir, é caso de olhar.',
+          prioridade: 'ALTA',
+          link: `/pedidos/${pedido.id}`,
+          metadata: { pedidoId: pedido.id, numeroSite: dto.numeroSite },
+        })
+        .catch(() => undefined);
     }
 
     this.logger.log(`[site] pedido ${dto.numeroSite} → ${pedido.numero} (ERP ${numeroErp ?? '—'})`);
