@@ -1697,6 +1697,10 @@ enum ComissaoTipo {
   GERENTE
   /// Comissão sobre venda de CANAL (site), somada das linhas por pedido.
   SITE
+  /// Participação FIXA na locação — não depende de quem vendeu. Separada de
+  /// `REP` porque a mesma pessoa pode receber as duas no mesmo contrato (quem
+  /// tem participação e também é o representante daquele contrato).
+  PARTICIPACAO
 }
 
 /// Comissão de ORIGINAÇÃO — a de quem trouxe o representante, não a de quem

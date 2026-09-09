@@ -4,9 +4,19 @@ import { ContratoComissoesService, competencias, mesUtc } from './contrato-comis
 
 const makePrisma = () => ({
   contrato: { findUnique: vi.fn() },
-  // Quem recebe pela mensalidade é todo mundo com % de representante — o rep
-  // do contrato entra nessa lista como qualquer outro, uma linha por pessoa.
-  usuario: { findMany: vi.fn(async () => [{ id: 'rep-1', comissaoPadrao: 10 }]) },
+  // A regra da locação vive na config do tenant (Léo, 09/09): participação fixa
+  // de pessoas escolhidas + % do representante daquele contrato.
+  empresa: {
+    findUnique: vi.fn(async () => ({
+      config: { comissoes: { locacao: { representantePercentual: 10, participacao: [] } } },
+    })),
+  },
+  // Filtra os beneficiários da regra que estão ativos.
+  usuario: {
+    findMany: vi.fn(async (args: { where: { id: { in: string[] } } }) =>
+      args.where.id.in.map((id) => ({ id })),
+    ),
+  },
   contratoComissao: {
     findUnique: vi.fn(async () => null),
     create: vi.fn(async () => ({})),
@@ -132,40 +142,76 @@ describe('ContratoComissoesService', () => {
     expect(del.where.competencia.gt).toBeInstanceOf(Date);
   });
 
-  it('paga TODO MUNDO com % de representante, não só quem fechou o contrato', async () => {
-    // Regra do Léo (05/09): "5% pra mim e pro Harada nas vendas através de
-    // representantes". A participação dos dois não depende de quem vendeu.
+  it('paga a PARTICIPAÇÃO configurada + o representante do contrato', async () => {
+    // ⚠️ Este teste dizia o contrário até 09/09: "paga todo mundo com
+    // `comissaoPadrao > 0`". Esse critério fazia a conta ADMIN `marketing@`
+    // receber 5% de toda locação só por ter um número no campo — e já tinha
+    // gerado 4 contas a pagar no ERP. A regra do Léo é nominal: 5% pro Leonardo,
+    // 5% pro Harada, 10% pro representante, só isso.
     prisma.contrato.findUnique.mockResolvedValue(contrato({ prazoMeses: 1 }));
-    prisma.usuario.findMany.mockResolvedValue([
-      { id: 'rep-1', comissaoPadrao: 5 },
-      { id: 'leo', comissaoPadrao: 5 },
-    ]);
+    prisma.empresa.findUnique.mockResolvedValue({
+      config: {
+        comissoes: {
+          locacao: {
+            representantePercentual: 10,
+            participacao: [{ usuarioId: 'leo', percentual: 5 }],
+          },
+        },
+      },
+    });
 
     await svc.recalcular('ctr-1');
 
     expect(prisma.contratoComissao.create).toHaveBeenCalledTimes(2);
-    const donos = prisma.contratoComissao.create.mock.calls.map(
-      (c) => (c[0] as { data: { usuarioId: string } }).data.usuarioId,
-    );
-    expect(donos.sort()).toEqual(['leo', 'rep-1']);
+    const linhas = prisma.contratoComissao.create.mock.calls
+      .map((c) => (c[0] as { data: { usuarioId: string; tipo: string; percentual: number } }).data)
+      .map((d) => `${d.usuarioId}:${d.tipo}:${d.percentual}`)
+      .sort();
+    expect(linhas).toEqual(['leo:PARTICIPACAO:5', 'rep-1:REP:10']);
   });
 
-  it('quem é o próprio representante aparece UMA vez, não duas', async () => {
-    // O rep do contrato entra na lista de beneficiários como qualquer outro —
-    // a linha dele não soma com uma segunda "de participação".
+  it('quem é participante E representante recebe as DUAS linhas', async () => {
+    // ⚠️ Invertido em 09/09. Dizia "aparece UMA vez, não duas" — e isso fazia
+    // o Harada, quando representante, receber 5% em vez de 5% + 10%. São dois
+    // pagamentos por dois motivos diferentes; a chave única inclui o TIPO
+    // exatamente pra caberem os dois.
     prisma.contrato.findUnique.mockResolvedValue(contrato({ prazoMeses: 1 }));
-    prisma.usuario.findMany.mockResolvedValue([{ id: 'rep-1', comissaoPadrao: 5 }]);
+    prisma.empresa.findUnique.mockResolvedValue({
+      config: {
+        comissoes: {
+          locacao: {
+            representantePercentual: 10,
+            participacao: [{ usuarioId: 'rep-1', percentual: 5 }],
+          },
+        },
+      },
+    });
 
     await svc.recalcular('ctr-1');
 
-    expect(prisma.contratoComissao.create).toHaveBeenCalledTimes(1);
+    expect(prisma.contratoComissao.create).toHaveBeenCalledTimes(2);
+    const linhas = prisma.contratoComissao.create.mock.calls
+      .map((c) => (c[0] as { data: { tipo: string; percentual: number } }).data)
+      .map((d) => `${d.tipo}:${d.percentual}`)
+      .sort();
+    expect(linhas).toEqual(['PARTICIPACAO:5', 'REP:10']);
   });
 
-  it('contrato SEM representante continua comissionando os beneficiários', async () => {
+  it('contrato SEM representante continua pagando a participação', async () => {
+    // É isto que faz a participação ser "fixa": ela não depende de quem vendeu.
     prisma.contrato.findUnique.mockResolvedValue(
       contrato({ prazoMeses: 1, representanteId: null }),
     );
-    prisma.usuario.findMany.mockResolvedValue([{ id: 'leo', comissaoPadrao: 5 }]);
+    prisma.empresa.findUnique.mockResolvedValue({
+      config: {
+        comissoes: {
+          locacao: {
+            representantePercentual: 10,
+            participacao: [{ usuarioId: 'leo', percentual: 5 }],
+          },
+        },
+      },
+    });
 
     await svc.recalcular('ctr-1');
 

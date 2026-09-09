@@ -67,29 +67,56 @@ export class ContratoComissoesService {
       return;
     }
 
-    // Quem recebe pela mensalidade: TODO MUNDO com % de representante
-    // configurada — não só quem fechou o contrato (regra do Léo, 05/09: "5% pra
-    // mim e pro Harada nas vendas através de representantes").
+    // A regra da locação (Léo, 09/09), textual: "5% pro Leonardo, 5% pro Harada
+    // e 10% pro representante, só isso, só essa regra".
     //
-    // Uma linha por PESSOA, não por papel: quando o próprio Harada é o
-    // representante do contrato, ele aparece UMA vez, não duas. É o mesmo
-    // desenho da camada de site na venda ("todo mundo que tem % de canal"), que
-    // nunca tinha sido aplicada às vendas por representante.
+    // São DUAS coisas, e é por isso que têm tipos distintos:
     //
-    // Sem representante o contrato continua comissionando: a participação dos
-    // dois não depende de quem vendeu.
-    const beneficiarios = await this.prisma.usuario.findMany({
+    //  PARTICIPACAO — fixa, de quem o tenant configurou, e NÃO depende de quem
+    //                 vendeu. Contrato sem representante segue pagando.
+    //  REP          — de quem é o representante DAQUELE contrato.
+    //
+    // Quando a mesma pessoa é as duas coisas, ela recebe as duas (5% + 10%). A
+    // chave única inclui o tipo justamente pra isso: com um tipo só, a segunda
+    // linha sobrescreveria a primeira e ela receberia metade.
+    //
+    // Vem da config do tenant, e não de `comissaoPadrao`, por dois motivos: a
+    // participação é de PESSOAS ESPECÍFICAS (não "todo mundo que tem %"), e
+    // `comissaoPadrao` já significa outra coisa no pedido de venda — reusar
+    // mudaria a comissão de venda junto, que ninguém pediu.
+    const regra = await this.regraDaLocacao(contrato.empresaId);
+
+    const beneficiarios: Array<{ id: string; percentual: number; tipo: 'PARTICIPACAO' | 'REP' }> =
+      [];
+    for (const p of regra.participacao) {
+      if (p.percentual > 0) {
+        beneficiarios.push({ id: p.usuarioId, percentual: p.percentual, tipo: 'PARTICIPACAO' });
+      }
+    }
+    if (contrato.representanteId && regra.representantePercentual > 0) {
+      beneficiarios.push({
+        id: contrato.representanteId,
+        percentual: regra.representantePercentual,
+        tipo: 'REP',
+      });
+    }
+
+    // DESLIGADO não recebe. PENDENTE recebe: é quem foi convidado e ainda não
+    // logou, e a % dele já foi decidida por quem configurou — deixar de fora
+    // seria calote silencioso.
+    const ativos = await this.prisma.usuario.findMany({
       where: {
+        id: { in: beneficiarios.map((b) => b.id) },
         empresas: { some: { empresaId: contrato.empresaId } },
-        // Perde a comissão quem foi DESLIGADO. PENDENTE é quem foi convidado e
-        // ainda não logou — a % dele já foi decidida por quem configurou.
         status: { not: 'INATIVO' },
-        comissaoPadrao: { gt: 0 },
       },
-      select: { id: true, comissaoPadrao: true },
+      select: { id: true },
     });
-    if (beneficiarios.length === 0) {
-      await this.zerarPendentes(contratoId, 'ninguém com % de representante configurada');
+    const podeReceber = new Set(ativos.map((u) => u.id));
+    const linhasAtivas = beneficiarios.filter((b) => podeReceber.has(b.id));
+
+    if (linhasAtivas.length === 0) {
+      await this.zerarPendentes(contratoId, 'nenhum beneficiário ativo pela regra de locação');
       return;
     }
 
@@ -106,15 +133,15 @@ export class ContratoComissoesService {
 
     for (const competencia of meses) {
       if (ate && competencia > ate) continue;
-      for (const b of beneficiarios) {
-        const pct = b.comissaoPadrao ?? 0;
+      for (const b of linhasAtivas) {
+        const pct = b.percentual;
         const valor = base.mul(pct).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
         const existente = await this.prisma.contratoComissao.findUnique({
           where: {
             contratoId_usuarioId_tipo_competencia: {
               contratoId,
               usuarioId: b.id,
-              tipo: 'REP',
+              tipo: b.tipo,
               competencia,
             },
           },
@@ -126,7 +153,7 @@ export class ContratoComissoesService {
               empresaId: contrato.empresaId,
               contratoId,
               usuarioId: b.id,
-              tipo: 'REP',
+              tipo: b.tipo,
               competencia,
               percentual: pct,
               base,
@@ -146,15 +173,20 @@ export class ContratoComissoesService {
       // `contaPagarErpId` — deixa de ser agora que a locação provisiona.
     }
 
-    // Quem saiu da lista (perdeu a %, foi desligado) some — salvo se já virou
-    // conta no ERP, que aí é zerada e vira aviso, porque a API não apaga conta.
-    const ids = beneficiarios.map((b) => b.id);
+    // Quem saiu da lista (perdeu a %, foi desligado, deixou de ser o
+    // representante) some — salvo se já virou conta no ERP, que aí é zerada e
+    // vira aviso, porque a API do Tiny não apaga conta.
+    //
+    // Casa por (pessoa, TIPO), não só por pessoa: com dois tipos, alguém que
+    // deixou de ser o representante mas manteve a participação continuaria com a
+    // linha REP velha se o filtro olhasse só o `usuarioId`.
+    const par = linhasAtivas.map((b) => ({ usuarioId: b.id, tipo: b.tipo }));
     await this.prisma.contratoComissao.updateMany({
-      where: { contratoId, usuarioId: { notIn: ids }, contaPagarErpId: { not: null } },
+      where: { contratoId, NOT: par, contaPagarErpId: { not: null } },
       data: { valor: new Prisma.Decimal(0) },
     });
     await this.prisma.contratoComissao.deleteMany({
-      where: { contratoId, usuarioId: { notIn: ids }, contaPagarErpId: null },
+      where: { contratoId, NOT: par, contaPagarErpId: null },
     });
 
     if (ate) {
@@ -198,6 +230,52 @@ export class ContratoComissoesService {
   }
 
   /** Zera o que ainda não virou conta (e apaga de vez o que nem chegou lá). */
+  /**
+   * A regra de comissão da LOCAÇÃO deste tenant.
+   *
+   * Mora em `Empresa.config.comissoes.locacao` porque é combinado comercial, e
+   * combinado comercial muda sem deploy. Formato:
+   *
+   * ```json
+   * { "comissoes": { "locacao": {
+   *     "representantePercentual": 10,
+   *     "participacao": [ { "usuarioId": "...", "percentual": 5 } ]
+   * } } }
+   * ```
+   *
+   * Ausente = nada é comissionado, e de propósito: melhor um contrato sem
+   * comissão (que alguém nota e reclama) do que comissão inventada por um
+   * default (que ninguém nota e vira dinheiro pago errado).
+   */
+  private async regraDaLocacao(empresaId: string): Promise<{
+    representantePercentual: number;
+    participacao: Array<{ usuarioId: string; percentual: number }>;
+  }> {
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const cfg = ((empresa?.config as Record<string, unknown> | null)?.comissoes ?? {}) as {
+      locacao?: {
+        representantePercentual?: number;
+        participacao?: Array<{ usuarioId?: string; percentual?: number }>;
+      };
+    };
+    const loc = cfg.locacao ?? {};
+    const participacao = (loc.participacao ?? [])
+      .filter((p): p is { usuarioId: string; percentual: number } =>
+        Boolean(p?.usuarioId && typeof p.percentual === 'number'),
+      )
+      .map((p) => ({ usuarioId: p.usuarioId, percentual: p.percentual }));
+    if (!loc.representantePercentual && participacao.length === 0) {
+      this.logger.warn(
+        `Empresa ${empresaId} sem regra de comissão de locação em ` +
+          `config.comissoes.locacao — nenhum contrato comissiona`,
+      );
+    }
+    return { representantePercentual: loc.representantePercentual ?? 0, participacao };
+  }
+
   private async zerarPendentes(contratoId: string, motivo: string): Promise<void> {
     const zeradas = await this.prisma.contratoComissao.updateMany({
       where: { contratoId, contaPagarErpId: { not: null } },
