@@ -11,6 +11,7 @@ import {
   type ResultadoPedido,
 } from './tiny-pedidos.service';
 import { TinyContatosService } from './tiny-contatos.service';
+import { TinyContasService } from './tiny-contas.service';
 import { FORMA_TINY, NOME_FORMA } from '@modules/pedidos/parcelas.util';
 
 export interface ResultadoPush {
@@ -46,6 +47,7 @@ export class TinyPedidoPushService {
     private readonly pedidos: TinyPedidosService,
     private readonly contatos: TinyContatosService,
     private readonly integracoes: IntegracoesService,
+    private readonly contas: TinyContasService,
   ) {}
 
   /**
@@ -203,6 +205,16 @@ export class TinyPedidoPushService {
     // junto com a nota.
     const parcelas = dividirEmParcelas(Number(pedido.total), pedido.condicaoPagamento);
 
+    // O pedido quer as DUAS coisas: o enum ("que tipo de pagamento") e o id do
+    // cadastro DESTA conta ("qual forma"), que é onde o gateway fica pendurado.
+    // Resolvido por nome porque o id nasce por conta — o Pix desta empresa não
+    // é o Pix da próxima. Best-effort: sem id, manda só o enum.
+    const nomeForma = NOME_FORMA[pedido.formaPagamento];
+    const formaRecebimentoId =
+      erpCfg.meioPagamentoNoPedido && nomeForma
+        ? await this.contas.acharFormaRecebimento(pedido.empresaId, nomeForma).catch(() => null)
+        : null;
+
     const corpo: PedidoParaTiny = {
       cliente: {
         nome: pedido.cliente.nome,
@@ -265,6 +277,7 @@ export class TinyPedidoPushService {
         ...(erpCfg.meioPagamentoNoPedido && FORMA_TINY[pedido.formaPagamento]
           ? { meioPagamento: FORMA_TINY[pedido.formaPagamento] }
           : {}),
+        ...(formaRecebimentoId ? { formaRecebimentoId } : {}),
       },
       // Enquanto o meio não vai no campo próprio, vai como MARCADOR: sem isto o
       // pedido chega ao ERP como "múltiplas" e ninguém consegue conciliar a

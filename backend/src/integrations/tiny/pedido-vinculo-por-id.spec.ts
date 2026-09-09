@@ -62,6 +62,7 @@ const build = (over: { pedido?: Record<string, unknown>; updateFalha?: boolean }
     pedidos as never,
     { acharVendedorPorContato: vi.fn() } as never,
     { registrarSaudeOk: vi.fn().mockResolvedValue(undefined) } as never,
+    { acharFormaRecebimento: vi.fn().mockResolvedValue(335196092) } as never,
   );
   return { svc, prisma, pedidos };
 };

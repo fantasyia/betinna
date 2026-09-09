@@ -51,17 +51,19 @@ const build = (over: { forma?: string; cfg?: Record<string, unknown> } = {}) => 
     criar: vi.fn().mockResolvedValue({ id: 339043452, numeroPedido: 49 }),
     informarVolumes: vi.fn().mockResolvedValue({}),
   };
+  const contas = { acharFormaRecebimento: vi.fn().mockResolvedValue(335196092) };
   const svc = new TinyPedidoPushService(
     prisma as never,
     pedidos as never,
     { acharVendedorPorContato: vi.fn() } as never,
     { registrarSaudeOk: vi.fn().mockResolvedValue(undefined) } as never,
+    contas as never,
   );
   const corpo = async () => {
     await svc.enviarPedido('ped-1', 'emp-1');
     return pedidos.criar.mock.calls[0][1] as Record<string, unknown>;
   };
-  return { corpo };
+  return { corpo, contas };
 };
 
 describe('forma de pagamento no pedido que sobe pro ERP', () => {
@@ -98,6 +100,25 @@ describe('forma de pagamento no pedido que sobe pro ERP', () => {
     const { corpo } = build({ forma: 'PIX', cfg: { meioPagamentoNoPedido: true } });
 
     expect(((await corpo()).pagamento as Record<string, unknown>).meioPagamento).toBe(15);
+  });
+
+  it('COM a chave ligada, vai TAMBÉM o id do cadastro da conta', async () => {
+    // O enum diz "que tipo"; o id diz "qual forma DESTA conta" — e é nele que o
+    // gateway fica pendurado. O Tiny quer os dois.
+    const { corpo } = build({ forma: 'PIX', cfg: { meioPagamentoNoPedido: true } });
+
+    expect(((await corpo()).pagamento as Record<string, unknown>).formaRecebimentoId).toBe(
+      335196092,
+    );
+  });
+
+  it('SEM a chave, não procura forma nenhuma no ERP', async () => {
+    // Uma chamada a mais por pedido, pra um dado que não vai ser mandado.
+    const { corpo, contas } = build();
+
+    await corpo();
+
+    expect(contas.acharFormaRecebimento).not.toHaveBeenCalled();
   });
 
   it('as PARCELAS continuam indo em qualquer caso', async () => {

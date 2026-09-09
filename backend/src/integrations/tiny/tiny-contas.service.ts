@@ -239,6 +239,34 @@ export class TinyContasService {
    * Falha aqui NÃO derruba o lançamento: melhor conta a pagar sem categoria do
    * que comissão não provisionada.
    */
+  /**
+   * Id da FORMA DE RECEBIMENTO no cadastro do tenant (Configurações → Formas de
+   * recebimento). Não confundir com o enum do Tiny (15 = Pix, 3 = cartão): o
+   * pedido quer os DOIS, e são coisas diferentes — o enum diz "que tipo", o id
+   * diz "qual cadastro desta conta", e é nele que o gateway está pendurado.
+   *
+   * Resolve por NOME, e não por id cravado, porque esses ids nascem por conta:
+   * o Pix desta empresa não é o Pix da próxima. Só considera forma ATIVA
+   * (`situacao: '1'`) — mandar uma inativa é o mesmo que mandar id que não vale.
+   */
+  async acharFormaRecebimento(empresaId: string, nome: string): Promise<number | null> {
+    try {
+      const r = await this.client.get<{
+        itens?: Array<{ id: number; nome?: string; situacao?: string }>;
+      }>(empresaId, '/formas-recebimento', { limit: 100 });
+      const chave = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+      const alvo = (r.itens ?? []).find(
+        (f) => chave(f.nome ?? '') === chave(nome) && String(f.situacao ?? '1') === '1',
+      );
+      return alvo?.id ?? null;
+    } catch (err) {
+      this.logger.warn(
+        `[tiny] não consegui listar formas de recebimento: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
   async acharCategoria(empresaId: string, nome: string): Promise<number | null> {
     try {
       const r = await this.client.get<{ itens?: Array<{ id: number; descricao?: string }> }>(
