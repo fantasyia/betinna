@@ -94,6 +94,8 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
       'u1',
       'google_calendar',
       expect.objectContaining({ accessToken: 'at', refreshToken: 'rt', email: 'a@gmail.com' }),
+      // A pessoa acabou de autorizar: é ISTO que a tela chama de "Conectado em".
+      { carimbarConexao: true },
     );
   });
 
@@ -193,5 +195,29 @@ describe('GoogleOAuthService.getAccessToken', () => {
     expect(t).toBe('fresh');
     expect(http.post).toHaveBeenCalledTimes(1);
     expect(ui.conectarInterno).toHaveBeenCalled();
+  });
+
+  // O par do teste acima: o refresh passa pelo MESMO `conectarInterno`, e o
+  // token do Google dura 1h. Se ele carimbasse, o "Conectado em" da tela
+  // andaria de hora em hora — que é o bug que o campo veio resolver.
+  it('o refresh NÃO carimba a data de conexão', async () => {
+    const ui = makeUserIntegracoes();
+    ui.obterCredenciaisInternas.mockResolvedValueOnce({
+      credenciais: { accessToken: 'expired', refreshToken: 'rt', expiresAt: Date.now() - 1000 },
+    });
+    const http = makeHttp();
+    http.post.mockResolvedValueOnce({
+      status: 200,
+      data: { access_token: 'fresh', expires_in: 3600, scope: '', token_type: 'Bearer' },
+    });
+    const svc = new GoogleOAuthService(
+      makeEnv() as never,
+      http as never,
+      ui as never,
+      makeRedis() as never,
+    );
+    await svc.getAccessToken('u1');
+    // 4º argumento ausente = sem `carimbarConexao`.
+    expect(ui.conectarInterno.mock.calls.at(-1)?.[3]).toBeUndefined();
   });
 });

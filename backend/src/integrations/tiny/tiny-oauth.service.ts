@@ -92,7 +92,7 @@ export class TinyOAuthService {
         code,
       }),
     );
-    await this.persistir(empresaId, this.montarCredenciais(res));
+    await this.persistir(empresaId, this.montarCredenciais(res), true);
     this.logger.log(`Tiny conectado empresa=${empresaId}`);
     return { empresaId };
   }
@@ -190,7 +190,13 @@ export class TinyOAuthService {
     };
   }
 
-  private async persistir(empresaId: string, creds: TinyCredenciais): Promise<void> {
+  /** `true` só na volta do provedor (a pessoa autorizou). O refresh de token
+   *  passa pelo mesmo caminho e NÃO pode carimbar. */
+  private async persistir(
+    empresaId: string,
+    creds: TinyCredenciais,
+    carimbarConexao = false,
+  ): Promise<void> {
     await this.integracoes.salvarCredenciaisInternas(
       empresaId,
       'tiny',
@@ -199,6 +205,7 @@ export class TinyOAuthService {
       // tokens). O client_id serve de identificador estável da conexão — é o
       // que distingue "conectado por qual aplicativo" se um dia houver mais de um.
       this.env.get('TINY_CLIENT_ID'),
+      { carimbarConexao },
     );
   }
 

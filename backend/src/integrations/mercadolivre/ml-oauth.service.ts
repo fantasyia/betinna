@@ -87,7 +87,7 @@ export class MLOAuthService {
       nickname: userInfo.nickname,
       siteId: userInfo.site_id ?? this.env.get('ML_SITE_ID'),
     };
-    await this.persistir(empresaId, creds);
+    await this.persistir(empresaId, creds, true);
 
     this.logger.log(
       `ML conectado empresa=${empresaId} user_id=${creds.userId} nick=${creds.nickname ?? '?'}`,
@@ -246,12 +246,19 @@ export class MLOAuthService {
     return res.data;
   }
 
-  private async persistir(empresaId: string, creds: MLCredenciais): Promise<void> {
+  /** `true` só na volta do provedor (a pessoa autorizou). O refresh de token
+   *  passa pelo mesmo caminho e NÃO pode carimbar. */
+  private async persistir(
+    empresaId: string,
+    creds: MLCredenciais,
+    carimbarConexao = false,
+  ): Promise<void> {
     await this.integracoes.salvarCredenciaisInternas(
       empresaId,
       'mercadolivre',
       creds as unknown as Record<string, unknown>,
       creds.userId,
+      { carimbarConexao },
     );
   }
 

@@ -116,10 +116,13 @@ export class GoogleOAuthService {
       expiresAt: Date.now() + tokenRes.expires_in * 1000,
       email: userInfo.email,
     };
+    // A PESSOA acabou de autorizar no Google: é isto que a tela chama de
+    // "Conectado em". O refresh silencioso abaixo NÃO carimba.
     await this.userIntegracoes.conectarInterno(
       userId,
       'google_calendar',
       credenciais as unknown as Record<string, unknown>,
+      { carimbarConexao: true },
     );
     this.logger.log(`Google Calendar conectado — usuário=${userId}`);
     return { userId, email: userInfo.email };
@@ -153,6 +156,8 @@ export class GoogleOAuthService {
       expiresAt: Date.now() + tokenRes.expires_in * 1000,
       email: c.email,
     };
+    // Refresh de máquina — sem `carimbarConexao`. O token do Google dura 1h;
+    // carimbar aqui faria o "Conectado em" da tela andar de hora em hora.
     await this.userIntegracoes.conectarInterno(
       userId,
       'google_calendar',

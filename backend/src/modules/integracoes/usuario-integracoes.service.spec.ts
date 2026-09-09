@@ -301,4 +301,65 @@ describe('UsuarioIntegracoesService', () => {
       expect(args.data.errosRecentes).toEqual({ increment: 1 });
     });
   });
+  /**
+   * O bug que motivou o campo: a tela mostrava `criadoEm`, e como `desconectar`
+   * só marca a linha inativa (não apaga) e o upsert a reaproveita, reconectar
+   * preservava a data original pra sempre. O Léo conectou o Google Agenda em
+   * 09/09 e a tela dizia 03/07.
+   *
+   * E `atualizadoEm` NÃO servia de substituto: o refresh silencioso passa pelo
+   * mesmo upsert, e o token do Google dura 1h — a data andaria de hora em hora.
+   * É essa distinção que estes testes trancam.
+   */
+  describe('conectadoEm', () => {
+    beforeEach(() => {
+      prisma.usuarioIntegracao.upsert.mockResolvedValue({
+        id: 'c1',
+        usuarioId: 'user-1',
+        servico: 'google_calendar',
+        ativo: true,
+        credenciais: 'enc:{}',
+        conectadoEm: new Date('2026-09-09T21:00:00Z'),
+        criadoEm: new Date('2026-07-03T22:19:00Z'),
+        atualizadoEm: new Date(),
+        ultimoSync: null,
+        errosRecentes: 0,
+      });
+    });
+
+    it('AUTORIZAÇÃO carimba a data', async () => {
+      await service.conectarInterno(
+        'user-1',
+        'google_calendar' as never,
+        { t: 1 },
+        {
+          carimbarConexao: true,
+        },
+      );
+      const args = prisma.usuarioIntegracao.upsert.mock.calls[0][0];
+      expect(args.update.conectadoEm).toBeInstanceOf(Date);
+    });
+
+    it('REFRESH silencioso NÃO carimba — senão a data andaria de hora em hora', async () => {
+      await service.conectarInterno('user-1', 'google_calendar' as never, { t: 2 });
+      const args = prisma.usuarioIntegracao.upsert.mock.calls[0][0];
+      // `undefined` no Prisma é "não mexe nesta coluna" — a chave nem aparece.
+      expect('conectadoEm' in args.update).toBe(false);
+    });
+
+    it('linha NOVA nasce carimbada mesmo sem o chamador pedir', async () => {
+      await service.conectarInterno('user-1', 'google_calendar' as never, { t: 3 });
+      const args = prisma.usuarioIntegracao.upsert.mock.calls[0][0];
+      expect(args.create.conectadoEm).toBeInstanceOf(Date);
+    });
+
+    it('conectar() pela tela é autorização', async () => {
+      await service.conectar(fakeUser(), {
+        servico: 'openai',
+        credenciais: { apiKey: 'x' },
+      } as never);
+      const args = prisma.usuarioIntegracao.upsert.mock.calls[0][0];
+      expect(args.update.conectadoEm).toBeInstanceOf(Date);
+    });
+  });
 });

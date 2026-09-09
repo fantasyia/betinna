@@ -105,7 +105,7 @@ export class TikTokOAuthService {
       sellerName: data.seller_name,
       region: shop.region ?? data.seller_base_region,
     };
-    await this.persistir(empresaId, creds);
+    await this.persistir(empresaId, creds, true);
     this.logger.log(
       `TikTok Shop conectada empresa=${empresaId} shop_id=${shop.id} region=${creds.region ?? '?'}`,
     );
@@ -216,12 +216,19 @@ export class TikTokOAuthService {
     }
   }
 
-  private async persistir(empresaId: string, creds: TikTokCredenciais): Promise<void> {
+  /** `true` só na volta do provedor (a pessoa autorizou). O refresh de token
+   *  passa pelo mesmo caminho e NÃO pode carimbar. */
+  private async persistir(
+    empresaId: string,
+    creds: TikTokCredenciais,
+    carimbarConexao = false,
+  ): Promise<void> {
     await this.integracoes.salvarCredenciaisInternas(
       empresaId,
       'tiktok',
       creds as unknown as Record<string, unknown>,
       creds.shopId,
+      { carimbarConexao },
     );
   }
 

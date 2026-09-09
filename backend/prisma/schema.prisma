@@ -2610,6 +2610,11 @@ model IntegracaoConexao {
   externalAccountId String?
   ultimoSync        DateTime?
   errosRecentes     Int       @default(0)
+  /// Quando a PESSOA autorizou — mesma distinção do `UsuarioIntegracao`.
+  /// `desconectar` só marca `ativo:false` e o upsert reaproveita a linha, então
+  /// `criadoEm` mente depois da primeira reconexão; e `atualizadoEm` anda a
+  /// cada refresh de token (o do Tiny dura 1 dia, o do ML rotaciona).
+  conectadoEm       DateTime?
   criadoEm          DateTime  @default(now())
   atualizadoEm      DateTime  @updatedAt
 
@@ -2686,6 +2691,18 @@ model UsuarioIntegracao {
   credenciais   Json // criptografada na app
   ultimoSync    DateTime?
   errosRecentes Int       @default(0)
+  /// Quando a PESSOA autorizou — não quando a linha nasceu.
+  ///
+  /// A tela mostrava `criadoEm`, que é o nascimento da linha: como o
+  /// `desconectar` só marca `ativo:false` (não apaga) e o upsert reaproveita a
+  /// linha, desconectar/reconectar preservava a data original pra sempre. O
+  /// Léo conectou o Google Agenda em 09/09 e a tela dizia 03/07, que era um
+  /// teste antigo do mesmo usuário.
+  ///
+  /// `atualizadoEm` NÃO serve de substituto: o refresh silencioso de token
+  /// passa pelo mesmo upsert, e o token do Google expira em 1h — a data
+  /// andaria de hora em hora. Só o caminho de AUTORIZAÇÃO carimba aqui.
+  conectadoEm   DateTime?
   criadoEm      DateTime  @default(now())
   atualizadoEm  DateTime  @updatedAt
 

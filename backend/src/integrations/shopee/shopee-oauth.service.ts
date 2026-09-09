@@ -108,7 +108,7 @@ export class ShopeeOAuthService {
       refreshToken: tokenRes.refresh_token,
       expiresAt: Date.now() + tokenRes.expire_in * 1000,
     };
-    await this.persistir(empresaId, creds);
+    await this.persistir(empresaId, creds, true);
     this.logger.log(`Shopee conectada empresa=${empresaId} shop_id=${shopId}`);
     return { empresaId, shopId };
   }
@@ -217,12 +217,19 @@ export class ShopeeOAuthService {
     }
   }
 
-  private async persistir(empresaId: string, creds: ShopeeCredenciais): Promise<void> {
+  /** `true` só na volta do provedor (a pessoa autorizou). O refresh de token
+   *  passa pelo mesmo caminho e NÃO pode carimbar. */
+  private async persistir(
+    empresaId: string,
+    creds: ShopeeCredenciais,
+    carimbarConexao = false,
+  ): Promise<void> {
     await this.integracoes.salvarCredenciaisInternas(
       empresaId,
       'shopee',
       creds as unknown as Record<string, unknown>,
       creds.shopId,
+      { carimbarConexao },
     );
   }
 

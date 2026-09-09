@@ -138,7 +138,7 @@ export class MetaOAuthService {
       userAccessToken: userToken,
       userTokenExpiresAt,
     };
-    await this.persistirConexao(empresaId, 'facebook', fbCreds, page.id);
+    await this.persistirConexao(empresaId, 'facebook', fbCreds, page.id, true);
 
     // Persiste Instagram (se houver)
     if (igAccount) {
@@ -150,7 +150,7 @@ export class MetaOAuthService {
         userAccessToken: userToken,
         userTokenExpiresAt,
       };
-      await this.persistirConexao(empresaId, 'instagram', igCreds, igAccount.id);
+      await this.persistirConexao(empresaId, 'instagram', igCreds, igAccount.id, true);
     }
 
     resultado.pagesConectadas.push({
@@ -273,17 +273,21 @@ export class MetaOAuthService {
 
   // ─── Internos ────────────────────────────────────────────────────────
 
+  /** `true` só na volta do provedor (a pessoa autorizou). O refresh de token
+   *  passa pelo mesmo caminho e NÃO pode carimbar. */
   private async persistirConexao(
     empresaId: string,
     servico: 'facebook' | 'instagram',
     credenciais: FacebookCredenciais | InstagramCredenciais,
     externalAccountId: string,
+    carimbarConexao = false,
   ): Promise<void> {
     await this.integracoes.salvarCredenciaisInternas(
       empresaId,
       servico,
       credenciais as unknown as Record<string, unknown>,
       externalAccountId,
+      { carimbarConexao },
     );
   }
 

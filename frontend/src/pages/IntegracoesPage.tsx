@@ -190,6 +190,8 @@ interface Conexao {
   ativo: boolean;
   externalAccountId?: string | null;
   ultimoSync?: string | null;
+  /** Quando a pessoa autorizou. Nulo nas linhas anteriores ao campo. */
+  conectadoEm?: string | null;
   /** Null quando a conexão vive só no provider (sem linha na tabela). */
   criadoEm: string | null;
   atualizadoEm: string | null;
@@ -441,9 +443,10 @@ function ServicoCard({
           {/* Conexão que vive só no provider (WhatsApp/Evolution) não tem linha
               na tabela — e portanto não tem "conectado em". Mostrar a data de
               agora seria dizer que pareou neste instante. */}
-          {conexao.criadoEm && (
+          {(conexao.conectadoEm ?? conexao.criadoEm) && (
             <div>
-              <strong>Conectado em:</strong> {fmtDate(conexao.criadoEm)}
+              <strong>Conectado em:</strong>{' '}
+              {fmtDate(conexao.conectadoEm ?? conexao.criadoEm)}
             </div>
           )}
         </dl>

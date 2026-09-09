@@ -102,6 +102,9 @@ describe('AmazonLwaService.processCallback', () => {
       'amazon',
       expect.objectContaining({ sellingPartnerId: 'A2L3F4ABCDEF' }),
       'A2L3F4ABCDEF',
+      // Volta do provedor = a pessoa autorizou. O refresh de token passa
+      // pelo mesmo `persistir()` e NÃO carimba.
+      { carimbarConexao: true },
     );
   });
 

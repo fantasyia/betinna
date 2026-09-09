@@ -449,9 +449,15 @@ export class IntegracoesService {
     servico: ServicoEmpresa,
     credenciais: Record<string, unknown>,
     externalAccountId: string,
+    opcoes?: { carimbarConexao?: boolean },
   ): Promise<void> {
     await this.assertChaveCasaComOQueJaExiste(empresaId, servico);
     const enc = this.crypto.encrypt(JSON.stringify(credenciais));
+    // Ver `UsuarioIntegracao.conectadoEm`: só o caminho de AUTORIZAÇÃO carimba.
+    // Todo OAuth daqui passa pelo mesmo `persistir()` privado na volta do
+    // provedor E no refresh de token — sem a distinção, o "Conectado em" da
+    // tela andaria a cada renovação (a do Tiny é diária).
+    const agora = opcoes?.carimbarConexao ? new Date() : undefined;
     await this.prisma.integracaoConexao.upsert({
       where: { empresaId_servico: { empresaId, servico } },
       update: {
@@ -459,6 +465,8 @@ export class IntegracoesService {
         ativo: true,
         errosRecentes: 0,
         externalAccountId,
+        // `undefined` = Prisma não toca a coluna, preservando o carimbo antigo.
+        ...(agora ? { conectadoEm: agora } : {}),
       },
       create: {
         empresaId,
@@ -466,6 +474,8 @@ export class IntegracoesService {
         ativo: true,
         credenciais: enc,
         externalAccountId,
+        // Linha nova = alguém acabou de conectar, mesmo sem o chamador dizer.
+        conectadoEm: agora ?? new Date(),
       },
     });
     // Mesmo comportamento que os services tinham após o upsert: registra sync OK
@@ -676,6 +686,7 @@ export class IntegracoesService {
       externalAccountId: c.externalAccountId,
       ultimoSync: c.ultimoSync,
       errosRecentes: c.errosRecentes,
+      conectadoEm: c.conectadoEm,
       criadoEm: c.criadoEm,
       atualizadoEm: c.atualizadoEm,
       credenciaisConfiguradas: configurado,

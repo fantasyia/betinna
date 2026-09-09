@@ -112,6 +112,9 @@ describe('MLOAuthService.processCallback', () => {
       'mercadolivre',
       expect.objectContaining({ userId: '9876543' }),
       '9876543',
+      // Volta do provedor = a pessoa autorizou. O refresh de token passa
+      // pelo mesmo `persistir()` e NÃO carimba.
+      { carimbarConexao: true },
     );
   });
 

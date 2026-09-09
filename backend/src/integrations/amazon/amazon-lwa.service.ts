@@ -101,7 +101,7 @@ export class AmazonLwaService {
       expiresAt: Date.now() + tokenRes.expires_in * 1000,
       marketplaceId: this.env.get('AMAZON_MARKETPLACE_ID'),
     };
-    await this.persistir(empresaId, creds);
+    await this.persistir(empresaId, creds, true);
     this.logger.log(`Amazon conectada empresa=${empresaId} selling_partner_id=${sellingPartnerId}`);
     return { empresaId, sellingPartnerId };
   }
@@ -195,12 +195,19 @@ export class AmazonLwaService {
     }
   }
 
-  private async persistir(empresaId: string, creds: AmazonCredenciais): Promise<void> {
+  /** `true` só na volta do provedor (a pessoa autorizou). O refresh de token
+   *  passa pelo mesmo caminho e NÃO pode carimbar. */
+  private async persistir(
+    empresaId: string,
+    creds: AmazonCredenciais,
+    carimbarConexao = false,
+  ): Promise<void> {
     await this.integracoes.salvarCredenciaisInternas(
       empresaId,
       'amazon',
       creds as unknown as Record<string, unknown>,
       creds.sellingPartnerId,
+      { carimbarConexao },
     );
   }
 

@@ -128,23 +128,51 @@ export class UsuarioIntegracoesService {
   }
 
   async conectar(user: AuthenticatedUser, dto: ConectarUsuarioDto): Promise<ConexaoUsuarioPublica> {
-    return this.conectarInterno(user.id, dto.servico, dto.credenciais);
+    // Veio do usuário pela tela: é autorização, carimba.
+    return this.conectarInterno(user.id, dto.servico, dto.credenciais, {
+      carimbarConexao: true,
+    });
   }
 
   /**
    * Para uso interno (OAuth callback do Google, refresh token, etc.).
    * Não passa por validação de DTO porque é chamado por outros services.
+   *
+   * ⚠️ `carimbarConexao` separa DOIS caminhos que passam por aqui e não são a
+   * mesma coisa: a PESSOA autorizando (carimba) e o refresh SILENCIOSO de
+   * token (não carimba). O token do Google expira em 1h — se o refresh
+   * carimbasse, o "Conectado em" da tela andaria de hora em hora.
+   *
+   * O default é `false` de propósito: quem chama sem pensar é caminho de
+   * máquina. Autorização é evento raro e explícito, e quem o escreve sabe.
    */
   async conectarInterno(
     usuarioId: string,
     servico: ServicoUsuario,
     credenciais: Record<string, unknown>,
+    opcoes?: { carimbarConexao?: boolean },
   ): Promise<ConexaoUsuarioPublica> {
     const enc = this.crypto.encrypt(JSON.stringify(credenciais));
+    const agora = opcoes?.carimbarConexao ? new Date() : undefined;
     const conexao = await this.prisma.usuarioIntegracao.upsert({
       where: { usuarioId_servico: { usuarioId, servico } },
-      update: { credenciais: enc, ativo: true, errosRecentes: 0 },
-      create: { usuarioId, servico, ativo: true, credenciais: enc },
+      update: {
+        credenciais: enc,
+        ativo: true,
+        errosRecentes: 0,
+        // `undefined` no Prisma = "não mexe nesta coluna". É o que preserva o
+        // carimbo antigo quando o refresh passa por aqui.
+        ...(agora ? { conectadoEm: agora } : {}),
+      },
+      // Linha nova SEMPRE nasce carimbada: se ela não existia, alguém acabou
+      // de conectar — mesmo que o chamador não tenha dito.
+      create: {
+        usuarioId,
+        servico,
+        ativo: true,
+        credenciais: enc,
+        conectadoEm: agora ?? new Date(),
+      },
     });
     this.invalidarCache(usuarioId, servico);
     this.logger.log(`[${servico}] conexão criada/atualizada para usuário ${usuarioId}`);
@@ -256,6 +284,7 @@ export class UsuarioIntegracoesService {
       credenciais: null as never,
       ultimoSync: c.ultimoSync,
       errosRecentes: c.errosRecentes,
+      conectadoEm: c.conectadoEm,
       criadoEm: c.criadoEm,
       atualizadoEm: c.atualizadoEm,
       credenciaisConfiguradas: configurado,

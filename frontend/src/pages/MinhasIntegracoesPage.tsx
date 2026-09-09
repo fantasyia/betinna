@@ -79,6 +79,8 @@ interface Conexao {
   servico: ServicoUsuario;
   ativo: boolean;
   externalAccountId?: string | null;
+  /** Quando a pessoa autorizou. Nulo nas linhas anteriores ao campo. */
+  conectadoEm?: string | null;
   criadoEm: string;
   atualizadoEm: string;
 }
@@ -221,7 +223,7 @@ function ServicoCard({
             </div>
           )}
           <div>
-            <strong>Conectado em:</strong> {fmtDate(conexao.criadoEm)}
+            <strong>Conectado em:</strong> {fmtDate(conexao.conectadoEm ?? conexao.criadoEm)}
           </div>
         </dl>
       )}
