@@ -37,6 +37,23 @@ export const TINY_FILA_PENDENTES = 'tiny:webhook:pendentes';
 const FILA_MAX = 500;
 
 /**
+ * Marca de chegada, POR EVENTO e SEM TTL.
+ *
+ * Existe pra responder uma pergunta que já custou tempo a duas sessões: **este
+ * webhook algum dia chegou?** A fila é drenada (some), o dedup expira, e o log
+ * do Railway é por deploy — num dia de vários deploys a janela vira minutos.
+ * Sem uma marca durável, "não achei" e "nunca chegou" ficam indistinguíveis, e
+ * a conclusão errada é cara: leva a mexer no app quando o que falta é o
+ * cadastro no painel do ERP (que a API v3 não expõe — 0 das 202 operações
+ * mexem em webhook, conferido em `docs/tiny/openapi.json`).
+ *
+ * Duas chaves, não uma: o total distingue "chegou uma vez no teste" de "chega
+ * todo dia", e o carimbo diz se parou de chegar.
+ */
+const marcaUltimo = (tipo: Evento) => `tiny:webhook:ultimo:${tipo}`;
+const marcaTotal = (tipo: Evento) => `tiny:webhook:total:${tipo}`;
+
+/**
  * Receptor dos webhooks do Tiny (Olist).
  *
  * **Por que o segredo vai no CAMINHO da URL.** O Tiny não assina os webhooks:
@@ -109,6 +126,11 @@ export class TinyWebhookController {
    * O painel do Tiny testa a URL antes de salvar. Responder 200 aqui é o que
    * destrava o cadastro — e de quebra dá um jeito de conferir a URL pelo
    * navegador depois.
+   *
+   * A resposta também diz **se este evento já chegou alguma vez** (ver
+   * `marcaUltimo`). Abrir a mesma URL do painel no navegador passa a ser o
+   * diagnóstico completo: 401 = segredo errado, 404 = nome do evento errado,
+   * `recebidos: 0` = a URL está certa e o ERP nunca postou nela.
    */
   @Public()
   @Get()
@@ -116,12 +138,21 @@ export class TinyWebhookController {
   @ApiOperation({
     summary: 'Verificação de alcance da URL (o painel do Tiny testa antes de salvar)',
   })
-  verificar(
+  async verificar(
     @Param('segredo') segredo: string,
     @Param('evento') evento: string,
-  ): { ok: boolean; evento: Evento } {
+  ): Promise<{ ok: boolean; evento: Evento; recebidos: number; ultimoEm: string | null }> {
     this.validarSegredo(segredo);
-    return { ok: true, evento: this.validarEvento(evento) };
+    const tipo = this.validarEvento(evento);
+
+    // Redis fora não pode derrubar a verificação: o que o painel do Tiny
+    // precisa é do 200. O diagnóstico é o extra, e degrada pra "não sei".
+    const [total, ultimo] = await Promise.all([
+      this.redis.get(marcaTotal(tipo)).catch(() => null),
+      this.redis.get(marcaUltimo(tipo)).catch(() => null),
+    ]);
+
+    return { ok: true, evento: tipo, recebidos: Number(total ?? 0), ultimoEm: ultimo };
   }
 
   @Public()
@@ -145,6 +176,14 @@ export class TinyWebhookController {
     // pode aplicar o mesmo fato duas vezes.
     const bruto = req.rawBody?.toString('utf8') ?? JSON.stringify(req.body ?? {});
     const hash = createHash('sha256').update(bruto).digest('hex');
+
+    // Marca de chegada ANTES da fila, e sem `await` no caminho crítico: mesmo
+    // que o enfileiramento falhe, fica registrado que o ERP postou aqui — que
+    // é justamente o que separa "app com problema" de "cadastro faltando".
+    void Promise.all([
+      this.redis.set(marcaUltimo(tipo), new Date().toISOString()),
+      this.redis.incr(marcaTotal(tipo)),
+    ]).catch(() => undefined);
 
     await this.redis
       .lpushCapped(

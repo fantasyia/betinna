@@ -12,8 +12,14 @@ import { TinyWebhookController } from './tiny-webhook.controller';
  */
 const SEGREDO = 'cqPBvP6SQKnKuUnDhzpd5E2b8z6paxug';
 
-function build(secretConfigurado = SEGREDO) {
-  const redis = { lpushCapped: vi.fn().mockResolvedValue(undefined) };
+function build(secretConfigurado = SEGREDO, marcas: Record<string, string> = {}) {
+  const redis = {
+    lpushCapped: vi.fn().mockResolvedValue(undefined),
+    // Marcas de chegada (`tiny:webhook:ultimo|total:<evento>`), sem TTL.
+    set: vi.fn().mockResolvedValue(undefined),
+    incr: vi.fn().mockResolvedValue(1),
+    get: vi.fn((chave: string) => Promise.resolve(marcas[chave] ?? null)),
+  };
   const env = { get: vi.fn().mockReturnValue(secretConfigurado) };
   const mapeamento = { responder: vi.fn().mockResolvedValue([]) };
   return {
@@ -40,9 +46,45 @@ const req = (corpo: unknown) =>
 describe('webhook do Tiny', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('GET responde 200 — é o que destrava o cadastro da URL no painel', () => {
+  it('GET responde 200 — é o que destrava o cadastro da URL no painel', async () => {
     const { ctrl } = build();
-    expect(ctrl.verificar(SEGREDO, 'pedido')).toEqual({ ok: true, evento: 'pedido' });
+    await expect(ctrl.verificar(SEGREDO, 'pedido')).resolves.toEqual({
+      ok: true,
+      evento: 'pedido',
+      recebidos: 0,
+      ultimoEm: null,
+    });
+  });
+
+  // O que separa "a URL está errada" de "a URL está certa e o ERP nunca postou
+  // nela". Sem isso a resposta do GET é a mesma nos dois casos, e a conclusão
+  // errada leva a mexer no app quando o que falta é o cadastro no painel.
+  it('GET conta quantas vezes o evento já chegou, e quando foi a última', async () => {
+    const { ctrl } = build(SEGREDO, {
+      'tiny:webhook:total:rastreio': '7',
+      'tiny:webhook:ultimo:rastreio': '2026-09-09T21:09:00.000Z',
+    });
+    await expect(ctrl.verificar(SEGREDO, 'rastreio')).resolves.toEqual({
+      ok: true,
+      evento: 'rastreio',
+      recebidos: 7,
+      ultimoEm: '2026-09-09T21:09:00.000Z',
+    });
+  });
+
+  it('POST deixa a marca de chegada, por evento', async () => {
+    const { ctrl, redis } = build();
+    await ctrl.receber(SEGREDO, 'nota', req({ dados: {} }), fakeRes() as never);
+    expect(redis.set).toHaveBeenCalledWith('tiny:webhook:ultimo:nota', expect.any(String));
+    expect(redis.incr).toHaveBeenCalledWith('tiny:webhook:total:nota');
+  });
+
+  // Redis fora não pode virar 500: o painel só precisa do 200, e o Tiny
+  // desiste depois de 10 retentativas sem ele.
+  it('GET responde mesmo com o Redis fora', async () => {
+    const { ctrl, redis } = build();
+    redis.get.mockRejectedValue(new Error('Connection is closed.'));
+    await expect(ctrl.verificar(SEGREDO, 'pedido')).resolves.toMatchObject({ ok: true });
   });
 
   it('segredo errado na URL é recusado', async () => {
@@ -123,15 +165,15 @@ describe('webhook do Tiny', () => {
   describe('eventos do cadastro de e-commerce', () => {
     it.each(['pedido', 'rastreio', 'estoque', 'nota', 'produto', 'preco'])(
       'aceita a URL do evento "%s"',
-      (evento) => {
+      async (evento) => {
         const { ctrl } = build();
-        expect(ctrl.verificar(SEGREDO, evento)).toEqual({ ok: true, evento });
+        await expect(ctrl.verificar(SEGREDO, evento)).resolves.toMatchObject({ ok: true, evento });
       },
     );
 
-    it('evento inventado segue dando 404 (erro de digitação aparece na hora de salvar)', () => {
+    it('evento inventado segue dando 404 (erro de digitação aparece na hora de salvar)', async () => {
       const { ctrl } = build();
-      expect(() => ctrl.verificar(SEGREDO, 'inventado')).toThrow();
+      await expect(ctrl.verificar(SEGREDO, 'inventado')).rejects.toThrow();
     });
   });
 
