@@ -36,6 +36,7 @@ function build(criou = true) {
     {} as never,
     {} as never,
     {} as never,
+    { responderPendente: vi.fn().mockResolvedValue(false) } as never,
     {} as never,
     notificacoes as never,
     // inbox: a saída do ENVIAR_WHATSAPP passa a ser gravada na conversa.

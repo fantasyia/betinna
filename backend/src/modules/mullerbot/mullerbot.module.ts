@@ -41,6 +41,14 @@ import { BotAuditoriaController } from './bot-auditoria.controller';
     BotAuditoriaService,
     BotCustoService,
   ],
-  exports: [MullerBotService, ProdutoSearchService, MullerBotPersonaService, BotCustoService],
+  exports: [
+    MullerBotService,
+    ProdutoSearchService,
+    MullerBotPersonaService,
+    BotCustoService,
+    // A varredura de pausas vencidas (FluxoTriggersJob) responde pelo bot
+    // geral quando o fluxo já concluiu e não há execução pra retomar.
+    MullerWhatsappService,
+  ],
 })
 export class MullerBotModule {}

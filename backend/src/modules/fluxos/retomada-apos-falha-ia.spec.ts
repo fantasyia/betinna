@@ -34,6 +34,7 @@ const build = (
   };
   const conversarIa = { varrerPendentesAposDestravar: vi.fn().mockResolvedValue(true) };
   const bus = { execucoesComJobVivo: vi.fn().mockResolvedValue(new Set<string>()) };
+  const mullerWhatsapp = { responderPendente: vi.fn().mockResolvedValue(true) };
   const job = new FluxoTriggersJob(
     prisma as never,
     {} as never,
@@ -42,10 +43,11 @@ const build = (
     {} as never,
     {} as never,
     conversarIa as never,
+    mullerWhatsapp as never,
     {} as never,
     {} as never,
   );
-  return { job, prisma, conversarIa };
+  return { job, prisma, conversarIa, mullerWhatsapp };
 };
 
 /** A varredura é privada — o cron é a porta pública dela. */
@@ -90,13 +92,35 @@ describe('retomada depois da falha da IA', () => {
     expect(ctx.conversarIa.varrerPendentesAposDestravar).toHaveBeenCalledWith('exec-1');
   });
 
-  it('sem execução esperando, destravar já basta', async () => {
+  it('sem execução esperando, o BOT GERAL responde a mensagem pendurada', async () => {
+    // Este é o caso que mais dói, e por muito tempo não era coberto: quando a
+    // IA cai de verdade, o fluxo navega o ramo `erro` e CONCLUI — não sobra
+    // execução `AGUARDANDO` pra varrer. Destravar as flags aqui não produz
+    // resposta nenhuma, e se o cliente não escrever de novo ele nunca ouve nada.
     const c = build({ execucao: null });
 
     await rodar(c.job);
 
     expect(c.prisma.conversation.update).toHaveBeenCalled();
     expect(c.conversarIa.varrerPendentesAposDestravar).not.toHaveBeenCalled();
+    expect(c.mullerWhatsapp.responderPendente).toHaveBeenCalledWith('emp-1', 'conv-1');
+  });
+
+  it('bot que se recusa a responder não quebra a varredura', async () => {
+    // O bot geral se recusa sozinho quando a conversa tem dono (pausa
+    // deliberada) ou quando alguém já respondeu. Isso é comportamento certo,
+    // não falha — e as outras conversas da rodada seguem.
+    const c = build({ execucao: null });
+    c.mullerWhatsapp.responderPendente.mockResolvedValue(false);
+
+    await expect(rodar(c.job)).resolves.toBeUndefined();
+  });
+
+  it('erro do bot geral também não derruba a varredura', async () => {
+    const c = build({ execucao: null });
+    c.mullerWhatsapp.responderPendente.mockRejectedValue(new Error('redis fora'));
+
+    await expect(rodar(c.job)).resolves.toBeUndefined();
   });
 
   it('falha ao responder uma conversa não impede as outras', async () => {

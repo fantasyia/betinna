@@ -293,9 +293,82 @@ export class MullerWhatsappService implements OnModuleInit {
     this.logger.log('Bot Muller registrado no Inbox (auto-resposta no WhatsApp da empresa)');
   }
 
+  /**
+   * Responde a mensagem que ficou SEM RESPOSTA depois que a IA de um fluxo caiu.
+   *
+   * O caso que o resto do sistema não cobria: a IA cai, o fluxo navega o ramo
+   * `erro` e CONCLUI. Não sobra execução `AGUARDANDO` pra retomar — então
+   * destravar as flags não produz resposta nenhuma, e se o cliente não
+   * escrever de novo ele nunca ouve nada. Era a metade que faltava do pedido do
+   * Léo: *"contanto que quando voltar, volte automático e responda o cliente"*.
+   *
+   * Passa pelo MESMO caminho de uma mensagem viva — anti-spam, lock por
+   * conversa, gate de funil, supressão e pacing continuam valendo. A ÚNICA
+   * guarda relaxada é a de idade, e só porque ela existe pra outra coisa:
+   * barrar a reentrega em massa do Baileys depois de um reconnect. Aqui a
+   * mensagem é UMA, escolhida, e sabidamente nunca respondida.
+   */
+  async responderPendente(empresaId: string, conversationId: string): Promise<boolean> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, empresaId },
+      select: {
+        canal: true,
+        peerId: true,
+        peerNome: true,
+        proprietarioId: true,
+        botLigado: true,
+        precisaHumano: true,
+      },
+    });
+    if (!conv || conv.canal !== 'WHATSAPP') return false;
+    // Bot desligado = pausa DELIBERADA (roteador com desfecho, LGPD, rep dono,
+    // transferência). A conversa tem dono; robô nenhum fala por cima disso.
+    if (conv.botLigado === false) return false;
+    // Voltou a precisar de humano entre a varredura e agora: não atropela.
+    if (conv.precisaHumano) return false;
+
+    const ultima = await this.prisma.message.findFirst({
+      where: { conversationId },
+      orderBy: { criadoEm: 'desc' },
+      select: {
+        id: true,
+        direction: true,
+        tipo: true,
+        conteudo: true,
+        externalId: true,
+        criadoEm: true,
+      },
+    });
+    // Última mensagem não é do cliente = alguém já respondeu (bot ou gente).
+    // Não há pendência, e falar aqui seria mandar mensagem sem motivo.
+    if (!ultima || ultima.direction !== 'INBOUND') return false;
+
+    this.logger.log(
+      `[bot] conv=${conversationId} — respondendo a mensagem que ficou pendurada após falha de IA`,
+    );
+    await this.aoReceber(
+      {
+        empresaId,
+        canal: 'WHATSAPP',
+        peerId: conv.peerId,
+        peerNome: conv.peerNome ?? undefined,
+        proprietarioId: conv.proprietarioId ?? undefined,
+        tipo: ultima.tipo,
+        conteudo: ultima.conteudo,
+        externalId: ultima.externalId ?? undefined,
+        direction: 'INBOUND',
+        data: ultima.criadoEm,
+      } as MensagemEntranteParams,
+      { conversationId, messageId: ultima.id, duplicada: false },
+      { recuperacao: true },
+    );
+    return true;
+  }
+
   private async aoReceber(
     params: MensagemEntranteParams,
     resultado: { conversationId: string; messageId: string; duplicada: boolean },
+    opts: { recuperacao?: boolean } = {},
   ): Promise<void> {
     const convId = resultado.conversationId;
     let lockConv: string | null = null;
@@ -317,7 +390,10 @@ export class MullerWhatsappService implements OnModuleInit {
       // reentrega do Baileys pós-reconnect (pausaria conversas legítimas em
       // massa depois de todo deploy).
       const idadeMsg = params.data ? Date.now() - params.data.getTime() : 0;
-      if (idadeMsg > IDADE_MAX_RESPOSTA_MS) {
+      // `recuperacao` pula SÓ esta guarda: ela existe pra barrar reentrega em
+      // massa do Baileys, e a recuperação é uma mensagem escolhida a dedo que
+      // comprovadamente ficou sem resposta. Por definição ela É velha.
+      if (!opts.recuperacao && idadeMsg > IDADE_MAX_RESPOSTA_MS) {
         this.logger.log(
           `[bot] NÃO-RESPONDE conv=${convId} peer=${params.peerId} — msg antiga ` +
             `(${Math.round(idadeMsg / 1000)}s, backlog/history sync)`,

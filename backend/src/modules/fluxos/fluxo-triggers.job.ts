@@ -7,6 +7,7 @@ import { CronLockService } from '@shared/utils/cron-lock.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService, TTL_CLAIM_MS } from './conversar-ia.service';
+import { MullerWhatsappService } from '@modules/mullerbot/muller-whatsapp.service';
 import { CronMetricsService } from './cron-metrics.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { proximaExecucaoCrons, CRON_TZ_PADRAO } from './cron.util';
@@ -45,6 +46,7 @@ export class FluxoTriggersJob {
     private readonly cronLock: CronLockService,
     private readonly email: TransactionalEmailService,
     private readonly conversarIa: ConversarIaService,
+    private readonly mullerWhatsapp: MullerWhatsappService,
     private readonly cronMetrics: CronMetricsService,
     private readonly notificacoes: NotificacoesService,
   ) {}
@@ -343,7 +345,30 @@ export class FluxoTriggersJob {
           select: { id: true },
         })
         .catch(() => null);
-      if (!execucao) continue;
+      if (!execucao) {
+        // Sem execução AGUARDANDO: a IA caiu, o fluxo navegou o ramo `erro` e
+        // CONCLUIU. Destravar as flags aqui não responde nada — e se o cliente
+        // não escrever de novo, ele nunca ouve resposta. É exatamente o caso que
+        // o Léo descreveu: *"contanto que quando voltar, volte automático e
+        // responda o cliente"*.
+        //
+        // Quem responde é o bot geral, pelo caminho normal dele (com anti-spam,
+        // lock, supressão e pacing). Ele se recusa sozinho se o bot estiver
+        // desligado na conversa ou se alguém já tiver respondido.
+        const respondeu = await this.mullerWhatsapp
+          .responderPendente(conv.empresaId, conv.id)
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `[ia] resposta pendente da conversa ${conv.id} falhou: ${String(err)}`,
+            );
+            return false;
+          });
+        this.logger.log(
+          `[ia] conversa ${conv.id} retomada após a pausa (sem execução` +
+            `${respondeu ? ', mensagem pendurada entregue ao bot geral' : ', nada pendente'})`,
+        );
+        continue;
+      }
 
       // Reusa a varredura do reaper: ela responde a mensagem que ficou pendurada
       // — destravar sem responder é recuperação só no papel.

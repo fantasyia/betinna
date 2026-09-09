@@ -56,6 +56,7 @@ const makeJob = (prisma: ReturnType<typeof makePrisma>, bus: Record<string, unkn
     { acquire: vi.fn().mockResolvedValue(true) } as never,
     notificacoes as never,
     notificacoes as never,
+    { responderPendente: vi.fn().mockResolvedValue(false) } as never,
     notificacoes as never,
     notificacoes as never,
   );
