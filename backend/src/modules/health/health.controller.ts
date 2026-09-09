@@ -1,4 +1,4 @@
-import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, HttpException, HttpStatus, Query } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -216,7 +216,19 @@ export class HealthController {
   }
 
   /**
-   * Endpoint de teste manual do Sentry — ADMIN-only.
+   * Teste manual do Sentry — ADMIN-only. `?alvo=api` (padrão) ou `?alvo=worker`.
+   *
+   * ⚠️ A mensagem carrega PII de mentira DE PROPÓSITO, e isso é o ponto.
+   *
+   * Antes era `Error('Sentry test from backend')`: o evento chegava e não provava
+   * nada do que importa. DSN válido + SDK ligado não é "observabilidade
+   * funcionando" — erro de verdade neste app carrega telefone, e-mail e conversa,
+   * e a pergunta é se ISSO chega limpo.
+   *
+   * O payload tem as duas metades: o que precisa SUMIR (e-mail, jid, CPF) e o
+   * que precisa SOBREVIVER (número do pedido, id do ERP, a pilha). Filtro que
+   * come a exceção entrega uma lista de nada, e ninguém descobre até o dia de
+   * precisar do rastro.
    *
    * Lança uma exceção crua que deve ser capturada pelo Sentry via
    * AllExceptionsFilter (5xx). Use pra validar que a captura backend está
@@ -230,9 +242,33 @@ export class HealthController {
    */
   @Roles('ADMIN')
   @Get('__sentry_test')
-  @ApiOperation({ summary: 'Force throw para testar Sentry (ADMIN only)' })
-  async sentryTest(): Promise<never> {
-    throw new Error(`Sentry test from backend — ${new Date().toISOString()}`);
+  @ApiOperation({ summary: 'Force erro pra testar Sentry — api ou worker (ADMIN only)' })
+  async sentryTest(@Query('alvo') alvo?: string): Promise<{ enfileirado: true; alvo: 'worker' }> {
+    const carimbo = new Date().toISOString();
+    // PII de mentira, inerte por construção: `.invalid` é TLD reservado (RFC
+    // 2606) e não resolve, o telefone é só zeros e o CPF também. Nenhum é de
+    // ninguém — e todos casam os padrões do filtro.
+    const payloadFalso =
+      `pedido SB2609TESTE / ERP 99 — ` +
+      `{"email":"comprador@exemplo.invalid",` +
+      `"jid":"5500000000000@s.whatsapp.net",` +
+      `"cpf":"000.000.000-00"}`;
+
+    if (alvo === 'worker') {
+      // Dead-letter SEM `empresaId`: captura no Sentry e grava auditoria, sem
+      // disparar o e-mail de alerta pro diretor.
+      await this.dlQueue.add('dead-letter', {
+        originalQueue: '__sentry_test',
+        originalJobId: `sentry-test-${carimbo}`,
+        originalJobName: 'sentry-test',
+        originalData: {},
+        error: `Sentry test do WORKER ${carimbo} — ${payloadFalso}`,
+        failedAt: carimbo,
+      });
+      return { enfileirado: true, alvo: 'worker' };
+    }
+
+    throw new Error(`Sentry test da API ${carimbo} — ${payloadFalso}`);
   }
 
   private async checkBullMq(): Promise<DependencyCheck & { queues?: Record<string, number> }> {
