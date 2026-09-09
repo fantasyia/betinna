@@ -243,7 +243,27 @@ export class FluxoEventBusService {
       // regra que já cala o bot geral (`fluxoConduzindoConversa`), aplicada
       // agora ENTRE fluxos — e no motor, pra valer pra toda régua futura sem
       // depender de alguém lembrar de pôr um nó no desenho.
-      if (GATILHOS_PROATIVOS.has(triggerTipo)) {
+      //
+      // ⚠️ SÓ VALE PRA EVENTO DE FORA (`_hops === 0`). Evento emitido DE DENTRO
+      // de uma execução é HANDOFF, e segurar handoff quebra a cadeia — que é o
+      // caminho normal, não a exceção.
+      //
+      // Custou uma regressão em produção em 09/09, e o modo de falhar foi pior
+      // que o defeito que eu tinha acabado de consertar: o T1 aplica `Tag:
+      // retomou` pra passar a bola pro RT, e quem aplica é a própria execução do
+      // T1 — que está EM_EXECUCAO e cujo fluxo TEM nó de IA (mesmo já tendo
+      // pulado ele, porque o lead estava triado). O guard via "turno aberto",
+      // segurava o RT por 30 min, e o cliente que escrevia recebia SILÊNCIO.
+      // Determinístico, no caminho de qualquer cliente já triado que volta.
+      //
+      // A execução que EMITE o evento não pode contar como turno aberto contra
+      // ele — mesma ideia do `cancelarExecucoesDoLead`, que se exclui pra não se
+      // matar no meio. `_hops` já marca a cadeia interna, e serve de sinal.
+      //
+      // O que a guarda continua cobrindo é o que ela nasceu pra cobrir (RB.10):
+      // gatilho de FORA — varredura de SLA, cron, etiqueta posta por gente —
+      // falando por cima de um turno de IA aberto.
+      if (GATILHOS_PROATIVOS.has(triggerTipo) && hops === 0) {
         if (await this.turnoDeIaAberto(empresaId, contextoEnriquecido)) {
           await this.reagendarProativo(empresaId, triggerTipo, contextoEnriquecido);
           return;
