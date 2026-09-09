@@ -20,6 +20,8 @@ export interface PedidoDoSiteDto {
   };
   itens: Array<{ sku: string; quantidade: number; valorUnitario: number }>;
   valorFrete?: number;
+  /** Como o cliente pagou no checkout. Ausente = pedido anterior ao gateway. */
+  formaPagamento?: 'PIX' | 'CARTAO_CREDITO';
   observacoes?: string;
   entrega?: {
     cep: string;
@@ -108,14 +110,16 @@ export class PedidoSiteService {
         representanteId: null,
         origem: 'SITE',
         status: 'RASCUNHO',
-        // Venda do site é Pix. É isto que decide a conta a receber no ERP — o
-        // default do app (boleto) é do pedido de rep.
+        // Como o cliente pagou. Vem do checkout quando o site informa; PIX
+        // continua sendo o fallback dos pedidos anteriores ao gateway. É isto
+        // que decide a conta a receber no ERP — o default do app (boleto) é do
+        // pedido de rep.
         //
         // PROVISÓRIO (Léo, 05/09): vencimento em 30 dias. O certo é "à vista",
         // porque o site cobra no checkout — mas quem vai carimbar a data real
         // é o gateway (Asaas), e até lá 30 dias evita conta a receber vencendo
         // no mesmo dia em que nasce.
-        formaPagamento: 'PIX',
+        formaPagamento: dto.formaPagamento ?? 'PIX',
         condicaoPagamento: '30dias',
         subtotal: new Prisma.Decimal(subtotal),
         total: new Prisma.Decimal(total),

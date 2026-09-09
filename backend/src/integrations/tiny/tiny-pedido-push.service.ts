@@ -11,6 +11,7 @@ import {
   type ResultadoPedido,
 } from './tiny-pedidos.service';
 import { TinyContatosService } from './tiny-contatos.service';
+import { FORMA_TINY, NOME_FORMA } from '@modules/pedidos/parcelas.util';
 
 export interface ResultadoPush {
   pedidoId: string;
@@ -191,6 +192,11 @@ export class TinyPedidoPushService {
       formaEnvioId?: number;
       /** Forma de frete dentro dela (ex.: "Standard"). */
       formaFreteId?: number;
+      /**
+       * Mandar o MEIO de pagamento no pedido. Só ligar depois de configurar
+       * Financeiro → Gateway no Tiny: antes disso o ERP recusa o pedido inteiro.
+       */
+      meioPagamentoNoPedido?: boolean;
     };
 
     // Parcelas: é o que faz o Tiny gerar (e estornar) as contas a receber
@@ -244,13 +250,29 @@ export class TinyPedidoPushService {
             },
           }
         : {}),
-      // Só as PARCELAS. Forma/meio de pagamento ficam de fora de propósito: no
-      // Tiny a forma de recebimento precisa de um "meio" (conta/gateway) ligado
-      // a ela, e sem isso o pedido inteiro volta 400 ("Meio de pagamento não
-      // encontrado") — com qualquer id, ou sem id. Sem forma, o Tiny usa a
-      // padrão dele e a conta a receber nasce do mesmo jeito. Quando o gateway
-      // (Asaas) estiver ligado às formas, aí a forma volta aqui.
-      pagamento: { parcelas },
+      // PARCELAS sempre; MEIO de pagamento só quando o tenant disser que pode.
+      //
+      // A trava tem motivo medido: no Tiny a forma de recebimento precisa de um
+      // "meio" (conta/gateway) ligado a ela, e enquanto não houver, mandar o
+      // campo faz o pedido INTEIRO voltar 400 ("Meio de pagamento não
+      // encontrado") — com qualquer id, ou sem id. Ligar isso no automático
+      // trocaria um rótulo faltando por nenhum pedido subindo.
+      //
+      // Então quem vira a chave é quem configurou o Financeiro → Gateway lá:
+      // `config.erp.meioPagamentoNoPedido = true`. Sem deploy, e reversível.
+      pagamento: {
+        parcelas,
+        ...(erpCfg.meioPagamentoNoPedido && FORMA_TINY[pedido.formaPagamento]
+          ? { meioPagamento: FORMA_TINY[pedido.formaPagamento] }
+          : {}),
+      },
+      // Enquanto o meio não vai no campo próprio, vai como MARCADOR: sem isto o
+      // pedido chega ao ERP como "múltiplas" e ninguém consegue conciliar a
+      // conta a receber com a cobrança do gateway. Marcador é texto livre — não
+      // tem como derrubar o pedido.
+      ...(NOME_FORMA[pedido.formaPagamento]
+        ? { marcadores: [NOME_FORMA[pedido.formaPagamento]] }
+        : {}),
       // Data no fuso do Brasil. Sem este campo o Tiny aceitava o pedido com
       // `data: ""` — e o painel, que lista por período, não mostrava NENHUM
       // pedido vindo daqui. Existiam, em "preparando envio", invisíveis.

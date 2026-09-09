@@ -29,6 +29,14 @@ const pedidoDoSiteSchema = z.object({
     )
     .min(1),
   valorFrete: z.number().nonnegative().optional(),
+  /**
+   * Como o cliente pagou no checkout. Opcional por compatibilidade: até o
+   * gateway existir o app gravava PIX pra todo pedido do site, e com cartão
+   * ligado isso virou registro errado — o que atrapalha justamente a
+   * conciliação do contas a receber com a cobrança. Só Pix e cartão: não há
+   * outra forma na operação (decisão do Léo, 05/09).
+   */
+  formaPagamento: z.enum(['PIX', 'CARTAO_CREDITO']).optional(),
   observacoes: z.string().max(2000).optional(),
   /**
    * Endereço de ENTREGA. Sem ele o pedido nasce sem destino no ERP e a
