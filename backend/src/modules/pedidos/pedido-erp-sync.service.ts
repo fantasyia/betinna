@@ -486,6 +486,26 @@ export class PedidoErpSyncService {
       await this.comissoes.recalcular(existente.id);
       if (viraEntregue) await this.dispararEntregue(empresaId, existente.id);
       if (podeAvisarDespacho) await this.dispararRastreio(empresaId, existente.id);
+      // RASTREIO GRAVADO, AVISO SEGURADO — e dizendo por quê.
+      //
+      // Este é o caminho NORMAL e ele era mudo, o que custou caro: a sessão de
+      // testes gastou três investigações (e um card vermelho) pra descobrir que
+      // o P2 "não disparou" porque o pacote ainda está na prateleira.
+      //
+      // O código do rastreio nasce na COMPRA DA ETIQUETA (situação 7 do Tiny,
+      // que aqui vira EM_SEPARACAO), não no despacho — e segurar o aviso até
+      // ENVIADO é de propósito, senão o cliente recebe "a caminho" com um
+      // rastreio que não se move por horas ou dias.
+      //
+      // Ausência de log virou "ausência de comportamento" pra quem olhava de
+      // fora. Uma linha resolve, e ela só sai no instante em que o código chega.
+      else if (ganhouRastreio) {
+        this.logger.log(
+          `[erp] pedido ${existente.numero}: rastreio ${rastreioCodigo} gravado, mas o aviso ` +
+            `SEGURA até o despacho (status ${statusFinal}, avisa em ENVIADO) — o Tiny dá o ` +
+            `código na compra da etiqueta, e avisar agora seria "a caminho" com o pacote parado`,
+        );
+      }
       // O site é dono da tela do cliente: sem este aviso, quem comprou lá fica
       // sem saber que o pedido foi faturado ou despachado.
       await this.site.notificar({
