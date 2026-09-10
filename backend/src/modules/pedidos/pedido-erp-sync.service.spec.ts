@@ -505,6 +505,42 @@ describe('pedidos que vêm do ERP', () => {
       ).toBeUndefined();
     });
 
+    /**
+     * ⛔ Pedido CANCELADO aqui não ressuscita pelo ERP.
+     *
+     * Medido em 10/09: o PED-0086 estava CANCELADO desde 09/09 (limpeza do
+     * Asaas), o sync das 06:00 leu "Enviado" no ERP e promoveu — disparando o
+     * P2, que avisaria o cliente que um pedido cancelado está a caminho. Só não
+     * saiu porque o fluxo morreu por OUTRO defeito, que também foi consertado.
+     */
+    it('CANCELADO aqui não vira ENVIADO porque o ERP diz que sim', async () => {
+      const { svc, prisma } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: { ...semRastreio, status: 'CANCELADO' },
+      });
+
+      await svc.sincronizar('emp-1');
+
+      const dados = prisma.pedido.update.mock.calls[0]?.[0]?.data ?? {};
+      expect(dados.status).toBeUndefined();
+      // O espelho de informação continua entrando — é o status que fica parado.
+      expect(dados.rastreioCodigo).toBe('BR123456789BR');
+    });
+
+    it('e nesse caso o cliente NÃO recebe aviso nenhum', async () => {
+      const { svc, bus } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: { ...semRastreio, status: 'CANCELADO' },
+      });
+
+      await svc.sincronizar('emp-1');
+
+      expect(
+        bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
+      ).toBeUndefined();
+      expect(bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_ENTREGUE')).toBeUndefined();
+    });
+
     it('pedido que JÁ estava ENVIADO e só agora ganhou código também avisa', async () => {
       // O ERP às vezes preenche fora de ordem — era o motivo do desenho antigo,
       // e continua coberto sem trazer de volta o aviso adiantado.

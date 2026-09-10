@@ -2783,8 +2783,21 @@ export class FluxoExecutorService {
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'PAUSAR_IA');
     const leadId = ctx['leadId'] as string | undefined;
-    if (!leadId) throw new Error('contexto.leadId ausente para PAUSAR_IA');
     const religar = cfg.religar === true;
+
+    // ⚠️ NÃO exige `leadId`. Este nó não precisa de lead — precisa de TELEFONE,
+    // que é como ele acha a conversa. Exigir lead derrubou dois pedidos REAIS
+    // em 10/09: o P2 (rastreio disponível) começa com um `Religar IA`, o
+    // gatilho `PEDIDO_RASTREIO_DISPONIVEL` traz `pedidoId`/`clienteId` e NÃO
+    // traz `leadId`, e a execução morria no PRIMEIRO nó — 3 tentativas e fim.
+    //
+    // O efeito era o pior possível: pedido despachado, rastreio real no ERP, e
+    // o cliente sem o código — depois de o P1 ter prometido que mandaria. O nó
+    // seguinte, que sabe cair no telefone do cliente, nunca era alcançado.
+    //
+    // A resolução passa a ser a MESMA do envio (`resolverTelefoneLeadOuCliente`):
+    // lead → pedido → cliente. Só falha quando não há telefone em lugar nenhum,
+    // que aí é falha de verdade e não de forma do contexto.
 
     // ⚠️ ESCOPO. O mesmo telefone existe em DUAS caixas quando o rep também usa
     // WhatsApp pessoal (D38): a da empresa (`proprietarioId` null) e a dele.
@@ -2818,14 +2831,13 @@ export class FluxoExecutorService {
       });
       conversas = c ? [c] : [];
     } else {
-      const lead = await this.prisma.lead.findFirst({
-        where: { id: leadId, empresaId },
-        select: { contatoTelefone: true },
-      });
-      if (!lead?.contatoTelefone) {
-        throw new Error(`Lead ${leadId} sem contatoTelefone para PAUSAR_IA`);
+      const telefone = await this.resolverTelefoneLeadOuCliente(ctx, empresaId);
+      if (!telefone) {
+        throw new Error(
+          'PAUSAR_IA: contexto sem telefone — nem lead, nem pedido, nem cliente resolveram',
+        );
       }
-      sufixo = lead.contatoTelefone.replace(/\D/g, '').slice(-8);
+      sufixo = telefone.replace(/\D/g, '').slice(-8);
       if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
       // `IS NOT DISTINCT FROM` porque `= NULL` não casa nada em SQL — e o caso
       // mais comum aqui é justamente o dono nulo (canal da empresa).
@@ -2861,9 +2873,10 @@ export class FluxoExecutorService {
     // Então a pausa CANCELA as execuções vivas do lead. Quem está dentro do
     // modelo não é interrompido no meio (não dá), mas o envio é barrado no
     // último instante por `execucaoViva` no conversar-ia.
-    const canceladas = religar
-      ? 0
-      : await this.cancelarExecucoesDoLead(empresaId, leadId, execucaoId);
+    // Só há o que cancelar quando existe lead: as execuções vivas são indexadas
+    // por ele. Pausa vinda de contexto de PEDIDO não tem fila de lead pra matar.
+    const canceladas =
+      religar || !leadId ? 0 : await this.cancelarExecucoesDoLead(empresaId, leadId, execucaoId);
     return {
       leadId,
       sufixo,

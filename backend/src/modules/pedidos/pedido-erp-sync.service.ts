@@ -433,7 +433,33 @@ export class PedidoErpSyncService {
       }
       if (!mudou) return naoEntregue || adotouRep ? 'atualizado' : 'semMudanca';
 
-      const viraEntregue = status === 'ENTREGUE' && existente.status !== 'ENTREGUE';
+      // ⛔ PEDIDO CANCELADO AQUI NÃO RESSUSCITA PELO ERP.
+      //
+      // Medido em 10/09: o PED-0086 estava CANCELADO desde 09/09 16:21 (limpeza
+      // do Asaas), o sync das 06:00 leu "Enviado" no ERP e promoveu pra ENVIADO
+      // — disparando o P2, que avisaria o cliente que um pedido CANCELADO está
+      // a caminho. Só não saiu porque o fluxo morreu por outro defeito.
+      //
+      // Cancelar aqui é ato deliberado de alguém; a situação do ERP pode estar
+      // velha (ninguém cancelou lá) ou o cancelamento pode nem existir lá. Na
+      // divergência, o app NÃO decide sozinho a favor do ERP: mantém o cancelado,
+      // registra o aviso e deixa uma pessoa resolver. O resto do espelho (valor,
+      // frete, rastreio) continua entrando — é informação, não promessa.
+      const ressuscitaria =
+        existente.status === 'CANCELADO' && status !== null && status !== 'CANCELADO';
+      if (ressuscitaria) {
+        r.avisos.push(
+          `pedido ${existente.numero} está CANCELADO aqui e o ERP diz "${status}" ` +
+            `(situação ${d.situacao}) — status preservado, confira qual dos dois está certo`,
+        );
+        this.logger.warn(
+          `[erp] pedido ${existente.numero}: ERP diz ${status}, aqui está CANCELADO — ` +
+            `NÃO promovido (e nenhum aviso ao cliente)`,
+        );
+      }
+      const statusAplicavel = ressuscitaria ? null : status;
+
+      const viraEntregue = statusAplicavel === 'ENTREGUE' && existente.status !== 'ENTREGUE';
       // AVISO DE DESPACHO — o cliente só pode ouvir "foi despachado" quando o
       // pedido VIRA ENVIADO (situação 5).
       //
@@ -449,13 +475,13 @@ export class PedidoErpSyncService {
       // código também avisa. Continua UMA notificação por pedido — as duas
       // metades são transições, e nunca valem as duas pro mesmo pedido.
       const ganhouRastreio = Boolean(rastreioCodigo) && !existente.rastreioCodigo;
-      const statusFinal = status ?? existente.status;
+      const statusFinal = statusAplicavel ?? existente.status;
       const podeAvisarDespacho =
         statusFinal === 'ENVIADO' && (existente.status !== 'ENVIADO' || ganhouRastreio);
       await this.prisma.pedido.update({
         where: { id: existente.id },
         data: {
-          ...(status ? { status: status as never } : {}),
+          ...(statusAplicavel ? { status: statusAplicavel as never } : {}),
           rastreioCodigo,
           rastreioUrl,
           total,
@@ -466,7 +492,7 @@ export class PedidoErpSyncService {
       });
       this.logger.log(
         `[erp] pedido ${existente.numero} (ERP ${numeroErp}): ` +
-          `${existente.status} → ${status ?? existente.status}`,
+          `${existente.status} → ${statusAplicavel ?? existente.status}`,
       );
       // NOTA FISCAL emitida = a primeira mensalidade foi faturada, e é isso que
       // move o cliente pra instalação. `somenteDe` limita ao contrato recém
