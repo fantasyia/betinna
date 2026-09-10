@@ -104,11 +104,29 @@ export function initSentry(): void {
 /**
  * Captura uma exceção no Sentry (manual, fora do auto-capture).
  * Útil para workers BullMQ que não passam pelo middleware HTTP.
+ *
+ * ⚠️ `fingerprint` existe porque o Sentry agrupa por **pilha** quando há uma, e
+ * não pela mensagem. Num ponto de captura genérico — um processor que reporta o
+ * erro de QUALQUER job, por exemplo — a pilha é sempre a mesma linha, e erros
+ * que não têm nada a ver um com o outro caem na mesma issue. O título que
+ * aparece é o do evento mais recente, então o caso grave some atrás do último
+ * ruído, e resolver um marca o outro como resolvido junto (medido em 10/09:
+ * `BETINNA-API-3` juntou um bug do PAUSAR_IA com uma guarda de envio).
+ *
+ * Passe `fingerprint` sempre que o ponto de captura for genérico: ele substitui
+ * o agrupamento padrão. Os pedaços devem ser ESTÁVEIS (fila, nome do job, uma
+ * chave derivada da mensagem) — nunca id, telefone ou timestamp, que criariam
+ * uma issue nova por ocorrência.
  */
-export function captureException(err: unknown, context?: Record<string, unknown>): void {
+export function captureException(
+  err: unknown,
+  context?: Record<string, unknown>,
+  fingerprint?: string[],
+): void {
   if (!process.env.SENTRY_DSN) return;
   Sentry.captureException(err, {
     extra: context ? (sanitize(context) as Record<string, unknown>) : undefined,
+    fingerprint: fingerprint?.length ? fingerprint : undefined,
   });
 }
 

@@ -5,6 +5,7 @@ import { PrismaService } from '@database/prisma.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { captureException as sentryCapture } from '@shared/observability/sentry';
 import { DEAD_LETTER_QUEUE, type DeadLetterJobData } from './dead-letter.types';
+import { fingerprintDeadLetter } from './dead-letter.fingerprint';
 
 /**
  * Processor da Dead Letter Queue (Sprint 3 FIX 3).
@@ -33,14 +34,26 @@ export class DeadLetterProcessor extends WorkerHost {
       `Dead-letter: queue=${d.originalQueue} job=${d.originalJobId} empresaId=${d.empresaId ?? '(n/a)'} err="${d.error}"`,
     );
 
-    // Sprint 3 FIX 5: reporta no Sentry — visibilidade fora do log do server
-    sentryCapture(new Error(`Job failed permanently: ${d.error}`), {
-      originalQueue: d.originalQueue,
-      originalJobName: d.originalJobName,
-      originalJobId: d.originalJobId,
-      empresaId: d.empresaId,
-      failedAt: d.failedAt,
-    });
+    // Sprint 3 FIX 5: reporta no Sentry — visibilidade fora do log do server.
+    //
+    // ⚠️ O fingerprint NÃO é enfeite: a pilha aqui é sempre esta linha, então sem
+    // ele o Sentry junta num grupo só tudo que morre na dead-letter, de qualquer
+    // fila e por qualquer motivo. Ver `dead-letter.fingerprint.ts`.
+    sentryCapture(
+      new Error(`Job failed permanently: ${d.error}`),
+      {
+        originalQueue: d.originalQueue,
+        originalJobName: d.originalJobName,
+        originalJobId: d.originalJobId,
+        empresaId: d.empresaId,
+        failedAt: d.failedAt,
+      },
+      fingerprintDeadLetter({
+        originalQueue: d.originalQueue,
+        originalJobName: d.originalJobName,
+        error: d.error,
+      }),
+    );
 
     // 1) Audit log permanente
     await this.prisma.auditLog
