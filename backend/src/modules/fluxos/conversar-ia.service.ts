@@ -640,9 +640,38 @@ export class ConversarIaService implements OnModuleDestroy {
     if (!cfg.consultarCatalogo && !cfg.consultarConhecimento) return '';
 
     const partes: string[] = [];
+    const t0 = Date.now();
+
+    // As três buscas NÃO dependem uma da outra e estavam em fila de `await` —
+    // catálogo, depois conhecimento, depois documentos. Cada uma é uma ida ao
+    // banco (as duas primeiras com embedding), então em fila o turno pagava a
+    // soma; em paralelo paga a mais lenta.
+    //
+    // ⚠️ Medido em 10/09: o turno inteiro leva 15-20s, e o docblock da janela de
+    // rajada ainda supunha ~10s. O cliente respondia em 6-8s e o bot mandava um
+    // roteiro que ignorava o que ele tinha acabado de dizer. Enquanto o turno
+    // custar 15s, nenhuma janela de espera conserta isso — só encurtar o turno.
+    const [produtos, chunks, blocoDocs] = await Promise.all([
+      cfg.consultarCatalogo
+        ? this.produtoSearch.buscar(empresaId, consulta, 5).catch(() => [])
+        : Promise.resolve([]),
+      cfg.consultarConhecimento
+        ? this.conhecimentoSearch.buscar(empresaId, consulta, 4).catch(() => [])
+        : Promise.resolve([]),
+      cfg.consultarConhecimento ? this.montarBlocoDocsEnviaveis(empresaId) : Promise.resolve(''),
+    ]);
+
+    const gasto = Date.now() - t0;
+    // `log`, não `debug`: em produção o nível é `info`, e este número é o que
+    // separa "a IA é lenta" de "a busca é lenta" quando alguém for investigar.
+    if (gasto > 500) {
+      this.logger.log(
+        `CONVERSAR_IA: RAG levou ${gasto}ms ` +
+          `(catálogo ${produtos.length}, conhecimento ${chunks.length})`,
+      );
+    }
 
     if (cfg.consultarCatalogo) {
-      const produtos = await this.produtoSearch.buscar(empresaId, consulta, 5).catch(() => []);
       if (produtos.length > 0) {
         const linhas = produtos.map((p) => {
           const preco = `R$ ${p.precoTabela.toFixed(2)}`;
@@ -654,19 +683,14 @@ export class ConversarIaService implements OnModuleDestroy {
     }
 
     if (cfg.consultarConhecimento) {
-      const chunks = await this.conhecimentoSearch.buscar(empresaId, consulta, 4).catch(() => []);
       if (chunks.length > 0) {
         const linhas = chunks.map((c) => `- ${c.titulo}: ${c.conteudo}`);
         partes.push(`INFORMAÇÕES DA EMPRESA:\n${linhas.join('\n')}`);
       }
     }
 
-    // Arquivos que o bot pode ENVIAR (docs com podeEnviar=true): a IA decide enviar
-    // marcando [[ENVIAR_DOC:id]] no fim da resposta (tool-use por marcador).
-    const blocoDocs = cfg.consultarConhecimento
-      ? await this.montarBlocoDocsEnviaveis(empresaId)
-      : '';
-
+    // `blocoDocs` (arquivos que o bot pode ENVIAR, via [[ENVIAR_DOC:id]]) vem do
+    // Promise.all acima, junto com as outras duas buscas.
     if (partes.length === 0 && !blocoDocs) return '';
     let bloco = '';
     if (partes.length > 0) {
@@ -1782,6 +1806,10 @@ export class ConversarIaService implements OnModuleDestroy {
       conversationId && tentativa === 1
         ? await this.absorverRajada(conversationId, inicioDoTurno)
         : { texto: '', ate: inicioDoTurno };
+    // Quanto a JANELA custou, separado do resto. É a única parte que já se sabia
+    // (5s fixos), mas registrar aqui deixa a conta fechar no log: total = janela
+    // + RAG + IA + pacing + envio.
+    const gastoRajada = Date.now() - inicioDoTurno.getTime();
     const textoDoTurno = rajada.texto ? [textoLead, rajada.texto].join('\n') : textoLead;
     let falha: unknown = null;
     try {
@@ -1808,6 +1836,19 @@ export class ConversarIaService implements OnModuleDestroy {
       );
       falha = err;
     } finally {
+      // O NÚMERO QUE FALTAVA. `total` é do claim até a resposta pronta; `janela`
+      // é a espera de rajada, que é escolha nossa. A diferença entre os dois é o
+      // que dá pra encurtar — e as linhas de RAG, IA e pacing, logadas no mesmo
+      // turno, dizem onde ela mora.
+      //
+      // ⚠️ Isto é medição de PRODUÇÃO de propósito: em 10/09 se descobriu que o
+      // turno leva 15-20s enquanto o código supunha ~10s, e a suposição velha
+      // já tinha virado premissa de outro ajuste (a janela de 5s).
+      const total = Date.now() - inicioDoTurno.getTime();
+      this.logger.log(
+        `CONVERSAR_IA: turno da exec ${execucaoId} levou ${total}ms ` +
+          `(janela de rajada ${gastoRajada}ms)`,
+      );
       // Libera o claim sem tocar no status (que pode ter virado EM_EXECUCAO no caminho
       // que classifica e avança). Best-effort.
       await this.prisma.fluxoExecucao
@@ -2995,7 +3036,18 @@ export class ConversarIaService implements OnModuleDestroy {
     }
     // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
     // `reativo` = resposta a quem escreveu (faixa rápida); opener = proativo (lento).
+    //
+    // Cronometrado porque este é um dos suspeitos do turno de 15-20s e ninguém
+    // tinha o número: a espera aqui é o slot do Redis, que depende de quanto a
+    // empresa está mandando NAQUELE instante — some do log e vira mistério.
+    const tPacing = Date.now();
     await this.pacing.aguardarSlot(empresaId, reativo);
+    const esperouPacing = Date.now() - tPacing;
+    if (esperouPacing > 500) {
+      this.logger.log(
+        `CONVERSAR_IA: pacing segurou o envio por ${esperouPacing}ms (reativo=${reativo})`,
+      );
+    }
     // Preserva o '+' (E.164) pra o provider distinguir internacional de nacional —
     // senão número estrangeiro de 10/11 dígitos ganharia 55 indevidamente.
     const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
@@ -3304,7 +3356,17 @@ export class ConversarIaService implements OnModuleDestroy {
     ...args: Parameters<MullerBotService['gerarRespostaIa']>
   ): Promise<Awaited<ReturnType<MullerBotService['gerarRespostaIa']>>> {
     this.falharSePedidoPorTeste(ctx);
-    return this.muller.gerarRespostaIa(...args);
+    // Porta única também é o lugar único pra CRONOMETRAR. Sem este número, a
+    // discussão sobre a lentidão do turno (15-20s medidos em 10/09) é palpite:
+    // ninguém sabia separar o tempo do modelo do tempo de tudo o que vem antes.
+    // O `finally` garante o registro mesmo quando a IA estoura — chamada que
+    // falha DEPOIS de 40s é justamente a que interessa.
+    const t0 = Date.now();
+    try {
+      return await this.muller.gerarRespostaIa(...args);
+    } finally {
+      this.logger.log(`CONVERSAR_IA: IA respondeu em ${Date.now() - t0}ms`);
+    }
   }
 
   /**

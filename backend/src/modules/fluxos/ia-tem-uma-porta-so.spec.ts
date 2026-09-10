@@ -20,9 +20,21 @@ import { join } from 'node:path';
  */
 const FONTE = readFileSync(join(__dirname, 'conversar-ia.service.ts'), 'utf8');
 
+/**
+ * O corpo do wrapper vai do `private async chamarIa(` até a PRÓXIMA declaração
+ * no mesmo nível de indentação.
+ *
+ * ⚠️ Antes eram 600 caracteres fixos, e isso quebrou em 10/09: um comentário
+ * novo dentro do método empurrou a chamada pra fora da fatia, e o teste passou a
+ * acusar "não há chamada ao provedor" — que é o oposto do que estava acontecendo.
+ * Fatia por tamanho mede o comentário, não o código.
+ */
 const corpoDoWrapper = (): string => {
   const i = FONTE.indexOf('private async chamarIa(');
-  return i < 0 ? '' : FONTE.slice(i, i + 600);
+  if (i < 0) return '';
+  const resto = FONTE.slice(i);
+  const fim = resto.slice(1).search(/\n {2}(?:private|public|protected|async|\/\*\*)/);
+  return fim < 0 ? resto : resto.slice(0, fim + 1);
 };
 
 describe('toda chamada de IA passa pela mesma porta', () => {
