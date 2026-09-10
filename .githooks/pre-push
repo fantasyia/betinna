@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# =====================================================================
+# Pre-push hook — mostra O QUE vai subir e exige confirmação.
+#
+# POR QUE ISTO EXISTE
+# Este repo tem WORKING TREE COMPARTILHADO entre várias sessões de Claude
+# rodando ao mesmo tempo, todas na mesma branch local (`main`). Consequência
+# que não é óbvia: um `git push` de qualquer sessão carrega os commits de
+# TODAS as outras que ainda não subiram.
+#
+# Em 09-10/09/2026 isso aconteceu DUAS VEZES, nas duas direções:
+#   - o commit `9d922d6` de uma sessão subiu carregado pelo push de outra,
+#     com o autor esperando o OK do Léo antes de publicar;
+#   - o `4b0b499` fez o mesmo caminho na direção oposta.
+#
+# Em branch local compartilhada, "commita mas não sobe" NÃO é uma garantia —
+# é uma intenção que o primeiro push de qualquer sessão desfaz.
+#
+# O QUE ESTE HOOK FAZ, E O QUE NÃO FAZ
+# Ele não impede nada: imprime a lista exata do que vai subir e aborta se
+# `PUSH` não estiver setado. Assim carregar commit de outra sessão deixa de
+# ser SURPRESA e passa a ser DECISÃO.
+#
+# De propósito ele pede confirmação SEMPRE, mesmo pra um commit só. A versão
+# "só avisa quando tem mais de um" treina a pessoa a setar a variável por
+# reflexo, e aí o aviso vira ruído — que é como o aviso deixa de proteger.
+#
+# ⚠️ ISTO É REDE, NÃO CONSERTO. O conserto é WORKTREE POR SESSÃO (diretório,
+# branch e HEAD próprios). Receita em `CLAUDE.md`, seção "Repositório
+# compartilhado". Enquanto o worktree é um só, esta rede é o que há.
+#
+# Ativar (uma vez por clone):  git config core.hooksPath .githooks
+# Pra subir:                   PUSH=ok git push
+# =====================================================================
+set -uo pipefail
+
+remoto_url="${2:-}"
+alguma_coisa=0
+
+# stdin do pre-push: <ref local> <sha local> <ref remota> <sha remoto>
+while read -r ref_local sha_local ref_remota sha_remoto; do
+  # sha zerado no lado local = deleção de branch. Não é o caso que este hook
+  # protege, e barrar deleção só atrapalharia.
+  case "$sha_local" in
+    *[^0]*) ;;
+    *) continue ;;
+  esac
+
+  if [ -z "${sha_remoto//0/}" ]; then
+    # Ref nova no remoto: não há base de comparação. Lista os últimos, com teto.
+    intervalo="$sha_local"
+    faixa="$(git log --oneline -n 20 "$sha_local")"
+  else
+    intervalo="$sha_remoto..$sha_local"
+    faixa="$(git log --oneline "$intervalo")"
+  fi
+
+  [ -z "$faixa" ] && continue
+  alguma_coisa=1
+  quantos="$(printf '%s\n' "$faixa" | grep -c '' || true)"
+
+  echo ""
+  echo "  ┌─ vai subir pra ${ref_remota:-(nova ref)} em ${remoto_url:-origin}"
+  echo "  │  $quantos commit(s):"
+  printf '%s\n' "$faixa" | sed 's/^/  │    /'
+  echo "  └─"
+
+  # Autores distintos são o sinal mais forte de "isto não é só meu trabalho".
+  autores="$(git log --format='%an' "$intervalo" 2>/dev/null | sort -u | tr '\n' ' ')"
+  echo "     autores: $autores"
+done
+
+[ "$alguma_coisa" = 0 ] && exit 0
+
+if [ -n "${PUSH:-}" ]; then
+  echo "     PUSH setado — seguindo."
+  exit 0
+fi
+
+cat <<'FIM'
+
+  ⛔ Push abortado — de propósito, pra você olhar a lista acima.
+
+  Working tree compartilhado: este push carrega TODO commit que qualquer
+  sessão tenha feito e não subido. Se aparecer aí algo que não é seu, fale
+  com quem fez ANTES de publicar o trabalho dela.
+
+  Se está tudo certo:   PUSH=ok git push
+FIM
+exit 1
