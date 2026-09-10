@@ -60,7 +60,7 @@ TINY_OAUTH_AUTH_URL=https://accounts.tiny.com.br/realms/tiny/protocol/openid-con
 TINY_OAUTH_TOKEN_URL=https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token
 TINY_CLIENT_ID=          # do painel do Tiny
 TINY_CLIENT_SECRET=      # do painel do Tiny — SÓ no Railway, nunca no repo
-TINY_REDIRECT_URI=https://api-production-9426.up.railway.app/api/v1/integracoes/tiny/oauth/callback
+TINY_REDIRECT_URI=https://api.somatecblocking.com.br/api/v1/integracoes/tiny/oauth/callback
 TINY_WEBHOOK_SECRET=     # segredo que vai NA URL do webhook (Tiny não assina)
 TINY_TIMEOUT_MS=30000
 TINY_DEMO_MODE=true      # mock enquanto não conectar
@@ -326,7 +326,7 @@ competência explícita.
 3. **Nome do aplicativo:** `Betinna` (é o nome que aparece na tela de autorização)
 4. **URLs de redirecionamento:** cole exatamente
    ```
-   https://api-production-9426.up.railway.app/api/v1/integracoes/tiny/oauth/callback
+   https://api.somatecblocking.com.br/api/v1/integracoes/tiny/oauth/callback
    ```
 5. Salvar. Depois **editar o aplicativo** → seção **Chaves de acesso** → lá estão **Client ID** e **Client Secret**.
 6. Ainda na edição, seção **Permissões do aplicativo** — marque, com nível **Leitura + Incluir e editar** (não precisa "Excluir" em nenhum):
@@ -338,15 +338,41 @@ competência explícita.
 
 ### Passo 2 — Instalar o app de Webhooks
 
+> ✅ **Estado em 10/09/2026:** a URL de redirecionamento do aplicativo já está no
+> domínio novo, **e a antiga foi removida** — medido no `authorize` do Tiny
+> (domínio novo → `200`, Railway antigo → `400`, igual a um domínio inventado).
+> As seis URLs de webhook foram atualizadas no painel com o segredo rotacionado.
+> **Ainda em aberto:** nenhum evento chegou desde então — ver o card *"Os
+> webhooks do Tiny nunca entregaram"*.
+
 1. **Loja de aplicativos** do Tiny → instalar **Webhooks** (depende do plano; se não aparecer, é isso que precisa ser destravado com eles).
 2. **menu → configurações → aba geral → outras configurações → Webhooks**
 3. Preencher as URLs (o `SEGREDO` eu te passo quando o endpoint subir):
    ```
-   Vendas         https://api-production-9426.up.railway.app/api/v1/webhooks/tiny/SEGREDO/pedido
-   Envios         https://api-production-9426.up.railway.app/api/v1/webhooks/tiny/SEGREDO/rastreio
-   Estoque        https://api-production-9426.up.railway.app/api/v1/webhooks/tiny/SEGREDO/estoque
-   Notas Fiscais  https://api-production-9426.up.railway.app/api/v1/webhooks/tiny/SEGREDO/nota
+   Vendas         https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/pedido
+   Envios         https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/rastreio
+   Estoque        https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/estoque
+   Notas Fiscais  https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/nota
+   Produtos       https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/produto
+   Preços         https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/preco
    ```
+
+   São **SEIS**, não quatro: o cadastro de e-commerce ("Outra Integração") pede
+   `produto` e `preco` também. O evento `produto` não é aviso, é PERGUNTA — o
+   ERP quer saber como a nossa loja chama aquele produto dele, e responder só
+   `ok` faz ele marcar "Produto não mapeado pelo integrador". Sem mapeamento o
+   produto não entra na lista do canal, que é onde a cotação de frete procura o
+   item. O `TinyMapeamentoService` responde isso.
+
+   ⚠️ **Conferir se o webhook está ENTREGANDO, sem depender do painel:** cole a
+   URL inteira (com o segredo) no navegador. O `GET` da mesma rota responde o
+   cruzamento — `recebidos` diz se chegou, `recusados` diz se tentou e foi
+   barrado. `recebidos: 0` **com** `recusados: 0` significa que o ERP nunca
+   postou, e aí o problema está no painel dele, não aqui.
+
+   📌 O segredo NÃO está neste arquivo de propósito: ele já esteve num spec
+   commitado, e este repo é público. Vive em
+   `C:/Users/TechD/.claude/credenciais/tiny-webhook-secret.txt`.
 
 ### Passo 3 — Ligar o Melhor Envio dentro do Tiny
 
@@ -466,7 +492,7 @@ O lado do APP está pronto. O que o site precisa fazer:
 ### 8.1 Mandar o pedido do checkout
 
 ```
-POST https://api-production-9426.up.railway.app/api/v1/public/pedidos
+POST https://api.somatecblocking.com.br/api/v1/public/pedidos
 x-api-key: <a MESMA chave de /public/leads>
 
 {
