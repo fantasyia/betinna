@@ -13,6 +13,7 @@ import { FluxoExecutorProcessor } from './fluxo-executor.processor';
 import { FluxoExecutorService } from './fluxo-executor.service';
 import { FluxoTriggersJob } from './fluxo-triggers.job';
 import { CronMetricsService } from './cron-metrics.service';
+import { IaAFrenteDiagnosticoService } from './ia-a-frente-diagnostico.service';
 import { FluxosController } from './fluxos.controller';
 import { FluxosService } from './fluxos.service';
 import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.service';
@@ -58,6 +59,8 @@ import { DEAD_LETTER_QUEUE } from '@modules/dead-letter/dead-letter.types';
     ...(RODAR_BACKGROUND ? [FluxoExecutorProcessor] : []),
     FluxoTriggersJob,
     CronMetricsService,
+    // Diagnostico do iaAFrente (rota ADMIN-only) - ver o service pro porque.
+    IaAFrenteDiagnosticoService,
     OrquestracaoLeadEventsService,
     ConversarIaService,
     MonitorService,

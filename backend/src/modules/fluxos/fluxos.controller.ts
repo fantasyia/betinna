@@ -17,6 +17,7 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { FluxosService } from './fluxos.service';
 import { CronMetricsService } from './cron-metrics.service';
+import { IaAFrenteDiagnosticoService } from './ia-a-frente-diagnostico.service';
 import {
   createFluxoSchema,
   updateFluxoSchema,
@@ -26,6 +27,7 @@ import {
   definirGatilhoSchema,
   importFluxoSchema,
   cronPreviewSchema,
+  iaAFrenteDiagSchema,
   uploadFluxoMidiaSchema,
   type CreateFluxoDto,
   type UpdateFluxoDto,
@@ -35,6 +37,7 @@ import {
   type DefinirGatilhoDto,
   type ImportFluxoDto,
   type CronPreviewDto,
+  type IaAFrenteDiagDto,
   type UploadFluxoMidiaDto,
 } from './fluxos.dto';
 import { previewCrons, CRON_TZ_PADRAO } from './cron.util';
@@ -46,6 +49,7 @@ export class FluxosController {
   constructor(
     private readonly svc: FluxosService,
     private readonly cronMetrics: CronMetricsService,
+    private readonly iaDiag: IaAFrenteDiagnosticoService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────────────
@@ -264,6 +268,31 @@ export class FluxosController {
   @ApiOperation({ summary: 'Latência de disparo dos crons agendados (média + percentis)' })
   cronMetricas() {
     return this.cronMetrics.obterMetricas();
+  }
+
+  /**
+   * DIAGNÓSTICO do `iaAFrente` — não executa fluxo, não manda mensagem.
+   *
+   * Existe porque a flag `FLUXO_IA_A_FRENTE` foi ligada em produção com uma
+   * medição que não media a flag — e não por descuido: **pelo WhatsApp não
+   * dá.** O Evolution serializa o envio em 6-8s e a janela que a flag cobre é
+   * de 1-2s, então o intervalo entre mensagens nunca cai dentro dela.
+   *
+   * Esta rota monta o estado à mão, pergunta aos DOIS guards e desfaz.
+   *
+   * ADMIN-only: cria (e apaga) uma linha de execução, e durante os
+   * milissegundos em que ela existe um proativo de verdade seria adiado.
+   */
+  @Post('diagnostico/ia-a-frente')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Mede o iaAFrente sem WhatsApp: monta o estado, pergunta aos dois guards, desfaz',
+  })
+  iaAFrenteDiag(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(iaAFrenteDiagSchema)) dto: IaAFrenteDiagDto,
+  ) {
+    return this.iaDiag.medir(user, dto);
   }
 
   @Get(':id/metricas')

@@ -333,3 +333,20 @@ export type TestarFluxoDto = z.infer<typeof testarFluxoSchema>;
 export type CreateFluxoNoDto = z.infer<typeof createFluxoNoSchema>;
 export type CreateFluxoEdgeDto = z.infer<typeof createFluxoEdgeSchema>;
 export type ImportFluxoDto = z.infer<typeof importFluxoSchema>;
+
+/**
+ * Diagnóstico do `iaAFrente` — monta o estado em que os dois guards divergem e
+ * pergunta aos dois. Ver `IaAFrenteDiagnosticoService` pro porquê.
+ *
+ * `noId` é opcional: sem ele a posição é o TRIGGER do fluxo, que alcança tudo
+ * rio abaixo. Passar um nó específico serve pra testar posição intermediária —
+ * inclusive uma DEPOIS do nó de IA, que deve responder "não".
+ */
+export const iaAFrenteDiagSchema = z.object({
+  fluxoId: z.string().min(1),
+  noId: z.string().min(1).optional(),
+  leadId: z.string().min(1).optional(),
+  conversationId: z.string().min(1).optional(),
+});
+
+export type IaAFrenteDiagDto = z.infer<typeof iaAFrenteDiagSchema>;
