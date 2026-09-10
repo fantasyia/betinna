@@ -1130,10 +1130,24 @@ export class ConversarIaService implements OnModuleDestroy {
       };
     }
 
-    const systemPrompt = interpolate(
-      await this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId),
-      ctx,
-    );
+    // ── O OPENER tinha a mesma fila do turno de resposta ──
+    //
+    // Prompt compilado, teto de custo e config do bot eram três `await` em
+    // sequência aqui também. E este caminho é o mais sensível dos dois: é a
+    // PRIMEIRA mensagem que a pessoa recebe — o silêncio antes dela é o silêncio
+    // de quem acabou de escrever e ainda não teve resposta nenhuma.
+    //
+    // O compilar já vinha ANTES da checagem de teto, então paralelizar não faz
+    // nada rodar à toa que já não rodasse. `obterConfigBot` é a exceção: ele só
+    // era usado no ramo `reativo`, e agora roda sempre — uma leitura de config
+    // barata contra a soma de três esperas no caminho comum.
+    const [promptOpener, custoOpener, cfgBotOpener] = await Promise.all([
+      this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId),
+      this.custo.verificarTeto(empresaId),
+      this.persona.obterConfigBot(empresaId).catch(() => null),
+    ]);
+
+    const systemPrompt = interpolate(promptOpener, ctx);
     // Passa o primeiro nome do lead pra IA (pra ela saudar pelo nome de verdade,
     // em vez de devolver "[primeiro_nome]" cru).
     //
@@ -1155,7 +1169,7 @@ export class ConversarIaService implements OnModuleDestroy {
     // Teto de custo do bot (por-empresa): se a empresa estourou o orçamento de tokens
     // do dia/mês, o nó NÃO abre conversa por IA — roteia pela saída "erro" (mesmo gate
     // do bot reativo; antes o fluxo ignorava o teto e gerava custo mesmo pausado).
-    const custoOpener = await this.custo.verificarTeto(empresaId);
+    // `custoOpener` veio do Promise.all acima; a CHECAGEM continua aqui.
     if (custoOpener.bloqueado) {
       const { tipo_erro } = await this.rotearParaErro(
         execucaoId,
@@ -1183,9 +1197,8 @@ export class ConversarIaService implements OnModuleDestroy {
         typeof (ctx as Record<string, unknown>)['texto'] === 'string'
           ? ((ctx as Record<string, unknown>)['texto'] as string).trim()
           : '';
-      const limiteHistIni =
-        (await this.persona.obterConfigBot(empresaId).catch(() => null))?.historicoMensagens ??
-        HISTORICO_DEFAULT;
+      // `cfgBotOpener` veio do Promise.all lá em cima.
+      const limiteHistIni = cfgBotOpener?.historicoMensagens ?? HISTORICO_DEFAULT;
       const convIdCtx =
         typeof (ctx as Record<string, unknown>)['conversationId'] === 'string'
           ? ((ctx as Record<string, unknown>)['conversationId'] as string)
@@ -2176,8 +2189,36 @@ export class ConversarIaService implements OnModuleDestroy {
     // viram enum no structured output.
     const declaradas = parseVariaveisGravadas(cfg.variaveisGravadas);
     const gravaveis = declaradas.map((v) => v.nome);
+
+    // ── Quatro buscas que não dependem uma da outra, e estavam em FILA ──
+    //
+    // Prompt compilado, config do bot, teto de custo e RAG eram quatro `await`
+    // em sequência, espalhados por 140 linhas. Nenhum precisa do resultado do
+    // anterior — o turno pagava a soma dos quatro.
+    //
+    // ⚠️ Medido em 10/09: o turno leva 15-20s enquanto o código supunha ~10s, e
+    // o cliente que digita a cada 6s ganha do bot. Encurtar o turno é o único
+    // conserto real; janela de espera maior só atrasa quem mandou uma mensagem
+    // só (ver o card da janela de rajada).
+    //
+    // `Promise.all` em vez de quatro promessas soltas de propósito: ele prende
+    // o handler de rejeição na hora. Promessa criada e awaitada 100 linhas
+    // depois vira `unhandledRejection` no caminho de erro.
+    //
+    // 📌 UM preço, e é pequeno: o RAG agora roda mesmo quando o teto de custo
+    // bloqueia o turno logo abaixo. São duas buscas num caminho que é exceção —
+    // contra a soma de quatro esperas em TODO turno normal.
+    const [promptCompilado, cfgBot, custoTurno, blocoRag] = await Promise.all([
+      this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId),
+      this.persona.obterConfigBot(empresaId).catch(() => null),
+      this.custo.verificarTeto(empresaId),
+      // RAG — anexa catálogo/conhecimento relevantes ao prompt (com guardrails),
+      // se o nó pediu. Recupera com base na mensagem do lead.
+      this.montarBlocoRag(empresaId, textoLead, cfg),
+    ]);
+
     const systemPrompt =
-      interpolate(await this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId), ctx) +
+      interpolate(promptCompilado, ctx) +
       INSTRUCAO_CLASSIFICACAO +
       // O enum já IMPEDE valor fora da lista; repetir no texto melhora a ESCOLHA
       // (o modelo vê as opções ao decidir, não só ao serializar) e mantém o
@@ -2209,9 +2250,9 @@ export class ConversarIaService implements OnModuleDestroy {
     // Sem isto a IA não via as próprias mensagens e se reapresentava a cada resposta.
     // Quantas mensagens de histórico a IA considera = config do bot (Persona Bot →
     // "histórico de mensagens", 1..50, default 10). MESMO número que o bot geral usa.
-    const limiteHist =
-      (await this.persona.obterConfigBot(empresaId).catch(() => null))?.historicoMensagens ??
-      HISTORICO_DEFAULT;
+    // `cfgBot` veio do Promise.all acima. O histórico continua DEPOIS porque é o
+    // único que depende de um dos quatro (o limite sai daqui).
+    const limiteHist = cfgBot?.historicoMensagens ?? HISTORICO_DEFAULT;
     const ctxHist = (ctx as Record<string, unknown>)._iaHistorico;
     const doContexto: HistoricoMsg[] = Array.isArray(ctxHist) ? (ctxHist as HistoricoMsg[]) : [];
     // Fonte da verdade = a conversa REAL do inbox (cobre todas as execuções do lead);
@@ -2238,9 +2279,9 @@ export class ConversarIaService implements OnModuleDestroy {
     }
 
     // Teto de custo do bot (por-empresa, pausa até a virada do período): roteia pela
-    // saída "erro" em vez de responder. Checado ANTES do teto-de-prompt (que só pede
-    // "um instante" e fica esperando — inadequado pra uma pausa longa por orçamento).
-    const custoTurno = await this.custo.verificarTeto(empresaId);
+    // saída "erro" em vez de responder. A CHECAGEM continua aqui, ANTES do
+    // teto-de-prompt (que só pede "um instante" e fica esperando — inadequado
+    // pra uma pausa longa por orçamento); só a busca subiu pro Promise.all.
     if (custoTurno.bloqueado) {
       await this.rotearParaErro(
         execucaoId,
@@ -2286,9 +2327,7 @@ export class ConversarIaService implements OnModuleDestroy {
       );
       return;
     }
-    // RAG — anexa catálogo/conhecimento relevantes ao prompt (com guardrails), se o
-    // nó pediu. Recupera com base na mensagem do lead (busca semântica + fallback).
-    const blocoRag = await this.montarBlocoRag(empresaId, textoLead, cfg);
+    // `blocoRag` veio do Promise.all lá em cima, junto com o prompt compilado.
 
     // Overrides do prompt do nó. Best-effort: sem prompt (ou erro de leitura), a
     // chamada segue com o modelo da empresa, que é o comportamento de sempre.
