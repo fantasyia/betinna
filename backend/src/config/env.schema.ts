@@ -264,29 +264,33 @@ export const envSchema = z
      * quebrada. O custo da flag é uma condição; o benefício é o tempo de
      * reação quando a próxima suposição estiver errada.
      *
-     * ✅ **MEDIDA E LIGADA EM PRODUÇÃO desde 10/09/2026** (`api` e `worker`),
-     * por decisão do Léo com o número na mão. O default aqui continua `false`
-     * de propósito: quem sobe um ambiente novo não herda a decisão sem saber.
+     * ⚠️ **LIGADA em produção desde 10/09/2026 (`api` e `worker`), mas SEM
+     * evidência empírica — nem de benefício, nem de dano.** O default aqui
+     * segue `false`: ambiente novo não herda a decisão sem saber que ela existe.
      *
-     * O que a medição mostrou, duas vezes, em builds diferentes:
+     * A história vale mais que o estado, porque explica o que ainda falta:
      *
-     * | | sem a flag | com a flag |
-     * |---|---|---|
-     * | execuções do C1 numa rajada de 3 mensagens | **3** | **1** |
-     * | dado do lead preservado | 100% | 100% |
+     * Em 10/09 se mediu "3 execuções do C1 sem a flag → 1 com a flag" e isso
+     * circulou como prova. **O número estava errado**, e a própria sessão de
+     * teste o derrubou horas depois: a janela do script tinha 10 minutos e
+     * recolheu três rodadas de SETUP dela; contando só o que nasce depois da
+     * rajada, o placar é **0 × 0 × 0** em quatro rodadas.
      *
-     * ⚠️ E o mecanismo NÃO é o que estava escrito por aí. A etiqueta que acorda
-     * o RT é posta pelo T1, então o evento nasce com `hops ≥ 1` e o guard do
-     * event bus é **pulado** (`fluxo-event-bus.service.ts`, `hops === 0`). Quem
-     * consulta o `iaAFrente` no caminho de rajada é o EXECUTOR, montando
-     * `{{conversa.ia_aguardando}}` — e é o nó "Conversa JÁ ESTÁ em andamento?"
-     * do RT que barra. Os dois caminhos:
+     * 🔴 **E o motivo de nenhuma delas ter testado a flag está escrito aqui
+     * mesmo, em `turno-ia-aberto.util.ts`:** o `iaAFrente` só olha execução
+     * `EM_EXECUCAO`, porque `AGUARDANDO` já é coberto pelo `turnoDeIaAberto`.
+     * O setup do teste PARKAVA a execução no nó de IA (= `AGUARDANDO`) antes de
+     * disparar a rajada — então o primeiro sinal já respondia "sim" e o segundo
+     * nunca era consultado. A flag cobre os ~1-2 segundos em que a execução
+     * ainda CAMINHA, e é exatamente esse instante que o disparador via WhatsApp
+     * não alcança (o Evolution serializa o envio em 6-8s).
      *
-     *   etiqueta de FORA (cron, SLA, gente · hops=0) → o bus ADIA e re-dispara
-     *   etiqueta posta por um FLUXO (hops≥1)         → o nó do RT encerra
+     * **Como testar de verdade:** injetar o evento direto no `FluxoEventBus`,
+     * sem WhatsApp no meio, montando o estado `EM_EXECUCAO` a caminho do nó.
      *
-     * ⛔ Desligar isto reabre o defeito na hora, sem deploy e sem aviso: cliente
-     * que manda 3 mensagens seguidas faz o consultivo recomeçar 3 vezes.
+     * 📌 Duas lições que valem além desta flag: número lido de uma janela que
+     * não isola a coisa não é medição; e rótulo escrito no script ("esperado com
+     * a flag: 1") faz quem lê ver o que o rótulo manda ver.
      */
     FLUXO_IA_A_FRENTE: z
       .union([z.boolean(), z.string().transform((v) => v === 'true')])
