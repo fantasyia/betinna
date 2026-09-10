@@ -161,6 +161,15 @@ const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
  */
 const INBOUND_RECENTE_MS = INBOUND_RECENTE_HORAS * 60 * 60 * 1000;
 
+/**
+ * Teto do DELAY em execução de TESTE.
+ *
+ * 10s: curto pra a bateria rodar, longo pra o passo passar de verdade pela fila
+ * do BullMQ e voltar — o que mantém observável a diferença entre "agendou e
+ * voltou" e "nem foi agendado".
+ */
+const TESTE_DELAY_MAX_MS = 10_000;
+
 /** Converte unidade de delay para milissegundos (segundos/minutos/horas/dias). */
 function delayParaMs(valor: number, unidade: UnidadeTempo): number {
   return unidadeTempoMs(valor, unidade);
@@ -944,6 +953,7 @@ export class FluxoExecutorService {
       .catch(() => undefined);
 
     // Enfileira próximos passos
+    const temMarcaDeTeste = (execucao.contexto as { _teste?: boolean } | null)?._teste === true;
     for (const nextNoId of proximosNoIds) {
       let delayMs = 0;
       // DELAY: agenda próximo passo com delay
@@ -956,6 +966,24 @@ export class FluxoExecutorService {
         // Rede de segurança: config corrompida (NaN/negativo) não deve virar delay inválido
         // na fila — cai em 0 (dispara já) em vez de travar o passo.
         if (!Number.isFinite(delayMs) || delayMs < 0) delayMs = 0;
+        // EXECUÇÃO DE TESTE não espera dias.
+        //
+        // A marca `_teste` já era respeitada nos nós de ENVIO, mas o DELAY não a
+        // enxergava — e isso tornava metade do pós-venda INTESTÁVEL por
+        // construção: 5 itens da bateria pediam 2, 10 e 12 dias de espera real
+        // (P3.1, P3.2, P3.4, P3.5 e a cadência do E6).
+        //
+        // O que um teste quer medir aqui é a NAVEGAÇÃO depois do delay, não o
+        // relógio.
+        //
+        // ⚠️ TETO, NÃO ZERO. Com zero não se distingue "o passo foi agendado e o
+        // job voltou da fila" de "o passo nem passou pela fila" — e é exatamente
+        // essa diferença que o P3.5 (o DELAY sobrevive a restart do worker)
+        // precisa enxergar. Zero apagaria o que o teste existe pra provar.
+        if (temMarcaDeTeste && delayMs > TESTE_DELAY_MAX_MS) {
+          this.logger.debug(`[teste] DELAY encurtado de ${delayMs}ms para ${TESTE_DELAY_MAX_MS}ms`);
+          delayMs = TESTE_DELAY_MAX_MS;
+        }
       }
       await this.enfileirarSucessor(execucaoId, nextNoId, jobId, delayMs);
     }
