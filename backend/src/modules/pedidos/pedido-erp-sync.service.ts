@@ -534,9 +534,20 @@ export class PedidoErpSyncService {
       }
       // O site é dono da tela do cliente: sem este aviso, quem comprou lá fica
       // sem saber que o pedido foi faturado ou despachado.
+      //
+      // ⚠️ `statusAplicavel`, NUNCA o `status` cru. Este push é o que faz a
+      // promoção indevida sair do app: em 10/09 o PED-0086 (CANCELADO aqui) foi
+      // promovido a ENVIADO pelo sync e o site passou a dizer "a caminho" — e
+      // ficou dizendo por quase duas horas, das 06:01 às 08:06. Quem abrisse o
+      // link do pedido via isso.
+      //
+      // O dano ao cliente NÃO dependeu do fluxo de WhatsApp: o P2 morreu num
+      // segundo defeito, mas este canal já estava mentindo. Barrar só o disparo
+      // da mensagem teria deixado o site errado do mesmo jeito — mudança de
+      // estado se propaga sozinha pra fora, aviso é só um dos caminhos.
       await this.site.notificar({
         numeroSite: existente.numeroSite ?? '',
-        status: status ?? existente.status,
+        status: statusAplicavel ?? existente.status,
         rastreioCodigo,
         rastreioUrl,
       });

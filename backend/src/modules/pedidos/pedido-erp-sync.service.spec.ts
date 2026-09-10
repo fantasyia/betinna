@@ -79,6 +79,9 @@ function build(
   const bus = { disparar: vi.fn().mockResolvedValue(undefined) };
 
   const emailSvc = { enviarPedidoRastreio: vi.fn().mockResolvedValue({ ok: true }) };
+  // O push pro SITE é o que faz a mudança de estado sair do app — precisa ser
+  // inspecionável no teste, não só um stub anônimo.
+  const site = { notificar: vi.fn().mockResolvedValue(true), configurado: true };
   const svc = new PedidoErpSyncService(
     prisma as never,
     tiny as never,
@@ -88,7 +91,7 @@ function build(
     // o contato dentro do próprio pedido).
     { acharContatoDoVendedor: vi.fn().mockResolvedValue(null) } as never,
     // Aviso pro site: best-effort e sem site configurado nos testes.
-    { notificar: vi.fn().mockResolvedValue(false), configurado: false } as never,
+    site as never,
     notificacoes as never,
     // E-mail de rastreio pro cliente (transacional). Tem assert próprio no
     // teste do gatilho; aqui só precisa não explodir.
@@ -114,7 +117,7 @@ function build(
     // Início da cobrança do comodato (locação): tem teste próprio no serviço.
     { iniciarCobranca: vi.fn(async () => undefined) } as never,
   );
-  return { svc, prisma, tiny, notificacoes, emailSvc, bus, sequence };
+  return { svc, prisma, tiny, notificacoes, emailSvc, bus, sequence, site };
 }
 
 /** A janela padrão é de 30 dias — o pedido base é de hoje pra não vencer. */
@@ -525,6 +528,28 @@ describe('pedidos que vêm do ERP', () => {
       expect(dados.status).toBeUndefined();
       // O espelho de informação continua entrando — é o status que fica parado.
       expect(dados.rastreioCodigo).toBe('BR123456789BR');
+    });
+
+    /**
+     * O push pro SITE é o que faz a promoção indevida sair do app — e foi o
+     * furo que sobrou do primeiro conserto.
+     *
+     * Em 10/09 o site ficou dizendo "a caminho" pra um pedido cancelado das
+     * 06:01 às 08:06, quase duas horas. O dano NÃO dependeu do WhatsApp: o P2
+     * morreu num segundo defeito, mas este canal já estava mentindo. Barrar só
+     * o disparo da mensagem deixaria o site errado do mesmo jeito.
+     */
+    it('e o SITE também não recebe o status promovido', async () => {
+      const { svc, site } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: { ...semRastreio, status: 'CANCELADO' },
+      });
+
+      await svc.sincronizar('emp-1');
+
+      const enviado = site.notificar.mock.calls[0]?.[0];
+      expect(enviado?.status).toBe('CANCELADO');
+      expect(enviado?.status).not.toBe('ENVIADO');
     });
 
     it('e nesse caso o cliente NÃO recebe aviso nenhum', async () => {
