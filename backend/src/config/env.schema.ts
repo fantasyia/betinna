@@ -264,7 +264,29 @@ export const envSchema = z
      * quebrada. O custo da flag é uma condição; o benefício é o tempo de
      * reação quando a próxima suposição estiver errada.
      *
-     * Ligar só depois da medição da sessão de teste de fluxo (F.4 e M.11).
+     * ✅ **MEDIDA E LIGADA EM PRODUÇÃO desde 10/09/2026** (`api` e `worker`),
+     * por decisão do Léo com o número na mão. O default aqui continua `false`
+     * de propósito: quem sobe um ambiente novo não herda a decisão sem saber.
+     *
+     * O que a medição mostrou, duas vezes, em builds diferentes:
+     *
+     * | | sem a flag | com a flag |
+     * |---|---|---|
+     * | execuções do C1 numa rajada de 3 mensagens | **3** | **1** |
+     * | dado do lead preservado | 100% | 100% |
+     *
+     * ⚠️ E o mecanismo NÃO é o que estava escrito por aí. A etiqueta que acorda
+     * o RT é posta pelo T1, então o evento nasce com `hops ≥ 1` e o guard do
+     * event bus é **pulado** (`fluxo-event-bus.service.ts`, `hops === 0`). Quem
+     * consulta o `iaAFrente` no caminho de rajada é o EXECUTOR, montando
+     * `{{conversa.ia_aguardando}}` — e é o nó "Conversa JÁ ESTÁ em andamento?"
+     * do RT que barra. Os dois caminhos:
+     *
+     *   etiqueta de FORA (cron, SLA, gente · hops=0) → o bus ADIA e re-dispara
+     *   etiqueta posta por um FLUXO (hops≥1)         → o nó do RT encerra
+     *
+     * ⛔ Desligar isto reabre o defeito na hora, sem deploy e sem aviso: cliente
+     * que manda 3 mensagens seguidas faz o consultivo recomeçar 3 vezes.
      */
     FLUXO_IA_A_FRENTE: z
       .union([z.boolean(), z.string().transform((v) => v === 'true')])
