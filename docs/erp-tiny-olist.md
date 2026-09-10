@@ -338,12 +338,26 @@ competência explícita.
 
 ### Passo 2 — Instalar o app de Webhooks
 
-> ✅ **Estado em 10/09/2026:** a URL de redirecionamento do aplicativo já está no
-> domínio novo, **e a antiga foi removida** — medido no `authorize` do Tiny
-> (domínio novo → `200`, Railway antigo → `400`, igual a um domínio inventado).
-> As seis URLs de webhook foram atualizadas no painel com o segredo rotacionado.
-> **Ainda em aberto:** nenhum evento chegou desde então — ver o card *"Os
-> webhooks do Tiny nunca entregaram"*.
+> ✅ **Estado em 10/09/2026 — FUNCIONANDO, medido ponta a ponta.**
+>
+> A URL de redirecionamento do aplicativo está no domínio novo **e a antiga foi
+> removida** (medido no `authorize`: domínio novo → `200`, Railway antigo →
+> `400`, igual a um domínio inventado — o controle é o que dá sentido ao 400).
+>
+> As **quatro** URLs de webhook foram trocadas às 10:0x, e o resultado:
+>
+> ```
+> 10:01:48   webhook chega        pedido 1→3, rastreio 0→2
+> 10:02:00   PED-0092 → ENVIADO   (ERP 58)
+> ```
+>
+> **12 segundos** do evento no ERP ao estado no app — contra o sync das 06:00 do
+> dia seguinte, que era o que segurava antes.
+>
+> ⚠️ O que travava era simples e nenhuma hipótese nossa acertou: as URLs
+> **nunca tinham sido trocadas**. Ficaram meses com o host antigo e, depois da
+> rotação da manhã, com um segredo morto. Nem assistente incompleto, nem app de
+> Webhooks faltando no plano, nem Tiny deixando de disparar.
 
 1. **Loja de aplicativos** do Tiny → instalar **Webhooks** (depende do plano; se não aparecer, é isso que precisa ser destravado com eles).
 2. **menu → configurações → aba geral → outras configurações → Webhooks**
@@ -353,12 +367,17 @@ competência explícita.
    Envios         https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/rastreio
    Estoque        https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/estoque
    Notas Fiscais  https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/nota
-   Produtos       https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/produto
-   Preços         https://api.somatecblocking.com.br/api/v1/webhooks/tiny/SEGREDO/preco
    ```
 
-   São **SEIS**, não quatro: o cadastro de e-commerce ("Outra Integração") pede
-   `produto` e `preco` também. O evento `produto` não é aviso, é PERGUNTA — o
+   ⚠️ **Esta tela tem QUATRO campos**, um por toggle: *Receber notificações de
+   vendas* (`pedido`), *de pedidos enviados* (`rastreio`), *de lançamentos de
+   estoque* (`estoque`) e *de notas fiscais autorizadas* (`nota`). Ela **não**
+   tem produto nem preço — então **mudar preço ou descrição de produto não
+   dispara nada aqui**, e usar isso como teste dá falso negativo (aconteceu em
+   10/09).
+
+   Os eventos `produto` e `preco` existem no controller porque vêm do **cadastro
+   de e-commerce** ("Outra Integração"), que é OUTRA tela e pede cinco URLs. O evento `produto` não é aviso, é PERGUNTA — o
    ERP quer saber como a nossa loja chama aquele produto dele, e responder só
    `ok` faz ele marcar "Produto não mapeado pelo integrador". Sem mapeamento o
    produto não entra na lista do canal, que é onde a cotação de frete procura o
@@ -404,7 +423,7 @@ pedido empurrado congelava no status do dia em que subiu, porque faturamento,
 despacho e entrega acontecem lá.
 
 **Uma automação por dia, não uma por recurso** (decisão do Léo). A rodada das
-06:00 UTC (03:00 no Brasil) sincroniza catálogo e pedidos na mesma passada —
+16:00 UTC (13:00 no Brasil) sincroniza catálogo e pedidos na mesma passada —
 produtos primeiro, porque o pedido casa os itens por SKU e um SKU criado ontem
 no Tiny só existe aqui depois do sync de catálogo. O ganho não é de máquina, é
 de gente: quando algo não aparece, há **um** horário e **um** log pra olhar.

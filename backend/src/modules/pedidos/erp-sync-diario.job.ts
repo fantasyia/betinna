@@ -23,8 +23,31 @@ import { PedidoErpSyncService } from './pedido-erp-sync.service';
  * SKU criado ontem no Tiny só existe aqui depois do sync de catálogo — invertido,
  * o pedido entraria sem os itens e ninguém veria motivo.
  *
- * 06:00 UTC = 03:00 no Brasil: o dia comercial já fechou lá e ninguém está
- * mexendo no ERP. Quem tem pressa usa o botão "Sincronizar do ERP" na tela.
+ * 16:00 UTC = 13:00 no Brasil — DECISÃO DO LÉO (10/09), e a razão mudou.
+ *
+ * Era 06:00 UTC (03:00 BRT), com o motivo escrito de que "o dia comercial já
+ * fechou e ninguém está mexendo no ERP". Essa razão envelheceu por dois
+ * motivos, nesta ordem:
+ *
+ *  1. **O webhook do Tiny passou a funcionar** (10/09: evento no ERP → estado no
+ *     app em 12 segundos). Espelhar pedido deixou de ser trabalho desta rodada
+ *     — ela virou a REDE, não o caminho. Então "pegar o dia inteiro de
+ *     despachos" deixou de ser o critério.
+ *  2. **O que esta rodada produz e ninguém mais produz é AVISO que precisa de
+ *     gente.** Ex., no mesmo dia: "pedido PED-0086 está CANCELADO aqui e o ERP
+ *     diz ENVIADO — confira qual dos dois está certo". Às 03:00 esse aviso
+ *     nasce e fica sem leitor até a manhã seguinte. Às 13:00 nasce com o
+ *     financeiro e a expedição trabalhando, e dá pra agir no mesmo dia.
+ *
+ * Fim de tarde foi descartado: o aviso voltaria a ser lido no dia seguinte, que
+ * é o problema que a mudança resolve.
+ *
+ * O custo aceito: despacho da tarde que NÃO mude a situação no ERP (o operador
+ * marcar "Enviado" antes de comprar a etiqueta) espera a rodada seguinte. O
+ * Léo decidiu tratar esse caso por disciplina de operação, não por varredura —
+ * está no CLAUDE.md global.
+ *
+ * Quem tem pressa usa o botão "Sincronizar do ERP" na tela.
  */
 @Injectable()
 export class ErpSyncDiarioJob {
@@ -44,7 +67,7 @@ export class ErpSyncDiarioJob {
     private readonly mensalidades: ContratoMensalidadeSyncService,
   ) {}
 
-  @Cron('0 6 * * *', { name: 'erp-sync-diario', timeZone: 'UTC' })
+  @Cron('0 16 * * *', { name: 'erp-sync-diario', timeZone: 'UTC' })
   async sincronizar(): Promise<void> {
     if (this.env.get('NODE_ENV') === 'test') return;
     // TTL 1h: a rodada é minutos, e o lock só impede api e worker de puxarem o
