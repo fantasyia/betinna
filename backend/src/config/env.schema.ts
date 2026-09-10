@@ -264,33 +264,45 @@ export const envSchema = z
      * quebrada. O custo da flag é uma condição; o benefício é o tempo de
      * reação quando a próxima suposição estiver errada.
      *
-     * ⚠️ **LIGADA em produção desde 10/09/2026 (`api` e `worker`), mas SEM
-     * evidência empírica — nem de benefício, nem de dano.** O default aqui
-     * segue `false`: ambiente novo não herda a decisão sem saber que ela existe.
+     * ✅ **LIGADA em produção desde 10/09/2026 (`api` e `worker`), com o
+     * MECANISMO medido.** O default aqui segue `false`: ambiente novo não herda
+     * a decisão sem saber que ela existe.
      *
-     * A história vale mais que o estado, porque explica o que ainda falta:
+     * A medição, pela rota `POST /fluxos/diagnostico/ia-a-frente`, com uma
+     * execução `EM_EXECUCAO` a caminho do nó de IA — duas rodadas idênticas:
      *
-     * Em 10/09 se mediu "3 execuções do C1 sem a flag → 1 com a flag" e isso
-     * circulou como prova. **O número estava errado**, e a própria sessão de
-     * teste o derrubou horas depois: a janela do script tinha 10 minutos e
-     * recolheu três rodadas de SETUP dela; contando só o que nasce depois da
-     * rajada, o placar é **0 × 0 × 0** em quatro rodadas.
+     *   antes    turnoDeIaAberto false · iaAFrente false · guard false
+     *   durante  turnoDeIaAberto FALSE · iaAFrente TRUE  · guard: sem flag
+     *            responderia `false`, com flag responde `true`
      *
-     * 🔴 **E o motivo de nenhuma delas ter testado a flag está escrito aqui
-     * mesmo, em `turno-ia-aberto.util.ts`:** o `iaAFrente` só olha execução
-     * `EM_EXECUCAO`, porque `AGUARDANDO` já é coberto pelo `turnoDeIaAberto`.
-     * O setup do teste PARKAVA a execução no nó de IA (= `AGUARDANDO`) antes de
-     * disparar a rajada — então o primeiro sinal já respondia "sim" e o segundo
-     * nunca era consultado. A flag cobre os ~1-2 segundos em que a execução
-     * ainda CAMINHA, e é exatamente esse instante que o disparador via WhatsApp
-     * não alcança (o Evolution serializa o envio em 6-8s).
+     * Ou seja: **a guarda velha não vê esse estado e a nova vê.** Sem a flag o
+     * gatilho proativo passaria e falaria por cima; com ela é barrado.
      *
-     * **Como testar de verdade:** injetar o evento direto no `FluxoEventBus`,
-     * sem WhatsApp no meio, montando o estado `EM_EXECUCAO` a caminho do nó.
+     * ⚠️ **O que isso NÃO prova, e a distinção importa:** prova o MECANISMO, não
+     * a FREQUÊNCIA. Com que assiduidade um proativo cai naquela janela de 1-2
+     * segundos em tráfego real continua desconhecido — é outra pergunta, e não
+     * era a que travava a decisão.
      *
-     * 📌 Duas lições que valem além desta flag: número lido de uma janela que
-     * não isola a coisa não é medição; e rótulo escrito no script ("esperado com
-     * a flag: 1") faz quem lê ver o que o rótulo manda ver.
+     * ## Como se chegou aqui, que vale mais que o resultado
+     *
+     * Antes desta medição circulou um "3 execuções sem a flag → 1 com a flag"
+     * como prova. **O número estava errado** e foi retratado: a janela do script
+     * tinha 10 minutos e recolheu rodadas de SETUP; contando só o que nasce
+     * depois da rajada, o placar era 0 × 0 × 0 em quatro rodadas.
+     *
+     * 🔴 **E nenhuma daquelas rodadas chegou a testar a flag, pelo motivo que
+     * está escrito em `turno-ia-aberto.util.ts`:** o `iaAFrente` só olha execução
+     * `EM_EXECUCAO`, porque `AGUARDANDO` já é coberto pelo `turnoDeIaAberto`. O
+     * setup PARKAVA a execução no nó de IA (= `AGUARDANDO`) antes de disparar —
+     * o primeiro sinal já respondia "sim" e o segundo virava irrelevante. E não
+     * era descuido: **pelo WhatsApp não dá**, o Evolution serializa o envio em
+     * 6-8s e a janela é de 1-2s.
+     *
+     * 📌 Três lições que valem além desta flag: número lido de uma janela que
+     * não isola a coisa não é medição; rótulo escrito no script ("esperado com a
+     * flag: 1") faz quem lê ver o que o rótulo manda ver; e quando a medição é
+     * impossível pela porta da frente, o conserto é abrir uma porta de serviço —
+     * não afrouxar o critério.
      */
     FLUXO_IA_A_FRENTE: z
       .union([z.boolean(), z.string().transform((v) => v === 'true')])
