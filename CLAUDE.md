@@ -215,6 +215,56 @@ MSYS_NO_PATHCONV=1 node shot.mjs "/calendario-marketing" cal.png
 - Chromium do Playwright: se faltar, `npx playwright install chromium` no `frontend/`.
 - Os `.png` de saída são git-ignored.
 
+## 🔀 Editar fluxo — duas armadilhas que já custaram produção
+
+### 1. "Campo solto" é só campo do FLUXO — nó e aresta são FULL-REPLACE
+
+`fluxos_atualizar` com **nome, descrição, `remetenteEmail` ou trigger** é update
+parcial: grafo e status intactos, fluxo ATIVO segue rodando.
+
+⛔ **Config de NÓ mora dentro de `nos`.** Mudar um operador, um texto de tarefa
+ou um valor de condição exige mandar `nos` — e isso é **full-replace**:
+
+- o fluxo cai pra **RASCUNHO** e precisa ser reativado (`POST /fluxos/:id/ativar`);
+- **execuções em voo são CANCELADAS** — cliente no meio de uma conversa perde o
+  turno.
+
+Não existe rota por nó: o controller tem só `@Put(':id')`. Confundir as duas
+coisas fez uma sessão escrever "dá pra aplicar com o fluxo ATIVO" sobre uma
+mudança de operador, e derrubou o consultivo (10/09).
+
+**Antes de subir grafo de fluxo ativo:** avise as sessões de teste. Um
+full-replace do C1 caiu 19 segundos depois de uma medição terminar — foi sorte,
+não margem.
+
+### 2. Operador de condição desconhecido virava "Não" em SILÊNCIO
+
+O motor conhece **sete**: `eq · neq · gt · lt · gte · lte · contains`
+(`OPERADORES_CONDICAO`, em `fluxo-executor.service.ts`).
+
+Em 10/09 um nó foi gravado com `operador: "equals"` — o nome "natural", que não
+existe. O `default` do switch respondia `false`, então o nó respondia **"Não",
+sempre, sem erro, sem log, com o passo fechando VERDE**. O E6 ficou ATIVO,
+executando e concluindo, e **nenhum e-mail de carrinho abandonado saiu por
+horas**.
+
+⚠️ **"Não" NÃO é neutro** — é o que faz esse defeito ser grave nos dois sentidos:
+
+| o nó pergunta | "Não" faz |
+|---|---|
+| *"ainda está no checkout?"* | **fecha** a régua — ninguém recebe nada |
+| *"pediu pra sair?"* | **abre** a régua — opt-out atropelado |
+
+Hoje há duas camadas: `validarCondicao` recusa na entrada (create/update/ativar)
+e o executor **estoura** se escapar. Passo `FALHOU` é visível; um "Não"
+plausível não é observável por construção.
+
+📌 A lição vale além do operador: **num motor de fluxo, todo default silencioso
+é uma resposta plausível para uma pergunta que ninguém fez.** Se um valor
+desconhecido pode virar decisão de negócio, ele tem que falhar, não escolher.
+
+---
+
 ## 🔎 Erro em produção? O Sentry tem sessão própria
 
 Dois dos três projetos do Sentry são deste app (`betinna-api` e `betinna-front`).

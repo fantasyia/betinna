@@ -204,6 +204,15 @@ function resolveCampoFresco(nome: string, ctx: ExecucaoContexto): unknown {
  * - modo 'roteador': casa o valor da `variavel` com uma das `saidas` (label = valor) ou 'default'.
  * - modo 'simples' (default): 'true' | 'false'.
  */
+/**
+ * Os operadores que a CONDIÇÃO simples entende — fonte única.
+ *
+ * Existe como valor (e não só como tipo) porque o tipo é união fechada apenas
+ * em TypeScript: o `config` do nó é objeto livre no schema, então qualquer
+ * string entra pelo `fluxos_importar`/`fluxos_atualizar` e pelo editor. A
+ * validação precisa acontecer em RUNTIME, e ela precisa de uma lista.
+ */
+export const OPERADORES_CONDICAO = new Set(['eq', 'neq', 'gt', 'lt', 'gte', 'lte', 'contains']);
 
 function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
   if (config.modo === 'roteador') {
@@ -246,7 +255,31 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
       resultado = valTxt.includes(refTxt);
       break;
     default:
-      resultado = false;
+      // ⛔ OPERADOR DESCONHECIDO É FALHA, NÃO É "Não".
+      //
+      // Isto era `resultado = false`, e custou o E6 inteiro em 10/09: eu gravei
+      // `operador: "equals"` (o nome "natural" — o motor só conhece `eq`), o
+      // `fluxos_atualizar` aceitou, e os três portões passaram a responder
+      // "Não" SEM erro, SEM log e com o passo fechando VERDE. Resultado: espera
+      // 1 dia → "Não" → remove a própria etiqueta → encerra. Nenhum dos três
+      // e-mails de carrinho abandonado saiu, por horas, com o fluxo ATIVO.
+      //
+      // ⚠️ E "Não" não é neutro — é o que faz isto ser grave nos DOIS sentidos:
+      //
+      //   portão "ainda está no checkout?"  → "Não" FECHA a régua (ninguém recebe)
+      //   guarda "pediu pra sair?"          → "Não" ABRE a régua (opt-out atropelado)
+      //
+      // O mesmo defeito cala um fluxo ou passa por cima de um opt-out,
+      // dependendo de que lado da pergunta o nó está. Nenhum dos dois aparece
+      // como falha em lugar nenhum.
+      //
+      // Passo FALHOU é visível: fica vermelho no painel, entra no log e conta
+      // como erro. Um "Não" plausível não é observável por construção.
+      throw new Error(
+        `Condição com operador desconhecido: "${String(config.operador)}". ` +
+          `O motor conhece ${[...OPERADORES_CONDICAO].join(', ')}. ` +
+          `Corrija o nó — responder "Não" calado esconderia o erro.`,
+      );
   }
   // Os labels batem com o que o editor grava nas arestas da condição simples
   // (handle true→"Sim", false→"Não"). O roteamento filtra por e.label === retorno.

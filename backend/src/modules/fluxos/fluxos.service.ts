@@ -14,6 +14,7 @@ import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { validarCronExpr } from './cron.util';
+import { OPERADORES_CONDICAO } from './fluxo-executor.service';
 import type {
   CreateFluxoDto,
   UpdateFluxoDto,
@@ -408,6 +409,27 @@ export class FluxosService {
     if (!cfg.campo?.trim() || !cfg.operador?.trim()) {
       throw new BusinessRuleException(
         `A condição ${nome} está incompleta (falta campo ou operador) — ela sempre cairia no "Não".`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+    // ⛔ E o operador tem que EXISTIR no motor, não só estar preenchido.
+    //
+    // A checagem acima já sabia da armadilha ("sempre cairia no Não"), mas só
+    // cobria operador AUSENTE. Operador com nome errado passava — e custou o E6
+    // inteiro em 10/09: `operador: "equals"` (o motor só conhece `eq`) fez os
+    // três portões responderem "Não" por horas, com o fluxo ATIVO, os passos
+    // fechando VERDE e nenhum e-mail de carrinho abandonado saindo.
+    //
+    // Duas camadas de propósito, e elas pegam momentos diferentes: aqui o erro
+    // é barato (nem entra, e quem editou lê o nome certo na hora); no executor
+    // ele estoura (pega o que já está gravado). O tipo é união fechada só em
+    // TypeScript, e o `config` do nó é objeto livre no schema — então nenhuma
+    // das duas é dispensável.
+    if (!OPERADORES_CONDICAO.has(cfg.operador.trim())) {
+      throw new BusinessRuleException(
+        `A condição ${nome} usa o operador "${cfg.operador}", que o motor não conhece — ` +
+          `ela responderia "Não" para sempre, sem erro nenhum. ` +
+          `Use um destes: ${[...OPERADORES_CONDICAO].join(', ')}.`,
         ErrorCode.FLUXO_INVALIDO,
       );
     }

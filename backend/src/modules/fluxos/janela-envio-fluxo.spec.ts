@@ -26,7 +26,13 @@ const no = (acaoTipo: string | null, tipo = 'ACAO') => ({
   config:
     acaoTipo === 'ENVIAR_WHATSAPP'
       ? { mensagem: 'Oi', destinatarioModo: 'numero', destinatarioNumero: '5511999999999' }
-      : { campo: 'lead.nome', operador: 'existe' },
+      : {
+          campo: 'lead.nome', // `eq` e não um nome inventado: o motor agora ESTOURA em operador
+          // desconhecido, e este teste é sobre a janela de envio, não sobre
+          // operadores. Antes usava 'existe' e passava por causa do
+          // `default: false` que foi removido — teste verde pelo motivo errado.
+          operador: 'eq',
+        },
 });
 
 function makeService(opts: {
