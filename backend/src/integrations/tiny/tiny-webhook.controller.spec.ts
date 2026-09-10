@@ -53,11 +53,69 @@ describe('webhook do Tiny', () => {
 
   it('GET responde 200 — é o que destrava o cadastro da URL no painel', async () => {
     const { ctrl } = build();
-    await expect(ctrl.verificar(SEGREDO, 'pedido')).resolves.toEqual({
+    await expect(ctrl.verificar(SEGREDO, 'pedido')).resolves.toMatchObject({
       ok: true,
       evento: 'pedido',
       recebidos: 0,
       ultimoEm: null,
+    });
+  });
+
+  /**
+   * ⚠️ O CRUZAMENTO é o que responde a pergunta. `recebidos: 0` sozinho não
+   * distingue "o ERP não tentou" de "tentou e foi barrado" — e foi essa
+   * indistinção que travou a investigação dos seis zeros em 10/09, porque o log
+   * de HTTP do Railway é por deploy e a janela tinha 2 minutos.
+   */
+  describe('recusas — a outra metade do diagnóstico', () => {
+    it('zero recebidos E zero recusados = o ERP nunca postou', async () => {
+      const { ctrl } = build();
+      const r = await ctrl.verificar(SEGREDO, 'pedido');
+      expect(r.recebidos).toBe(0);
+      expect(r.recusados).toEqual({ segredo: 0, evento: 0, ultimoEm: null });
+    });
+
+    it('zero recebidos com recusa de SEGREDO = o ERP posta com o segredo velho', async () => {
+      const { ctrl } = build(SEGREDO, {
+        'tiny:webhook:recusado:segredo': '12',
+        'tiny:webhook:recusado:segredo:ultimo': '2026-09-10T09:00:00.000Z',
+      });
+      const r = await ctrl.verificar(SEGREDO, 'pedido');
+      expect(r.recebidos).toBe(0);
+      expect(r.recusados.segredo).toBe(12);
+      expect(r.recusados.ultimoEm).toBe('2026-09-10T09:00:00.000Z');
+    });
+
+    it('recusa de EVENTO aparece separada — é outro conserto', async () => {
+      const { ctrl } = build(SEGREDO, { 'tiny:webhook:recusado:evento': '3' });
+      const r = await ctrl.verificar(SEGREDO, 'pedido');
+      expect(r.recusados.evento).toBe(3);
+      expect(r.recusados.segredo).toBe(0);
+    });
+
+    it('o carimbo mostrado é o da recusa MAIS RECENTE entre as duas', async () => {
+      const { ctrl } = build(SEGREDO, {
+        'tiny:webhook:recusado:segredo:ultimo': '2026-09-10T08:00:00.000Z',
+        'tiny:webhook:recusado:evento:ultimo': '2026-09-10T09:30:00.000Z',
+      });
+      const r = await ctrl.verificar(SEGREDO, 'pedido');
+      expect(r.recusados.ultimoEm).toBe('2026-09-10T09:30:00.000Z');
+    });
+
+    it('segredo errado deixa marca de recusa — é assim que ela nasce', async () => {
+      const { ctrl, redis } = build();
+      await expect(
+        ctrl.receber('segredo-errado-de-proposito', 'pedido', req({}), fakeRes() as never),
+      ).rejects.toThrow();
+      expect(redis.incr).toHaveBeenCalledWith('tiny:webhook:recusado:segredo');
+    });
+
+    it('evento inexistente deixa marca própria', async () => {
+      const { ctrl, redis } = build();
+      await expect(
+        ctrl.receber(SEGREDO, 'inventado', req({}), fakeRes() as never),
+      ).rejects.toThrow();
+      expect(redis.incr).toHaveBeenCalledWith('tiny:webhook:recusado:evento');
     });
   });
 
@@ -69,7 +127,7 @@ describe('webhook do Tiny', () => {
       'tiny:webhook:total:rastreio': '7',
       'tiny:webhook:ultimo:rastreio': '2026-09-09T21:09:00.000Z',
     });
-    await expect(ctrl.verificar(SEGREDO, 'rastreio')).resolves.toEqual({
+    await expect(ctrl.verificar(SEGREDO, 'rastreio')).resolves.toMatchObject({
       ok: true,
       evento: 'rastreio',
       recebidos: 7,

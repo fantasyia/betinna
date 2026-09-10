@@ -54,6 +54,39 @@ const marcaUltimo = (tipo: Evento) => `tiny:webhook:ultimo:${tipo}`;
 const marcaTotal = (tipo: Evento) => `tiny:webhook:total:${tipo}`;
 
 /**
+ * Marca de RECUSA — a outra metade da pergunta, e sem ela o diagnóstico empata.
+ *
+ * O contador de chegada só conta o que PASSA da guarda. Então `recebidos: 0`
+ * não distingue duas coisas opostas:
+ *
+ *   o ERP não tentou              → o problema está no painel dele
+ *   tentou e tomou 401/404        → o problema é segredo ou nome de evento
+ *
+ * O log de HTTP do Railway mostraria a recusa, mas é POR DEPLOY: em 10/09 a
+ * janela era de 2 minutos quando a pergunta apareceu, e a resposta histórica
+ * simplesmente não existia. Foi o que travou a investigação do card dos seis
+ * zeros — medir ausência dos dois lados e não poder cruzar.
+ *
+ * Contador durável fecha isso: uma chamada ao GET passa a responder
+ * "não tentou" ou "tentou e foi barrado", pra sempre.
+ */
+const marcaRecusa = (motivo: 'segredo' | 'evento') => `tiny:webhook:recusado:${motivo}`;
+const marcaRecusaUltimo = (motivo: 'segredo' | 'evento') =>
+  `tiny:webhook:recusado:${motivo}:ultimo`;
+
+/** Registra sem `await` e sem poder falhar: contador não atrasa nem derruba resposta. */
+function registrar(
+  redis: { incr(k: string): Promise<number>; set(k: string, v: string): Promise<void> },
+  chaveTotal: string,
+  chaveUltimo: string,
+): void {
+  void Promise.all([
+    redis.incr(chaveTotal),
+    redis.set(chaveUltimo, new Date().toISOString()),
+  ]).catch(() => undefined);
+}
+
+/**
  * Receptor dos webhooks do Tiny (Olist).
  *
  * **Por que o segredo vai no CAMINHO da URL.** O Tiny não assina os webhooks:
@@ -108,6 +141,7 @@ export class TinyWebhookController {
     const b = Buffer.from(esperado);
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
       this.logger.warn('Webhook Tiny com segredo inválido na URL — descartado');
+      registrar(this.redis, marcaRecusa('segredo'), marcaRecusaUltimo('segredo'));
       throw new UnauthorizedException('segredo inválido', ErrorCode.AUTH_INVALID_TOKEN);
     }
   }
@@ -117,6 +151,7 @@ export class TinyWebhookController {
       // 404 de propósito: erro de digitação no painel aparece como "não foi
       // possível acessar a URL" na hora de salvar, em vez de virar um endpoint
       // que aceita tudo calado e nunca entrega nada.
+      registrar(this.redis, marcaRecusa('evento'), marcaRecusaUltimo('evento'));
       throw new NotFoundException(`evento desconhecido: ${evento}`, ErrorCode.NOT_FOUND);
     }
     return evento as Evento;
@@ -127,10 +162,19 @@ export class TinyWebhookController {
    * destrava o cadastro — e de quebra dá um jeito de conferir a URL pelo
    * navegador depois.
    *
-   * A resposta também diz **se este evento já chegou alguma vez** (ver
-   * `marcaUltimo`). Abrir a mesma URL do painel no navegador passa a ser o
-   * diagnóstico completo: 401 = segredo errado, 404 = nome do evento errado,
-   * `recebidos: 0` = a URL está certa e o ERP nunca postou nela.
+   * A resposta também diz **se este evento já chegou alguma vez** e **se alguma
+   * tentativa foi barrada**. Abrir a mesma URL do painel no navegador passa a
+   * ser o diagnóstico inteiro, e é o cruzamento que dá a resposta:
+   *
+   *   401                                → o segredo que VOCÊ colou está errado
+   *   404                                → o nome do evento está errado
+   *   recebidos > 0                      → está chegando e sendo processado
+   *   recebidos: 0, recusados: 0         → o ERP NUNCA POSTOU — é o painel dele
+   *   recebidos: 0, recusados.segredo>0  → o ERP posta, com o segredo VELHO
+   *   recebidos: 0, recusados.evento>0   → o ERP posta, com nome de evento errado
+   *
+   * Sem a linha das recusas, os dois primeiros zeros ficavam indistinguíveis —
+   * e foi exatamente isso que travou a investigação dos seis zeros em 10/09.
    */
   @Public()
   @Get()
@@ -141,18 +185,44 @@ export class TinyWebhookController {
   async verificar(
     @Param('segredo') segredo: string,
     @Param('evento') evento: string,
-  ): Promise<{ ok: boolean; evento: Evento; recebidos: number; ultimoEm: string | null }> {
+  ): Promise<{
+    ok: boolean;
+    evento: Evento;
+    recebidos: number;
+    ultimoEm: string | null;
+    recusados: { segredo: number; evento: number; ultimoEm: string | null };
+  }> {
     this.validarSegredo(segredo);
     const tipo = this.validarEvento(evento);
 
     // Redis fora não pode derrubar a verificação: o que o painel do Tiny
     // precisa é do 200. O diagnóstico é o extra, e degrada pra "não sei".
-    const [total, ultimo] = await Promise.all([
-      this.redis.get(marcaTotal(tipo)).catch(() => null),
-      this.redis.get(marcaUltimo(tipo)).catch(() => null),
+    const nao = () => null;
+    const [total, ultimo, recSeg, recEvt, recSegEm, recEvtEm] = await Promise.all([
+      this.redis.get(marcaTotal(tipo)).catch(nao),
+      this.redis.get(marcaUltimo(tipo)).catch(nao),
+      this.redis.get(marcaRecusa('segredo')).catch(nao),
+      this.redis.get(marcaRecusa('evento')).catch(nao),
+      this.redis.get(marcaRecusaUltimo('segredo')).catch(nao),
+      this.redis.get(marcaRecusaUltimo('evento')).catch(nao),
     ]);
 
-    return { ok: true, evento: tipo, recebidos: Number(total ?? 0), ultimoEm: ultimo };
+    // As recusas NÃO são por evento: uma requisição barrada no segredo nunca
+    // chega a ter evento válido, e o 404 barra justamente o nome. Contá-las
+    // globalmente é o que faz elas responderem "o ERP tentou?".
+    const maisRecente = [recSegEm, recEvtEm].filter(Boolean).sort().pop() ?? null;
+
+    return {
+      ok: true,
+      evento: tipo,
+      recebidos: Number(total ?? 0),
+      ultimoEm: ultimo,
+      recusados: {
+        segredo: Number(recSeg ?? 0),
+        evento: Number(recEvt ?? 0),
+        ultimoEm: maisRecente,
+      },
+    };
   }
 
   @Public()
@@ -180,10 +250,7 @@ export class TinyWebhookController {
     // Marca de chegada ANTES da fila, e sem `await` no caminho crítico: mesmo
     // que o enfileiramento falhe, fica registrado que o ERP postou aqui — que
     // é justamente o que separa "app com problema" de "cadastro faltando".
-    void Promise.all([
-      this.redis.set(marcaUltimo(tipo), new Date().toISOString()),
-      this.redis.incr(marcaTotal(tipo)),
-    ]).catch(() => undefined);
+    registrar(this.redis, marcaTotal(tipo), marcaUltimo(tipo));
 
     await this.redis
       .lpushCapped(
