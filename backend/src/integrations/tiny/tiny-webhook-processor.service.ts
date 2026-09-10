@@ -144,7 +144,19 @@ export class TinyWebhookProcessorService {
 
     if (tipo.includes('pedido') || tipo.includes('rastreio') || tipo.includes('nota')) {
       const id = Number(dados.id ?? dados.idPedido ?? dados.idVenda);
-      if (!Number.isFinite(id) || id <= 0) return false;
+      // Descarte SILENCIOSO era o buraco: o drain contava "1 ignorado" e não
+      // dizia por quê. Medido em 10/09, na primeira chegada real de webhook —
+      // eu não conseguia distinguir "o painel testou a URL com corpo vazio" de
+      // "evento real que a gente não soube ler", e as duas coisas pedem ações
+      // opostas. Mesma família do `default: false` do operador de condição:
+      // toda saída sem log é uma pergunta que ninguém vai poder responder.
+      if (!Number.isFinite(id) || id <= 0) {
+        this.logger.warn(
+          `[tiny] webhook ${tipo} sem id de pedido utilizável — descartado. ` +
+            `Corpo: ${evento.payload.slice(0, 200)}`,
+        );
+        return false;
+      }
       const efeito = await aplicadorDePedido.sincronizarUm(empresaId, id);
       this.logger.log(`[tiny] webhook ${tipo}: pedido ${id} → ${efeito}`);
       // "Não aplicado" aqui não é falha: pedido velho demais, ou que já chega
@@ -158,7 +170,15 @@ export class TinyWebhookProcessorService {
     // vem assinado.
     if (tipo.includes('estoque') || tipo.includes('produto') || tipo.includes('preco')) {
       const id = Number(dados.idProduto ?? dados.id);
-      if (!Number.isFinite(id) || id <= 0) return false;
+      // Ver o descarte acima: sem log, "ignorado" não distingue teste de painel
+      // de evento real ilegível.
+      if (!Number.isFinite(id) || id <= 0) {
+        this.logger.warn(
+          `[tiny] webhook ${tipo} sem id de produto utilizável — descartado. ` +
+            `Corpo: ${evento.payload.slice(0, 200)}`,
+        );
+        return false;
+      }
       const ok = await this.produtos.sincronizarUm(empresaId, id);
       this.logger.log(
         `[tiny] webhook ${tipo}: produto ${id} → ${ok ? 'atualizado' : 'não achado'}`,

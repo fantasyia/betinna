@@ -354,6 +354,43 @@ export class FluxosService {
     }
   }
 
+  /**
+   * Operador de condição válido — checado JÁ NO SALVAR, não só no ativar.
+   *
+   * ⚠️ Por que só ESTA checagem sai do `validarGrafo` e as outras não:
+   *
+   * O `validarGrafo` roda **apenas no `ativar`**, e isso é deliberado — ele
+   * exige "exatamente 1 nó TRIGGER" e "triggerTipo definido", que são estados
+   * que um fluxo EM CONSTRUÇÃO legitimamente não tem. Movê-lo pro salvar
+   * impediria guardar trabalho pela metade, que é como o editor funciona.
+   *
+   * Operador inválido é diferente: **não existe estado intermediário legítimo
+   * em que o operador está errado.** Ninguém salva `equals` a caminho de `eq`.
+   * Então essa checagem pode ser antecipada sem custo, e antecipar importa: em
+   * 10/09 o erro só apareceria na reativação, e entre editar e reativar passou
+   * uma sessão inteira com o E6 morto em produção.
+   *
+   * O gate do `ativar` continua no lugar — é a rede de quem escreve no banco
+   * direto por Prisma, que é o único caminho que atinge fluxo ATIVO sem passar
+   * por aqui. E se escapar dos dois, o executor estoura com `FALHOU`.
+   */
+  private validarOperadores(nos: Array<{ id: string; titulo?: string; config?: unknown }>): void {
+    for (const no of nos) {
+      const cfg = (no.config ?? {}) as { modo?: string; operador?: string };
+      // Roteador não usa operador; nó sem operador ainda é obra em andamento e
+      // o `validarGrafo` cobre no ativar.
+      if (cfg.modo === 'roteador' || !cfg.operador?.trim()) continue;
+      if (OPERADORES_CONDICAO.has(cfg.operador.trim())) continue;
+      const nome = no.titulo ? `"${no.titulo}"` : `id=${no.id}`;
+      throw new BusinessRuleException(
+        `A condição ${nome} usa o operador "${cfg.operador}", que o motor não conhece — ` +
+          `ela responderia "Não" para sempre, sem erro nenhum. ` +
+          `Use um destes: ${[...OPERADORES_CONDICAO].join(', ')}.`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+  }
+
   /** Checa config + labels de saída de um nó CONDICAO (ver validarGrafo). */
   private validarCondicao(
     no: { id: string; titulo?: string; config?: unknown },
@@ -487,6 +524,7 @@ export class FluxosService {
     // fluxo de empresa, nem em nome de outro).
     const usuarioId = this.ehGestao(user) ? null : user.id;
     if (usuarioId) await this.validarGrafoPessoal(empresaId, dto.nos);
+    this.validarOperadores(dto.nos);
 
     // Cria fluxo + nós + arestas em transação
     const grafo = this.remapearGrafo(dto.nos, dto.arestas);
@@ -733,6 +771,7 @@ export class FluxosService {
     if (existing.usuarioId && dto.nos) {
       await this.validarGrafoPessoal(existing.empresaId, dto.nos);
     }
+    if (dto.nos) this.validarOperadores(dto.nos);
 
     if (existing.status === 'ARQUIVADO') {
       throw new BusinessRuleException(
@@ -1119,6 +1158,7 @@ export class FluxosService {
     if (!this.ehGestao(user)) {
       await this.validarGrafoPessoal(this.requireEmpresa(user), dto.nos);
     }
+    this.validarOperadores(dto.nos);
 
     // O `create` já remapeia as chaves → ids internos (helper compartilhado),
     // então o mesmo arquivo pode ser importado várias vezes sem colisão.
