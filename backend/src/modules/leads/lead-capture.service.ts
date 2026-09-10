@@ -312,6 +312,7 @@ export class LeadCaptureService {
           origemCadastro: true,
           formularioOrigem: true,
           observacoes: true,
+          variaveis: true,
         },
       });
       if (!atual) return;
@@ -342,6 +343,19 @@ export class LeadCaptureService {
         ? `${atual.observacoes}
 ${carimbo}`
         : carimbo;
+
+      // O texto novo SOBRESCREVE o antigo, ao contrário dos campos de
+      // identidade acima — e é de propósito: quem volta ao site dizendo "a
+      // câmara fria queimou de novo" precisa ser recebido por ISSO, não pelo
+      // que escreveu no toque anterior. O histórico completo continua em
+      // `observacoes`, que é o campo feito pra acumular.
+      if (mensagem) {
+        const varsAtuais =
+          atual.variaveis && typeof atual.variaveis === 'object' && !Array.isArray(atual.variaveis)
+            ? (atual.variaveis as Record<string, unknown>)
+            : {};
+        dados.variaveis = { ...varsAtuais, veio_do_site_dizendo: mensagem };
+      }
 
       await this.prisma.lead.update({ where: { id: leadId }, data: dados });
     } catch (err) {
@@ -516,6 +530,23 @@ ${carimbo}`
     if (dto.regiao?.trim()) v.regiao = dto.regiao.trim();
     if (dto.experiencia?.trim()) v.experiencia = dto.experiencia.trim();
     if (dto.paginaOrigem?.trim()) v.paginaOrigem = dto.paginaOrigem.trim();
+    // O que a pessoa ESCREVEU na caixa, como variável do lead — e não só a
+    // linha datada em `observacoes`.
+    //
+    // ⚠️ Motivo, medido em 10/09: ela escreveu *"minha câmara fria queimou de
+    // novo"* no `/contato` e o bot abriu genérico, sem nomear nada. Não era o
+    // modelo sendo preguiçoso — o texto não CHEGAVA nele. O fluxo do site tem
+    // `ctx.mensagem`, mas o consultivo nasce de um gatilho NOVO (mudança de
+    // etapa) e chega sem ele; e essa pessoa nunca escreveu no WhatsApp, então
+    // não havia histórico pra ler. O texto existia só em `observacoes`, que
+    // nenhum template enxerga.
+    //
+    // Como variável do lead ele entra no `{{custom.*}}` (ver `montarContexto`
+    // no executor: custom = defaults da empresa + `lead.variaveis`), então o
+    // prompt lê `{{custom.veio_do_site_dizendo}}` sem ninguém precisar editar
+    // grafo nenhum — e vale pra QUALQUER caminho de entrada, não só pro fluxo
+    // que estava sendo consertado.
+    if (dto.mensagem?.trim()) v.veio_do_site_dizendo = dto.mensagem.trim();
     if (dto.consentimentoLgpd) v.consentimentoLgpd = dto.consentimentoLgpd;
     if (dto.metadados) v.metadados = dto.metadados;
     // Atribuição completa (1º toque não-indexado + ÚLTIMO toque inteiro) no JSON.

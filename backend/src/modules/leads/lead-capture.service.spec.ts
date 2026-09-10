@@ -666,5 +666,93 @@ describe('LeadCaptureService', () => {
 
       await expect(svc.capturar(CHAVE, DTO as never)).resolves.toMatchObject({ duplicado: true });
     });
+
+    /**
+     * O caso MEDIDO em 10/09: a pessoa já era lead, voltou pelo `/contato`
+     * dizendo que a câmara fria queimou, e o bot abriu genérico. O texto ficava
+     * só em `observacoes`, que nenhum template lê.
+     */
+    it('guarda o que ela ESCREVEU como variavel do lead — vira {{custom.veio_do_site_dizendo}}', async () => {
+      prepararDuplicado({});
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      expect(prisma.lead.update.mock.calls[0][0].data.variaveis).toMatchObject({
+        veio_do_site_dizendo: 'Quero orçamento do MB-03',
+      });
+    });
+
+    it('o texto NOVO sobrescreve o antigo — ela precisa ser recebida pelo que disse AGORA', async () => {
+      prepararDuplicado({ variaveis: { veio_do_site_dizendo: 'queimou o freezer em agosto' } });
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      expect(prisma.lead.update.mock.calls[0][0].data.variaveis).toMatchObject({
+        veio_do_site_dizendo: 'Quero orçamento do MB-03',
+      });
+    });
+
+    it('e NAO apaga as outras variaveis do lead ao gravar essa', async () => {
+      prepararDuplicado({ variaveis: { empresa: 'Alfa', atribuicao: { utmSource: 'meta' } } });
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      expect(prisma.lead.update.mock.calls[0][0].data.variaveis).toMatchObject({
+        empresa: 'Alfa',
+        atribuicao: { utmSource: 'meta' },
+        veio_do_site_dizendo: 'Quero orçamento do MB-03',
+      });
+    });
+
+    it('reenvio SEM mensagem nao mexe nas variaveis (nao apaga o texto do toque anterior)', async () => {
+      prepararDuplicado({ variaveis: { veio_do_site_dizendo: 'queimou o freezer' } });
+
+      await svc.capturar(CHAVE, { ...DTO, mensagem: undefined } as never);
+
+      expect(prisma.lead.update.mock.calls[0][0].data.variaveis).toBeUndefined();
+    });
+  });
+
+  describe('o texto do formulario no lead NOVO', () => {
+    it('vai pra variaveis, alem da linha em observacoes', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({
+        empresaId: 'emp-1',
+        chaveHash: HASH,
+        ativo: true,
+      });
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await svc.capturar(CHAVE, {
+        nome: 'Loja de Conveniencia Beta',
+        telefone: '(11) 98888-1234',
+        mensagem: 'Tenho uma loja de conveniencia e a camara fria queimou de novo',
+        formulario: 'contato',
+      } as never);
+
+      const dados = leads.createPublico.mock.calls[0][1];
+      expect(dados.variaveis).toMatchObject({
+        veio_do_site_dizendo: 'Tenho uma loja de conveniencia e a camara fria queimou de novo',
+      });
+      // continua indo pra observacoes tambem — sao usos diferentes: variavel e
+      // pro template ler, observacoes e o rastro que a pessoa preencheu o site
+      expect(dados.observacoes).toBe(
+        'Tenho uma loja de conveniencia e a camara fria queimou de novo',
+      );
+    });
+
+    it('sem mensagem, a chave nem aparece nas variaveis', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({
+        empresaId: 'emp-1',
+        chaveHash: HASH,
+        ativo: true,
+      });
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await svc.capturar(CHAVE, { nome: 'Beta', telefone: '(11) 98888-1234' } as never);
+
+      expect(leads.createPublico.mock.calls[0][1].variaveis).not.toHaveProperty(
+        'veio_do_site_dizendo',
+      );
+    });
   });
 });
