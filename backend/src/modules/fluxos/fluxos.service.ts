@@ -1354,26 +1354,53 @@ export class FluxosService {
   ]);
 
   /**
+   * De onde mais dá pra chegar numa conversa sem que o teste invente uma.
+   *
+   * `PAUSAR_IA` acha a conversa pelo TELEFONE, e o telefone sai da cascata
+   * lead → pedido → cliente. Então qualquer um destes basta.
+   */
+  private static readonly RESOLVE_CONVERSA_POR_TELEFONE = ['leadId', 'pedidoId', 'clienteId'];
+
+  /**
    * Recusa ANTES de criar a execução, em vez de deixar falhar no meio.
    *
    * Recusar é melhor que gerar execução falha por dois motivos: quem testou
    * recebe a instrução certa na hora, e o histórico não ganha um FALHOU que não
    * diz nada sobre o fluxo.
+   *
+   * ⚠️ A guarda NÃO pode ser mais rígida que os nós que ela protege — e estava.
+   * Exigir `conversationId` sempre tornava **intestável na forma real** todo
+   * fluxo da família `PEDIDO_*`: o evento verdadeiro traz `pedidoId`/`clienteId`
+   * e nunca conversa, então quem testasse era obrigado a passar uma — e aí o
+   * `PAUSAR_IA` usava a conversa direto e o caminho por telefone nunca rodava.
+   * O teste só conseguia exercitar o cenário que nunca quebrou.
+   *
+   * Foi assim que o defeito de 10/09 escapou de toda a bateria e só apareceu
+   * quando dois pedidos REAIS despacharam: o P2 morria no primeiro nó, e o
+   * cliente ficava sem o código de rastreio.
    */
   private assertTesteNaoPrecisaDeConversa(
     nos: Array<{ tipo: string; acaoTipo: string | null; titulo: string }>,
     contexto: Record<string, unknown>,
   ): void {
     if (typeof contexto.conversationId === 'string' && contexto.conversationId) return;
+    // Sem conversa, mas com algo que resolve telefone: deixa rodar. Se no fim
+    // não houver telefone em fonte nenhuma, o próprio nó falha — com a mensagem
+    // certa, e aí o FALHOU no histórico diz algo de verdade sobre o fluxo.
+    const temComoResolver = FluxosService.RESOLVE_CONVERSA_POR_TELEFONE.some(
+      (chave) => typeof contexto[chave] === 'string' && contexto[chave],
+    );
+    if (temComoResolver) return;
     const bloqueante = nos.find(
       (n) => n.tipo === 'ACAO' && n.acaoTipo && FluxosService.ACOES_EXIGEM_CONVERSA.has(n.acaoTipo),
     );
     if (!bloqueante) return;
     throw new BusinessRuleException(
-      `Este fluxo precisa de uma CONVERSA pra ser testado: o nó "${bloqueante.titulo}" ` +
-        `(${bloqueante.acaoTipo}) age sobre uma conversa de WhatsApp, que o teste não inventa. ` +
-        'Escolha uma conversa existente no teste (campo "conversa") — ou teste mandando ' +
-        'mensagem real pro número. Nenhuma execução foi criada.',
+      `Este fluxo precisa chegar numa CONVERSA pra ser testado: o nó ` +
+        `"${bloqueante.titulo}" (${bloqueante.acaoTipo}) age sobre uma conversa de ` +
+        'WhatsApp, que o teste não inventa. Informe a conversa (campo "conversa") ou ' +
+        'um contexto de onde dê pra achar o telefone — lead, pedido ou cliente. ' +
+        'Nenhuma execução foi criada.',
       ErrorCode.BUSINESS_RULE_VIOLATION,
     );
   }
