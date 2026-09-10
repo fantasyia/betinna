@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import type { FluxoTriggerTipo, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { EnvService } from '@config/env.service';
 import {
   FLUXO_JOB_REDISPARO,
   FLUXO_QUEUE,
@@ -12,7 +13,7 @@ import {
 import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
 import { matchFiltroPayload, type FiltroPayload } from './match-payload-filtro.util';
 import { normalizarValor } from './normalizar-valor.util';
-import { turnoDeIaAberto } from './turno-ia-aberto.util';
+import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
 import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
@@ -62,6 +63,7 @@ export class FluxoEventBusService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoJobData>,
+    private readonly env: EnvService,
   ) {}
 
   /**
@@ -101,16 +103,28 @@ export class FluxoEventBusService {
    * A definição de "aberto" mora em `turnoDeIaAberto` — a MESMA que o
    * `{{conversa.ia_aguardando}}` das condições usa. Duas expressões pra mesma
    * pergunta dariam duas respostas.
+   *
+   * Com `FLUXO_IA_A_FRENTE` ligado, soma o sinal de POSIÇÃO (`iaAFrente`): a
+   * execução que ainda VAI chegar ao nó de IA também conta como "tem alguém
+   * conduzindo". É o que fecha a janela de frações de segundo entre começar a
+   * execução e ela estacionar no nó — onde o proativo atropela quem está
+   * falando. Aditivo: com a flag desligada, o comportamento é o de hoje, que
+   * está medido e estável desde a reversão do `2c79f25`.
    */
   private async turnoDeIaAberto(
     empresaId: string,
     contexto: Record<string, unknown>,
   ): Promise<boolean> {
     try {
-      return await turnoDeIaAberto(this.prisma, empresaId, {
+      const alvo = {
         conversationId: contexto['conversationId'] as string | undefined,
         leadId: contexto['leadId'] as string | undefined,
-      });
+      };
+      if (await turnoDeIaAberto(this.prisma, empresaId, alvo)) return true;
+      // Aqui NÃO há execução própria a excluir: o bus decide se CRIA uma, então
+      // toda execução viva é de outro. É a diferença em relação à condição.
+      if (!this.env.get('FLUXO_IA_A_FRENTE')) return false;
+      return await iaAFrente(this.prisma, empresaId, alvo);
     } catch (err) {
       // Fail-open, igual ao resto do bus: um hiccup de banco não pode calar a
       // régua inteira. O estrago de falar por cima é menor que o de emudecer.

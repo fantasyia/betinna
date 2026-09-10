@@ -65,6 +65,15 @@ const fakeExecucao = (overrides: Record<string, unknown> = {}) => ({
 // Suite
 // ---------------------------------------------------------------------------
 
+/**
+ * Env dos testes: `FLUXO_IA_A_FRENTE` DESLIGADA, que e o default de producao.
+ * Os testes deste arquivo provam o comportamento de HOJE — o sinal novo e
+ * aditivo e nao pode mudar nenhum deles.
+ */
+const envMock = (iaAFrente = false) => ({
+  get: (k: string) => (k === 'FLUXO_IA_A_FRENTE' ? iaAFrente : ''),
+});
+
 describe('FluxoEventBusService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let queue: ReturnType<typeof makeQueueMock>;
@@ -73,7 +82,7 @@ describe('FluxoEventBusService', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     queue = makeQueueMock();
-    service = new FluxoEventBusService(prisma as never, queue as never);
+    service = new FluxoEventBusService(prisma as never, queue as never, envMock() as never);
   });
 
   // -------------------------------------------------------------------------
@@ -615,7 +624,7 @@ describe('FluxoEventBusService — anti-reabertura só vale pra fluxo COM nó de
   beforeEach(() => {
     prisma = makePrismaMock();
     queue = makeQueueMock();
-    service = new FluxoEventBusService(prisma as never, queue as never);
+    service = new FluxoEventBusService(prisma as never, queue as never, envMock() as never);
   });
 
   it('fluxo SEM nó de IA dispara mesmo com execução viva na conversa', async () => {
@@ -644,6 +653,74 @@ describe('FluxoEventBusService — anti-reabertura só vale pra fluxo COM nó de
 });
 
 // ---------------------------------------------------------------------------
+// FLUXO_IA_A_FRENTE — a flag existe pro rollback ser uma variavel, nao um deploy
+// ---------------------------------------------------------------------------
+
+describe('FluxoEventBusService — a flag do iaAFrente', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let queue: ReturnType<typeof makeQueueMock>;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    queue = makeQueueMock();
+  });
+
+  /** Deixa o `turnoDeIaAberto` responder NAO, pra a segunda consulta importar. */
+  const cenario = () => {
+    prisma.fluxo.findMany.mockResolvedValue([
+      fakeFluxo({
+        triggerTipo: 'LEAD_RECEBEU_TAG',
+        nos: [{ id: 'trg', config: {} }],
+      }),
+    ]);
+    prisma.fluxoNo.count.mockResolvedValue(1); // tem CONVERSAR_IA
+    prisma.fluxoExecucao.findFirst.mockResolvedValue(null);
+    prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+    prisma.fluxoExecucao.update.mockResolvedValue({});
+    prisma.$queryRaw.mockResolvedValue([]);
+  };
+
+  /**
+   * O ponto da flag: este e o MESMO lugar do motor que quebrou producao duas
+   * vezes em 09/09. Desligada, o caminho e byte a byte o de hoje — que esta
+   * medido e estavel desde a reversao do 2c79f25.
+   */
+  it('DESLIGADA: nao faz a segunda consulta', async () => {
+    cenario();
+    const service = new FluxoEventBusService(
+      prisma as never,
+      queue as never,
+      envMock(false) as never,
+    );
+
+    await service.disparar('emp-1', 'LEAD_RECEBEU_TAG' as FluxoTriggerTipo, {
+      leadId: 'lead-1',
+      tagNome: 'x',
+    });
+
+    // Uma consulta so: a do `turnoDeIaAberto`.
+    expect(prisma.$queryRaw.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+
+  it('LIGADA: consulta a alcancabilidade tambem', async () => {
+    cenario();
+    const service = new FluxoEventBusService(
+      prisma as never,
+      queue as never,
+      envMock(true) as never,
+    );
+
+    await service.disparar('emp-1', 'LEAD_RECEBEU_TAG' as FluxoTriggerTipo, {
+      leadId: 'lead-1',
+      tagNome: 'x',
+    });
+
+    const sqls = prisma.$queryRaw.mock.calls.map((c) => (c[0] as string[]).join('?'));
+    expect(sqls.some((q) => q.includes('WITH RECURSIVE'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // LEAD_RECEBEU_TAG — QUAL etiqueta dispara (antes: nenhuma filtragem)
 // ---------------------------------------------------------------------------
 
@@ -664,7 +741,7 @@ describe('FluxoEventBusService — filtro do gatilho LEAD_RECEBEU_TAG', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     queue = makeQueueMock();
-    service = new FluxoEventBusService(prisma as never, queue as never);
+    service = new FluxoEventBusService(prisma as never, queue as never, envMock() as never);
   });
 
   it('sem config: qualquer etiqueta dispara (compatível com o que já está no ar)', async () => {
@@ -800,7 +877,7 @@ describe('FluxoEventBusService — filtro de origem do gatilho LEAD_CRIADO', () 
   beforeEach(() => {
     prisma = makePrismaMock();
     queue = makeQueueMock();
-    service = new FluxoEventBusService(prisma as never, queue as never);
+    service = new FluxoEventBusService(prisma as never, queue as never, envMock() as never);
   });
 
   it('sem config: qualquer origem dispara (não quebra fluxo que já está no ar)', async () => {
@@ -851,7 +928,7 @@ describe('FluxoEventBusService — filtro de origem do gatilho LEAD_CRIADO', () 
 
     prisma = makePrismaMock();
     queue = makeQueueMock();
-    service = new FluxoEventBusService(prisma as never, queue as never);
+    service = new FluxoEventBusService(prisma as never, queue as never, envMock() as never);
     comConfig({ origens: ['api'] });
     await criar('api');
     expect(queue.add).toHaveBeenCalled();

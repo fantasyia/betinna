@@ -251,6 +251,25 @@ export const envSchema = z
       .union([z.boolean(), z.string().transform((s) => s === 'true')])
       .default(false),
 
+    /**
+     * Liga o sinal `iaAFrente` — "a execução ainda VAI CHEGAR ao nó de IA?".
+     *
+     * DESLIGADO por padrão de propósito. A pergunta que ele responde é a certa
+     * (posição, não existência), mas este é o mesmo ponto do motor que quebrou
+     * produção DUAS vezes em 09/09: 3 perguntas repetidas → 30 min de silêncio
+     * → silêncio permanente. Cada remendo foi pior que o anterior.
+     *
+     * Com a flag, desligar é uma variável no Railway — segundos. Sem ela seria
+     * revert + build + deploy, que naquele dia levou ~20 min COM a produção
+     * quebrada. O custo da flag é uma condição; o benefício é o tempo de
+     * reação quando a próxima suposição estiver errada.
+     *
+     * Ligar só depois da medição da sessão de teste de fluxo (F.4 e M.11).
+     */
+    FLUXO_IA_A_FRENTE: z
+      .union([z.boolean(), z.string().transform((v) => v === 'true')])
+      .default(false),
+
     // TikTok Shop
     TIKTOK_APP_KEY: z.string().optional().default(''),
     TIKTOK_APP_SECRET: z.string().optional().default(''),

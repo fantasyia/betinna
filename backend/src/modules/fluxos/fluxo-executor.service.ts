@@ -40,7 +40,7 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 // os dois caminhos não divergirem (a IA solta "Nao e lead"/"Não é lead"
 // indistintamente; um acento a menos desviava tudo pro ramo errado).
 import { normalizarValor } from './normalizar-valor.util';
-import { turnoDeIaAberto } from './turno-ia-aberto.util';
+import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -475,6 +475,9 @@ export class FluxoExecutorService {
     const contexto = await this.enriquecerContexto(
       execucao.contexto as ExecucaoContexto,
       execucao.empresaId,
+      // A PRÓPRIA execução, pra ela não se enxergar no `iaAFrente`. Foi assim
+      // que o RT respondeu "Sim" a si mesmo em 09/09 e o C1 nunca foi acionado.
+      execucao.id,
     );
 
     // ── Fluxo PESSOAL (card 👤): guarda-corpos de runtime ────────────────
@@ -1142,6 +1145,7 @@ export class FluxoExecutorService {
   private async enriquecerContexto(
     contexto: ExecucaoContexto,
     empresaId: string,
+    execucaoId?: string,
   ): Promise<ExecucaoContexto> {
     const ctx: Record<string, unknown> = { ...(contexto as Record<string, unknown>) };
 
@@ -1294,7 +1298,7 @@ export class FluxoExecutorService {
       ...leadVars,
       ...(typeof ctx.texto === 'string' ? { ultima_msg_lead: ctx.texto } : {}),
       ...(typeof ctx.classificacao === 'string' ? { classificacao: ctx.classificacao } : {}),
-      ...(await this.estadoDaConversa(empresaId, ctx, botDaEmpresa)),
+      ...(await this.estadoDaConversa(empresaId, ctx, botDaEmpresa, execucaoId)),
     };
 
     // ATALHOS no TOPO do contexto: o usuário escreve {{nome}}, {{cidade}}, {{uf}},
@@ -3101,10 +3105,34 @@ export class FluxoExecutorService {
    * TERMINAL do consultivo, então quem voltava com dúvida depois do link ficava
    * sem resposta, porque o RT achava que havia conversa em andamento (07/09).
    */
+  /**
+   * "Tem alguém conduzindo AGORA?" — a resposta que vira
+   * `{{conversa.ia_aguardando}}`.
+   *
+   * Soma dois sinais, e eles respondem perguntas diferentes:
+   *  - `turnoDeIaAberto` — há execução PARADA no nó de IA (ou com o lock do
+   *    turno tomado). Definição estável, medida, em produção desde a reversão.
+   *  - `iaAFrente` — há execução que ainda VAI CHEGAR ao nó de IA. Fecha a
+   *    janela de frações de segundo em que o primeiro sinal diz "não" e alguém
+   *    já está conduzindo. Atrás de `FLUXO_IA_A_FRENTE`, DESLIGADO por padrão.
+   *
+   * O segundo é aditivo: com a flag desligada isto é exatamente o de hoje.
+   */
+  private async iaConduzindo(
+    empresaId: string,
+    alvo: { conversationId?: string; leadId?: string; execucaoId?: string },
+  ): Promise<boolean> {
+    if (await turnoDeIaAberto(this.prisma, empresaId, alvo)) return true;
+    if (!this.env.get('FLUXO_IA_A_FRENTE')) return false;
+    return iaAFrente(this.prisma, empresaId, alvo);
+  }
+
   private async estadoDaConversa(
     empresaId: string,
     ctx: Record<string, unknown>,
     botDaEmpresa: boolean,
+    /** A execução que pergunta — nunca conta a si mesma. */
+    execucaoId?: string,
   ): Promise<{
     bot_ligado: boolean;
     precisa_humano: boolean;
@@ -3135,7 +3163,7 @@ export class FluxoExecutorService {
         // é a EXECUÇÃO viva, não a linha da conversa. Catch PRÓPRIO de
         // propósito — se esta consulta falhar, `bot_ligado`/`precisa_humano`
         // (que valem mais) não podem cair junto pro default "pode falar".
-        turnoDeIaAberto(this.prisma, empresaId, { conversationId, leadId }).catch((err) => {
+        this.iaConduzindo(empresaId, { conversationId, leadId, execucaoId }).catch((err) => {
           this.logger.warn(
             `conversa.ia_aguardando não veio: ${err instanceof Error ? err.message : String(err)}`,
           );
