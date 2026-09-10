@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FluxosService } from './fluxos.service';
-import { OPERADORES_CONDICAO } from './fluxo-executor.service';
+import { FluxoExecutorService, OPERADORES_CONDICAO } from './fluxo-executor.service';
 
 /**
  * Operador desconhecido é FALHA, não é "Não".
@@ -143,5 +143,112 @@ describe('a lista e o switch não podem divergir', () => {
     const trecho = fonte.slice(inicio, fim);
     const cases = [...trecho.matchAll(/case '([a-z]+)':/g)].map((m) => m[1]);
     expect(cases.sort()).toEqual([...OPERADORES_CONDICAO].sort());
+  });
+});
+
+/**
+ * A mensagem tem que chegar LEGÍVEL no `erroMsg` do passo — é literalmente o
+ * que alguém vai ler na tela do fluxo às 3 da manhã (o V.8 pinta `FALHOU` em
+ * vermelho com o `erroMsg`).
+ *
+ * "O fluxo quebrou" e "o fluxo quebrou AQUI, por ISTO" custam o mesmo pra
+ * produzir e não custam o mesmo pra quem está de plantão.
+ */
+describe('o FALHOU diz o que aconteceu', () => {
+  const makeService = () => {
+    const prisma = {
+      fluxoExecucao: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'exec-1',
+          fluxoId: 'fluxo-1',
+          empresaId: 'emp-1',
+          status: 'EM_EXECUCAO',
+          contexto: {},
+        }),
+        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      fluxo: { findUnique: vi.fn().mockResolvedValue({ triggerTipo: 'LEAD_RECEBEU_TAG' }) },
+      fluxoNo: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'no-1',
+          fluxoId: 'fluxo-1',
+          tipo: 'CONDICAO',
+          acaoTipo: null,
+          titulo: 'Ainda em Checkout iniciado? — após 1 dia',
+          config: {
+            modo: 'simples',
+            campo: 'lead.etapa_id',
+            operador: 'equals',
+            valor: 'fet_addaa8ecf6794a8adb375e50',
+          },
+        }),
+      },
+      fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
+      fluxoExecucaoLog: {
+        create: vi.fn().mockResolvedValue({}),
+        count: vi.fn().mockResolvedValue(0),
+      },
+      fluxoStepClaim: {
+        create: vi.fn().mockResolvedValue({}),
+        findUnique: vi.fn().mockResolvedValue(null),
+        update: vi.fn().mockResolvedValue({}),
+        delete: vi.fn().mockResolvedValue({}),
+      },
+      usuario: { findFirst: vi.fn().mockResolvedValue(null) },
+      lead: { findFirst: vi.fn().mockResolvedValue(null) },
+      pedido: { findFirst: vi.fn().mockResolvedValue(null) },
+      cliente: { findFirst: vi.fn().mockResolvedValue(null) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      $transaction: vi.fn(async (o: unknown[]) => Promise.all(o as Promise<unknown>[])),
+    };
+    const service = new FluxoExecutorService(
+      prisma as never,
+      { get: vi.fn().mockReturnValue('') } as never,
+      {} as never,
+      { enviarTexto: vi.fn(), enviarMidia: vi.fn(), estaDisponivel: vi.fn() } as never,
+      { enviarHtmlLivre: vi.fn() } as never,
+      { iniciar: vi.fn() } as never,
+      { disparar: vi.fn() } as never,
+      { aguardarSlot: vi.fn(), esperaAntesDoProativoMs: vi.fn().mockResolvedValue(0) } as never,
+      { marcarDesconectado: vi.fn() } as never,
+      { add: vi.fn().mockResolvedValue({ id: 'j' }) } as never,
+      { criarCardsDeTarefa: vi.fn(async () => ({})) } as never,
+      { suprimido: vi.fn(async () => false) } as never,
+      { criar: vi.fn() } as never,
+      { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+    );
+    return { service, prisma };
+  };
+
+  it('o passo fica FALHOU, não CONCLUIDO com "Não"', async () => {
+    const { service, prisma } = makeService();
+    await expect(service.executarPasso('exec-1', 'no-1', 'job-1')).rejects.toThrow();
+    const log = prisma.fluxoExecucaoLog.create.mock.calls.at(-1)?.[0] as {
+      data?: { status?: string };
+    };
+    expect(log?.data?.status).toBe('FALHOU');
+  });
+
+  /**
+   * O QUE se lê na tela vem de DUAS colunas do log, não de uma: `noTitulo` diz
+   * QUAL nó, `erroMsg` diz O QUE aconteceu. Testar as duas juntas é o que
+   * garante a leitura de plantão — num fluxo com três portões iguais ("após 1
+   * dia", "após 3 dias", "após 6 dias"), a mensagem sozinha não bastaria.
+   */
+  it('o log identifica QUAL nó e O QUE aconteceu', async () => {
+    const { service, prisma } = makeService();
+    await expect(service.executarPasso('exec-1', 'no-1', 'job-1')).rejects.toThrow();
+    const log = prisma.fluxoExecucaoLog.create.mock.calls.at(-1)?.[0] as {
+      data?: { noTitulo?: string; erroMsg?: string };
+    };
+    // qual nó
+    expect(log?.data?.noTitulo).toBe('Ainda em Checkout iniciado? — após 1 dia');
+    // o que aconteceu: nomeia o operador errado e lista os certos
+    const msg = log?.data?.erroMsg ?? '';
+    expect(msg).toContain('equals');
+    expect(msg).toMatch(/eq, neq/);
+    // e não é exceção genérica
+    expect(msg).not.toMatch(/^Error$|internal|unexpected/i);
   });
 });
