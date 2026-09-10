@@ -231,6 +231,11 @@ export class TinyOAuthController {
     );
     res
       .status(ok ? 200 : 400)
+      // COOP: o Helmet manda `same-origin` em tudo, e nesta rota isso corta o
+      // `opener` do popup — o que BARRA o `window.close()` do script abaixo e
+      // pula o `postMessage`. Medido no Google em 10/09; o defeito é o mesmo
+      // aqui, e existe desde o commit inicial. Ver `@shared/oauth`.
+      .setHeader('Cross-Origin-Opener-Policy', 'unsafe-none')
       .type('html')
       .send(
         `<!doctype html><html><head><meta charset="utf-8"><title>${ok ? 'Conectado' : 'Erro'}</title></head>

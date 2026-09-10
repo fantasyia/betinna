@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { paginaRetornoOAuth } from './pagina-retorno-oauth';
+import { describe, expect, it, vi } from 'vitest';
+import { enviarPaginaRetorno, paginaRetornoOAuth } from './pagina-retorno-oauth';
 
 const base = {
   titulo: 'Agenda conectada',
@@ -100,5 +100,52 @@ describe('página de retorno do OAuth', () => {
       marca: { ...MARCA, empresaNome: 'Fulano" onload="alert(1)' },
     });
     expect(html).not.toContain('onload="alert(1)');
+  });
+});
+
+/**
+ * O header que faz a janela poder se fechar.
+ *
+ * O Helmet manda `COOP: same-origin` em tudo. No callback do OAuth isso corta o
+ * `opener` do popup, e aí `window.opener` fica null (postMessage pulado) E
+ * `window.close()` é BARRADO pelo navegador — sem erro nenhum na tela.
+ *
+ * Medido em 10/09: a conexão do Google Agenda funcionou (`conectadoEm`
+ * carimbado) e a janela ficou parada. Não era a lógica da página, era o header
+ * — e não era regressão: o `window.close()` está nos controllers desde o commit
+ * inicial, então nunca funcionou. Só apareceu quando alguém ASSISTIU à tela.
+ */
+describe('enviarPaginaRetorno', () => {
+  const fakeRes = () => {
+    const res = {
+      setHeader: vi.fn(() => res),
+      status: vi.fn(() => res),
+      type: vi.fn(() => res),
+      send: vi.fn(() => res),
+    };
+    return res;
+  };
+
+  it('derruba o COOP — sem isso o navegador barra o window.close()', () => {
+    const res = fakeRes();
+    enviarPaginaRetorno(res as never, 200, '<html></html>');
+    expect(res.setHeader).toHaveBeenCalledWith('Cross-Origin-Opener-Policy', 'unsafe-none');
+  });
+
+  it('preserva status e content-type', () => {
+    const res = fakeRes();
+    enviarPaginaRetorno(res as never, 400, '<html>erro</html>');
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.type).toHaveBeenCalledWith('html');
+    expect(res.send).toHaveBeenCalledWith('<html>erro</html>');
+  });
+
+  // O header tem que sair ANTES do corpo: depois do `send` não há o que mudar.
+  it('manda o header antes de enviar o corpo', () => {
+    const res = fakeRes();
+    enviarPaginaRetorno(res as never, 200, '<html></html>');
+    const ordemHeader = res.setHeader.mock.invocationCallOrder[0];
+    const ordemSend = res.send.mock.invocationCallOrder[0];
+    expect(ordemHeader).toBeLessThan(ordemSend);
   });
 });

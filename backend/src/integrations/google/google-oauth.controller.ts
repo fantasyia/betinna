@@ -6,7 +6,11 @@ import { Public } from '@shared/decorators/public.decorator';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { GoogleOAuthService } from './google-oauth.service';
 import { PrismaService } from '@database/prisma.service';
-import { paginaRetornoOAuth, type MarcaPagina } from '@shared/oauth/pagina-retorno-oauth';
+import {
+  enviarPaginaRetorno,
+  paginaRetornoOAuth,
+  type MarcaPagina,
+} from '@shared/oauth/pagina-retorno-oauth';
 import { frontendOrigin } from '@shared/utils/frontend-origin';
 
 @ApiTags('integracoes/google')
@@ -118,18 +122,20 @@ export class GoogleOAuthController {
     mensagem: string,
     marca?: MarcaPagina,
   ): void {
-    res
-      .status(ok ? 200 : 400)
-      .type('html')
-      .send(
-        paginaRetornoOAuth({
-          ok,
-          titulo,
-          mensagem,
-          canal: 'google-oauth',
-          origem: frontendOrigin(),
-          marca,
-        }),
-      );
+    // `enviarPaginaRetorno` (e não `res.send` direto) porque ele derruba o
+    // `COOP` nesta rota — sem isso o navegador BARRA o `window.close()` e a
+    // janela fica aberta, como aconteceu em 10/09.
+    enviarPaginaRetorno(
+      res,
+      ok ? 200 : 400,
+      paginaRetornoOAuth({
+        ok,
+        titulo,
+        mensagem,
+        canal: 'google-oauth',
+        origem: frontendOrigin(),
+        marca,
+      }),
+    );
   }
 }

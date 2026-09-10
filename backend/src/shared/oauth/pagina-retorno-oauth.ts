@@ -144,3 +144,38 @@ export function paginaRetornoOAuth(p: PaginaRetornoParams): string {
 </script>
 </body></html>`;
 }
+
+/**
+ * Devolve a página de retorno do OAuth com o header que o navegador exige pra
+ * a janela poder se fechar.
+ *
+ * ⚠️ POR QUE O `COOP` PRECISA CAIR AQUI — e só aqui.
+ *
+ * O Helmet manda `Cross-Origin-Opener-Policy: same-origin` em tudo, por padrão
+ * e com razão. Mas quando o popup do OAuth sai do provedor (accounts.google.com)
+ * e aterrissa no nosso domínio, esse header **corta a relação com o opener** —
+ * e aí duas coisas quebram de uma vez, sem erro nenhum na tela:
+ *
+ *   `window.opener` fica null   → o `postMessage` é pulado, e o app só
+ *                                 descobre a conexão no próximo poll
+ *   `window.close()` é BARRADO  → a janela fica aberta e a pessoa fecha na mão
+ *
+ * Foi medido em 10/09: o Léo autorizou o Google Agenda, a conexão funcionou
+ * (`conectadoEm` carimbado), e a janela ficou parada. Não era a lógica da
+ * página — era o header. E não era regressão: o `window.close()` está nesses
+ * controllers desde o commit inicial, então nunca funcionou. Só apareceu quando
+ * alguém finalmente ASSISTIU à tela, gravando o vídeo de verificação do Google.
+ *
+ * `unsafe-none` fica restrito à rota de callback, que é o escopo mínimo: a
+ * página não tem estado sensível nem interação além do botão de fechar. É o
+ * requisito documentado pra popup de OAuth, não um relaxamento oportunista.
+ */
+export function enviarPaginaRetorno(
+  res: { setHeader(k: string, v: string): void; status(c: number): unknown },
+  status: number,
+  html: string,
+): void {
+  res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+  const r = res.status(status) as { type(t: string): { send(b: string): void } };
+  r.type('html').send(html);
+}
