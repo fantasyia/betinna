@@ -11,6 +11,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { nomeSeguroParaStorage } from '@shared/utils/nome-de-upload';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { CreateMaterialDto, ListMateriaisDto, UpdateMaterialDto } from './materiais.dto';
 
@@ -138,8 +139,8 @@ export class MateriaisService implements OnModuleInit {
     if (dto.produtoId) await this.assertProdutoDaEmpresa(empresaId, dto.produtoId);
 
     const ts = Date.now();
-    const safeName = file.filename.replace(/[^\w.\-]/g, '_').slice(0, 100);
-    const storagePath = `${empresaId}/${ts}_${safeName}`;
+    const caminhoSeguro = nomeSeguroParaStorage(file.filename, 100);
+    const storagePath = `${empresaId}/${ts}_${caminhoSeguro}`;
 
     const { error } = await this.storage.storage.from(BUCKET).upload(storagePath, file.buffer, {
       contentType: file.mimetype,
@@ -158,7 +159,7 @@ export class MateriaisService implements OnModuleInit {
           categoria: dto.categoria,
           confidencial: dto.confidencial ?? false,
           arquivoPath: storagePath,
-          arquivoNome: safeName,
+          arquivoNome: file.filename.slice(0, 160),
           mimeType: file.mimetype,
           tamanho: file.size,
           criadoPorId: user.id,

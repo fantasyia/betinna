@@ -17,6 +17,7 @@ import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { PropostaAnexosService } from './proposta-anexos.service';
+import { decodificarNomeDeUpload } from '@shared/utils/nome-de-upload';
 
 /** Tipo mínimo do arquivo do multer (sem depender de @types/multer). */
 interface ArquivoMultipart {
@@ -61,7 +62,7 @@ export class PropostaAnexosController {
   ) {
     if (!file) throw new BusinessRuleException('Nenhum arquivo enviado');
     return this.anexos.upload(user, propostaId, {
-      filename: file.originalname,
+      filename: decodificarNomeDeUpload(file.originalname),
       mimetype: file.mimetype,
       size: file.size,
       buffer: file.buffer,

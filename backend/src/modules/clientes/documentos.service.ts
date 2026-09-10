@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { nomeSeguroParaStorage } from '@shared/utils/nome-de-upload';
 import { ClientesService } from './clientes.service';
 
 interface UploadInput {
@@ -116,8 +117,8 @@ export class DocumentosService implements OnModuleInit {
     const ext = this.extensionFor(file.filename, file.mimetype);
     const tipo = this.tipoFor(file.mimetype);
     const ts = Date.now();
-    const safeName = file.filename.replace(/[^\w.\-]/g, '_').slice(0, 80);
-    const storagePath = `${cliente.empresaId}/${clienteId}/${ts}_${safeName}${ext ? `.${ext}` : ''}`;
+    const caminhoSeguro = nomeSeguroParaStorage(file.filename);
+    const storagePath = `${cliente.empresaId}/${clienteId}/${ts}_${caminhoSeguro}${ext ? `.${ext}` : ''}`;
 
     const { error } = await this.storage.storage.from(BUCKET).upload(storagePath, file.buffer, {
       contentType: file.mimetype,
@@ -130,7 +131,7 @@ export class DocumentosService implements OnModuleInit {
     return this.prisma.documento.create({
       data: {
         clienteId,
-        nome: safeName,
+        nome: file.filename.slice(0, 160),
         tipo,
         url: storagePath, // armazenamos só o path; URL é gerada signed sob demanda
         tamanho: file.size,

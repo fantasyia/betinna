@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { nomeSeguroParaStorage } from '@shared/utils/nome-de-upload';
 import { PropostasService } from './propostas.service';
 
 const BUCKET = 'proposta-anexos';
@@ -98,7 +99,7 @@ export class PropostaAnexosService implements OnModuleInit {
       throw new BusinessRuleException(`Tipo de arquivo não aceito: ${arquivo.mimetype}`);
     }
 
-    const limpo = arquivo.filename.replace(/[^\w.\-]+/g, '_').slice(-120);
+    const limpo = nomeSeguroParaStorage(arquivo.filename, 120);
     const caminho = `${proposta.empresaId}/${propostaId}/${Date.now()}-${limpo}`;
     const { error } = await this.storage.storage
       .from(BUCKET)

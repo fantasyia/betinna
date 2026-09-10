@@ -29,6 +29,7 @@ import {
   updateMaterialSchema,
 } from './materiais.dto';
 import { MateriaisService } from './materiais.service';
+import { decodificarNomeDeUpload } from '@shared/utils/nome-de-upload';
 
 interface UploadedFileBuffer {
   originalname: string;
@@ -89,7 +90,7 @@ export class MateriaisController {
   ) {
     if (!file) throw new BusinessRuleException('Nenhum arquivo enviado');
     return this.materiais.create(user, dto, {
-      filename: file.originalname,
+      filename: decodificarNomeDeUpload(file.originalname),
       mimetype: file.mimetype,
       size: file.size,
       buffer: file.buffer,

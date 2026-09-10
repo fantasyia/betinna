@@ -25,6 +25,7 @@ import {
   createAnexoLinkSchema,
   createComentarioSchema,
 } from './kanban.dto';
+import { decodificarNomeDeUpload } from '@shared/utils/nome-de-upload';
 
 interface UploadedFileBuffer {
   originalname: string;
@@ -82,7 +83,7 @@ export class KanbanComentariosController {
   ) {
     if (file) {
       return this.anexos.uploadArquivo(user, cardId, {
-        filename: file.originalname,
+        filename: decodificarNomeDeUpload(file.originalname),
         mimetype: file.mimetype,
         size: file.size,
         buffer: file.buffer,

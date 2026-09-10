@@ -35,6 +35,7 @@ import {
   updateEmpresaSchema,
 } from './empresas.dto';
 import { EmpresasService } from './empresas.service';
+import { decodificarNomeDeUpload } from '@shared/utils/nome-de-upload';
 
 /** Tipo mínimo do arquivo enviado via multer (sem depender de @types/multer) */
 interface UploadedFileBuffer {
@@ -202,7 +203,7 @@ export class EmpresasController {
   ) {
     if (!file) throw new BusinessRuleException('Nenhum arquivo enviado');
     return this.logoService.upload(user, id, {
-      filename: file.originalname,
+      filename: decodificarNomeDeUpload(file.originalname),
       mimetype: file.mimetype,
       size: file.size,
       buffer: file.buffer,

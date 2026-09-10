@@ -17,6 +17,7 @@ import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { DocumentosService } from './documentos.service';
+import { decodificarNomeDeUpload } from '@shared/utils/nome-de-upload';
 
 /** Tipo mínimo do arquivo enviado via multer (sem depender de @types/multer) */
 interface UploadedFileBuffer {
@@ -60,7 +61,7 @@ export class DocumentosController {
   ) {
     if (!file) throw new BusinessRuleException('Nenhum arquivo enviado');
     return this.docs.upload(user, clienteId, {
-      filename: file.originalname,
+      filename: decodificarNomeDeUpload(file.originalname),
       mimetype: file.mimetype,
       size: file.size,
       buffer: file.buffer,

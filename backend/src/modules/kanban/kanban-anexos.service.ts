@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { nomeSeguroParaStorage } from '@shared/utils/nome-de-upload';
 import { KanbanAcessoService } from './kanban-acesso.service';
 import { KanbanAtividadeService } from './kanban-atividade.service';
 import type { CreateAnexoLinkDto } from './kanban.dto';
@@ -116,9 +117,11 @@ export class KanbanAnexosService implements OnModuleInit {
     }
 
     const ts = Date.now();
-    const safeName = file.filename.replace(/[^\w.\-]/g, '_').slice(0, 80);
+    // Caminho e nome de EXIBIÇÃO são coisas diferentes: o storage quer ASCII,
+    // a pessoa quer ler o nome que ela deu ao arquivo.
+    const caminhoSeguro = nomeSeguroParaStorage(file.filename);
     // Anexo mora no card CANÔNICO (compartilhado pelo par de espelho).
-    const storagePath = `${board.empresaId}/${canonicoId}/${ts}_${safeName}`;
+    const storagePath = `${board.empresaId}/${canonicoId}/${ts}_${caminhoSeguro}`;
 
     const { error } = await this.storage.storage.from(BUCKET).upload(storagePath, file.buffer, {
       contentType: file.mimetype,
@@ -127,7 +130,12 @@ export class KanbanAnexosService implements OnModuleInit {
     if (error) throw new IntegrationException(`Falha ao subir arquivo: ${error.message}`);
 
     const anexo = await this.prisma.kanbanAnexo.create({
-      data: { cardId: canonicoId, nome: safeName, url: storagePath, tipo: 'arquivo' },
+      data: {
+        cardId: canonicoId,
+        nome: file.filename.slice(0, 160),
+        url: storagePath,
+        tipo: 'arquivo',
+      },
     });
     await this.registrarAtividade(board.id, canonicoId, user.id, anexo);
     return anexo;

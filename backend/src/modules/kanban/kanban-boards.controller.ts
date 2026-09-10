@@ -40,6 +40,7 @@ import { KanbanBoardsService } from './kanban-boards.service';
 import { KanbanFundoService } from './kanban-fundo.service';
 import { KanbanListasService } from './kanban-listas.service';
 import { KanbanViewsService } from './kanban-views.service';
+import { decodificarNomeDeUpload } from '@shared/utils/nome-de-upload';
 
 interface UploadedFileBuffer {
   originalname: string;
@@ -119,7 +120,7 @@ export class KanbanBoardsController {
   ) {
     if (!file) throw new BusinessRuleException('Envie a imagem no campo multipart "file"');
     return this.fundo.upload(user, id, {
-      filename: file.originalname,
+      filename: decodificarNomeDeUpload(file.originalname),
       mimetype: file.mimetype,
       size: file.size,
       buffer: file.buffer,
