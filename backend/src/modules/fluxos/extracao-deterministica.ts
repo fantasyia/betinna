@@ -54,6 +54,55 @@ const PISTA_TENSAO =
 /** Palavras que, perto do número, dizem que ele é uma CORRENTE. */
 const PISTA_CORRENTE = /(disjuntor|geral|quadro|corrente|amp[eè]?r|chave|breaker)/i;
 
+/**
+ * O que pode seguir um número SOLTO sem desmenti-lo como resposta.
+ *
+ * 🔴 Sem isto, o convite da pergunta aceitava qualquer número solto — e a
+ * varredura de 24 redações (11/09) achou dois falsos positivos:
+ *
+ * ```
+ * "sao 220 clientes por dia"  → 220V   🔴
+ * "moro no 220 da rua"        → 220V   🔴
+ * ```
+ *
+ * A checagem de unidade não pega esses: ela veta "litros" e "metros", mas
+ * "clientes" e "da rua" não são unidade de nada.
+ *
+ * ⚠️ São frases implausíveis como resposta a "qual o padrão de energia?" — e
+ * essa era a única proteção. **Implausível não é impossível**, e o dano é
+ * assimétrico: gravar 220V errado manda a pessoa pra uma calculadora
+ * dimensionada na tensão errada, e ela não tem como saber. É pior que
+ * perguntar de novo.
+ *
+ * Então a resposta tem que ACABAR no número, ou seguir com palavra que não
+ * muda o que ele é: "deve ser 220 mesmo", "380 trifasica", "tem um de 60 ali".
+ */
+const DEPOIS_NEUTRO = new RegExp(
+  [
+    'mesmo',
+    'a[ií]',
+    'aqui',
+    'ali',
+    'ent[ãa]o',
+    'n[ée]',
+    'sim',
+    'ok',
+    'certo',
+    'acho',
+    'volts?',
+    'v',
+    'a',
+    'amp\\w*',
+    '(tri|bi|mono)f[áa]sic\\w*',
+  ]
+    .map((x) => '^(?:' + x + ')\\b')
+    .join('|'),
+  'i',
+);
+
+/** O que sobra depois do número, sem a pontuação que só fecha a frase. */
+const restoDepois = (depois: string): string => depois.replace(new RegExp('^[\\s.,;:!?)-]+'), '');
+
 /** Janela de contexto à esquerda do número onde uma pista ainda conta. */
 const JANELA = 32;
 
@@ -146,7 +195,11 @@ export function tensaoNaFrase(texto: string, aceitarSolto = false): Achado | nul
     if (NAO_E_TENSAO.test(depois)) continue;
     const temUnidade = /^\s*(v\b|volts?)/i.test(depois);
     const temPista = PISTA_TENSAO.test(antes);
-    if (!temUnidade && !temPista && !aceitarSolto) continue;
+    if (!temUnidade && !temPista) {
+      if (!aceitarSolto) continue;
+      const resto = restoDepois(depois);
+      if (resto !== '' && !DEPOIS_NEUTRO.test(resto)) continue;
+    }
     return { valor: num, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() };
   }
   return null;
@@ -165,13 +218,23 @@ export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | n
     if (!Number.isFinite(n) || n < CORRENTE_MIN || n > CORRENTE_MAX) continue;
     const temUnidade = /^\s*(a\b|amp|amper)/i.test(depois);
     const temPista = PISTA_CORRENTE.test(antes);
-    if (!temUnidade && !temPista && !aceitarSolto) continue;
+    if (!temUnidade && !temPista) {
+      if (!aceitarSolto) continue;
+      const resto = restoDepois(depois);
+      if (resto !== '' && !DEPOIS_NEUTRO.test(resto)) continue;
+    }
     // Número que é claramente a tensão não é a corrente, mesmo com "quadro"
     // ou "disjuntor" na mesma frase — e eles costumam vir na mesma frase.
     if (!temUnidade && (TENSOES as readonly string[]).includes(num) && PISTA_TENSAO.test(antes)) {
       continue;
     }
-    return { valor: `${n}A`, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() };
+    // ⚠️ SÓ O NÚMERO, sem o "A" — é o formato que o prompt do C1-L declara
+    // (`corrente` — só o número, em ampères. `63`, não `63A`) e o que o modelo
+    // grava. Duas fontes escrevendo o mesmo campo com formatos diferentes é a
+    // mesma família de defeito que os contratos desalinhados de `tensao_rede`:
+    // o nó que monta o link leria `63A` e poderia mandar `corrente=63A`, que a
+    // calculadora não parseia — e só no caminho raro em que a rede dispara.
+    return { valor: `${n}`, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() };
   }
   return null;
 }

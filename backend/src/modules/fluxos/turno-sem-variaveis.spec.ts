@@ -321,7 +321,7 @@ describe('rede determinística dentro da gravação', () => {
     });
 
     expect(novas.tensao_rede).toBe('220V');
-    expect(novas.corrente_quadro).toBe('63A');
+    expect(novas.corrente_quadro).toBe('63');
     // E deixa rastro: cada linha destas é uma falha do modelo que a rede segurou.
     expect(avisos.join(' ')).toContain('rede determinística resgatou');
   });

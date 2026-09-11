@@ -36,7 +36,7 @@ describe('ExtracaoDiagnosticoService', () => {
       noId: 'no-1',
     });
 
-    expect(r.resgatadas).toEqual({ corrente_quadro: '63A', tensao_rede: '220V' });
+    expect(r.resgatadas).toEqual({ corrente_quadro: '63', tensao_rede: '220V' });
     // Filtra por empresa: diagnóstico não atravessa tenant.
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

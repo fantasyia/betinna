@@ -59,11 +59,11 @@ describe('tensaoNaFrase', () => {
 
 describe('correnteNaFrase', () => {
   it.each([
-    ['o disjuntor geral aqui e de 63A', '63A'],
-    ['63 A', '63A'],
-    ['é de 50 amperes', '50A'],
-    ['o disjuntor maior é 100', '100A'],
-    ['no quadro aparece 40', '40A'],
+    ['o disjuntor geral aqui e de 63A', '63'],
+    ['63 A', '63'],
+    ['é de 50 amperes', '50'],
+    ['o disjuntor maior é 100', '100'],
+    ['no quadro aparece 40', '40'],
   ])('acha em %j', (frase, esperado) => {
     expect(correnteNaFrase(frase)?.valor).toBe(esperado);
   });
@@ -84,7 +84,7 @@ describe('extrairDeterministico — o caso que abriu o card', () => {
 
   it('a frase completa entrega os dois campos que os portões leem', () => {
     expect(extrairDeterministico(C1, FALA, {})).toEqual({
-      corrente_quadro: '63A',
+      corrente_quadro: '63',
       tensao_rede: '220V',
     });
   });
@@ -93,7 +93,7 @@ describe('extrairDeterministico — o caso que abriu o card', () => {
   it('NÃO sobrescreve o que o modelo já extraiu', () => {
     const r = extrairDeterministico(C1, FALA, { tensao_rede: '380V' });
     expect(r.tensao_rede).toBeUndefined();
-    expect(r.corrente_quadro).toBe('63A');
+    expect(r.corrente_quadro).toBe('63');
   });
 
   it('valor presente porém VAZIO conta como lacuna', () => {
@@ -102,7 +102,7 @@ describe('extrairDeterministico — o caso que abriu o card', () => {
 
   it('campo que o nó não declarou nunca é gravado', () => {
     const soCorrente = parseVariaveisGravadas(['corrente_quadro']);
-    expect(extrairDeterministico(soCorrente, FALA, {})).toEqual({ corrente_quadro: '63A' });
+    expect(extrairDeterministico(soCorrente, FALA, {})).toEqual({ corrente_quadro: '63' });
   });
 });
 
@@ -255,7 +255,7 @@ describe('número solto — só com o convite da pergunta', () => {
 
   it('"63" depois da pergunta da corrente vira 63A', () => {
     const r = extrairDeterministico(C1, '63', {}, conviteDaPergunta(PERGUNTA_CORRENTE));
-    expect(r.corrente_quadro).toBe('63A');
+    expect(r.corrente_quadro).toBe('63');
   });
 
   it('"deve ser 220 mesmo" passa a valer quando o bot acabou de perguntar', () => {
@@ -334,7 +334,81 @@ describe('cada alternativa da pergunta, ISOLADA', () => {
     const trecho = 'Nele aparece um número seguido da letra A, como 40A, 63A. Qual aparece?';
     expect(conviteDaPergunta(trecho)).toBe('corrente');
     expect(extrairDeterministico(C1, '63', {}, conviteDaPergunta(trecho)).corrente_quadro).toBe(
-      '63A',
+      '63',
     );
+  });
+});
+
+/**
+ * 🔴 OS FALSOS POSITIVOS que a varredura de 24 redações achou (11/09).
+ *
+ * O convite da pergunta libera número solto — e liberava DEMAIS: qualquer 220
+ * virava 220V, mesmo quando a frase dizia outra coisa. A checagem de unidade não
+ * pega, porque ela veta "litros" e "metros", e "clientes" não é unidade.
+ *
+ * ⚠️ São frases implausíveis como resposta a "qual o padrão de energia?", e essa
+ * era a única proteção. **Implausível não é impossível**, e o dano é assimétrico:
+ * gravar 220V errado manda a pessoa pra uma calculadora dimensionada na tensão
+ * errada, sem ela ter como saber. É pior que perguntar de novo.
+ */
+describe('número solto: o que vem DEPOIS pode desmentir', () => {
+  const PERGUNTA = 'E qual o padrão de energia aí, 110V, 220V ou 380V?';
+  const convite = () => conviteDaPergunta(PERGUNTA);
+
+  it.each([
+    ['sao 220 clientes por dia'],
+    ['moro no 220 da rua'],
+    ['sao 220 reais por mes'],
+    ['tem 380 funcionarios'],
+  ])('NÃO grava quando o número é outra coisa: %j', (frase) => {
+    expect(extrairDeterministico(C1, frase, {}, convite()).tensao_rede).toBeUndefined();
+  });
+
+  it.each([
+    ['220', '220V'],
+    ['é 220', '220V'],
+    ['deve ser 220 mesmo', '220V'],
+    ['acho que e 220', '220V'],
+    ['aqui e 220 mesmo, predio novo', '220V'],
+    ['380 trifasica', '380V'],
+    ['220.', '220V'],
+    ['é 127 sim', '127V'],
+  ])('continua gravando a resposta de verdade: %j', (frase, esperado) => {
+    expect(extrairDeterministico(C1, frase, {}, convite()).tensao_rede).toBe(esperado);
+  });
+});
+
+/**
+ * 🟠 O formato do `corrente_quadro` — duas fontes, um campo.
+ *
+ * O prompt do C1-L declara o contrato: *"`corrente` — só o número, em ampères.
+ * `63`, não `63A`"*. A rede gravava `"63A"`, o modelo grava `"63"`.
+ *
+ * ⚠️ Mesma família dos contratos desalinhados de `tensao_rede`: o nó que monta o
+ * link leria `63A` e poderia mandar `corrente=63A`, que a calculadora não
+ * parseia — e só no caminho RARO em que a rede dispara, que é o que ninguém vê.
+ */
+describe('corrente_quadro sai no formato do contrato', () => {
+  const PERGUNTA_A = 'Nele aparece um número seguido da letra A, como 40A, 63A';
+
+  it.each([
+    ['o disjuntor geral aqui e de 63A', '63'],
+    ['63 A', '63'],
+    ['é de 50 amperes', '50'],
+  ])('%j → %s (sem o "A")', (frase, esperado) => {
+    expect(extrairDeterministico(C1, frase, {}).corrente_quadro).toBe(esperado);
+  });
+
+  it('número solto após a pergunta também sai sem o "A"', () => {
+    expect(extrairDeterministico(C1, '63', {}, conviteDaPergunta(PERGUNTA_A)).corrente_quadro).toBe(
+      '63',
+    );
+  });
+
+  it('"tem um de 60 ali" ainda vale — "ali" não desmente o número', () => {
+    expect(
+      extrairDeterministico(C1, 'tem um de 60 ali', {}, conviteDaPergunta(PERGUNTA_A))
+        .corrente_quadro,
+    ).toBe('60');
   });
 });
