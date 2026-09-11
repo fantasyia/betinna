@@ -2625,6 +2625,20 @@ export class ConversarIaService implements OnModuleDestroy {
     const comValor = Object.values(gravadas).filter(
       (v) => v != null && String(v).trim() !== '',
     ).length;
+    //
+    // 🔴 PONTO CEGO CONHECIDO, e ele é fácil de ler errado: `já tinha N/M` com
+    // N > 0 **não** quer dizer "estava tudo certo". Quer dizer só que não é
+    // primeira passagem.
+    //
+    //   lead já tem 2/3 · a pessoa diz a corrente · a extração falha
+    //   → "já tinha 2/3, gravou 0", SEM o aviso de primeira passagem
+    //
+    // Foi perda de verdade: informação nova que o cliente deu e sumiu, e o
+    // portão da corrente vai perguntar de novo um turno adiante. A escolha de
+    // não marcar é deliberada — os portões que causam o defeito do C1 são todos
+    // de primeira passagem, e marcar tudo diluiria o sinal que a contagem
+    // precisa. Mas quem for usar este log pra concluir "só falha no começo"
+    // está lendo mais do que ele diz.
     if (p.gravaveis.length > 0 && comValor === 0) {
       const jaTinha = p.gravaveis.filter((k) => {
         const v = atuais[k];
