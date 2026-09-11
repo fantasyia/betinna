@@ -77,4 +77,29 @@ describe('FluxoTriggersJob.destravarTurnosOrfaos', () => {
     await expect(makeJob(prisma, conversarIa).destravarTurnosOrfaos()).resolves.toBeUndefined();
     expect(conversarIa.varrerPendentesAposDestravar).toHaveBeenCalledTimes(2);
   });
+
+  /**
+   * 🔴 A varredura VAZIA precisa falar, e em nível que chega na produção.
+   *
+   * Já foi `debug` uma vez, com o argumento razoável de não poluir (roda a
+   * cada 2 min). O efeito foi ZERO: o `LOG_LEVEL` de produção é `info`.
+   * Medido duas vezes, em builds diferentes — nenhuma linha `[reaper]` no
+   * worker, enquanto o CRON_AGENDADO aparecia a cada minuto no mesmo período.
+   *
+   * O teste trava o NÍVEL, não só a existência da linha: é a diferença entre
+   * o conserto existir no arquivo e existir em campo.
+   */
+  it('varredura vazia LOGA em nível que chega na produção (não debug)', async () => {
+    prisma.fluxoExecucao.findMany.mockResolvedValue([]);
+    const job = makeJob(prisma, conversarIa);
+    const logger = (job as unknown as { logger: Record<string, unknown> }).logger;
+    const log = vi.fn();
+    const debug = vi.fn();
+    Object.assign(logger, { log, debug });
+
+    await job.destravarTurnosOrfaos();
+
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('[reaper]'));
+    expect(debug).not.toHaveBeenCalled();
+  });
 });

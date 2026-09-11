@@ -545,13 +545,21 @@ export class FluxoTriggersJob {
       take: 50,
     });
     if (travadas.length === 0) {
-      // `debug`, não `log`: este reaper roda a cada 2 min, e uma linha por
-      // rodada sem novidade esconderia justamente a linha que importa — é a
-      // mesma razão pela qual o `ErpWebhooksJob` só fala quando leu algo.
-      // Mas silêncio TOTAL fazia "varri e não havia nada" e "não rodei"
-      // ficarem indistinguíveis, e foi por aí que três investigações se
-      // perderam num sistema que estava certo e mudo.
-      this.logger.debug('[reaper] varredura sem turno órfão');
+      // Silêncio TOTAL fazia "varri e não havia nada" e "não rodei" ficarem
+      // indistinguíveis — dois estados OPOSTOS com a mesma aparência. Foi por
+      // aí que três investigações se perderam num sistema que estava certo.
+      //
+      // 🔴 Isto já foi `debug` uma vez, com o argumento de não poluir (roda a
+      // cada 2 min). O argumento era razoável e o resultado foi ZERO: o
+      // `LOG_LEVEL` de produção é `info`, então a linha não existia onde ela
+      // precisava existir. Medido duas vezes, em builds diferentes (10/09 e
+      // 11/09): nenhuma ocorrência de `[reaper]` no log do worker, enquanto o
+      // `CRON_AGENDADO` aparecia a cada minuto, em `info`, no mesmo período.
+      //
+      // ⚠️ A lição não é sobre nível de log: **conferir o código não é conferir
+      // o efeito.** O conserto estava certo no arquivo e não existia em campo.
+      // Uma linha a cada 2 min é barata; uma investigação perdida não.
+      this.logger.log('[reaper] varredura sem turno órfão');
       return;
     }
 
