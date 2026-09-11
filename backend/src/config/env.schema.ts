@@ -304,9 +304,28 @@ export const envSchema = z
      * impossível pela porta da frente, o conserto é abrir uma porta de serviço —
      * não afrouxar o critério.
      */
+    /**
+     * ⭐ Default `true` desde 11/09/2026, por decisão do Léo, com o caso medido:
+     *
+     * ```
+     * com a flag   RT encerra sem mover        → 1 execução do C1
+     * sem a flag   RT move o lead 3×           → o cliente recebe a MESMA
+     *                                            pergunta três vezes
+     * ```
+     *
+     * O default `false` fazia ambiente novo, variável removida ou serviço
+     * recriado **nascerem com o defeito** — e um defeito que nasce do default
+     * não aparece em lugar nenhum até um cliente reclamar.
+     *
+     * ⚠️ Custo conhecido e NÃO medido: o `iaAFrente` roda consulta recursiva a
+     * cada evento proativo, e com o default ligado todo ambiente paga sempre.
+     * Levantado pela sessão de teste; provavelmente pequeno, mas ninguém
+     * cronometrou. Se o volume de eventos proativos crescer, é o primeiro lugar
+     * pra olhar.
+     */
     FLUXO_IA_A_FRENTE: z
       .union([z.boolean(), z.string().transform((v) => v === 'true')])
-      .default(false),
+      .default(true),
 
     // TikTok Shop
     TIKTOK_APP_KEY: z.string().optional().default(''),

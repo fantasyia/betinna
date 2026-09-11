@@ -66,7 +66,11 @@ const fakeExecucao = (overrides: Record<string, unknown> = {}) => ({
 // ---------------------------------------------------------------------------
 
 /**
- * Env dos testes: `FLUXO_IA_A_FRENTE` DESLIGADA, que e o default de producao.
+ * Env dos testes: `FLUXO_IA_A_FRENTE` DESLIGADA explicitamente.
+ *
+ * ⚠️ Desde 11/09 o default de PRODUCAO e `true` — estes testes passam a flag na
+ * mao pra provar o comportamento SEM ela, que e o caminho de rollback. Ler isto
+ * como "o default e false" mandaria a proxima sessao pro lugar errado.
  * Os testes deste arquivo provam o comportamento de HOJE — o sinal novo e
  * aditivo e nao pode mudar nenhum deles.
  */
