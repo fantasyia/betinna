@@ -44,6 +44,7 @@ interface Persona {
   mostrarDigitando: boolean;
   quebrarMensagens: boolean;
   maxMensagens: number;
+  pausaEntreBaloesMs: number;
   transcreverAudio: boolean;
   analisarImagem: boolean;
   atualizadoEm: string;
@@ -138,6 +139,9 @@ export default function PersonaBotPage() {
   const [mostrarDigitando, setMostrarDigitando] = useState(false); // mostra "digitando…" no WhatsApp
   const [quebrarMsgs, setQuebrarMsgs] = useState(false); // quebra a resposta em vários balões
   const [maxMsgs, setMaxMsgs] = useState(3); // teto de balões quando quebra está ligado
+  // Teto da pausa entre balões. Guardado em SEGUNDOS na tela (é como a pessoa
+  // pensa) e enviado em ms — o backend precisa da precisão sub-segundo.
+  const [pausaBalaoSeg, setPausaBalaoSeg] = useState(4);
   const [transcreverAudio, setTranscreverAudio] = useState(false); // bot ouve áudios (transcrição)
   const [analisarImagem, setAnalisarImagem] = useState(false); // bot vê imagens (visão)
 
@@ -159,6 +163,7 @@ export default function PersonaBotPage() {
     setMostrarDigitando(data.mostrarDigitando ?? false);
     setQuebrarMsgs(data.quebrarMensagens ?? false);
     setMaxMsgs(data.maxMensagens ?? 3);
+    setPausaBalaoSeg((data.pausaEntreBaloesMs ?? 4000) / 1000);
     setTranscreverAudio(data.transcreverAudio ?? false);
     setAnalisarImagem(data.analisarImagem ?? false);
     setDirty(false);
@@ -311,6 +316,7 @@ export default function PersonaBotPage() {
         // Quebra da resposta em vários balões + teto
         quebrarMensagens: quebrarMsgs,
         maxMensagens: maxMsgs,
+        pausaEntreBaloesMs: Math.round(pausaBalaoSeg * 1000),
         // Multimodal: ouvir áudios (transcrição) e ver imagens (visão)
         transcreverAudio,
         analisarImagem,
@@ -562,6 +568,30 @@ export default function PersonaBotPage() {
                     />
                     <span className="text-[10px] text-muted-light">
                       A IA decide quantos pelo contexto (2–6). Resposta simples = 1 balão.
+                    </span>
+                  </div>
+                )}
+                {quebrarMsgs && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[11px] text-muted">Pausa entre balões (s):</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      step={0.5}
+                      value={pausaBalaoSeg}
+                      onChange={(e) => {
+                        setPausaBalaoSeg(Math.min(10, Math.max(0, Number(e.target.value))));
+                        setDirty(true);
+                      }}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className="w-16 rounded-md border border-border-strong bg-surface px-2 py-1 text-sm tabular"
+                      data-testid="persona-pausa-balao"
+                    />
+                    <span className="text-[10px] text-muted-light">
+                      Teto — a pausa cresce com o tamanho do balão e para aqui.{" "}
+                      <strong>0 = sem pausa</strong> (mais rápido, menos humano). Com 4 balões,
+                      4s viram ~12s até o último.
                     </span>
                   </div>
                 )}

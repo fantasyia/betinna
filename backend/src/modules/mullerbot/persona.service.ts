@@ -78,6 +78,7 @@ export interface PersonaResult {
   mostrarDigitando: boolean;
   quebrarMensagens: boolean;
   maxMensagens: number;
+  pausaEntreBaloesMs: number;
   transcreverAudio: boolean;
   analisarImagem: boolean;
   systemPromptPreview: string;
@@ -177,6 +178,9 @@ export class MullerBotPersonaService {
       ...(dto.mostrarDigitando !== undefined ? { mostrarDigitando: dto.mostrarDigitando } : {}),
       ...(dto.quebrarMensagens !== undefined ? { quebrarMensagens: dto.quebrarMensagens } : {}),
       ...(dto.maxMensagens !== undefined ? { maxMensagens: dto.maxMensagens } : {}),
+      ...(dto.pausaEntreBaloesMs !== undefined
+        ? { pausaEntreBaloesMs: dto.pausaEntreBaloesMs }
+        : {}),
       ...(dto.transcreverAudio !== undefined ? { transcreverAudio: dto.transcreverAudio } : {}),
       ...(dto.analisarImagem !== undefined ? { analisarImagem: dto.analisarImagem } : {}),
     };
@@ -228,6 +232,7 @@ export class MullerBotPersonaService {
     if (dto.mostrarDigitando !== undefined) patch.mostrarDigitando = dto.mostrarDigitando;
     if (dto.quebrarMensagens !== undefined) patch.quebrarMensagens = dto.quebrarMensagens;
     if (dto.maxMensagens !== undefined) patch.maxMensagens = dto.maxMensagens;
+    if (dto.pausaEntreBaloesMs !== undefined) patch.pausaEntreBaloesMs = dto.pausaEntreBaloesMs;
     if (dto.transcreverAudio !== undefined) patch.transcreverAudio = dto.transcreverAudio;
     if (dto.analisarImagem !== undefined) patch.analisarImagem = dto.analisarImagem;
 
@@ -383,6 +388,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     mostrarDigitando?: boolean;
     quebrarMensagens?: boolean;
     maxMensagens?: number;
+    pausaEntreBaloesMs?: number;
     transcreverAudio?: boolean;
     analisarImagem?: boolean;
     atualizadoEm: Date;
@@ -407,6 +413,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       mostrarDigitando: row.mostrarDigitando ?? false,
       quebrarMensagens: row.quebrarMensagens ?? false,
       maxMensagens: row.maxMensagens ?? 3,
+      pausaEntreBaloesMs: row.pausaEntreBaloesMs ?? 4000,
       transcreverAudio: row.transcreverAudio ?? false,
       analisarImagem: row.analisarImagem ?? false,
       systemPromptPreview: '',
@@ -430,6 +437,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     mostrarDigitando: boolean;
     quebrarMensagens: boolean;
     maxMensagens: number;
+    pausaEntreBaloesMs: number;
     transcreverAudio: boolean;
     analisarImagem: boolean;
   }> {
@@ -441,6 +449,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       quebrarMensagens: row?.quebrarMensagens ?? false,
       // Teto entre 2 e 6 balões — abaixo de 2 não faz sentido "quebrar".
       maxMensagens: Math.min(6, Math.max(2, row?.maxMensagens ?? 3)),
+      // Teto 0..10s. O 0 e valido de proposito: desliga a pausa entre baloes.
+      pausaEntreBaloesMs: Math.min(10000, Math.max(0, row?.pausaEntreBaloesMs ?? 4000)),
       transcreverAudio: row?.transcreverAudio ?? false,
       analisarImagem: row?.analisarImagem ?? false,
     };
@@ -476,6 +486,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       mostrarDigitando: false,
       quebrarMensagens: false,
       maxMensagens: 3,
+      pausaEntreBaloesMs: 4000,
       transcreverAudio: false,
       analisarImagem: false,
       systemPromptPreview: '',

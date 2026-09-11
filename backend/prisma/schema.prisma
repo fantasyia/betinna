@@ -2950,6 +2950,17 @@ model MullerBotPersona {
   /// Teto de balões quando `quebrarMensagens` está ligado. A IA pode usar menos;
   /// o excedente é juntado no último balão pra não perder texto. (default 3)
   maxMensagens          Int     @default(3)
+  /// TETO da pausa entre um balão e o próximo, em ms. A pausa é proporcional ao
+  /// tamanho do balão (simula digitação) e para de crescer aqui.
+  ///
+  /// Era constante no código (4000). Virou campo porque MEDIU-SE o custo: com 4
+  /// balões, três pausas de até 4s = ~12s de cauda, a maior fatia isolada de um
+  /// turno de 30s (11/09). E quanto mais longa a cauda, maior a janela em que a
+  /// pessoa escreve algo novo e recebe resposta montada antes disso.
+  ///
+  /// `0` = sem pausa (balões em sequência). Mais rápido e menos humano — a
+  /// troca é de quem configura, não do código. (default 4000 = o de sempre)
+  pausaEntreBaloesMs    Int     @default(4000)
   /// Transcrever áudios recebidos (voz → texto via OpenAI). O bot passa a
   /// responder áudios, e a transcrição aparece na inbox. (default off)
   transcreverAudio      Boolean @default(false)

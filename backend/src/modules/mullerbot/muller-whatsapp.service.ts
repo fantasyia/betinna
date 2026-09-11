@@ -118,9 +118,27 @@ export function dividirEmBaloes(texto: string, max: number): string[] {
   return cabeca;
 }
 
-/** Pausa entre balões: curta e proporcional ao tamanho do próximo (≈ digitação). */
-function pausaEntreBaloes(balao: string): number {
-  return Math.min(4000, 600 + balao.length * 25);
+/** Teto de sempre — usado quando a persona não diz nada. */
+export const PAUSA_BALAO_MAX_PADRAO = 4000;
+
+/**
+ * Pausa entre um balão e o próximo: proporcional ao tamanho do próximo
+ * (≈ digitação), limitada pelo teto da persona.
+ *
+ * ⚠️ O teto era a constante 4000 aqui dentro, e **é a maior fatia isolada do
+ * turno**: com 4 balões são três pausas de até 4s ≈ 12s de cauda, contra um
+ * turno inteiro de ~30s (medido 11/09).
+ *
+ * E a cauda não é só lentidão — é a janela em que a pessoa escreve algo novo e
+ * recebe uma resposta que foi montada ANTES disso. Por isso virou config: a
+ * troca entre "parecer humano" e "responder ao que acabou de ser dito" é de
+ * quem opera, não do código.
+ *
+ * `0` desliga a pausa.
+ */
+function pausaEntreBaloes(balao: string, tetoMs: number): number {
+  if (tetoMs <= 0) return 0;
+  return Math.min(tetoMs, 600 + balao.length * 25);
 }
 
 /** Config da persona que rege como o bot ENVIA a resposta (balões, delay, "digitando"). */
@@ -129,6 +147,8 @@ export interface EnvioBotCfg {
   maxMensagens: number;
   mostrarDigitando: boolean;
   delayRespostaSegundos: number;
+  /** Teto da pausa entre balões (ms). Ausente = `PAUSA_BALAO_MAX_PADRAO`. `0` desliga. */
+  pausaEntreBaloesMs?: number;
 }
 
 /**
@@ -159,6 +179,22 @@ export async function enviarEmBaloes(
      * o lock livre e o bot respondia em dobro, intercalado.
      */
     aoProgredir?: () => Promise<void>;
+    /**
+     * "A pessoa falou DEPOIS que esta resposta foi montada?" — consultado antes
+     * de cada balão a partir do SEGUNDO. `true` interrompe a sequência.
+     *
+     * ⚠️ Por que só a partir do segundo: o primeiro já está montado e é a
+     * resposta ao que ela tinha dito. Segurar ele deixaria a pessoa sem NADA,
+     * que é pior. O que se corta é a cauda — os balões que continuariam um
+     * raciocínio que já não é mais o assunto.
+     *
+     * ⛔ E por que ABORTAR em vez de mandar tudo e emendar: os balões restantes
+     * foram compostos SEM saber o que ela acabou de escrever. Entregá-los é
+     * literalmente o defeito ("responde algo que a pessoa já respondeu"), e uma
+     * emenda depois não desfaz a impressão de não ter sido ouvida. O turno novo
+     * — disparado pela mensagem dela — responde ao conjunto.
+     */
+    deveAbortar?: () => Promise<boolean>;
   },
 ): Promise<string[]> {
   const limpo = texto.trim();
@@ -169,19 +205,31 @@ export async function enviarEmBaloes(
   const finais = baloes.filter(Boolean);
   if (finais.length === 0) finais.push(limpo);
 
+  const teto = cfg.pausaEntreBaloesMs ?? PAUSA_BALAO_MAX_PADRAO;
+  const enviados: string[] = [];
+
   for (let i = 0; i < finais.length; i++) {
     const balao = finais[i];
+    // A checagem vem ANTES da pausa, não depois: esperar 4s pra então descobrir
+    // que não devia mandar é o pior dos dois mundos — atrasa E fala por cima.
+    if (i > 0 && handlers.deveAbortar && (await handlers.deveAbortar())) break;
     await handlers.aoProgredir?.();
     // 1º balão respeita o delay configurado (tempo de "pensar"); os próximos levam
     // uma pausa curta proporcional ao tamanho (≈ digitação) e preservam a ordem.
     const esperaMs =
-      i === 0 ? Math.max(0, cfg.delayRespostaSegundos) * 1000 : pausaEntreBaloes(balao);
+      i === 0 ? Math.max(0, cfg.delayRespostaSegundos) * 1000 : pausaEntreBaloes(balao, teto);
     if (cfg.mostrarDigitando) handlers.digitando?.(esperaMs);
     if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
+    // Segunda checagem, depois da espera: a pausa é justamente onde a pessoa
+    // escreve. Sem esta, uma pausa de 4s seria uma janela cega.
+    if (i > 0 && handlers.deveAbortar && (await handlers.deveAbortar())) break;
     await handlers.enviar(balao);
+    enviados.push(balao);
     if (cfg.mostrarDigitando && handlers.pausado) await handlers.pausado();
   }
-  return finais;
+  // Retorna o que SAIU, não o que foi planejado: quem loga/audita precisa do
+  // fato, e a diferença entre os dois é exatamente a interrupção.
+  return enviados;
 }
 
 /**
@@ -774,11 +822,39 @@ export class MullerWhatsappService implements OnModuleInit {
       let balaoIdx = 0;
       let baloesFinais: string[];
       try {
+        // Corte pro `deveAbortar`: o instante em que o envio começa. O que
+        // chegou ANTES já foi tratado pelo lock da conversa; o que chega DEPOIS
+        // é a pessoa falando por cima de uma resposta já montada.
+        const inicioDoEnvio = new Date();
         baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
           // #B15: estende o lock a cada balão, SÓ se ainda formos o dono
           // (mesmo fencing do release). Sem isso, um envio longo perdia o lock
           // no meio e a resposta saía duplicada.
           aoProgredir: () => this.renovarLock(lockConv, lockTokenAtual),
+          // A CAUDA PARA quando a pessoa volta a escrever. Mesmo motivo do nó de
+          // fluxo: os balões restantes foram compostos sem saber o que ela
+          // acabou de dizer, e entregá-los é o defeito, não a entrega.
+          deveAbortar: async () => {
+            try {
+              const novas = await this.prisma.message.count({
+                where: {
+                  conversationId: convId,
+                  direction: 'INBOUND',
+                  criadoEm: { gt: inicioDoEnvio },
+                },
+              });
+              if (novas > 0) {
+                this.logger.log(
+                  `Bot: cliente escreveu durante o envio — resto dos balões ABORTADO ` +
+                    `(conversa ${convId}, ${novas} mensagem(ns) nova(s))`,
+                );
+              }
+              return novas > 0;
+            } catch {
+              // Fail-open: falar demais é recuperável; emudecer no meio não.
+              return false;
+            }
+          },
           // idemKey estável por (mensagem inbound + posição + hash do conteúdo): reprocesso do
           // mesmo inbound após o TTL do lock não reenvia balões já enviados.
           enviar: (balao) => {

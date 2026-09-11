@@ -43,6 +43,8 @@ export const upsertPersonaSchema = z.object({
   // Quebra da resposta em vários balões (mais humano) + teto de balões.
   quebrarMensagens: z.boolean().optional(),
   maxMensagens: z.number().int().min(2).max(6).optional(),
+  /** Teto da pausa entre balões (ms). 0 = sem pausa. */
+  pausaEntreBaloesMs: z.number().int().min(0).max(10000).optional(),
   // Multimodal: transcrever áudios (voz→texto) e analisar imagens (visão).
   transcreverAudio: z.boolean().optional(),
   analisarImagem: z.boolean().optional(),
@@ -72,6 +74,7 @@ export const patchPersonaSchema = z
     mostrarDigitando: z.boolean(),
     quebrarMensagens: z.boolean(),
     maxMensagens: z.number().int().min(2).max(6),
+    pausaEntreBaloesMs: z.number().int().min(0).max(10000),
     transcreverAudio: z.boolean(),
     analisarImagem: z.boolean(),
   })

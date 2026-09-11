@@ -3104,6 +3104,27 @@ export class ConversarIaService implements OnModuleDestroy {
     // persona sem quebra. Sem `maxBaloes`, nada muda: a persona continua sendo o
     // padrão, e a maior parte dos nós deve seguir o estilo do bot.
     const teto = typeof maxBaloes === 'number' && maxBaloes >= 1 ? Math.floor(maxBaloes) : null;
+
+    // ── A CAUDA PARA quando a pessoa volta a escrever ──
+    //
+    // A sequência de balões leva ~12s com a persona de hoje (4 balões, pausa de
+    // até 4s). Nesse intervalo a pessoa escreve — e recebia o resto de uma
+    // resposta montada ANTES do que ela acabou de dizer. Medido em 11/09: o bot
+    // rodou o roteiro inteiro de "como achar o disjuntor" 17s depois de ela ter
+    // dito "63A".
+    //
+    // O corte é por mensagem NOVA na conversa, não por execução cancelada: o
+    // supersede cancela em alguns caminhos e em outros o turno é substituído
+    // pelo claim, sem cancelamento. Quem sempre existe é a mensagem dela.
+    const convParaAbortar =
+      typeof ctxDaExecucao?.['conversationId'] === 'string'
+        ? (ctxDaExecucao['conversationId'] as string)
+        : undefined;
+    // Corte = o instante em que o envio começa. O que chegar ANTES disso já foi
+    // tratado pelo supersede/claim do turno; o que chega DEPOIS é o que esta
+    // guarda existe pra pegar.
+    const inicioDoEnvio = new Date();
+
     await enviarEmBaloes(
       texto,
       {
@@ -3111,8 +3132,33 @@ export class ConversarIaService implements OnModuleDestroy {
         maxMensagens: teto !== null ? teto : (cfg?.maxMensagens ?? 3),
         mostrarDigitando: cfg?.mostrarDigitando ?? false,
         delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
+        pausaEntreBaloesMs: cfg?.pausaEntreBaloesMs,
       },
       {
+        deveAbortar: convParaAbortar
+          ? async () => {
+              try {
+                const novas = await this.prisma.message.count({
+                  where: {
+                    conversationId: convParaAbortar,
+                    direction: 'INBOUND',
+                    criadoEm: { gt: inicioDoEnvio },
+                  },
+                });
+                if (novas > 0) {
+                  this.logger.log(
+                    `CONVERSAR_IA: cliente escreveu durante o envio — resto dos balões ` +
+                      `ABORTADO (conversa ${convParaAbortar}, ${novas} mensagem(ns) nova(s))`,
+                  );
+                }
+                return novas > 0;
+              } catch {
+                // Fail-open: um hiccup de banco não pode engolir a resposta.
+                // Falar demais é recuperável; emudecer no meio de uma frase não.
+                return false;
+              }
+            }
+          : undefined,
         // Chave de idempotência por balão = TURNO + POSIÇÃO, sem o conteúdo. Havia um
         // hash do texto aqui, com a ideia de "se a resposta re-gerada for diferente, o
         // balão certo sai". Em campo foi o contrário: o modelo NUNCA re-gera igual, então
