@@ -107,3 +107,30 @@ export function montarSchemaDoTurno(variaveis: VariavelGravavel[]): Record<strin
     },
   };
 }
+
+/**
+ * O GÊMEO TEXTUAL do `montarSchemaDoTurno` — a mesma lista, dita ao modelo em
+ * português, pra ele ver as opções ao DECIDIR e não só ao serializar.
+ *
+ * Os dois andam juntos e por motivos diferentes: o schema **impede** valor fora
+ * da lista, o texto **melhora a escolha** dentro dela. E o texto ainda deixa o
+ * prompt legível pra quem for revisar o fluxo depois.
+ *
+ * ⚠️ Isto virou função porque os dois turnos divergiram: o de RESPOSTA montava
+ * este bloco inline, o de ABERTURA montava só o schema. O nó de acolhimento do
+ * C1 ganhou `variaveisGravadas` em 11/09 justamente pra capturar o que a pessoa
+ * diz na PRIMEIRA mensagem — que é o turno de abertura, o lado que não instruía.
+ * Extraído pra que a próxima variável nova entre nos dois caminhos por
+ * construção, em vez de depender de alguém lembrar do segundo.
+ */
+export function instrucaoVariaveis(variaveis: VariavelGravavel[]): string {
+  if (!variaveis.length) return '';
+  const comValores = variaveis
+    .filter((v) => v.valores?.length)
+    .map((v) => `\n- "${v.nome}" aceita EXATAMENTE um destes: ${(v.valores ?? []).join(' | ')}.`)
+    .join('');
+  const chaves = `\n- Em "variaveis", grave APENAS estas chaves: ${variaveis
+    .map((v) => v.nome)
+    .join(', ')}.`;
+  return comValores + chaves;
+}

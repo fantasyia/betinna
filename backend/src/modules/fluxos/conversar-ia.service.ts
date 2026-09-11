@@ -24,7 +24,11 @@ import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.s
 import { SupressaoService } from '@shared/supressao/supressao.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
-import { montarSchemaDoTurno, parseVariaveisGravadas } from './variaveis-gravadas.util';
+import {
+  instrucaoVariaveis,
+  montarSchemaDoTurno,
+  parseVariaveisGravadas,
+} from './variaveis-gravadas.util';
 import { normalizarValor } from './normalizar-valor.util';
 import {
   FLUXO_QUEUE,
@@ -1257,7 +1261,17 @@ export class ConversarIaService implements OnModuleDestroy {
     const opener =
       (reativo
         ? (assumindoConversa ? INSTRUCAO_ASSUMINDO : INSTRUCAO_RESPOSTA_COMPORTAMENTO) +
-          INSTRUCAO_CLASSIFICACAO
+          INSTRUCAO_CLASSIFICACAO +
+          // ⚠️ Só no REATIVO, que é onde o contrato JSON existe: na abordagem
+          // FRIA não há `responseFormat`, e pedir variáveis num turno sem
+          // schema só polui o prompt com instrução que não tem onde aterrissar.
+          //
+          // Este bloco FALTAVA aqui. O turno de RESPOSTA instruía, o de
+          // ABERTURA montava só o schema — e o schema garante a FORMA, não a
+          // escolha. Apareceu quando o acolhimento do C1 passou a capturar o
+          // que a pessoa diz na primeira mensagem (11/09): justamente o turno
+          // que não instruía.
+          instrucaoVariaveis(declaradasAbertura)
         : INSTRUCAO_OPENER) +
       (primeiro
         ? // O modelo julga isso bem — mas só se ENXERGAR. Antes recebia o token
@@ -2222,17 +2236,8 @@ export class ConversarIaService implements OnModuleDestroy {
       INSTRUCAO_CLASSIFICACAO +
       // O enum já IMPEDE valor fora da lista; repetir no texto melhora a ESCOLHA
       // (o modelo vê as opções ao decidir, não só ao serializar) e mantém o
-      // prompt legível pra quem for revisar o fluxo.
-      declaradas
-        .filter((v) => v.valores?.length)
-        .map(
-          (v) => `
-- "${v.nome}" aceita EXATAMENTE um destes: ${(v.valores ?? []).join(' | ')}.`,
-        )
-        .join('') +
-      (gravaveis.length
-        ? `\n- Em "variaveis", grave APENAS estas chaves: ${gravaveis.join(', ')}.`
-        : '') +
+      // prompt legível pra quem for revisar o fluxo. Mesma função no OPENER.
+      instrucaoVariaveis(declaradas) +
       (temEmail
         ? '\n[Dado] O e-mail do lead JÁ está registrado — NÃO peça e-mail de novo.'
         : '\n[Dado] Ainda NÃO temos o e-mail do lead. No FECHAMENTO (quando for encerrar/' +

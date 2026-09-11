@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  instrucaoVariaveis,
   montarSchemaDoTurno,
   nomesDasVariaveis,
   parseVariaveisGravadas,
@@ -114,5 +115,78 @@ describe('montarSchemaDoTurno', () => {
     expect(schema.schema.additionalProperties).toBe(false);
     expect(schema.schema.properties.variaveis.required).toEqual(['p']);
     expect(schema.schema.properties.variaveis.additionalProperties).toBe(false);
+  });
+});
+
+/**
+ * `instrucaoVariaveis` — o gêmeo TEXTUAL do schema.
+ *
+ * Existe porque os dois turnos divergiram: o de RESPOSTA montava o bloco inline,
+ * o de ABERTURA montava só o schema. O schema garante a FORMA; o texto melhora a
+ * ESCOLHA. O acolhimento do C1 passou a capturar dado na PRIMEIRA mensagem em
+ * 11/09 — justamente o turno que não instruía.
+ */
+describe('instrucaoVariaveis', () => {
+  it('lista as chaves que podem ser gravadas', () => {
+    const txt = instrucaoVariaveis(parseVariaveisGravadas(['corrente_quadro', 'o_que_proteger']));
+    expect(txt).toContain('grave APENAS estas chaves: corrente_quadro, o_que_proteger');
+  });
+
+  it('repete os valores aceitos, pro modelo ver as opções ao DECIDIR', () => {
+    const txt = instrucaoVariaveis(
+      parseVariaveisGravadas(['tensao_rede: 127V | 220V | 380V', 'o_que_proteger']),
+    );
+    expect(txt).toContain('"tensao_rede" aceita EXATAMENTE um destes: 127V | 220V | 380V');
+  });
+
+  /** Variável livre não ganha linha de enum — não há lista pra repetir. */
+  it('variável sem valores aceitos não vira linha de enum', () => {
+    const txt = instrucaoVariaveis(parseVariaveisGravadas(['o_que_proteger']));
+    expect(txt).not.toContain('aceita EXATAMENTE');
+    expect(txt).toContain('grave APENAS estas chaves: o_que_proteger');
+  });
+
+  it('lista vazia não polui o prompt', () => {
+    expect(instrucaoVariaveis([])).toBe('');
+    expect(instrucaoVariaveis(parseVariaveisGravadas(undefined))).toBe('');
+  });
+
+  /**
+   * O texto e o schema têm que falar das MESMAS chaves. Divergir aqui é pior
+   * que não instruir: o modelo recebe uma lista no texto e outra no contrato.
+   */
+  it('as chaves do texto batem com as do schema', () => {
+    const decl = parseVariaveisGravadas(['tensao_rede: 127V | 220V', 'corrente_quadro']);
+    const schema = montarSchemaDoTurno(decl) as {
+      schema: { properties: { variaveis: { properties: Record<string, unknown> } } };
+    };
+    const doSchema = Object.keys(schema.schema.properties.variaveis.properties).sort();
+    const txt = instrucaoVariaveis(decl);
+    for (const chave of doSchema) expect(txt).toContain(chave);
+    expect(doSchema).toEqual(['corrente_quadro', 'tensao_rede']);
+  });
+});
+
+/**
+ * Guarda estrutural: os DOIS turnos do nó de IA usam a mesma função.
+ *
+ * Foi a divergência entre eles que criou o buraco — e ela não aparece em teste
+ * de comportamento, porque cada caminho isolado funciona.
+ */
+describe('os dois turnos instruem pelo mesmo lugar', () => {
+  it('o service chama instrucaoVariaveis no OPENER e no turno de RESPOSTA', async () => {
+    const fonte = await import('node:fs').then((fs) =>
+      fs.readFileSync('src/modules/fluxos/conversar-ia.service.ts', 'utf8'),
+    );
+    // Só as CHAMADAS: o import é multi-linha (`instrucaoVariaveis,` sem
+    // parêntese), então não entra na conta.
+    const chamadas = fonte.split('instrucaoVariaveis(').length - 1;
+    expect(
+      chamadas,
+      'esperado 2 chamadas — uma no opener, uma no turno de resposta. Se caiu pra 1, ' +
+        'um dos turnos voltou a não instruir o modelo, que foi como o buraco nasceu.',
+    ).toBe(2);
+    expect(fonte).toContain('instrucaoVariaveis(declaradasAbertura)');
+    expect(fonte).toContain('instrucaoVariaveis(declaradas)');
   });
 });
