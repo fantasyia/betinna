@@ -350,3 +350,23 @@ export const iaAFrenteDiagSchema = z.object({
 });
 
 export type IaAFrenteDiagDto = z.infer<typeof iaAFrenteDiagSchema>;
+
+/**
+ * Diagnóstico da rede determinística — ver `ExtracaoDiagnosticoService`.
+ *
+ * `noId` opcional porque o valor da rota está em testar contra a config REAL de
+ * um nó de produção; sem ele, cai numa declaração passada à mão.
+ */
+export const extracaoDiagSchema = z.object({
+  texto: z.string().min(1).max(4000),
+  /** Nó de produção cuja `variaveisGravadas` vale como contrato do teste. */
+  noId: z.string().min(1).optional(),
+  /** Alternativa ao `noId`: a declaração crua, no mesmo formato do nó. */
+  declaradas: z.array(z.string()).optional(),
+  /** Última fala do bot — decide se número solto na resposta vale. */
+  perguntaAnterior: z.string().max(4000).optional(),
+  /** Simula o que o modelo já trouxe (ou o que o lead já tem). */
+  jaTem: z.record(z.unknown()).optional(),
+});
+
+export type ExtracaoDiagDto = z.infer<typeof extracaoDiagSchema>;

@@ -18,6 +18,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { FluxosService } from './fluxos.service';
 import { CronMetricsService } from './cron-metrics.service';
 import { IaAFrenteDiagnosticoService } from './ia-a-frente-diagnostico.service';
+import { ExtracaoDiagnosticoService } from './extracao-diagnostico.service';
 import {
   createFluxoSchema,
   updateFluxoSchema,
@@ -39,6 +40,8 @@ import {
   type CronPreviewDto,
   type IaAFrenteDiagDto,
   type UploadFluxoMidiaDto,
+  extracaoDiagSchema,
+  type ExtracaoDiagDto,
 } from './fluxos.dto';
 import { previewCrons, CRON_TZ_PADRAO } from './cron.util';
 
@@ -50,6 +53,7 @@ export class FluxosController {
     private readonly svc: FluxosService,
     private readonly cronMetrics: CronMetricsService,
     private readonly iaDiag: IaAFrenteDiagnosticoService,
+    private readonly extracaoDiag: ExtracaoDiagnosticoService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────────────
@@ -293,6 +297,32 @@ export class FluxosController {
     @Body(new ZodValidationPipe(iaAFrenteDiagSchema)) dto: IaAFrenteDiagDto,
   ) {
     return this.iaDiag.medir(user, dto);
+  }
+
+  /**
+   * O que a rede determinística faria com uma frase — sem conversa e sem modelo.
+   *
+   * ⚠️ A rede só age quando o modelo FALHA, e ele falha ~1 em 10, sem aviso.
+   * Sem esta rota, a única forma de vê-la trabalhar era esperar a falha
+   * acontecer com um cliente de verdade — ou seja, conferir o código e torcer.
+   * Este repo já pagou caro pela distinção (o reaper estava certo no arquivo e
+   * mudo em campo por dois dias).
+   *
+   * Passando `noId`, testa contra a config REAL do nó em produção, e não
+   * contra um cenário escrito por quem já sabe a resposta.
+   *
+   * ADMIN-only: lê config de fluxo do tenant. Não escreve nada.
+   */
+  @Post('diagnostico/extracao')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Simula a rede determinística numa frase (sem conversa, sem modelo, sem escrita)',
+  })
+  simularExtracao(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(extracaoDiagSchema)) dto: ExtracaoDiagDto,
+  ) {
+    return this.extracaoDiag.simular(user, dto);
   }
 
   @Get(':id/metricas')
