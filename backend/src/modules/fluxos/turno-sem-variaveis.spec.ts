@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ConversarIaService } from './conversar-ia.service';
+import { parseVariaveisGravadas, type VariavelGravavel } from './variaveis-gravadas.util';
 
 /**
  * O turno que declara variáveis e volta com NENHUMA precisa deixar rastro.
@@ -25,6 +26,8 @@ const chamar = (
     leadVariaveis?: Record<string, unknown>;
     /** Estado REAL da linha, quando outro escritor mexeu nela no meio. */
     noBanco?: Record<string, unknown>;
+    declaradas?: VariavelGravavel[];
+    texto?: string;
   },
 ) => {
   // Banco de mentira com a única semântica que importa aqui: o UPDATE faz
@@ -49,6 +52,8 @@ const chamar = (
         leadVariaveis: unknown;
         gravaveis: string[];
         variaveisTurno: Record<string, unknown>;
+        declaradas?: VariavelGravavel[];
+        texto?: string;
         execucaoId: string;
       }) => Promise<Record<string, unknown>>;
     }
@@ -57,6 +62,8 @@ const chamar = (
     leadVariaveis: p.leadVariaveis ?? {},
     gravaveis: p.gravaveis,
     variaveisTurno: p.variaveisTurno,
+    declaradas: p.declaradas,
+    texto: p.texto,
     execucaoId: 'exec-1',
   });
 };
@@ -272,5 +279,93 @@ describe('escrita concorrente no mesmo lead', () => {
       perfil_cliente: 'comercio',
     });
     expect(avisos.join(' ')).not.toContain('PARCIAL');
+  });
+});
+
+/**
+ * 🔴 O caminho que NÃO passa pelo modelo — é isto que transforma "1 em 10" em
+ * "o modelo errou e o cliente nem percebeu".
+ *
+ * Os testes de `extracao-deterministica.spec.ts` provam o PARSER. Estes provam a
+ * LIGAÇÃO: turno que voltou `{}` e mesmo assim o lead sai com os campos que os
+ * portões leem. Sem isto, a rede poderia estar perfeita e desconectada — e o
+ * teste do parser continuaria verde.
+ */
+describe('rede determinística dentro da gravação', () => {
+  let svc: ConversarIaService;
+  let avisos: string[];
+
+  const FALA = 'queimou o freezer da padaria. o disjuntor geral aqui e de 63A e a tensao e 220V';
+  const DECL = parseVariaveisGravadas([
+    'corrente_quadro',
+    'tensao_rede: 127V | 220V | 380V | 440V | nao sei',
+    'perfil_cliente: comercio | residencia | condominio | carro_eletrico',
+  ]);
+
+  beforeEach(() => {
+    svc = Object.create(ConversarIaService.prototype) as ConversarIaService;
+    avisos = [];
+    Object.defineProperty(svc, 'logger', {
+      value: { warn: (m: string) => avisos.push(m), log: vi.fn(), error: vi.fn() },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('turno que voltou VAZIO ainda entrega tensão e corrente ao lead', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECL.map((d) => d.nome),
+      variaveisTurno: {}, // o modelo não trouxe NADA — o caso medido
+      declaradas: DECL,
+      texto: FALA,
+    });
+
+    expect(novas.tensao_rede).toBe('220V');
+    expect(novas.corrente_quadro).toBe('63A');
+    // E deixa rastro: cada linha destas é uma falha do modelo que a rede segurou.
+    expect(avisos.join(' ')).toContain('rede determinística resgatou');
+  });
+
+  /**
+   * ⚠️ O portão do C1 é `custom.tensao_rede contains "V"`. É esta asserção que
+   * representa o cliente não ouvir de novo o que acabou de responder.
+   */
+  it('o valor resgatado SATISFAZ o portão do C1', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECL.map((d) => d.nome),
+      variaveisTurno: {},
+      declaradas: DECL,
+      texto: FALA,
+    });
+    expect(String(novas.tensao_rede)).toContain('V');
+  });
+
+  it('o que o modelo trouxe MANDA — a rede não sobrescreve', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECL.map((d) => d.nome),
+      variaveisTurno: { tensao_rede: '380V' },
+      declaradas: DECL,
+      texto: FALA, // a frase diz 220V
+    });
+    expect(novas.tensao_rede).toBe('380V');
+  });
+
+  /** Sem `declaradas`/`texto` nada muda — todo caminho antigo segue idêntico. */
+  it('sem os campos novos, o comportamento é o de antes', async () => {
+    await chamar(svc, { gravaveis: DECL.map((d) => d.nome), variaveisTurno: {} });
+    expect(avisos.join(' ')).toContain('gravou 0');
+    expect(avisos.join(' ')).not.toContain('rede determinística');
+  });
+
+  /** A rede não inventa: frase sem número não produz gravação nenhuma. */
+  it('frase sem dado não vira gravação', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECL.map((d) => d.nome),
+      variaveisTurno: {},
+      declaradas: DECL,
+      texto: 'oi, tudo bem? queria entender como funciona',
+    });
+    expect(novas.tensao_rede).toBeUndefined();
+    expect(avisos.join(' ')).toContain('gravou 0');
   });
 });

@@ -28,7 +28,9 @@ import {
   instrucaoVariaveis,
   montarSchemaDoTurno,
   parseVariaveisGravadas,
+  type VariavelGravavel,
 } from './variaveis-gravadas.util';
+import { extrairDeterministico } from './extracao-deterministica';
 import { normalizarValor } from './normalizar-valor.util';
 import {
   FLUXO_QUEUE,
@@ -1483,6 +1485,8 @@ export class ConversarIaService implements OnModuleDestroy {
         leadVariaveis: lead.variaveis,
         gravaveis: declaradasAbertura.map((v) => v.nome),
         variaveisTurno: turnoAbertura.variaveis ?? {},
+        declaradas: declaradasAbertura,
+        texto: mensagemDoTurno,
         classificacao: turnoAbertura.classificacao,
         historico: histIni,
         esperaMs: esperaIni,
@@ -1504,6 +1508,8 @@ export class ConversarIaService implements OnModuleDestroy {
       leadVariaveis: lead.variaveis,
       gravaveis: declaradasAbertura.map((v) => v.nome),
       variaveisTurno: turnoAbertura.variaveis ?? {},
+      declaradas: declaradasAbertura,
+      texto: mensagemDoTurno,
       execucaoId,
     });
 
@@ -2549,6 +2555,8 @@ export class ConversarIaService implements OnModuleDestroy {
         leadVariaveis: lead.variaveis,
         gravaveis,
         variaveisTurno: turno.variaveis ?? {},
+        declaradas,
+        texto: textoLead,
         execucaoId,
       });
       const renovaMs = jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000;
@@ -2577,6 +2585,8 @@ export class ConversarIaService implements OnModuleDestroy {
       leadVariaveis: lead.variaveis,
       gravaveis,
       variaveisTurno: turno.variaveis ?? {},
+      declaradas,
+      texto: textoLead,
       classificacao: classificacaoTurno,
       historico: novoHist,
       esperaMs,
@@ -2611,6 +2621,10 @@ export class ConversarIaService implements OnModuleDestroy {
     gravaveis: string[];
     variaveisTurno: Record<string, unknown>;
     execucaoId: string;
+    /** Declaradas COM os valores aceitos — a rede determinística respeita o enum do nó. */
+    declaradas?: VariavelGravavel[];
+    /** A fala da pessoa NESTE turno, que é o que a rede lê quando o modelo não traz. */
+    texto?: string;
     /** Só no fechamento: carimba `classificacao` junto, na mesma escrita. */
     classificacao?: string;
   }): Promise<Record<string, unknown>> {
@@ -2619,6 +2633,36 @@ export class ConversarIaService implements OnModuleDestroy {
         ? (p.leadVariaveis as Record<string, unknown>)
         : {};
     const gravadas = filtrarVariaveisGravaveis(p.gravaveis, p.variaveisTurno ?? {});
+
+    // ── REDE DETERMINÍSTICA: o caminho que NÃO passa pelo modelo ──
+    //
+    // Extração por LLM é não-determinística por construção: dá pra empurrar a
+    // taxa de falha pra baixo, nunca pra zero. Medido em 11/09: 1 em 10
+    // primeiros contatos ouvia de novo a pergunta que tinha acabado de
+    // responder, porque o turno gravou ZERO e o portão leu vazio.
+    //
+    // Enquanto o único caminho até o portão passar pelo modelo, essa fração
+    // existe. Isto aqui lê a frase e decide por regra — "220V" é 220V, sem
+    // depender de nenhuma chamada dar certo.
+    //
+    // 📌 So preenche LACUNA, nunca sobrescreve: o modelo viu a conversa
+    // inteira, isto viu uma frase. Entra onde hoje não entra nada.
+    if (p.declaradas?.length && p.texto) {
+      const resgatadas = extrairDeterministico(p.declaradas, p.texto, {
+        ...atuais,
+        ...gravadas,
+      });
+      for (const [chave, valor] of Object.entries(resgatadas)) {
+        gravadas[chave] = valor;
+        // `warn` de propósito: toda linha destas é uma extração que o modelo
+        // deixou passar. A contagem delas é a medida de quanto a rede está
+        // segurando — e some do radar se virar `debug`.
+        this.logger.warn(
+          `CONVERSAR_IA: rede determinística resgatou ${chave}="${valor}" — ` +
+            `o modelo não trouxe (exec ${p.execucaoId})`,
+        );
+      }
+    }
 
     // ── O TURNO DECLAROU VARIÁVEIS E NÃO TROUXE NENHUMA ──
     //
@@ -2803,6 +2847,9 @@ export class ConversarIaService implements OnModuleDestroy {
     leadVariaveis: unknown;
     gravaveis: string[];
     variaveisTurno: Record<string, unknown>;
+    /** Repassados pra rede determinística lá dentro — ver gravarVariaveisDoTurno. */
+    declaradas?: VariavelGravavel[];
+    texto?: string;
     classificacao?: string;
     historico: HistoricoMsg[];
     esperaMs: number;
@@ -2829,6 +2876,8 @@ export class ConversarIaService implements OnModuleDestroy {
       leadVariaveis: lead.variaveis,
       gravaveis,
       variaveisTurno: turno.variaveis ?? {},
+      declaradas: p.declaradas,
+      texto: p.texto,
       execucaoId,
       classificacao: classificacaoTurno,
     });
