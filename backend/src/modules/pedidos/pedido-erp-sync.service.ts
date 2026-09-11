@@ -378,6 +378,10 @@ export class PedidoErpSyncService {
         representanteId: true,
         numeroSite: true,
         clienteId: true,
+        // O que o site já aceitou — é comparando com isto que se sabe se ele
+        // está atrasado, sem depender do `mudou` (que olha ERP × nosso banco).
+        siteStatusEnviado: true,
+        siteRastreioEnviado: true,
       },
     });
 
@@ -545,11 +549,21 @@ export class PedidoErpSyncService {
       // segundo defeito, mas este canal já estava mentindo. Barrar só o disparo
       // da mensagem teria deixado o site errado do mesmo jeito — mudança de
       // estado se propaga sozinha pra fora, aviso é só um dos caminhos.
-      await this.site.notificar({
-        numeroSite: existente.numeroSite ?? '',
+      //
+      // ⚠️ `sincronizarPedido`, NUNCA `notificar` direto: o retorno do
+      // `notificar` era DESCARTADO aqui, e era esse descarte que fazia a falha
+      // sumir. Push que não entra vira `siteErroEm` no pedido e o
+      // `SiteStatusRetryJob` reenvia — porque a rodada seguinte NÃO passa mais
+      // por aqui (o banco já foi atualizado acima, então `mudou` é false e a
+      // execução curto-circuita lá em cima, no `if (!mudou)`).
+      await this.site.sincronizarPedido({
+        id: existente.id,
+        numeroSite: existente.numeroSite,
         status: statusAplicavel ?? existente.status,
         rastreioCodigo,
         rastreioUrl,
+        siteStatusEnviado: existente.siteStatusEnviado,
+        siteRastreioEnviado: existente.siteRastreioEnviado,
       });
       return 'atualizado';
     }

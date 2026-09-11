@@ -909,6 +909,25 @@ model Pedido {
 
   numeroSite String?
 
+  /// O que o SITE já sabe — e por que ele pode estar atrasado.
+  ///
+  /// ⚠️ Estes campos existem porque "avisar o site" NÃO podia depender de
+  /// `mudou` no sync do ERP. O `mudou` compara o ERP com o NOSSO banco, e o
+  /// aviso sai DEPOIS de o nosso banco já ter sido atualizado: se o push
+  /// falhasse, a rodada seguinte via ERP == banco, curto-circuitava em
+  /// `semMudanca` e nunca mais tentava. O site ficava com o status velho PARA
+  /// SEMPRE, sem erro em lugar nenhum — o mesmo defeito que o 503 +
+  /// `Retry-After` do site (09/09) tentou evitar e que ninguém escutava.
+  ///
+  /// Guardar o que foi ACEITO lá desacopla a decisão: comparar o desejado com
+  /// `siteStatusEnviado` responde "o site está atrasado?" sem olhar pro ERP.
+  siteStatusEnviado   String?
+  siteRastreioEnviado String?
+  /// Por que o último push pro site falhou, e quando. Presença de `siteErroEm`
+  /// é o que a varredura de reenvio procura — mesma ideia do `erpErro`.
+  siteErro            String?   @db.Text
+  siteErroEm          DateTime?
+
   /// QUEM fez ESTE pedido — não quem é o cliente hoje.
   ///
   /// Num B2B o `Cliente` é a EMPRESA, casada por documento, e guarda UM
@@ -982,6 +1001,9 @@ model Pedido {
   @@index([empresaId, isDemo])
   @@index([empresaId, numeroSite])
   @@index([empresaId, propostaNumero])
+  // Varredura de reenvio pro site: roda de minuto em minuto e só interessa
+  // quem falhou. Sem índice, seria seq scan na tabela inteira a cada minuto.
+  @@index([empresaId, siteErroEm])
 }
 
 model PedidoItem {

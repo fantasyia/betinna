@@ -20,7 +20,8 @@ function build(url = 'https://site/api/pedidos/status', segredo = 's3gr3d0') {
           : undefined,
     ),
   };
-  return { svc: new SiteStatusService(env as never, http as never), http };
+  const prisma = { pedido: { update: vi.fn().mockResolvedValue({}) } };
+  return { svc: new SiteStatusService(env as never, http as never, prisma as never), http, prisma };
 }
 
 const corpo = (http: { post: ReturnType<typeof vi.fn> }) => http.post.mock.calls[0][1].body;
@@ -88,5 +89,112 @@ describe('aviso de status pro site', () => {
     http.post.mockRejectedValue(new Error('ECONNREFUSED'));
 
     expect(await svc.notificar({ numeroSite: 'SB1', status: 'ENTREGUE' })).toBe(false);
+  });
+});
+
+/**
+ * O defeito real de 11/09: a falha do push era DESCARTADA.
+ *
+ * O site já devolvia 503 + `Retry-After: 30` num soluço de banco (conserto de
+ * 09/09) justamente pra autorizar a repetição. Do lado de cá ninguém escutava:
+ * uma retentativa imediata, um `logger.warn`, e o sync ainda jogava fora o
+ * booleano. Como a rodada seguinte compara o ERP com o NOSSO banco — já
+ * atualizado —, ela curto-circuitava em `semMudanca` e o aviso nunca mais saía.
+ * Resultado: site com status velho PARA SEMPRE, sem erro em lugar nenhum.
+ */
+describe('dívida com o site fica registrada e é reenviada', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const pedido = {
+    id: 'p1',
+    numeroSite: 'SB1',
+    status: 'ENVIADO',
+    rastreioCodigo: 'BR123',
+    rastreioUrl: 'http://t/BR123',
+    siteStatusEnviado: null,
+    siteRastreioEnviado: null,
+  };
+
+  it('push aceito → grava o que o site passou a saber e limpa o erro', async () => {
+    const { svc, prisma } = build();
+
+    expect(await svc.sincronizarPedido(pedido)).toBe(true);
+
+    expect(prisma.pedido.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: {
+        siteStatusEnviado: 'enviado',
+        siteRastreioEnviado: 'BR123',
+        siteErro: null,
+        siteErroEm: null,
+      },
+    });
+  });
+
+  it('⭐ push falhou → NÃO fica só no log: marca siteErroEm pro reenvio', async () => {
+    const { svc, http, prisma } = build();
+    // É exatamente o 503 do site num soluço de banco.
+    http.post.mockRejectedValue(new Error('HTTP 503'));
+
+    expect(await svc.sincronizarPedido(pedido)).toBe(false);
+
+    const dados = prisma.pedido.update.mock.calls[0][0].data;
+    expect(dados.siteErroEm).toBeInstanceOf(Date);
+    expect(dados.siteErro).toContain('enviado');
+    // O que o site sabe NÃO pode ser atualizado num push que não entrou —
+    // seria dar a dívida por paga.
+    expect(dados.siteStatusEnviado).toBeUndefined();
+  });
+
+  it('site já em dia → não chama o site de novo (a varredura roda a cada minuto)', async () => {
+    const { svc, http, prisma } = build();
+
+    const r = await svc.sincronizarPedido({
+      ...pedido,
+      siteStatusEnviado: 'enviado',
+      siteRastreioEnviado: 'BR123',
+    });
+
+    expect(r).toBeNull();
+    expect(http.post).not.toHaveBeenCalled();
+    expect(prisma.pedido.update).not.toHaveBeenCalled();
+  });
+
+  it('só o RASTREIO mudou → reenvia (status igual não é "em dia")', async () => {
+    const { svc, http } = build();
+
+    const r = await svc.sincronizarPedido({
+      ...pedido,
+      siteStatusEnviado: 'enviado',
+      siteRastreioEnviado: null,
+    });
+
+    expect(r).toBe(true);
+    expect(http.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('status sem palavra no site não vira dívida — reenviar seria loop mudo', async () => {
+    const { svc, http, prisma } = build();
+
+    const r = await svc.sincronizarPedido({ ...pedido, status: 'STATUS_QUE_NAO_EXISTE' });
+
+    expect(r).toBeNull();
+    expect(http.post).not.toHaveBeenCalled();
+    expect(prisma.pedido.update).not.toHaveBeenCalled();
+  });
+
+  it('pedido que não nasceu no site é ignorado (não tem tela lá)', async () => {
+    const { svc, http, prisma } = build();
+
+    expect(await svc.sincronizarPedido({ ...pedido, numeroSite: null })).toBeNull();
+    expect(http.post).not.toHaveBeenCalled();
+    expect(prisma.pedido.update).not.toHaveBeenCalled();
+  });
+
+  it('sem site configurado não inventa dívida', async () => {
+    const { svc, prisma } = build('', '');
+
+    expect(await svc.sincronizarPedido(pedido)).toBeNull();
+    expect(prisma.pedido.update).not.toHaveBeenCalled();
   });
 });

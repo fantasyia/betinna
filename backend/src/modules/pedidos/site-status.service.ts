@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
+import { PrismaService } from '@database/prisma.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 
 export interface StatusParaSite {
@@ -8,6 +9,23 @@ export interface StatusParaSite {
   rastreioCodigo?: string | null;
   rastreioUrl?: string | null;
 }
+
+/** O que a varredura precisa saber do pedido pra decidir se o site está atrasado. */
+export interface PedidoParaSite {
+  id: string;
+  numeroSite: string | null;
+  status: string;
+  rastreioCodigo: string | null;
+  rastreioUrl: string | null;
+  siteStatusEnviado: string | null;
+  siteRastreioEnviado: string | null;
+}
+
+/**
+ * `null` = nada a fazer (site já sabe, ou pedido não tem tela lá).
+ * `true` = o site aceitou agora. `false` = falhou e ficou registrado pra reenvio.
+ */
+export type ResultadoSincronizacao = boolean | null;
 
 /**
  * Situação do Betinna → o vocabulário que o SITE fala.
@@ -39,9 +57,18 @@ const STATUS_PARA_SITE: Record<string, string> = {
  * pedido". Sem este retorno, o pedido pago some do ponto de vista dela até
  * alguém responder no WhatsApp; com ele, a tela conta a verdade sozinha.
  *
- * **Best-effort de propósito.** Site fora do ar não pode derrubar a
- * sincronização com o ERP: o estado real mora aqui, e a rodada seguinte
- * reenvia. O que não pode é falhar em silêncio — por isso o log.
+ * **Best-effort no MOMENTO, nunca no RESULTADO.** Site fora do ar não pode
+ * derrubar a sincronização com o ERP — o estado real mora aqui, e a rodada não
+ * espera. Mas o fracasso é GRAVADO (`siteErro`/`siteErroEm`) e reenviado depois
+ * pelo `SiteStatusRetryJob`.
+ *
+ * ⚠️ Aqui morava uma mentira que custou o defeito: o comentário dizia "a rodada
+ * seguinte reenvia", e ela NÃO reenviava. O sync do ERP só chega no aviso
+ * quando `mudou` — e `mudou` compara o ERP com o NOSSO banco, que já tinha sido
+ * atualizado antes do push. Push falhado ⇒ rodada seguinte via ERP == banco ⇒
+ * `semMudanca` ⇒ o aviso nunca mais saía, e o site ficava com o status velho
+ * para sempre, sem erro em lugar nenhum. Quem escreve "a próxima rodada
+ * resolve" precisa apontar a linha que faz a próxima rodada acontecer.
  */
 @Injectable()
 export class SiteStatusService {
@@ -50,6 +77,7 @@ export class SiteStatusService {
   constructor(
     private readonly env: EnvService,
     private readonly http: HttpClientService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /** `false` quando não há site configurado — o tenant simplesmente não tem um. */
@@ -97,5 +125,68 @@ export class SiteStatusService {
       );
       return false;
     }
+  }
+
+  /**
+   * Deixa o site em dia com UM pedido — e registra o resultado no próprio pedido.
+   *
+   * É o único ponto que deve ser chamado por quem muda pedido: `notificar()`
+   * sozinho é transporte, e transporte que não anota o fracasso foi exatamente
+   * o defeito. Idempotente de propósito — chamar duas vezes com o site já em
+   * dia não gera chamada nenhuma (devolve `null`), que é o que permite a
+   * varredura rodar de minuto em minuto sem martelar o site.
+   */
+  async sincronizarPedido(pedido: PedidoParaSite): Promise<ResultadoSincronizacao> {
+    if (!this.configurado) return null;
+    // Pedido que não nasceu no site não tem tela lá pra atualizar.
+    if (!pedido.numeroSite) return null;
+
+    // Status sem palavra equivalente no site não vira chamada: a rota de lá
+    // recusaria com 400. NÃO é erro, então também não marca pra reenvio —
+    // reenviar eternamente algo que o site nunca vai aceitar é um loop mudo.
+    const statusSite = STATUS_PARA_SITE[pedido.status];
+    if (!statusSite) return null;
+
+    const rastreio = pedido.rastreioCodigo ?? null;
+    if (statusSite === pedido.siteStatusEnviado && rastreio === pedido.siteRastreioEnviado) {
+      // O site já sabe. Nada a fazer — e nada a limpar: se havia erro, ele foi
+      // limpo no push que deu certo.
+      return null;
+    }
+
+    const ok = await this.notificar({
+      numeroSite: pedido.numeroSite,
+      status: pedido.status,
+      rastreioCodigo: pedido.rastreioCodigo,
+      rastreioUrl: pedido.rastreioUrl,
+    });
+
+    if (ok) {
+      await this.prisma.pedido.update({
+        where: { id: pedido.id },
+        data: {
+          siteStatusEnviado: statusSite,
+          siteRastreioEnviado: rastreio,
+          siteErro: null,
+          siteErroEm: null,
+        },
+      });
+      return true;
+    }
+
+    // ⚠️ O QUE NÃO PODE ACONTECER É ISTO FICAR SÓ NO LOG.
+    //
+    // O site devolve 503 + `Retry-After: 30` num soluço de banco justamente pra
+    // autorizar a repetição (conserto de 09/09, SOMATEC-WEB-3). Sem gravar
+    // aqui, ninguém escutava esse 503: o log rotacionava e sobrava um pedido
+    // cuja tela mente pro cliente. Gravado, o `SiteStatusRetryJob` reenvia.
+    await this.prisma.pedido.update({
+      where: { id: pedido.id },
+      data: {
+        siteErro: `falha avisando o site: ${statusSite}${rastreio ? ` / ${rastreio}` : ''}`,
+        siteErroEm: new Date(),
+      },
+    });
+    return false;
   }
 }

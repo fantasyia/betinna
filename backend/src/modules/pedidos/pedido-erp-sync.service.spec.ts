@@ -81,7 +81,14 @@ function build(
   const emailSvc = { enviarPedidoRastreio: vi.fn().mockResolvedValue({ ok: true }) };
   // O push pro SITE é o que faz a mudança de estado sair do app — precisa ser
   // inspecionável no teste, não só um stub anônimo.
-  const site = { notificar: vi.fn().mockResolvedValue(true), configurado: true };
+  const site = {
+    notificar: vi.fn().mockResolvedValue(true),
+    // O sync chama `sincronizarPedido`, NÃO `notificar` direto: é ele que
+    // grava o fracasso no pedido pro reenvio. Espiar `notificar` aqui deixaria
+    // de ver o que o sync realmente faz.
+    sincronizarPedido: vi.fn().mockResolvedValue(true),
+    configurado: true,
+  };
   const svc = new PedidoErpSyncService(
     prisma as never,
     tiny as never,
@@ -547,7 +554,7 @@ describe('pedidos que vêm do ERP', () => {
 
       await svc.sincronizar('emp-1');
 
-      const enviado = site.notificar.mock.calls[0]?.[0];
+      const enviado = site.sincronizarPedido.mock.calls[0]?.[0];
       expect(enviado?.status).toBe('CANCELADO');
       expect(enviado?.status).not.toBe('ENVIADO');
     });

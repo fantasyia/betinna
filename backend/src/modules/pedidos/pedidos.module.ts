@@ -23,6 +23,7 @@ import { PedidoComissaoErpService } from './pedido-comissao-erp.service';
 import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
 import { ErpSyncDiarioJob } from './erp-sync-diario.job';
 import { ErpWebhooksJob } from './erp-webhooks.job';
+import { SiteStatusRetryJob } from './site-status-retry.job';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { ErpWebhooksJob } from './erp-webhooks.job';
     PedidoFinanceiroErpService,
     PedidoComissaoErpService,
     ErpWebhooksJob,
+    SiteStatusRetryJob,
     PedidoSiteService,
     SiteStatusService,
   ],
