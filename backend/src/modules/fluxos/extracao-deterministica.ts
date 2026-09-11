@@ -63,6 +63,39 @@ const CORRENTE_MAX = 4000;
 
 type Achado = { valor: string; trecho: string };
 
+/** A pergunta do bot que convida um NÚMERO SOLTO como resposta. */
+export type Convite = 'tensao' | 'corrente' | null;
+
+const PERGUNTOU_TENSAO = /(tens[ãa]o|padr[ãa]o de energia|volts?|110v|127v|220v|380v|440v)/i;
+const PERGUNTOU_CORRENTE = /(disjuntor|corrente|quadro de luz|letra a|amp[eè]?r)/i;
+
+/**
+ * O que a última fala do BOT convida como resposta.
+ *
+ * 🔴 É isto que torna seguro aceitar número solto. Medido em 11/09 15:08: o
+ * bot pergunta *"110V, 220V ou 380V?"* e a pessoa responde **"220"** — a
+ * copy CONVIDA ao número solto, então ele não é caso raro, é o caso que a
+ * pergunta produz. O mesmo vale pra corrente: o texto pede *"um número
+ * seguido da letra A"* e vem **"63"**.
+ *
+ * ⚠️ Sem o contexto, aceitar número solto faria "sao 220 clientes por dia"
+ * virar 220V. Com ele, essa frase nunca aparece: ela não é resposta a "qual
+ * o padrão de energia?". **O contexto não é uma proteção a mais — é o que
+ * torna a regra segura.**
+ *
+ * ⛔ Pergunta que puxa os DOIS devolve `null`: número solto ali é ambíguo, e
+ * ambiguidade volta pro caminho conservador.
+ */
+export function conviteDaPergunta(ultimaFalaDoBot: string | undefined): Convite {
+  if (!ultimaFalaDoBot) return null;
+  const t = PERGUNTOU_TENSAO.test(ultimaFalaDoBot);
+  const c = PERGUNTOU_CORRENTE.test(ultimaFalaDoBot);
+  if (t && c) return null;
+  if (t) return 'tensao';
+  if (c) return 'corrente';
+  return null;
+}
+
 /** Percorre os números do texto uma vez só, com o contexto de cada um. */
 function* numerosComContexto(texto: string): Generator<{
   num: string;
@@ -87,13 +120,13 @@ function* numerosComContexto(texto: string): Generator<{
  * logo antes ("a rede aqui é 220"). Número solto NÃO vira tensão — foi assim que
  * "freezer de 220 litros" deixou de virar 220V.
  */
-export function tensaoNaFrase(texto: string): Achado | null {
+export function tensaoNaFrase(texto: string, aceitarSolto = false): Achado | null {
   for (const { num, antes, depois } of numerosComContexto(texto)) {
     if (!(TENSOES as readonly string[]).includes(num)) continue;
     if (NAO_E_TENSAO.test(depois)) continue;
     const temUnidade = /^\s*(v\b|volts?)/i.test(depois);
     const temPista = PISTA_TENSAO.test(antes);
-    if (!temUnidade && !temPista) continue;
+    if (!temUnidade && !temPista && !aceitarSolto) continue;
     return { valor: num, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() };
   }
   return null;
@@ -105,14 +138,14 @@ export function tensaoNaFrase(texto: string): Achado | null {
  * Mesma régua da tensão: unidade colada ("63A") ou pista perto ("o disjuntor
  * geral é 63"). E a tensão VETA — "220V" nunca vira corrente de 220A.
  */
-export function correnteNaFrase(texto: string): Achado | null {
+export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | null {
   for (const { num, antes, depois } of numerosComContexto(texto)) {
     if (NAO_E_CORRENTE.test(depois)) continue;
     const n = Number(num);
     if (!Number.isFinite(n) || n < CORRENTE_MIN || n > CORRENTE_MAX) continue;
     const temUnidade = /^\s*(a\b|amp|amper)/i.test(depois);
     const temPista = PISTA_CORRENTE.test(antes);
-    if (!temUnidade && !temPista) continue;
+    if (!temUnidade && !temPista && !aceitarSolto) continue;
     // Número que é claramente a tensão não é a corrente, mesmo com "quadro"
     // ou "disjuntor" na mesma frase — e eles costumam vir na mesma frase.
     if (!temUnidade && (TENSOES as readonly string[]).includes(num) && PISTA_TENSAO.test(antes)) {
@@ -135,6 +168,8 @@ export function extrairDeterministico(
   declaradas: VariavelGravavel[],
   texto: string,
   jaTem: Record<string, unknown>,
+  /** O que a última pergunta do bot convida — ver `conviteDaPergunta`. */
+  convite: Convite = null,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   if (!texto || !texto.trim()) return out;
@@ -166,7 +201,7 @@ export function extrairDeterministico(
     declaradas.find((d) => d.nome === nome)?.valores;
 
   if (falta('tensao_rede')) {
-    const achado = tensaoNaFrase(texto);
+    const achado = tensaoNaFrase(texto, convite === 'tensao');
     if (achado) {
       const lista = aceitos('tensao_rede');
       // Respeita o enum do nó: só grava valor que ele aceita. Inventar um valor
@@ -178,7 +213,7 @@ export function extrairDeterministico(
   }
 
   if (falta('corrente_quadro')) {
-    const achado = correnteNaFrase(texto);
+    const achado = correnteNaFrase(texto, convite === 'corrente');
     // `corrente_quadro` é campo livre no C1; se algum fluxo declarar lista, a
     // mesma regra vale — não grava o que o nó não aceita.
     if (achado) {

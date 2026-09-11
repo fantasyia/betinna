@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { correnteNaFrase, extrairDeterministico, tensaoNaFrase } from './extracao-deterministica';
+import {
+  conviteDaPergunta,
+  correnteNaFrase,
+  extrairDeterministico,
+  tensaoNaFrase,
+} from './extracao-deterministica';
 import { parseVariaveisGravadas } from './variaveis-gravadas.util';
 
 /**
@@ -201,5 +206,90 @@ describe('hesitação — "nao sei" é lacuna, não valor', () => {
         '220V',
       );
     }
+  });
+});
+
+/**
+ * ⭐ O CONTEXTO DA PERGUNTA — é ele que torna seguro aceitar número solto.
+ *
+ * Medido em 11/09 15:08:
+ * ```
+ * BOT     → "E qual o padrão de energia aí, 110V, 220V ou 380V?"
+ * cliente → "220"
+ * ```
+ *
+ * **A copy convida ao número solto.** Ele não é caso raro — é o caso que a
+ * pergunta produz. O mesmo no outro portão: o texto pede *"um número seguido da
+ * letra A"* e vem **"63"**.
+ *
+ * E a objeção que impedia aceitar número solto (`"sao 220 clientes por dia"`
+ * virar 220V) **desaparece sob o contexto**: essa frase nunca é resposta a
+ * *"qual o padrão de energia?"*.
+ */
+const PERGUNTA_TENSAO = 'E qual o padrão de energia aí, 110V, 220V ou 380V?';
+const PERGUNTA_CORRENTE =
+  'Consegue olhar no quadro de luz o disjuntor maior? Nele aparece um número seguido da letra A, como 40A, 63A';
+
+describe('conviteDaPergunta', () => {
+  it('reconhece os dois TEXTOS FIXOS reais do C1', () => {
+    expect(conviteDaPergunta(PERGUNTA_TENSAO)).toBe('tensao');
+    expect(conviteDaPergunta(PERGUNTA_CORRENTE)).toBe('corrente');
+  });
+
+  it('pergunta que não é de nenhum dos dois não convida nada', () => {
+    expect(conviteDaPergunta('Tudo certo por aí? Posso ajudar em mais alguma coisa?')).toBeNull();
+    expect(conviteDaPergunta(undefined)).toBeNull();
+  });
+
+  /** Ambiguidade volta pro caminho conservador — número solto ali não decide. */
+  it('pergunta que puxa os DOIS não convida número solto', () => {
+    expect(conviteDaPergunta('Me diz a tensão e a corrente do disjuntor')).toBeNull();
+  });
+});
+
+describe('número solto — só com o convite da pergunta', () => {
+  it('"220" depois da pergunta da tensão vira 220V', () => {
+    const r = extrairDeterministico(C1, '220', {}, conviteDaPergunta(PERGUNTA_TENSAO));
+    expect(r.tensao_rede).toBe('220V');
+  });
+
+  it('"63" depois da pergunta da corrente vira 63A', () => {
+    const r = extrairDeterministico(C1, '63', {}, conviteDaPergunta(PERGUNTA_CORRENTE));
+    expect(r.corrente_quadro).toBe('63A');
+  });
+
+  it('"deve ser 220 mesmo" passa a valer quando o bot acabou de perguntar', () => {
+    const r = extrairDeterministico(
+      C1,
+      'deve ser 220 mesmo',
+      { tensao_rede: 'nao sei' },
+      conviteDaPergunta(PERGUNTA_TENSAO),
+    );
+    expect(r.tensao_rede).toBe('220V');
+  });
+
+  /** ⛔ Sem convite, número solto continua fora — a regra antiga não afrouxou. */
+  it('SEM convite, número solto continua recusado', () => {
+    expect(extrairDeterministico(C1, 'deve ser 220 mesmo', {}).tensao_rede).toBeUndefined();
+    expect(extrairDeterministico(C1, '220', {}).tensao_rede).toBeUndefined();
+  });
+
+  /**
+   * ⚠️ O convite abre o número solto, mas NÃO desliga as armadilhas de unidade:
+   * mesmo respondendo à pergunta da tensão, "220 litros" não é tensão.
+   */
+  it('o convite não desliga a checagem de unidade errada', () => {
+    const r = extrairDeterministico(
+      C1,
+      'tenho um freezer de 220 litros',
+      {},
+      conviteDaPergunta(PERGUNTA_TENSAO),
+    );
+    expect(r.tensao_rede).toBeUndefined();
+  });
+
+  it('convite de tensão não faz número virar corrente', () => {
+    const r = extrairDeterministico(C1, '220', {}, conviteDaPergunta(PERGUNTA_TENSAO));
+    expect(r.corrente_quadro).toBeUndefined();
   });
 });

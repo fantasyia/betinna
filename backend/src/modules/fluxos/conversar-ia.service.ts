@@ -30,7 +30,7 @@ import {
   parseVariaveisGravadas,
   type VariavelGravavel,
 } from './variaveis-gravadas.util';
-import { extrairDeterministico } from './extracao-deterministica';
+import { conviteDaPergunta, extrairDeterministico } from './extracao-deterministica';
 import { ehNaoSei } from './normalizar-valor.util';
 import {
   FLUXO_QUEUE,
@@ -592,6 +592,13 @@ const JANELA_RAJADA_MS_PADRAO = 5000;
  * `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` (30s nos serviços api e worker) — é o
  * Railway quem decide quando manda o SIGKILL, e o padrão dele é ZERO segundos.
  */
+/**
+ * A última coisa que o BOT falou — é ela que diz o que um número solto na
+ * resposta significa. Ver `conviteDaPergunta`.
+ */
+const ultimaFalaDoBot = (h: HistoricoMsg[]): string | undefined =>
+  [...h].reverse().find((m) => m.role === 'assistant')?.content;
+
 const DRAIN_MAX_MS = 25 * 1000;
 
 @Injectable()
@@ -1472,6 +1479,7 @@ export class ConversarIaService implements OnModuleDestroy {
         variaveisTurno: turnoAbertura.variaveis ?? {},
         declaradas: declaradasAbertura,
         texto: mensagemDoTurno,
+        perguntaAnterior: ultimaFalaDoBot(historicoInicial),
         classificacao: turnoAbertura.classificacao,
         historico: histIni,
         esperaMs: esperaIni,
@@ -1495,6 +1503,7 @@ export class ConversarIaService implements OnModuleDestroy {
       variaveisTurno: turnoAbertura.variaveis ?? {},
       declaradas: declaradasAbertura,
       texto: mensagemDoTurno,
+      perguntaAnterior: ultimaFalaDoBot(historicoInicial),
       execucaoId,
     });
 
@@ -2542,6 +2551,7 @@ export class ConversarIaService implements OnModuleDestroy {
         variaveisTurno: turno.variaveis ?? {},
         declaradas,
         texto: textoLead,
+        perguntaAnterior: ultimaFalaDoBot(historico),
         execucaoId,
       });
       const renovaMs = jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000;
@@ -2572,6 +2582,7 @@ export class ConversarIaService implements OnModuleDestroy {
       variaveisTurno: turno.variaveis ?? {},
       declaradas,
       texto: textoLead,
+      perguntaAnterior: ultimaFalaDoBot(historico),
       classificacao: classificacaoTurno,
       historico: novoHist,
       esperaMs,
@@ -2610,6 +2621,8 @@ export class ConversarIaService implements OnModuleDestroy {
     declaradas?: VariavelGravavel[];
     /** A fala da pessoa NESTE turno, que é o que a rede lê quando o modelo não traz. */
     texto?: string;
+    /** A última fala do bot — diz se um número solto na resposta é tensão ou corrente. */
+    perguntaAnterior?: string;
     /** Só no fechamento: carimba `classificacao` junto, na mesma escrita. */
     classificacao?: string;
   }): Promise<Record<string, unknown>> {
@@ -2644,7 +2657,12 @@ export class ConversarIaService implements OnModuleDestroy {
         const leadTemConcreto = doLead != null && String(doLead).trim() !== '' && !ehNaoSei(doLead);
         if (!ehNaoSei(valor) || !leadTemConcreto) efetivo[chave] = valor;
       }
-      const resgatadas = extrairDeterministico(p.declaradas, p.texto, efetivo);
+      const resgatadas = extrairDeterministico(
+        p.declaradas,
+        p.texto,
+        efetivo,
+        conviteDaPergunta(p.perguntaAnterior),
+      );
       for (const [chave, valor] of Object.entries(resgatadas)) {
         gravadas[chave] = valor;
         // `warn` de propósito: toda linha destas é uma extração que o modelo
@@ -2843,6 +2861,7 @@ export class ConversarIaService implements OnModuleDestroy {
     /** Repassados pra rede determinística lá dentro — ver gravarVariaveisDoTurno. */
     declaradas?: VariavelGravavel[];
     texto?: string;
+    perguntaAnterior?: string;
     classificacao?: string;
     historico: HistoricoMsg[];
     esperaMs: number;
@@ -2871,6 +2890,7 @@ export class ConversarIaService implements OnModuleDestroy {
       variaveisTurno: turno.variaveis ?? {},
       declaradas: p.declaradas,
       texto: p.texto,
+      perguntaAnterior: p.perguntaAnterior,
       execucaoId,
       classificacao: classificacaoTurno,
     });
