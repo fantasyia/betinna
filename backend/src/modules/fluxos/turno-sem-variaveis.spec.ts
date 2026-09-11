@@ -113,3 +113,74 @@ describe('turno que declara variáveis e grava ZERO', () => {
     expect(avisos.join(' ')).toContain('gravou 0');
   });
 });
+
+/**
+ * 🔴 A extração falha PARCIAL com muito mais frequência que total — medido no
+ * log de produção em 11/09: vem a corrente e não vem a tensão.
+ *
+ * E o portão do C1 não pergunta "veio alguma coisa?", pergunta
+ * `custom.tensao_rede`. **Um campo faltando é o defeito inteiro** — mas a linha
+ * de "gravou 0" só pega o tudo-ou-nada, então esse caso era invisível.
+ *
+ * É exatamente o ponto cego que a sessão de teste levantou e que eu tinha
+ * documentado sem instrumentar.
+ */
+describe('extração PARCIAL — o que o portão vai ler vazio', () => {
+  let svc: ConversarIaService;
+  let avisos: string[];
+
+  beforeEach(() => {
+    svc = Object.create(ConversarIaService.prototype) as ConversarIaService;
+    avisos = [];
+    Object.defineProperty(svc, 'logger', {
+      value: { warn: (m: string) => avisos.push(m), log: vi.fn(), error: vi.fn() },
+      writable: true,
+    });
+    Object.defineProperty(svc, 'prisma', {
+      value: { lead: { update: vi.fn().mockResolvedValue({}) } },
+      writable: true,
+    });
+  });
+
+  it('avisa QUAIS campos ficaram faltando quando gravou só uma parte', async () => {
+    await chamar(svc, {
+      gravaveis: DECLARADAS,
+      variaveisTurno: { corrente_quadro: '63' },
+    });
+    const txt = avisos.join(' ');
+    expect(txt).toContain('extração PARCIAL');
+    expect(txt).toContain('faltam 2/3');
+    expect(txt).toContain('tensao_rede');
+    expect(txt).toContain('perfil_cliente');
+  });
+
+  /** Campo que o lead já tinha de um turno anterior não é perda. */
+  it('não conta como falta o que o lead JÁ tinha', async () => {
+    await chamar(svc, {
+      gravaveis: DECLARADAS,
+      variaveisTurno: { corrente_quadro: '63' },
+      leadVariaveis: { tensao_rede: '220V', perfil_cliente: 'comercio' },
+    });
+    expect(avisos.join(' ')).not.toContain('extração PARCIAL');
+  });
+
+  it('turno completo não avisa nada', async () => {
+    await chamar(svc, {
+      gravaveis: DECLARADAS,
+      variaveisTurno: { corrente_quadro: '63', tensao_rede: '220V', perfil_cliente: 'comercio' },
+    });
+    expect(avisos.join(' ')).not.toContain('extração PARCIAL');
+  });
+
+  /**
+   * Zero e parcial são linhas DIFERENTES de propósito: zero é "o turno não
+   * entregou nada", parcial é "entregou e faltou". Misturar as duas devolveria
+   * o problema de não saber qual caso se está contando.
+   */
+  it('gravou ZERO não vira linha de PARCIAL (são contagens distintas)', async () => {
+    await chamar(svc, { gravaveis: DECLARADAS, variaveisTurno: {} });
+    const txt = avisos.join(' ');
+    expect(txt).toContain('gravou 0');
+    expect(txt).not.toContain('extração PARCIAL');
+  });
+});

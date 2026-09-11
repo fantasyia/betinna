@@ -2722,6 +2722,30 @@ export class ConversarIaService implements OnModuleDestroy {
       ...(p.classificacao ? [`classificacao=${p.classificacao}`] : []),
     ].join(', ');
     this.logger.log(`CONVERSAR_IA: gravado no lead ${p.leadId} (${oQue}) — exec ${p.execucaoId}`);
+
+    // ── O QUE FICOU FALTANDO, que é o que o portão vai ler ──
+    //
+    // 🔴 A linha de "gravou 0" só pega o tudo-ou-nada. Medido em 11/09 no log de
+    // produção: a extração falha PARCIAL com muito mais frequência — vem a
+    // corrente e não vem a tensão, por exemplo. E o portão do C1 não pergunta
+    // "veio alguma coisa?", pergunta `custom.tensao_rede`. **Um campo faltando é
+    // o defeito inteiro**, e até agora era invisível.
+    //
+    // Só conta o que continua AUSENTE depois desta escrita — campo que o lead já
+    // tinha de um turno anterior não é perda, e campo que a pessoa não
+    // mencionou também não. O que sobra aqui é o que o próximo portão vai ler
+    // vazio.
+    const depois = novas as Record<string, unknown>;
+    const aindaFaltam = p.gravaveis.filter((k) => {
+      const v = depois[k];
+      return v == null || String(v).trim() === '';
+    });
+    if (p.gravaveis.length > 0 && aindaFaltam.length > 0 && aceitas.length > 0) {
+      this.logger.warn(
+        `CONVERSAR_IA: extração PARCIAL — faltam ${aindaFaltam.length}/${p.gravaveis.length} ` +
+          `(${aindaFaltam.join(', ')}) — exec ${p.execucaoId}`,
+      );
+    }
     return novas;
   }
 
