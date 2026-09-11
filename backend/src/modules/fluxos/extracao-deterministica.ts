@@ -66,8 +66,28 @@ type Achado = { valor: string; trecho: string };
 /** A pergunta do bot que convida um NÚMERO SOLTO como resposta. */
 export type Convite = 'tensao' | 'corrente' | null;
 
-const PERGUNTOU_TENSAO = /(tens[ãa]o|padr[ãa]o de energia|volts?|110v|127v|220v|380v|440v)/i;
-const PERGUNTOU_CORRENTE = /(disjuntor|corrente|quadro de luz|letra a|amp[eè]?r)/i;
+/**
+ * ⚠️ Montadas a partir de STRING, e não escritas como literal.
+ *
+ * A versão literal desta linha nasceu com um byte de BACKSPACE (0x08) no
+ * lugar do \\b de borda de palavra — invisível no editor, invisível no
+ * `grep`, e a alternativa "letra a" simplesmente nunca casava. Só apareceu
+ * rodando a rota de diagnóstico contra produção.
+ *
+ * 📌 Segunda vez que um escape invisível entra numa regex deste repo por
+ * edição via script. Montar de string torna o escape explícito e o byte
+ * impossível de errar em silêncio.
+ */
+const PERGUNTOU_TENSAO = new RegExp(
+  ['tens[ãa]o', 'padr[ãa]o de energia', 'volts?', '1[12]0 ?v', '220 ?v', '380 ?v', '440 ?v'].join(
+    '|',
+  ),
+  'i',
+);
+const PERGUNTOU_CORRENTE = new RegExp(
+  ['disjuntor', 'corrente', 'quadro de luz', 'letra a\\b', 'amp[eè]?r'].join('|'),
+  'i',
+);
 
 /**
  * O que a última fala do BOT convida como resposta.

@@ -293,3 +293,48 @@ describe('número solto — só com o convite da pergunta', () => {
     expect(r.corrente_quadro).toBeUndefined();
   });
 });
+
+/**
+ * 🔴 O teste que FALTOU — e a ausência dele deixou um bug passar pro ar.
+ *
+ * A regex de pergunta-de-corrente tem 5 alternativas. A frase que eu usei no
+ * teste original (`PERGUNTA_CORRENTE`) casa por **três** delas ao mesmo tempo
+ * ("quadro de luz", "disjuntor", "letra a"). Então quando a alternativa
+ * `letra a\b` nasceu com um byte de BACKSPACE no lugar da borda de palavra, o
+ * teste continuou VERDE — as outras duas seguravam.
+ *
+ * ⚠️ Teste que exercita várias alternativas de uma vez não testa nenhuma: ele
+ * prova só que ALGUMA casou. Quem quebra uma sozinha não é visto.
+ *
+ * O defeito só apareceu rodando a rota de diagnóstico contra produção, com um
+ * TRECHO da pergunta — o pedaço que só tem "letra A".
+ */
+describe('cada alternativa da pergunta, ISOLADA', () => {
+  it.each([
+    ['letra a (a que estava quebrada)', 'Nele aparece um número seguido da letra A, como 40A, 63A'],
+    ['disjuntor', 'Dá uma olhada no disjuntor geral e me diz o número'],
+    ['quadro de luz', 'Consegue abrir o quadro de luz?'],
+    ['corrente', 'Qual a corrente que aparece ali?'],
+    ['amperes', 'Quantos amperes marca?'],
+  ])('reconhece corrente só por %s', (_rotulo, frase) => {
+    expect(conviteDaPergunta(frase)).toBe('corrente');
+  });
+
+  it.each([
+    ['tensão', 'Qual a tensão da rede aí?'],
+    ['padrão de energia', 'E qual o padrão de energia aí?'],
+    ['volts', 'É quantos volts?'],
+    ['220V no texto', 'É 220V ou 380V?'],
+  ])('reconhece tensão só por %s', (_rotulo, frase) => {
+    expect(conviteDaPergunta(frase)).toBe('tensao');
+  });
+
+  /** A regressão exata que a produção mostrou: o trecho isolado da pergunta. */
+  it('o TRECHO da pergunta da corrente convida número solto', () => {
+    const trecho = 'Nele aparece um número seguido da letra A, como 40A, 63A. Qual aparece?';
+    expect(conviteDaPergunta(trecho)).toBe('corrente');
+    expect(extrairDeterministico(C1, '63', {}, conviteDaPergunta(trecho)).corrente_quadro).toBe(
+      '63A',
+    );
+  });
+});
