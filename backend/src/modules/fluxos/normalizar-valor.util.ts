@@ -18,3 +18,28 @@ export function normalizarValor(s: string): string {
     .replace(/\p{Diacritic}/gu, '')
     .replace(/\s+/g, ' ');
 }
+
+/**
+ * Valores que significam "nao informado" — AUSENCIA, nao resposta.
+ *
+ * Mora aqui, e nao no servico, porque DOIS lados precisam da mesma lista e
+ * divergir entre eles e o tipo de bug que ninguem ve: a gravacao trata
+ * "nao sei" como ausencia (pra nao apagar valor concreto) e a rede
+ * deterministica precisa da MESMA leitura pra saber que ali cabe resgate.
+ * Duas copias da lista dariam duas definicoes de ausencia.
+ */
+export const NAO_SEI = new Set([
+  'nao sei',
+  'nao informado',
+  'nao confirmado',
+  'nao informou',
+  'desconhecido',
+  'indefinido',
+  'n/a',
+  'na',
+  '-',
+  '?',
+]);
+
+/** `true` quando o valor e uma forma de "nao informado". */
+export const ehNaoSei = (v: unknown): boolean => NAO_SEI.has(normalizarValor(String(v ?? '')));

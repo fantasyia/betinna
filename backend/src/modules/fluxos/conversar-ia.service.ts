@@ -31,7 +31,7 @@ import {
   type VariavelGravavel,
 } from './variaveis-gravadas.util';
 import { extrairDeterministico } from './extracao-deterministica';
-import { normalizarValor } from './normalizar-valor.util';
+import { ehNaoSei } from './normalizar-valor.util';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -586,21 +586,6 @@ const TIMEOUT_TURNO_MS = 2 * 60 * 1000;
 const RETOMADA_MIN_PADRAO = 10;
 
 const JANELA_RAJADA_MS_PADRAO = 5000;
-
-/** Valores que significam "não informado" — ausência, não resposta. */
-const NAO_SEI = new Set([
-  'nao sei',
-  'nao informado',
-  'nao confirmado',
-  'nao informou',
-  'desconhecido',
-  'indefinido',
-  'n/a',
-  'na',
-  '-',
-  '?',
-]);
-const ehNaoSei = (v: unknown): boolean => NAO_SEI.has(normalizarValor(String(v ?? '')));
 
 /**
  * Quanto o encerramento do processo espera pelos turnos em voo. Tem que caber em
@@ -2648,10 +2633,18 @@ export class ConversarIaService implements OnModuleDestroy {
     // 📌 So preenche LACUNA, nunca sobrescreve: o modelo viu a conversa
     // inteira, isto viu uma frase. Entra onde hoje não entra nada.
     if (p.declaradas?.length && p.texto) {
-      const resgatadas = extrairDeterministico(p.declaradas, p.texto, {
-        ...atuais,
-        ...gravadas,
-      });
+      // O estado EFETIVO antes da rede. Não é `{...atuais, ...gravadas}` puro:
+      // um `nao sei` do turno não pode MASCARAR valor concreto que o lead já
+      // tem, senão a rede acharia lacuna onde há dado e reescreveria por cima
+      // de algo melhor. Mesma regra de "ausência não apaga presença", aplicada
+      // uma etapa antes.
+      const efetivo: Record<string, unknown> = { ...atuais };
+      for (const [chave, valor] of Object.entries(gravadas)) {
+        const doLead = atuais[chave];
+        const leadTemConcreto = doLead != null && String(doLead).trim() !== '' && !ehNaoSei(doLead);
+        if (!ehNaoSei(valor) || !leadTemConcreto) efetivo[chave] = valor;
+      }
+      const resgatadas = extrairDeterministico(p.declaradas, p.texto, efetivo);
       for (const [chave, valor] of Object.entries(resgatadas)) {
         gravadas[chave] = valor;
         // `warn` de propósito: toda linha destas é uma extração que o modelo

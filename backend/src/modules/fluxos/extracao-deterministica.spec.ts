@@ -125,3 +125,81 @@ describe('110V — o que o próprio bot oferece e o enum não aceita', () => {
     expect(extrairDeterministico(so220, 'aqui é 380V', {}).tensao_rede).toBeUndefined();
   });
 });
+
+/**
+ * 🔴 A HESITAÇÃO — medido em produção 11/09 15:02, e não é caso de borda.
+ *
+ * ```
+ * cliente → "acho que e 110 volts aqui, e o padrao antigo mesmo"
+ *           tensao_rede = "nao sei"      ← o modelo leu o "acho que"
+ *           link saiu SEM tensão: "Como você não tem certeza, deixei esse
+ *           campo pra escolher na página"
+ * ```
+ *
+ * **A pessoa deu o número.** O modelo transformou insegurança em ausência de
+ * informação — e a rede não corrigia, porque `nao sei` era tratado como VALOR
+ * (logo, não era lacuna) em vez de ausência.
+ *
+ * ⚠️ Falar de elétrica hesitando é como gente não-técnica fala, e é exatamente
+ * o público deste fluxo. Aqui a hesitação é o caso NORMAL.
+ */
+describe('hesitação — "nao sei" é lacuna, não valor', () => {
+  it('resgata o número que a pessoa deu apesar do "acho que"', () => {
+    const r = extrairDeterministico(C1, 'acho que e 110 volts aqui, e o padrao antigo mesmo', {
+      tensao_rede: 'nao sei',
+    });
+    expect(r.tensao_rede).toBe('127V');
+  });
+
+  it.each([['nao sei, deve ser 127 volts'], ['acho que e 220v'], ['a rede aqui deve ser 380']])(
+    'também em %j',
+    (frase) => {
+      expect(extrairDeterministico(C1, frase, { tensao_rede: 'nao sei' }).tensao_rede).toBeTruthy();
+    },
+  );
+
+  /**
+   * ⛔ LIMITE CONHECIDO, e é escolha, não esquecimento.
+   *
+   * "deve ser 220 mesmo" não tem unidade colada nem pista de tensão perto —
+   * é um número solto. Aceitar número solto faria "sao 220 clientes por dia"
+   * virar 220V, e o custo dos dois erros não é igual: campo vazio faz o bot
+   * perguntar; campo errado manda o cliente pro produto que não protege a
+   * instalação dele.
+   *
+   * 📌 O que fecharia isto com segurança é o CONTEXTO DA PERGUNTA: se o bot
+   * acabou de perguntar a tensão, um número solto na resposta é a tensão.
+   * Hoje a rede não recebe a última fala do bot — enquanto não receber, este
+   * caso fica com o modelo.
+   */
+  it.each([['deve ser 220 mesmo'], ['acho que é 380']])(
+    'NÃO cobre número solto sem unidade nem pista: %j',
+    (frase) => {
+      expect(
+        extrairDeterministico(C1, frase, { tensao_rede: 'nao sei' }).tensao_rede,
+      ).toBeUndefined();
+    },
+  );
+
+  /** Quem realmente não sabe continua não sabendo — a rede não inventa. */
+  it('sem número na frase, "nao sei" continua "nao sei"', () => {
+    const r = extrairDeterministico(C1, 'sinceramente nao faco ideia', {
+      tensao_rede: 'nao sei',
+    });
+    expect(r.tensao_rede).toBeUndefined();
+  });
+
+  /** Presença vence: valor concreto do modelo não é tocado. */
+  it('valor concreto do modelo NÃO é sobrescrito por número na frase', () => {
+    const r = extrairDeterministico(C1, 'acho que e 110 volts', { tensao_rede: '220V' });
+    expect(r.tensao_rede).toBeUndefined();
+  });
+
+  it('as outras formas de ausência valem igual', () => {
+    for (const ausente of ['n/a', 'indefinido', '-', '?', 'nao informado']) {
+      expect(extrairDeterministico(C1, 'aqui e 220v', { tensao_rede: ausente }).tensao_rede).toBe(
+        '220V',
+      );
+    }
+  });
+});

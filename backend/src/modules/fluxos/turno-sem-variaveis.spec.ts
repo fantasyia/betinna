@@ -369,3 +369,66 @@ describe('rede determinística dentro da gravação', () => {
     expect(avisos.join(' ')).toContain('gravou 0');
   });
 });
+
+/**
+ * A fronteira entre as DUAS camadas: o modelo gravou `nao sei`, a rede tem o
+ * número, e quem decide é a regra de ausência. Testado aqui e não só no parser
+ * porque o risco mora na LIGAÇÃO — o `nao sei` do turno não pode mascarar um
+ * valor concreto que o lead já tinha.
+ */
+describe('hesitação na gravação — as duas camadas juntas', () => {
+  let svc: ConversarIaService;
+  let avisos: string[];
+
+  const DECL = parseVariaveisGravadas([
+    'corrente_quadro',
+    'tensao_rede: 127V | 220V | 380V | 440V | nao sei',
+  ]);
+  const HESITOU = 'acho que e 110 volts aqui, e o padrao antigo mesmo';
+
+  beforeEach(() => {
+    svc = Object.create(ConversarIaService.prototype) as ConversarIaService;
+    avisos = [];
+    Object.defineProperty(svc, 'logger', {
+      value: { warn: (m: string) => avisos.push(m), log: vi.fn(), error: vi.fn() },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('modelo gravou "nao sei" e a rede resgata o número dito', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECL.map((d) => d.nome),
+      variaveisTurno: { tensao_rede: 'nao sei' },
+      declaradas: DECL,
+      texto: HESITOU,
+    });
+    expect(novas.tensao_rede).toBe('127V');
+    expect(String(novas.tensao_rede)).toContain('V'); // satisfaz o portão do C1
+  });
+
+  /**
+   * ⚠️ O risco da mudança: `nao sei` virou lacuna, então a rede podia passar a
+   * reescrever por cima de dado BOM que o lead já tinha. Não pode.
+   */
+  it('NÃO sobrescreve valor concreto que o lead já tinha', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECL.map((d) => d.nome),
+      variaveisTurno: { tensao_rede: 'nao sei' },
+      leadVariaveis: { tensao_rede: '380V' },
+      declaradas: DECL,
+      texto: HESITOU,
+    });
+    expect(novas.tensao_rede).toBe('380V');
+  });
+
+  it('quem realmente não sabe continua sem valor inventado', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECL.map((d) => d.nome),
+      variaveisTurno: { tensao_rede: 'nao sei' },
+      declaradas: DECL,
+      texto: 'nao faco ideia, nunca olhei isso',
+    });
+    expect(novas.tensao_rede).toBe('nao sei');
+  });
+});

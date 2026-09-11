@@ -1,4 +1,5 @@
 import type { VariavelGravavel } from './variaveis-gravadas.util';
+import { ehNaoSei } from './normalizar-valor.util';
 
 /**
  * Rede de segurança SEM modelo pros campos que o portão do fluxo lê.
@@ -138,10 +139,28 @@ export function extrairDeterministico(
   const out: Record<string, string> = {};
   if (!texto || !texto.trim()) return out;
 
+  /**
+   * ⚠️ `nao sei` CONTA COMO LACUNA — e isto é o mesmo princípio que a gravação
+   * já aplica na outra direção.
+   *
+   * O código trata "não sei" como AUSÊNCIA justamente pra ele não apagar um
+   * valor concreto ("ausência não apaga presença", medido em 07/09). Se é
+   * ausência lá, é ausência aqui: um campo em `nao sei` é exatamente onde a
+   * rede tem o que fazer.
+   *
+   * 🔴 Medido em 11/09 15:02, e não é caso de borda: a pessoa escreveu
+   * *"acho que e 110 volts aqui, e o padrao antigo mesmo"*. **Ela deu o
+   * número.** O modelo leu o "acho que" e gravou `nao sei`; o link saiu sem
+   * tensão e mandou ela escolher na página o que tinha acabado de dizer.
+   *
+   * Hesitar ao falar de elétrica é como gente não-técnica fala — que é
+   * exatamente o público deste fluxo. Tratar hesitação como ausência de
+   * informação joga fora o dado de quem mais precisa de ajuda.
+   */
   const falta = (nome: string): boolean => {
     if (!declaradas.some((d) => d.nome === nome)) return false;
     const v = jaTem[nome];
-    return v == null || String(v).trim() === '';
+    return v == null || String(v).trim() === '' || ehNaoSei(v);
   };
   const aceitos = (nome: string): string[] | undefined =>
     declaradas.find((d) => d.nome === nome)?.valores;
