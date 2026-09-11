@@ -1270,23 +1270,34 @@ export class ConversarIaService implements OnModuleDestroy {
           // schema, e schema garante a FORMA, não a ESCOLHA. Simétrico, óbvio,
           // e eu escrevi "deveria só melhorar".
           //
-          // O campo discordou. Contagem por build, no log de produção:
+          // Contagem por build, no log de produção:
           //
-          //   ANTES (2 rodadas)   extraiu 5 campos · 5 campos          2/2
-          //   DEPOIS (5 rodadas)  0 · 5 · 5 · 0 · 0                    2/5
+          //   ANTES  2 rodadas · 0 falhas
+          //   DEPOIS 6 rodadas · 3 falhas  (50%)
           //
-          // ⚠️ n pequeno, e correlação não é causa — o não-determinismo do
-          // modelo já explicou uma falha antes desta mudança existir. Mas o
-          // corte cai exatamente no commit, e a hipótese plausível é que o
-          // opener é um prompt que já faz duas coisas (acolher E extrair):
-          // somar instrução gasta atenção no lado errado, e o modelo larga o
-          // `variaveis` pra caprichar na `resposta`.
+          // 🔴 E ISSO **NÃO** ATRIBUI A CULPA AO COMMIT — a primeira versão
+          // deste comentário dizia que sim, e estava errada nas duas pontas:
+          // contava 5 rodadas (eram 6) e lia a fronteira como sinal.
           //
-          // 📌 Fica revertido enquanto a taxa é medida com o instrumento
-          // (`turno declarou N variáveis e gravou 0`). Se a taxa NÃO melhorar,
-          // o commit está inocente e volta — com o número que faltou da
-          // primeira vez. O turno de RESPOSTA mantém a instrução: lá ela nunca
-          // foi suspeita, e é o caminho onde o prompt faz uma coisa só.
+          // Se a taxa real for constante em 50%, a chance de sair 2 acertos
+          // seguidos é 25%. **Um em quatro.** O "2/2 antes" é perfeitamente
+          // compatível com o commit não ter mudado nada. O corte não cai no
+          // commit: cai em ONDE A AMOSTRA PRÉ-COMMIT ACABOU.
+          //
+          // ⚠️ É a mesma forma do "3 → 1" de 10/09 — fronteira de janela lida
+          // como fronteira de causa. Lá a janela era de 10 minutos; aqui, de
+          // builds.
+          //
+          // 📌 Então por que reverter? Por PRUDÊNCIA DE AUTOR, não por
+          // conclusão: a hipótese é plausível (o opener já faz duas coisas —
+          // acolher e extrair —, e somar instrução pode gastar atenção no lado
+          // errado), o custo de ficar sem é zero enquanto a taxa é desconhecida,
+          // e quem menos deve o benefício da dúvida à mudança é quem a fez.
+          //
+          // A comparação que vale quando a medição vier é contra as 6 rodadas
+          // pós-commit (3/6), não contra as 2 pré — é a única com n dos dois
+          // lados. O turno de RESPOSTA mantém a instrução: lá ela nunca foi
+          // suspeita, e é o caminho onde o prompt faz uma coisa só.
           INSTRUCAO_OPENER) +
       (primeiro
         ? // O modelo julga isso bem — mas só se ENXERGAR. Antes recebia o token
