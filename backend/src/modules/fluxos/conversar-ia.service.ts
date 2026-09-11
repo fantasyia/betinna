@@ -2708,15 +2708,48 @@ export class ConversarIaService implements OnModuleDestroy {
     }
     if (aceitas.length === 0 && !p.classificacao) return atuais;
 
-    const novas = {
-      ...atuais,
+    const patch: Record<string, unknown> = {
       ...Object.fromEntries(aceitas),
       ...(p.classificacao ? { classificacao: p.classificacao } : {}),
     };
-    await this.prisma.lead.update({
-      where: { id: p.leadId },
-      data: { variaveis: toJsonInput(novas) },
-    });
+    // ── MERGE NO BANCO, e nao `{...atuais, ...patch}` em memoria ──
+    //
+    // 🔴 `atuais` e o `Lead.variaveis` lido LA ATRAS, no comeco do turno —
+    // antes da chamada ao modelo, que leva dezenas de segundos. Reescrever a
+    // coluna inteira a partir dele e um read-modify-write com leitura velha:
+    // o que QUALQUER outro escritor gravou nesse intervalo e apagado em
+    // silencio.
+    //
+    // Nao e hipotese de laboratorio. Dois turnos no mesmo lead se sobrepoem
+    // no caminho normal — janela de rajada, dois fluxos no mesmo lead, e a
+    // re-execucao de um turno depois do SIGTERM (D51). O perdedor da corrida
+    // ressuscita o estado velho e o campo que a pessoa acabou de informar
+    // some. Do lado do cliente e INDISTINGUIVEL de a extracao ter falhado: o
+    // portao seguinte le vazio e pergunta de novo o que ela ja respondeu.
+    //
+    // ⚠️ Foi assim que a bancada de teste se contaminou em 11/09 (o reset
+    // zerava as variaveis, o turno em voo devolvia o objeto velho por cima, e
+    // a rodada seguinte comecava com sobra da anterior). O MESMO mecanismo em
+    // producao nao contamina medicao: apaga resposta de cliente.
+    //
+    // `jsonb || jsonb` aplica so as chaves DESTE turno sobre o valor corrente
+    // da linha, dentro do UPDATE. Quem escreveu outra chave no meio fica.
+    //
+    // 📌 O `RETURNING` nao e luxo: o estado real pos-escrita e o que a
+    // contagem de extracao parcial logo abaixo precisa ler. Medir no objeto
+    // de memoria seria medir o que ESTE processo acha que gravou.
+    const linhas = await this.prisma.$queryRaw<Array<{ variaveis: unknown }>>`
+      UPDATE "Lead"
+         SET "variaveis" = COALESCE("variaveis", '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb,
+             "atualizadoEm" = NOW()
+       WHERE "id" = ${p.leadId}
+      RETURNING "variaveis"
+    `;
+    const doBanco = linhas[0]?.variaveis;
+    const novas: Record<string, unknown> =
+      doBanco && typeof doBanco === 'object'
+        ? (doBanco as Record<string, unknown>)
+        : { ...atuais, ...patch };
     const oQue = [
       ...aceitas.map(([k]) => k),
       ...(p.classificacao ? [`classificacao=${p.classificacao}`] : []),
@@ -3041,12 +3074,17 @@ export class ConversarIaService implements OnModuleDestroy {
           ? (lead.variaveis as Record<string, unknown>)
           : {};
       if (!CHAVES.some((k) => k in v)) return; // nada a limpar
-      const limpo = { ...v };
-      for (const k of CHAVES) delete limpo[k];
-      await this.prisma.lead.update({
-        where: { id: leadId },
-        data: { variaveis: toJsonInput(limpo) },
-      });
+      // Remocao ATOMICA (`jsonb - text[]`), nao reescrita do objeto lido
+      // acima: a leitura e a escrita sao duas viagens, e um turno que
+      // gravasse uma variavel entre as duas teria a gravacao apagada por este
+      // best-effort. Limpar sinal de roteamento nao pode custar o dado do
+      // cliente.
+      await this.prisma.$executeRaw`
+        UPDATE "Lead"
+           SET "variaveis" = COALESCE("variaveis", '{}'::jsonb) - ${[...CHAVES]}::text[],
+               "atualizadoEm" = NOW()
+         WHERE "id" = ${leadId}
+      `;
     } catch {
       /* best-effort — não trava a abordagem */
     }

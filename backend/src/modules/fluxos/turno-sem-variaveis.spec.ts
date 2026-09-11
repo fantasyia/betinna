@@ -21,10 +21,28 @@ const chamar = (
   p: {
     gravaveis: string[];
     variaveisTurno: Record<string, unknown>;
+    /** O que ESTE turno leu no começo — pode estar velho. */
     leadVariaveis?: Record<string, unknown>;
+    /** Estado REAL da linha, quando outro escritor mexeu nela no meio. */
+    noBanco?: Record<string, unknown>;
   },
-) =>
-  (
+) => {
+  // Banco de mentira com a única semântica que importa aqui: o UPDATE faz
+  // MERGE do patch sobre o valor CORRENTE da linha — nunca sobre o objeto que
+  // o turno leu lá atrás. Era exatamente essa diferença que apagava dado.
+  const estado: Record<string, unknown> = { ...(p.noBanco ?? p.leadVariaveis ?? {}) };
+  Object.defineProperty(svc, 'prisma', {
+    value: {
+      $queryRaw: (_s: TemplateStringsArray, ...vals: unknown[]) => {
+        const patch = JSON.parse(String(vals[0])) as Record<string, unknown>;
+        Object.assign(estado, patch);
+        return Promise.resolve([{ variaveis: { ...estado } }]);
+      },
+    },
+    writable: true,
+    configurable: true,
+  });
+  return (
     svc as unknown as {
       gravarVariaveisDoTurno: (a: {
         leadId: string;
@@ -41,6 +59,7 @@ const chamar = (
     variaveisTurno: p.variaveisTurno,
     execucaoId: 'exec-1',
   });
+};
 
 const DECLARADAS = ['tensao_rede', 'corrente_quadro', 'perfil_cliente'];
 
@@ -53,10 +72,6 @@ describe('turno que declara variáveis e grava ZERO', () => {
     avisos = [];
     Object.defineProperty(svc, 'logger', {
       value: { warn: (m: string) => avisos.push(m), log: vi.fn(), error: vi.fn() },
-      writable: true,
-    });
-    Object.defineProperty(svc, 'prisma', {
-      value: { lead: { update: vi.fn().mockResolvedValue({}) } },
       writable: true,
     });
   });
@@ -136,10 +151,6 @@ describe('extração PARCIAL — o que o portão vai ler vazio', () => {
       value: { warn: (m: string) => avisos.push(m), log: vi.fn(), error: vi.fn() },
       writable: true,
     });
-    Object.defineProperty(svc, 'prisma', {
-      value: { lead: { update: vi.fn().mockResolvedValue({}) } },
-      writable: true,
-    });
   });
 
   it('avisa QUAIS campos ficaram faltando quando gravou só uma parte', async () => {
@@ -182,5 +193,84 @@ describe('extração PARCIAL — o que o portão vai ler vazio', () => {
     const txt = avisos.join(' ');
     expect(txt).toContain('gravou 0');
     expect(txt).not.toContain('extração PARCIAL');
+  });
+});
+
+/**
+ * 🔴 ESCRITA CONCORRENTE — o defeito que se disfarça de "a IA não extraiu".
+ *
+ * `gravarVariaveisDoTurno` recebe o `Lead.variaveis` lido no COMEÇO do turno e,
+ * até 11/09, reescrevia a coluna inteira a partir dele. Entre a leitura e a
+ * escrita passam dezenas de segundos (a chamada ao modelo), e nesse intervalo
+ * outro escritor no mesmo lead é rotina: janela de rajada, um segundo fluxo, ou
+ * a re-execução do turno depois do SIGTERM (D51).
+ *
+ * O perdedor da corrida ressuscitava o estado velho. O campo que a pessoa acabou
+ * de informar sumia, e o portão seguinte perguntava de novo — do lado do
+ * cliente, IDÊNTICO à extração ter falhado.
+ *
+ * ⚠️ E é por isso que ele envenena a medição além de envenenar o dado: enquanto
+ * existisse, nenhum lote conseguia separar "o modelo não extraiu" de "outro
+ * escritor apagou". Foi assim que uma bancada inteira se contaminou em 11/09.
+ */
+describe('escrita concorrente no mesmo lead', () => {
+  let svc: ConversarIaService;
+  let avisos: string[];
+
+  beforeEach(() => {
+    svc = Object.create(ConversarIaService.prototype) as ConversarIaService;
+    avisos = [];
+    Object.defineProperty(svc, 'logger', {
+      value: { warn: (m: string) => avisos.push(m), log: vi.fn(), error: vi.fn() },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('NÃO apaga o que outro escritor gravou depois da leitura deste turno', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECLARADAS,
+      variaveisTurno: { corrente_quadro: '63' },
+      leadVariaveis: {}, // o que ESTE turno leu: vazio
+      noBanco: { tensao_rede: '220V' }, // outro turno gravou no meio
+    });
+
+    expect(novas.corrente_quadro).toBe('63');
+    // Com o merge em memória, este valor era sobrescrito por `{}` e sumia.
+    expect(novas.tensao_rede).toBe('220V');
+  });
+
+  /**
+   * O instrumento de extração parcial só vale se ler o estado REAL da linha.
+   * Medindo no objeto de memória, ele acusaria `tensao_rede` como perdida —
+   * criando exatamente o falso positivo de "extração parcial" que mandaria a
+   * investigação pro lado errado.
+   */
+  it('a contagem de PARCIAL lê o estado do BANCO, não o da memória', async () => {
+    await chamar(svc, {
+      gravaveis: DECLARADAS,
+      variaveisTurno: { corrente_quadro: '63' },
+      leadVariaveis: {},
+      noBanco: { tensao_rede: '220V' },
+    });
+
+    const txt = avisos.join(' ');
+    expect(txt).toContain('faltam 1/3');
+    expect(txt).toContain('perfil_cliente');
+    expect(txt).not.toContain('tensao_rede');
+  });
+
+  it('sem concorrência, o resultado é o de sempre', async () => {
+    const novas = await chamar(svc, {
+      gravaveis: DECLARADAS,
+      variaveisTurno: { corrente_quadro: '63', tensao_rede: '220V', perfil_cliente: 'comercio' },
+    });
+
+    expect(novas).toMatchObject({
+      corrente_quadro: '63',
+      tensao_rede: '220V',
+      perfil_cliente: 'comercio',
+    });
+    expect(avisos.join(' ')).not.toContain('PARCIAL');
   });
 });

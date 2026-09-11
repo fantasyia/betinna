@@ -38,10 +38,17 @@ const gravar = async (
   doTurno: Record<string, unknown>,
   gravaveis: string[],
 ) => {
-  const update = vi.fn().mockResolvedValue({});
+  // A gravacao virou MERGE jsonb no banco (`||`) em vez de reescrever a coluna
+  // a partir do objeto lido no comeco do turno. O mock espelha isso: acumula o
+  // patch sobre o estado corrente e devolve o resultado, como o UPDATE faz.
+  const banco: Record<string, unknown> = { ...atuais };
+  const update = vi.fn((_s: unknown, ...vals: unknown[]) => {
+    Object.assign(banco, JSON.parse(String(vals[0])) as Record<string, unknown>);
+    return Promise.resolve([{ variaveis: { ...banco } }]);
+  });
   const svc = Object.create(ConversarIaService.prototype) as ConversarIaService;
   Object.assign(svc, {
-    prisma: { lead: { update } },
+    prisma: { $queryRaw: update },
     logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   });
   const novas = await (

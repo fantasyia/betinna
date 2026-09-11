@@ -11,47 +11,65 @@ import {
   respostaEhDespedida,
 } from './conversar-ia.service';
 
-const makePrisma = () => ({
-  $executeRaw: vi.fn().mockResolvedValue(1),
-  // #4: cancelamento cross-fluxo das AGUARDANDO usa raw (o filtro JSON do
-  // Prisma trata chave ausente como NULL — ver fluxo-event-bus).
-  $executeRaw: vi.fn().mockResolvedValue(0),
-  lead: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
-  fluxoExecucao: {
-    // Execução VIVA por padrão: antes de falar, o nó confere se não foi
-    // cancelada no meio da chamada da IA (PAUSAR_IA). Mock devolvendo null
-    // significaria "execução sumiu" e calaria o bot em todos os testes.
-    findUnique: vi.fn().mockResolvedValue({ status: 'EM_EXECUCAO', contexto: {} }),
-    findFirst: vi.fn(),
-    findMany: vi.fn().mockResolvedValue([]),
-    update: vi.fn().mockResolvedValue({}),
-    // Claim atômico do turno (CAS) — default: claim sempre vence.
-    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-    create: vi.fn().mockResolvedValue({ id: 'filha-1' }),
-  },
-  fluxoNo: { findUnique: vi.fn() },
-  // Turno que falha deixa rastro aqui (passo FALHOU) — antes não deixava nada.
-  fluxoExecucaoLog: { create: vi.fn().mockResolvedValue({}) },
-  // #23: prompt do nó tem que existir/estar ativo — default: existe.
-  botPrompt: {
-    findFirst: vi.fn().mockResolvedValue({ id: 'p1' }),
-    findUnique: vi.fn().mockResolvedValue(null),
-  },
-  fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
-  message: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
-  // Gate do bot no retomar (default: bot LIGADO, sem escalação pra humano).
-  empresa: { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: true }) },
-  conversation: {
-    findUnique: vi.fn().mockResolvedValue({ botLigado: true, precisaHumano: false }),
-    // Quem ASSUME a conversa (C1/C2 por etapa, RB/RT por etiqueta) não recebe
-    // `conversationId` no contexto e resolve a conversa da EMPRESA pelo lead.
-    // Default null = sem conversa anterior (o caso dos testes de abertura).
-    findFirst: vi.fn().mockResolvedValue(null),
-    // Falha de IA sobe a conversa pro humano (precisaHumano) — sem depender de
-    // existir aresta "erro" no grafo.
-    update: vi.fn().mockResolvedValue({}),
-  },
-});
+// O UPDATE das variaveis do lead virou MERGE jsonb no servidor (`||`), pra nao
+// apagar o que outro escritor gravou entre a leitura e a escrita do turno. O
+// mock precisa ter a MESMA semantica, senao o teste valida uma escrita que nao
+// existe mais: ele acumula o patch e devolve o estado resultante, como o banco.
+const makePrisma = () => {
+  const banco: Record<string, unknown> = {};
+  /** Estado do lead DEPOIS de cada gravacao — o que o merge produziu. */
+  const gravacoesDeVariaveis: Array<Record<string, unknown>> = [];
+  return {
+    gravacoesDeVariaveis,
+    /** O lead ja tem variaveis antes do turno — o banco precisa saber disso. */
+    semearVariaveis: (v: Record<string, unknown>) => Object.assign(banco, v),
+    $queryRaw: vi.fn((_s: unknown, ...vals: unknown[]) => {
+      const patch = JSON.parse(String(vals[0])) as Record<string, unknown>;
+      Object.assign(banco, patch);
+      gravacoesDeVariaveis.push({ ...banco });
+      return Promise.resolve([{ variaveis: { ...banco } }]);
+    }),
+    $executeRaw: vi.fn().mockResolvedValue(1),
+    // #4: cancelamento cross-fluxo das AGUARDANDO usa raw (o filtro JSON do
+    // Prisma trata chave ausente como NULL — ver fluxo-event-bus).
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    lead: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
+    fluxoExecucao: {
+      // Execução VIVA por padrão: antes de falar, o nó confere se não foi
+      // cancelada no meio da chamada da IA (PAUSAR_IA). Mock devolvendo null
+      // significaria "execução sumiu" e calaria o bot em todos os testes.
+      findUnique: vi.fn().mockResolvedValue({ status: 'EM_EXECUCAO', contexto: {} }),
+      findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
+      // Claim atômico do turno (CAS) — default: claim sempre vence.
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      create: vi.fn().mockResolvedValue({ id: 'filha-1' }),
+    },
+    fluxoNo: { findUnique: vi.fn() },
+    // Turno que falha deixa rastro aqui (passo FALHOU) — antes não deixava nada.
+    fluxoExecucaoLog: { create: vi.fn().mockResolvedValue({}) },
+    // #23: prompt do nó tem que existir/estar ativo — default: existe.
+    botPrompt: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'p1' }),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+    fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
+    message: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
+    // Gate do bot no retomar (default: bot LIGADO, sem escalação pra humano).
+    empresa: { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: true }) },
+    conversation: {
+      findUnique: vi.fn().mockResolvedValue({ botLigado: true, precisaHumano: false }),
+      // Quem ASSUME a conversa (C1/C2 por etapa, RB/RT por etiqueta) não recebe
+      // `conversationId` no contexto e resolve a conversa da EMPRESA pelo lead.
+      // Default null = sem conversa anterior (o caso dos testes de abertura).
+      findFirst: vi.fn().mockResolvedValue(null),
+      // Falha de IA sobe a conversa pro humano (precisaHumano) — sem depender de
+      // existir aresta "erro" no grafo.
+      update: vi.fn().mockResolvedValue({}),
+    },
+  };
+};
 const makePersona = () => ({
   compilarSystemPromptConversa: vi.fn().mockResolvedValue('PROMPT BASE'),
   obterConfigBot: vi.fn().mockResolvedValue({
@@ -693,13 +711,9 @@ describe('ConversarIaService', () => {
         expect.objectContaining({ data: expect.objectContaining({ status: 'AGUARDANDO' }) }),
       );
       // E a classificação não se perde: vai pro lead e pro gatilho.
-      expect(prisma.lead.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            variaveis: expect.objectContaining({ classificacao: 'Interesse comercial' }),
-          }),
-        }),
-      );
+      expect(prisma.gravacoesDeVariaveis.at(-1)).toMatchObject({
+        classificacao: 'Interesse comercial',
+      });
       expect(bus.disparar).toHaveBeenCalledWith(
         'emp-1',
         'IA_CLASSIFICOU',
@@ -1510,8 +1524,7 @@ describe('ConversarIaService', () => {
         'Show! Vou te conectar com a diretoria.',
         { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0$/) },
       );
-      const upd = prisma.lead.update.mock.calls[0][0];
-      expect(upd.data.variaveis).toMatchObject({
+      expect(prisma.gravacoesDeVariaveis[0]).toMatchObject({
         classificacao: 'Forte Sinergia',
         canal: 'distribuidor',
       });
@@ -1549,8 +1562,7 @@ describe('ConversarIaService', () => {
       await svc.retomar('exec-1', 'conv-1', 'neca de pitibiribas');
 
       // Gravou a classificacao_final DESTE turno (não valor velho) + dispara o gatilho
-      const upd = prisma.lead.update.mock.calls.at(-1)?.[0];
-      expect(upd.data.variaveis).toMatchObject({
+      expect(prisma.gravacoesDeVariaveis.at(-1)).toMatchObject({
         classificacao_final: 'Sem Sinergia',
         classificacao: 'Sem Sinergia',
       });
@@ -1585,8 +1597,7 @@ describe('ConversarIaService', () => {
 
       await svc.retomar('exec-1', 'conv-1', 'tira meu numero da sua lista de contatos');
 
-      const upd = prisma.lead.update.mock.calls.at(-1)?.[0];
-      expect(upd.data.variaveis).toMatchObject({ pedido_remocao: 'sim' });
+      expect(prisma.gravacoesDeVariaveis.at(-1)).toMatchObject({ pedido_remocao: 'sim' });
       expect(queue.add).toHaveBeenCalledWith(
         'step',
         { execucaoId: 'exec-1', noId: 'no-2' },
@@ -1615,8 +1626,9 @@ describe('ConversarIaService', () => {
 
       await svc.retomar('exec-1', 'conv-1', 'beibe beibe du biruleibe');
 
-      const upd = prisma.lead.update.mock.calls.at(-1)?.[0];
-      expect(upd.data.variaveis).toMatchObject({ classificacao_final: 'Sem Sinergia' });
+      expect(prisma.gravacoesDeVariaveis.at(-1)).toMatchObject({
+        classificacao_final: 'Sem Sinergia',
+      });
       expect(queue.add).toHaveBeenCalledWith(
         'step',
         { execucaoId: 'exec-1', noId: 'no-2' },
@@ -1892,6 +1904,7 @@ describe('ConversarIaService — captura do turno chega no lead na hora', () => 
       id: 'no-ia',
       config: { promptId: 'p1', variaveisGravadas: ['tensao_rede', 'corrente_quadro'] },
     });
+    prisma.semearVariaveis(variaveisDoLead);
     prisma.lead.findFirst.mockResolvedValue({
       contatoTelefone: '11999990000',
       variaveis: variaveisDoLead,
@@ -1903,10 +1916,7 @@ describe('ConversarIaService — captura do turno chega no lead na hora', () => 
     });
   };
 
-  const variaveisGravadas = () =>
-    prisma.lead.update.mock.calls.map(
-      (c) => (c[0] as { data: { variaveis: unknown } }).data.variaveis,
-    );
+  const variaveisGravadas = () => prisma.gravacoesDeVariaveis;
 
   beforeEach(() => {
     prisma = makePrisma();
@@ -1952,7 +1962,7 @@ describe('ConversarIaService — captura do turno chega no lead na hora', () => 
 
     await svc.retomar('exec-1', 'conv-1', 'entendi');
 
-    expect(prisma.lead.update).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('turno sem captura nova não escreve no lead', async () => {
@@ -1960,7 +1970,7 @@ describe('ConversarIaService — captura do turno chega no lead na hora', () => 
 
     await svc.retomar('exec-1', 'conv-1', 'isso mesmo');
 
-    expect(prisma.lead.update).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('variável fora da allowlist do nó continua sendo descartada', async () => {
