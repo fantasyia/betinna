@@ -2593,6 +2593,49 @@ export class ConversarIaService implements OnModuleDestroy {
         ? (p.leadVariaveis as Record<string, unknown>)
         : {};
     const gravadas = filtrarVariaveisGravaveis(p.gravaveis, p.variaveisTurno ?? {});
+
+    // ── O TURNO DECLAROU VARIÁVEIS E NÃO TROUXE NENHUMA ──
+    //
+    // Medido em 11/09, 1 vez em 5 rodadas: o modelo devolveu `variaveis: {}` —
+    // nem os campos com enum, nem os livres. O portão seguinte leu vazio e
+    // mandou o TEXTO FIXO perguntando a tensão que a pessoa tinha acabado de
+    // dizer. Do lado do cliente é indistinguível do defeito original.
+    //
+    // ⚠️ O que torna isso perigoso não é a frequência — é a INVISIBILIDADE: o
+    // passo fecha VERDE, sem erro, sem log. O único rastro é o `{}`, e `{}`
+    // também é o estado legítimo de um turno em que não havia o que extrair.
+    // Ninguém consegue separar "não extraiu" de "não era pra extrair".
+    //
+    // Esta linha não conserta nada. Ela torna o caso CONTÁVEL — e a diferença
+    // entre 1-em-5 e 1-em-50 é a diferença entre conviver e consertar. Mesma
+    // jogada dos cronômetros de fase, que foi o que destravou a discussão da
+    // janela de rajada.
+    //
+    // 📌 O DISCRIMINADOR importa: turno que volta vazio quando o lead JÁ tem
+    // todos os campos é o caso normal (não havia novidade). O suspeito é voltar
+    // vazio com o lead ainda sem nada — que é a primeira passagem, exatamente
+    // onde a extração é a razão de o nó existir. Sem separar os dois, a linha
+    // apitaria em todo "ok, obrigado" e viraria ruído que ninguém lê.
+    //
+    // ⚠️ Conta VALOR, não chave. `filtrarVariaveisGravaveis` devolve as chaves
+    // da allowlist, e o modelo costuma repetir o schema com os campos em branco
+    // (o comentário logo abaixo registra isso). Contar chave faria justamente o
+    // caso mais comum — `{tensao_rede: ""}` — passar invisível, que é o oposto
+    // do que esta linha existe pra fazer.
+    const comValor = Object.values(gravadas).filter(
+      (v) => v != null && String(v).trim() !== '',
+    ).length;
+    if (p.gravaveis.length > 0 && comValor === 0) {
+      const jaTinha = p.gravaveis.filter((k) => {
+        const v = atuais[k];
+        return v != null && String(v).trim() !== '';
+      }).length;
+      this.logger.warn(
+        `CONVERSAR_IA: turno declarou ${p.gravaveis.length} variáveis e gravou 0 ` +
+          `(lead já tinha ${jaTinha}/${p.gravaveis.length}) — exec ${p.execucaoId}` +
+          (jaTinha === 0 ? ' ⚠️ PRIMEIRA passagem: o portão seguinte vai ler vazio' : ''),
+      );
+    }
     // Vazio e string vazia não apagam o que já existe: a IA repetir o schema
     // com os campos em branco é comum, e sobrescrever com nada apagaria a
     // captura de um turno anterior.
