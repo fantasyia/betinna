@@ -165,6 +165,26 @@ describe('IaAFrenteDiagnosticoService', () => {
       const r = await svc.medir(ADMIN, { fluxoId: 'f-1', leadId: 'lead-1' });
       expect(r.veredito).toMatch(/A FLAG NÃO PEGOU/);
     });
+
+    /**
+     * 🔴 A armadilha de 11/09: a variável ficou SPLIT em produção (worker=false,
+     * api=true) e a rota, que roda na api, respondia `true` enquanto o motor
+     * agia como desligado. Quem lesse o campo concluiria o OPOSTO.
+     *
+     * O veredito NÃO pode afirmar o estado da flag — ele descreve o que os dois
+     * guards responderam, que é o que a rota realmente sabe.
+     */
+    it('o veredito NÃO afirma "flag LIGADA/DESLIGADA" — ele não sabe isso', async () => {
+      const r = await svc.medir(ADMIN, { fluxoId: 'f-1', leadId: 'lead-1' });
+      expect(r.veredito).not.toMatch(/Flag está (LIGADA|DESLIGADA)/);
+    });
+
+    it('o campo `flag` diz de QUAL processo é o valor, e avisa que quem decide é o worker', async () => {
+      const r = await svc.medir(ADMIN, { fluxoId: 'f-1', leadId: 'lead-1' });
+      expect(r.flag).toHaveProperty('processo');
+      expect(r.flag).toHaveProperty('valorNesteProcesso');
+      expect(r.flag.aviso).toMatch(/WORKER/);
+    });
   });
 
   describe('as recusas de entrada', () => {
@@ -206,7 +226,7 @@ describe('IaAFrenteDiagnosticoService', () => {
 
     const r = await desligada.medir(ADMIN, { fluxoId: 'f-1', leadId: 'lead-1' });
 
-    expect(r.flagLigada).toBe(false);
+    expect(r.flag.valorNesteProcesso).toBe(false);
     // mesmo desligada, o iaAFrente foi perguntado e respondeu
     expect(r.durante.iaAFrente).toBe(true);
     expect(r.durante.guardComFlag).toBe(true);

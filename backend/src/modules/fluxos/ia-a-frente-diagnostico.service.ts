@@ -82,7 +82,7 @@ export class IaAFrenteDiagnosticoService {
 
     const posicao = await this.resolverPosicao(fluxo.id, dto.noId);
     const alvo = { conversationId: dto.conversationId, leadId: dto.leadId };
-    const flagLigada = Boolean(this.env.get('FLUXO_IA_A_FRENTE'));
+    const flag = this.flagDesteProcesso();
 
     const antes = await this.perguntar(empresaId, alvo);
 
@@ -108,10 +108,41 @@ export class IaAFrenteDiagnosticoService {
     return {
       fluxo: { id: fluxo.id, nome: fluxo.nome },
       posicao,
-      flagLigada,
+      flag,
       antes,
       durante,
-      veredito: this.veredito(antes, durante, posicao, flagLigada),
+      veredito: this.veredito(antes, durante, posicao),
+    };
+  }
+
+  /**
+   * 🔴 A flag que esta rota enxerga é a DESTE PROCESSO, e ele quase nunca é o
+   * que decide.
+   *
+   * Em produção a rota HTTP roda na **api**, e o `FluxoExecutorProcessor` — que
+   * é quem avalia a CONDICAO do fluxo e portanto consulta o `iaAFrente` de
+   * verdade — só é registrado quando `RODAR_BACKGROUND` é true, ou seja **só no
+   * worker** (`shared/utils/service-type.ts`).
+   *
+   * ⚠️ Isto não é teórico: em 11/09 a variável ficou SPLIT em produção por
+   * horas — `worker=false`, `api=true` — porque a segunda chamada de
+   * `set_variables` falhou no meio. A rota respondia `flagLigada: true` enquanto
+   * o motor agia como desligado. Quem lesse o campo concluiria o OPOSTO do que
+   * estava acontecendo.
+   *
+   * Por isso o campo mudou de `flagLigada` (que soava global) pra um objeto que
+   * diz DE QUEM é o valor, e carrega o aviso junto. A MEDIÇÃO não depende disto
+   * — os dois guards são consultados sempre —, mas a leitura do resultado sim.
+   */
+  private flagDesteProcesso(): FlagDoProcesso {
+    const processo = process.env.SERVICE_TYPE ?? 'desconhecido';
+    return {
+      valorNesteProcesso: Boolean(this.env.get('FLUXO_IA_A_FRENTE')),
+      processo,
+      aviso:
+        `Este é o valor da flag no processo "${processo}". Quem decide a CONDICAO ` +
+        'do fluxo é o WORKER (o executor só roda lá). Confira a variável nos DOIS ' +
+        'serviços antes de concluir qualquer coisa sobre o comportamento em produção.',
     };
   }
 
@@ -229,7 +260,7 @@ export class IaAFrenteDiagnosticoService {
     };
   }
 
-  private veredito(antes: Sinais, durante: Sinais, posicao: Posicao, flagLigada: boolean): string {
+  private veredito(antes: Sinais, durante: Sinais, posicao: Posicao): string {
     if (!posicao.alcancaNoDeIa) {
       return (
         `INCONCLUSIVO: de "${posicao.noTitulo}" não se alcança nenhum nó CONVERSAR_IA, ` +
@@ -246,7 +277,8 @@ export class IaAFrenteDiagnosticoService {
     if (durante.guardComFlag && !durante.guardSemFlag) {
       return (
         `A FLAG FAZ DIFERENÇA NESTE ESTADO: com ela o gatilho proativo seria barrado; ` +
-        `sem ela passaria e falaria por cima. Flag está ${flagLigada ? 'LIGADA' : 'DESLIGADA'}.`
+        'sem ela passaria e falaria por cima. (Veja o campo `flag` pro estado — e leia o aviso: ' +
+        'o valor que vale é o do WORKER, não o deste processo.)'
       );
     }
     if (!durante.guardComFlag) {
@@ -275,10 +307,17 @@ interface Posicao {
   alcancaNoDeIa: boolean;
 }
 
+interface FlagDoProcesso {
+  valorNesteProcesso: boolean;
+  processo: string;
+  aviso: string;
+}
+
 export interface ResultadoDiagnostico {
   fluxo: { id: string; nome: string };
   posicao: Posicao;
-  flagLigada: boolean;
+  /** A flag NESTE processo — leia o `aviso`: quem decide é o worker. */
+  flag: FlagDoProcesso;
   /** Antes de criar a execução sintética — a linha de base da conversa. */
   antes: Sinais;
   /** Com a execução caminhando rumo ao nó de IA. */
