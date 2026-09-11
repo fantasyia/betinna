@@ -173,20 +173,39 @@ describe('instrucaoVariaveis', () => {
  * Foi a divergência entre eles que criou o buraco — e ela não aparece em teste
  * de comportamento, porque cada caminho isolado funciona.
  */
-describe('os dois turnos instruem pelo mesmo lugar', () => {
-  it('o service chama instrucaoVariaveis no OPENER e no turno de RESPOSTA', async () => {
+describe('onde a instrução textual das variáveis é usada', () => {
+  /**
+   * 🔴 Em 11/09 esta guarda exigia DUAS chamadas — opener e turno de resposta —
+   * e a do opener foi REVERTIDA: a contagem no log de produção saiu 2/2 antes
+   * da mudança e 2/5 depois. n pequeno, correlação não é causa, mas o corte cai
+   * no commit e a hipótese (opener já faz duas coisas; somar instrução gasta
+   * atenção no lado errado) é plausível o bastante pra medir sem ela.
+   *
+   * ⚠️ E a guarda antiga passou VERDE depois do revert, porque o comentário que
+   * eu deixei no lugar repetia a chamada em texto,
+   * e a asserção casava com o comentário. **Teste que lê fonte tem que ignorar
+   * comentário** — senão ele mede o que está escrito, não o que roda.
+   */
+  const semComentarios = (src: string): string =>
+    src
+      .split(String.fromCharCode(10))
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+      .join(String.fromCharCode(10));
+
+  it('só o turno de RESPOSTA instrui hoje — o opener está revertido e sob medição', async () => {
     const fonte = await import('node:fs').then((fs) =>
       fs.readFileSync('src/modules/fluxos/conversar-ia.service.ts', 'utf8'),
     );
-    // Só as CHAMADAS: o import é multi-linha (`instrucaoVariaveis,` sem
-    // parêntese), então não entra na conta.
-    const chamadas = fonte.split('instrucaoVariaveis(').length - 1;
+    const codigo = semComentarios(fonte);
+    const chamadas = codigo.split('instrucaoVariaveis(').length - 1;
+
     expect(
       chamadas,
-      'esperado 2 chamadas — uma no opener, uma no turno de resposta. Se caiu pra 1, ' +
-        'um dos turnos voltou a não instruir o modelo, que foi como o buraco nasceu.',
-    ).toBe(2);
-    expect(fonte).toContain('instrucaoVariaveis(declaradasAbertura)');
-    expect(fonte).toContain('instrucaoVariaveis(declaradas)');
+      'esperado 1 chamada (turno de resposta). 2 = o opener voltou sem a medição ' +
+        'que decidia; 0 = o turno de resposta também perdeu a instrução, e aí o ' +
+        'schema passa a garantir só a forma, nunca a escolha.',
+    ).toBe(1);
+    expect(codigo).toContain('instrucaoVariaveis(declaradas)');
+    expect(codigo).not.toContain('instrucaoVariaveis(declaradasAbertura)');
   });
 });

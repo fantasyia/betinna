@@ -1261,18 +1261,33 @@ export class ConversarIaService implements OnModuleDestroy {
     const opener =
       (reativo
         ? (assumindoConversa ? INSTRUCAO_ASSUMINDO : INSTRUCAO_RESPOSTA_COMPORTAMENTO) +
-          INSTRUCAO_CLASSIFICACAO +
-          // ⚠️ Só no REATIVO, que é onde o contrato JSON existe: na abordagem
-          // FRIA não há `responseFormat`, e pedir variáveis num turno sem
-          // schema só polui o prompt com instrução que não tem onde aterrissar.
+          INSTRUCAO_CLASSIFICACAO
+        : // 🔴 REVERTIDO em 11/09 — aqui ficava a instrução textual das
+          // variáveis (o mesmo bloco que o turno de RESPOSTA usa).
           //
-          // Este bloco FALTAVA aqui. O turno de RESPOSTA instruía, o de
-          // ABERTURA montava só o schema — e o schema garante a FORMA, não a
-          // escolha. Apareceu quando o acolhimento do C1 passou a capturar o
-          // que a pessoa diz na primeira mensagem (11/09): justamente o turno
-          // que não instruía.
-          instrucaoVariaveis(declaradasAbertura)
-        : INSTRUCAO_OPENER) +
+          // O raciocínio que pôs a instrução aqui era bom: o turno de RESPOSTA
+          // instruía o modelo sobre as variáveis, o de ABERTURA montava só o
+          // schema, e schema garante a FORMA, não a ESCOLHA. Simétrico, óbvio,
+          // e eu escrevi "deveria só melhorar".
+          //
+          // O campo discordou. Contagem por build, no log de produção:
+          //
+          //   ANTES (2 rodadas)   extraiu 5 campos · 5 campos          2/2
+          //   DEPOIS (5 rodadas)  0 · 5 · 5 · 0 · 0                    2/5
+          //
+          // ⚠️ n pequeno, e correlação não é causa — o não-determinismo do
+          // modelo já explicou uma falha antes desta mudança existir. Mas o
+          // corte cai exatamente no commit, e a hipótese plausível é que o
+          // opener é um prompt que já faz duas coisas (acolher E extrair):
+          // somar instrução gasta atenção no lado errado, e o modelo larga o
+          // `variaveis` pra caprichar na `resposta`.
+          //
+          // 📌 Fica revertido enquanto a taxa é medida com o instrumento
+          // (`turno declarou N variáveis e gravou 0`). Se a taxa NÃO melhorar,
+          // o commit está inocente e volta — com o número que faltou da
+          // primeira vez. O turno de RESPOSTA mantém a instrução: lá ela nunca
+          // foi suspeita, e é o caminho onde o prompt faz uma coisa só.
+          INSTRUCAO_OPENER) +
       (primeiro
         ? // O modelo julga isso bem — mas só se ENXERGAR. Antes recebia o token
           // solto ("Electro") e uma ORDEM ("use na saudação"): não tinha como
