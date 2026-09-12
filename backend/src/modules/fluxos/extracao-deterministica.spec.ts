@@ -598,6 +598,19 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
       expect(perfilNaFrase('moro aqui e queimou tudo')).toBeNull();
     });
 
+    /**
+     * Varredura 2 (12/09): a 1ª versão abstinha em 'moro num condomínio' —
+     * silenciava o caso VERDADEIRO enquanto 'minha sogra mora num condomínio'
+     * (3ª pessoa, classe 2) passava. Morar só conflita com comércio.
+     */
+    it.each([
+      ['moro num condominio', 'condominio'],
+      ['moro num predio com sindico', 'condominio'],
+      ['moro e o carregador fica na garagem', 'carro_eletrico'],
+    ])('compatível, não conflito: "%s" → %s', (f, esperado) => {
+      expect(perfilNaFrase(f)).toBe(esperado);
+    });
+
     it('com substantivo de residência continua preenchendo', () => {
       expect(perfilNaFrase('moro em apartamento')).toBe('residencia');
       expect(perfilNaFrase('moro numa casa')).toBe('residencia');
@@ -613,6 +626,7 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
     it('os compostos conhecidos continuam resolvendo', () => {
       expect(perfilNaFrase('casa de praia')).toBe('residencia');
       expect(perfilNaFrase('casa de racao')).toBe('comercio');
+      expect(perfilNaFrase('casa de shows')).toBe('comercio');
     });
   });
 

@@ -340,7 +340,7 @@ const AMBIGUO = '__ambiguo__';
 const PERFIL_FRASES: Array<[RegExp, string]> = [
   // compostos que carregam 'casa' — resolvidos primeiro e mascarados
   [rx('\\bcasa de (bolos?|carnes?|ra[çc][ãa]o|festas?|massas?|p[ãa]es|sucos?)\\b'), 'comercio'],
-  [rx('\\bcasa noturna\\b'), 'comercio'],
+  [rx('\\bcasa (noturna|de shows?)\\b'), 'comercio'],
   [rx('\\bcasa de (praia|campo|veraneio|fim de semana)\\b'), 'residencia'],
   // ⚠️ Qualquer OUTRO 'casa de/da/do X' abstém. A varredura de 12/09 achou
   // 'casa de máquinas' (é o quadro do PRÉDIO) caindo em residência porque o
@@ -370,7 +370,7 @@ const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
   [rx('\\b(carregador(es)?|eletroposto|wallbox|recarga)\\b'), 'carro_eletrico'],
 ];
 /**
- * Verbo de morar é SINAL de residência, não categoria: sozinho não preenche
+ * Verbo de morar é SINAL, não categoria: sozinho não preenche
  * ('moro aqui' não diz o que é o lugar), mas conta pra abstenção. Sem isto,
  * 'tenho uma loja e moro em cima' virava comércio — a abstenção só lia
  * substantivo, e 'moro' é verbo. Achado da varredura de 12/09.
@@ -389,7 +389,10 @@ export function perfilNaFrase(texto: string): string | null {
   }
   for (const [re, cat] of PERFIL_PALAVRAS) if (re.test(resto)) categorias.add(cat);
   if (categorias.has(AMBIGUO)) return null;
-  if (PERFIL_MORAR.test(resto) && !categorias.has('residencia')) return null;
+  // 'morar' só CONFLITA com comércio. Com condomínio e carro elétrico é
+  // compatível — 'moro num condomínio' É o jeito de quem mora em condomínio
+  // se descrever, e a 1ª versão desta regra abstinha aí (varredura 2, 12/09).
+  if (PERFIL_MORAR.test(resto) && categorias.has('comercio')) return null;
   // Duas categorias = ambiguidade real. A rede não desempata.
   if (categorias.size !== 1) return null;
   return [...categorias][0];
