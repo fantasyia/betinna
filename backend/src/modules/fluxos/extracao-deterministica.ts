@@ -55,53 +55,99 @@ const PISTA_TENSAO =
 const PISTA_CORRENTE = /(disjuntor|geral|quadro|corrente|amp[eè]?r|chave|breaker)/i;
 
 /**
- * O que pode seguir um número SOLTO sem desmenti-lo como resposta.
+ * Palavras que podem acompanhar a resposta sem mudar o que o número É.
  *
- * 🔴 Sem isto, o convite da pergunta aceitava qualquer número solto — e a
- * varredura de 24 redações (11/09) achou dois falsos positivos:
+ * É o vocabulário que define "a mensagem inteira é a resposta" — ver
+ * `mensagemEhSoAResposta`, que explica por que a régua é essa.
  *
- * ```
- * "sao 220 clientes por dia"  → 220V   🔴
- * "moro no 220 da rua"        → 220V   🔴
- * ```
+ * ⚠️ Lista deliberadamente CURTA. Cada palavra a mais aqui alarga a porta por
+ * onde entra número solto, e foi por essa porta que "sao 220 clientes por dia" e
+ * "o numero do predio e 220" viraram 220V nas duas varreduras de 11/09.
  *
- * A checagem de unidade não pega esses: ela veta "litros" e "metros", mas
- * "clientes" e "da rua" não são unidade de nada.
- *
- * ⚠️ São frases implausíveis como resposta a "qual o padrão de energia?" — e
- * essa era a única proteção. **Implausível não é impossível**, e o dano é
- * assimétrico: gravar 220V errado manda a pessoa pra uma calculadora
- * dimensionada na tensão errada, e ela não tem como saber. É pior que
- * perguntar de novo.
- *
- * Então a resposta tem que ACABAR no número, ou seguir com palavra que não
- * muda o que ele é: "deve ser 220 mesmo", "380 trifasica", "tem um de 60 ali".
+ * ⛔ Não acrescente substantivo que possa ser SUJEITO da frase ("prédio",
+ * "andar", "cliente"): é justamente ele que denuncia que o número é de outro
+ * assunto.
  */
-const DEPOIS_NEUTRO = new RegExp(
-  [
-    'mesmo',
-    'a[ií]',
-    'aqui',
-    'ali',
-    'ent[ãa]o',
-    'n[ée]',
-    'sim',
-    'ok',
-    'certo',
-    'acho',
-    'volts?',
-    'v',
-    'a',
-    'amp\\w*',
-    '(tri|bi|mono)f[áa]sic\\w*',
-  ]
-    .map((x) => '^(?:' + x + ')\\b')
-    .join('|'),
+const SO_RECHEIO = new RegExp(
+  '^(?:' +
+    [
+      'e',
+      'eh',
+      'é',
+      'de',
+      'do',
+      'da',
+      'o',
+      'os',
+      'as',
+      'a',
+      'aqui',
+      'a[ií]',
+      'ali',
+      'em',
+      'na',
+      'no',
+      'casa',
+      'acho',
+      'que',
+      'deve',
+      'ser',
+      'mesmo',
+      'sim',
+      'ok',
+      'certo',
+      'ent[ãa]o',
+      'n[ée]',
+      'tem',
+      'um',
+      'uma',
+      'uns',
+      'volts?',
+      'v',
+      'amp\\w*',
+      '(tri|bi|mono)f[áa]sic\\w*',
+      'rede',
+      'tens[ãa]o',
+      'padr[ãa]o',
+      'energia',
+      'tomada',
+      'normal',
+    ].join('|') +
+    ')$',
   'i',
 );
 
-/** O que sobra depois do número, sem a pontuação que só fecha a frase. */
-const restoDepois = (depois: string): string => depois.replace(new RegExp('^[\\s.,;:!?)-]+'), '');
+/**
+ * 🔴 A mensagem INTEIRA é a resposta, ou o número está no meio de outro assunto?
+ *
+ * A regra anterior olhava só o que vinha DEPOIS do número, e por isso deixava
+ * passar o caso que a varredura de 19 frases achou (11/09):
+ *
+ * ```
+ * "o numero do predio e 220"   → 220V   🔴   ← acaba no número!
+ * "somos 380 no predio"        → 380V   🔴
+ * "trabalho aqui ha 127 dias"  → 127V   🔴
+ * ```
+ *
+ * ⚠️ **O sinal não está depois do número, está antes** — *"o padrão é 220"* e
+ * *"o número do prédio é 220"* têm exatamente a mesma forma no fim. E enumerar
+ * os substantivos que competem (prédio, andar, dias, clientes, funcionários…) é
+ * lista infinita: sempre falta um, e o que falta grava errado calado.
+ *
+ * Então a régua inverte. O bot fez uma pergunta FECHADA, e a resposta natural é
+ * curta: tirando o número, o que sobra tem que ser só enchimento. Frase que
+ * carrega sujeito próprio não é resposta — é outro assunto com um número dentro.
+ *
+ * 📌 Custa alguns legítimos verbosos ("220 na tomada da cozinha"), e o custo é
+ * aceitável: ali a rede se cala e o MODELO responde, que é o caminho normal.
+ * Perder uma captura é perguntar de novo; gravar errado é dimensionar errado sem
+ * ninguém saber.
+ */
+function mensagemEhSoAResposta(texto: string, num: string): boolean {
+  const semNumero = texto.replace(num, ' ');
+  const palavras = semNumero.split(new RegExp('[^\\p{L}]+', 'u')).filter(Boolean);
+  return palavras.every((p) => SO_RECHEIO.test(p));
+}
 
 /** Janela de contexto à esquerda do número onde uma pista ainda conta. */
 const JANELA = 32;
@@ -190,6 +236,7 @@ function* numerosComContexto(texto: string): Generator<{
  * "freezer de 220 litros" deixou de virar 220V.
  */
 export function tensaoNaFrase(texto: string, aceitarSolto = false): Achado | null {
+  const achados: Achado[] = [];
   for (const { num, antes, depois } of numerosComContexto(texto)) {
     if (!(TENSOES as readonly string[]).includes(num)) continue;
     if (NAO_E_TENSAO.test(depois)) continue;
@@ -197,12 +244,25 @@ export function tensaoNaFrase(texto: string, aceitarSolto = false): Achado | nul
     const temPista = PISTA_TENSAO.test(antes);
     if (!temUnidade && !temPista) {
       if (!aceitarSolto) continue;
-      const resto = restoDepois(depois);
-      if (resto !== '' && !DEPOIS_NEUTRO.test(resto)) continue;
+      if (!mensagemEhSoAResposta(texto, num)) continue;
     }
-    return { valor: num, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() };
+    achados.push({ valor: num, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() });
   }
-  return null;
+  // ── DUAS TENSÕES DIFERENTES = a pessoa NÃO decidiu, e a rede também não ──
+  //
+  // 🔴 Medido em 11/09: `"110 ou 220, nao sei bem"` gravava 127V. A pessoa está
+  // literalmente dizendo que não sabe, e o resultado era uma calculadora
+  // dimensionada num chute — **pior que não gravar nada**, porque ninguém fica
+  // sabendo que foi chute.
+  //
+  // ⚠️ E `"tem 220 e 380 aqui"` não é frase adversarial: quadro de comércio com
+  // dois padrões é caso real. Escolher o primeiro é inventar uma decisão que a
+  // frase não tomou.
+  //
+  // Calando, o campo fica vazio ou `nao sei` — e o portão já deixa `nao sei`
+  // passar pro link, que abre com a tensão em aberto pra ela escolher.
+  if (new Set(achados.map((a) => a.valor)).size > 1) return null;
+  return achados[0] ?? null;
 }
 
 /**
@@ -212,6 +272,7 @@ export function tensaoNaFrase(texto: string, aceitarSolto = false): Achado | nul
  * geral é 63"). E a tensão VETA — "220V" nunca vira corrente de 220A.
  */
 export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | null {
+  const achados: Achado[] = [];
   for (const { num, antes, depois } of numerosComContexto(texto)) {
     if (NAO_E_CORRENTE.test(depois)) continue;
     const n = Number(num);
@@ -220,8 +281,7 @@ export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | n
     const temPista = PISTA_CORRENTE.test(antes);
     if (!temUnidade && !temPista) {
       if (!aceitarSolto) continue;
-      const resto = restoDepois(depois);
-      if (resto !== '' && !DEPOIS_NEUTRO.test(resto)) continue;
+      if (!mensagemEhSoAResposta(texto, num)) continue;
     }
     // Número que é claramente a tensão não é a corrente, mesmo com "quadro"
     // ou "disjuntor" na mesma frase — e eles costumam vir na mesma frase.
@@ -234,9 +294,12 @@ export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | n
     // mesma família de defeito que os contratos desalinhados de `tensao_rede`:
     // o nó que monta o link leria `63A` e poderia mandar `corrente=63A`, que a
     // calculadora não parseia — e só no caminho raro em que a rede dispara.
-    return { valor: `${n}`, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() };
+    achados.push({ valor: `${n}`, trecho: (antes.slice(-16) + num + depois.slice(0, 4)).trim() });
   }
-  return null;
+  // Mesma regra da tensão: duas correntes diferentes na frase é ambiguidade, e a
+  // rede não desempata ("tem um de 63 e outro de 40").
+  if (new Set(achados.map((a) => a.valor)).size > 1) return null;
+  return achados[0] ?? null;
 }
 
 /**

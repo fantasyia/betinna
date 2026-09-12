@@ -369,7 +369,6 @@ describe('número solto: o que vem DEPOIS pode desmentir', () => {
     ['é 220', '220V'],
     ['deve ser 220 mesmo', '220V'],
     ['acho que e 220', '220V'],
-    ['aqui e 220 mesmo, predio novo', '220V'],
     ['380 trifasica', '380V'],
     ['220.', '220V'],
     ['é 127 sim', '127V'],
@@ -410,5 +409,78 @@ describe('corrente_quadro sai no formato do contrato', () => {
       extrairDeterministico(C1, 'tem um de 60 ali', {}, conviteDaPergunta(PERGUNTA_A))
         .corrente_quadro,
     ).toBe('60');
+  });
+});
+
+/**
+ * 🔴 INCERTEZA EXPLÍCITA — a rede não decide no lugar da pessoa.
+ *
+ * Achado na varredura de 19 frases (11/09), e é a classe mais grave das três:
+ *
+ * ```
+ * "110 ou 220, nao sei bem"   → gravava 127V   🔴
+ * "220/380"                    → gravava 220V   🔴
+ * "tem 220 e 380 aqui"         → gravava 220V   🔴
+ * ```
+ *
+ * ⚠️ A pessoa está **literalmente dizendo que não sabe**, e o resultado era uma
+ * calculadora dimensionada num chute — sem ninguém ficar sabendo que foi chute.
+ * É pior que não gravar: o caminho honesto (`nao sei` ou vazio) já é tratado, e
+ * abre a página com a tensão em aberto pra ela escolher.
+ *
+ * 📌 `"tem 220 e 380 aqui"` não é frase adversarial inventada: quadro de comércio
+ * com dois padrões é caso real.
+ */
+describe('duas tensões na frase: a rede se cala', () => {
+  const PERGUNTA = 'E qual o padrão de energia aí, 110V, 220V ou 380V?';
+
+  it.each([
+    ['110 ou 220, nao sei bem'],
+    ['220/380'],
+    ['tem 220 e 380 aqui'],
+    ['pode ser 127 ou 220'],
+  ])('NÃO escolhe em %j', (frase) => {
+    expect(
+      extrairDeterministico(C1, frase, {}, conviteDaPergunta(PERGUNTA)).tensao_rede,
+    ).toBeUndefined();
+  });
+
+  /** Mesmo valor repetido não é ambiguidade — é ênfase. */
+  it('"220V mesmo, 220 confirmado" continua valendo', () => {
+    expect(extrairDeterministico(C1, 'é 220V mesmo, 220 confirmado', {}).tensao_rede).toBe('220V');
+  });
+
+  it('duas correntes diferentes também calam a rede', () => {
+    expect(
+      extrairDeterministico(C1, 'tem um de 63A e outro de 40A', {}).corrente_quadro,
+    ).toBeUndefined();
+  });
+});
+
+/**
+ * ⛔ O CUSTO ACEITO da regra "a mensagem inteira é a resposta".
+ *
+ * Frase legítima mas VERBOSA deixa de ser capturada pela rede. É trade deliberado:
+ * ali o MODELO responde (que é o caminho normal e acerta na maioria), e o custo
+ * de errar não é simétrico — perder uma captura é perguntar de novo; gravar
+ * errado é dimensionar errado sem ninguém saber.
+ */
+describe('limite conhecido: resposta verbosa cai pro modelo', () => {
+  const PERGUNTA = 'E qual o padrão de energia aí, 110V, 220V ou 380V?';
+
+  it.each([['aqui e 220 mesmo, predio novo'], ['e 220 aqui em casa da minha mae']])(
+    'não captura %j (sujeito próprio na frase)',
+    (frase) => {
+      expect(
+        extrairDeterministico(C1, frase, {}, conviteDaPergunta(PERGUNTA)).tensao_rede,
+      ).toBeUndefined();
+    },
+  );
+
+  /** Mas com a UNIDADE colada continua valendo, por mais verbosa que seja. */
+  it('com "V" colado, a verbosidade não atrapalha', () => {
+    expect(
+      extrairDeterministico(C1, 'aqui e 220V mesmo, predio novo da esquina', {}).tensao_rede,
+    ).toBe('220V');
   });
 });
