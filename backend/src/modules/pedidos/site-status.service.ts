@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { HttpClientService } from '@shared/http/http-client.service';
+import { HttpClientError } from '@shared/http/http-client.types';
 
 export interface StatusParaSite {
   numeroSite: string;
@@ -26,6 +27,15 @@ export interface PedidoParaSite {
  * `true` = o site aceitou agora. `false` = falhou e ficou registrado pra reenvio.
  */
 export type ResultadoSincronizacao = boolean | null;
+
+/**
+ * O resultado de UMA tentativa de avisar o site.
+ *
+ * ⚠️ Era um `boolean`, e o booleano era o problema: ele não distingue "o site
+ * teve um soluço, tenta de novo" de "o site nunca vai aceitar isto". Quem só
+ * sabe que falhou só tem uma opção — reenviar pra sempre.
+ */
+export type ResultadoNotificacao = { ok: true } | { ok: false; transitorio: boolean };
 
 /**
  * Situação do Betinna → o vocabulário que o SITE fala.
@@ -89,10 +99,33 @@ export class SiteStatusService {
     return this.env.get('SITE_PEDIDOS_STATUS_SECRET') ?? '';
   }
 
-  async notificar(dados: StatusParaSite): Promise<boolean> {
-    if (!this.configurado) return false;
+  /**
+   * ⚠️ TRANSITÓRIO × PERMANENTE — a distinção que decide se o retry faz sentido.
+   *
+   * 🔴 Sem ela, QUALQUER falha entrava na fila do `SiteStatusRetryJob`, que roda
+   * de minuto em minuto e não tem contador de tentativas nem backoff. Um pedido
+   * que falhasse por motivo permanente — segredo errado (401), pedido que não
+   * existe no site (404) — seria reenviado **para sempre**, martelando o site e
+   * enchendo o log com um erro que nunca vai parar sozinho.
+   *
+   * 📌 O arquivo já acertava este princípio logo abaixo, com todas as letras:
+   * *"reenviar eternamente algo que o site nunca vai aceitar é um loop mudo"* —
+   * mas só para status sem equivalente. O erro HTTP ficou de fora.
+   *
+   * O que conta como transitório é o que o site (ou a rede) diz que vale repetir:
+   * `503` do soluço de banco (que o site devolve de propósito, com
+   * `Retry-After: 30`), `429` de throttle, `5xx` em geral, e `status 0` — que é
+   * como o `HttpClientService` marca timeout e falha de rede.
+   */
+  private static transitorio(err: unknown): boolean {
+    if (!(err instanceof HttpClientError)) return true; // erro desconhecido: não desiste
+    return err.status === 0 || err.status === 429 || err.status >= 500;
+  }
+
+  async notificar(dados: StatusParaSite): Promise<ResultadoNotificacao> {
+    if (!this.configurado) return { ok: false, transitorio: false };
     // Pedido que não nasceu no site não tem tela lá pra atualizar.
-    if (!dados.numeroSite) return false;
+    if (!dados.numeroSite) return { ok: false, transitorio: false };
 
     // Status que não tem palavra equivalente no site não vira chamada: a rota
     // de lá recusaria com 400 e o log ficaria cheio de erro que não é erro.
@@ -101,7 +134,7 @@ export class SiteStatusService {
       this.logger.warn(
         `[site] status "${dados.status}" sem equivalente — ${dados.numeroSite} não avisado`,
       );
-      return false;
+      return { ok: false, transitorio: false };
     }
 
     try {
@@ -118,12 +151,16 @@ export class SiteStatusService {
         timeoutMs: 8000,
       });
       this.logger.log(`[site] ${dados.numeroSite} → ${statusSite} avisado`);
-      return true;
+      return { ok: true };
     } catch (err) {
+      const transitorio = SiteStatusService.transitorio(err);
+      const codigo = err instanceof HttpClientError ? err.status : '?';
       this.logger.warn(
-        `[site] não consegui avisar ${dados.numeroSite}: ${err instanceof Error ? err.message : String(err)}`,
+        `[site] não consegui avisar ${dados.numeroSite} (HTTP ${codigo}, ` +
+          `${transitorio ? 'transitório — vai reenviar' : 'PERMANENTE — não reenvia'}): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
       );
-      return false;
+      return { ok: false, transitorio };
     }
   }
 
@@ -154,14 +191,14 @@ export class SiteStatusService {
       return null;
     }
 
-    const ok = await this.notificar({
+    const r = await this.notificar({
       numeroSite: pedido.numeroSite,
       status: pedido.status,
       rastreioCodigo: pedido.rastreioCodigo,
       rastreioUrl: pedido.rastreioUrl,
     });
 
-    if (ok) {
+    if (r.ok) {
       await this.prisma.pedido.update({
         where: { id: pedido.id },
         data: {
@@ -180,12 +217,21 @@ export class SiteStatusService {
     // autorizar a repetição (conserto de 09/09, SOMATEC-WEB-3). Sem gravar
     // aqui, ninguém escutava esse 503: o log rotacionava e sobrava um pedido
     // cuja tela mente pro cliente. Gravado, o `SiteStatusRetryJob` reenvia.
+    //
+    // 🔴 Mas SÓ o transitório entra na fila. `siteErroEm` é o que o retry
+    // procura, e ele roda de minuto em minuto sem contador de tentativas nem
+    // backoff — então carimbar aqui uma falha PERMANENTE (401 de segredo errado,
+    // 404 de pedido que não existe no site) criaria um reenvio eterno.
+    //
+    // O erro permanente ainda fica registrado em `siteErro`, com o motivo: some
+    // da fila, não some do prontuário. Quem olhar o pedido vê o que houve; o
+    // cron não vê nada pra fazer.
+    const motivo = `falha avisando o site: ${statusSite}${rastreio ? ` / ${rastreio}` : ''}`;
     await this.prisma.pedido.update({
       where: { id: pedido.id },
-      data: {
-        siteErro: `falha avisando o site: ${statusSite}${rastreio ? ` / ${rastreio}` : ''}`,
-        siteErroEm: new Date(),
-      },
+      data: r.transitorio
+        ? { siteErro: motivo, siteErroEm: new Date() }
+        : { siteErro: `PERMANENTE — ${motivo} (não será reenviado)`, siteErroEm: null },
     });
     return false;
   }

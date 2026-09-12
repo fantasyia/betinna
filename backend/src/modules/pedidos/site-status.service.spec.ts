@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SiteStatusService } from './site-status.service';
+import { HttpClientError } from '@shared/http/http-client.types';
 
 /**
  * A ida e a volta do pedido do site falam línguas diferentes.
@@ -66,21 +67,27 @@ describe('aviso de status pro site', () => {
   it('status sem equivalente NÃO vira chamada (400 garantido do outro lado)', async () => {
     const { svc, http } = build();
 
-    expect(await svc.notificar({ numeroSite: 'SB1', status: 'INVENTADO' })).toBe(false);
+    expect(await svc.notificar({ numeroSite: 'SB1', status: 'INVENTADO' })).toMatchObject({
+      ok: false,
+    });
     expect(http.post).not.toHaveBeenCalled();
   });
 
   it('pedido que não nasceu no site não tem tela pra atualizar', async () => {
     const { svc, http } = build();
 
-    expect(await svc.notificar({ numeroSite: '', status: 'ENTREGUE' })).toBe(false);
+    expect(await svc.notificar({ numeroSite: '', status: 'ENTREGUE' })).toMatchObject({
+      ok: false,
+    });
     expect(http.post).not.toHaveBeenCalled();
   });
 
   it('sem URL/segredo configurados fica quieto (tenant sem site é caso normal)', async () => {
     const { svc, http } = build('', '');
 
-    expect(await svc.notificar({ numeroSite: 'SB1', status: 'ENTREGUE' })).toBe(false);
+    expect(await svc.notificar({ numeroSite: 'SB1', status: 'ENTREGUE' })).toMatchObject({
+      ok: false,
+    });
     expect(http.post).not.toHaveBeenCalled();
   });
 
@@ -88,7 +95,9 @@ describe('aviso de status pro site', () => {
     const { svc, http } = build();
     http.post.mockRejectedValue(new Error('ECONNREFUSED'));
 
-    expect(await svc.notificar({ numeroSite: 'SB1', status: 'ENTREGUE' })).toBe(false);
+    expect(await svc.notificar({ numeroSite: 'SB1', status: 'ENTREGUE' })).toMatchObject({
+      ok: false,
+    });
   });
 });
 
@@ -196,5 +205,76 @@ describe('dívida com o site fica registrada e é reenviada', () => {
 
     expect(await svc.sincronizarPedido(pedido)).toBeNull();
     expect(prisma.pedido.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 🔴 TRANSITÓRIO × PERMANENTE — o que decide se o retry faz sentido.
+ *
+ * O `SiteStatusRetryJob` roda de minuto em minuto, sem contador de tentativas e
+ * sem backoff, e pesca pelo `siteErroEm`. Então carimbar ali uma falha que nunca
+ * vai passar (segredo errado, pedido inexistente no site) cria um reenvio
+ * ETERNO — martelando o site e enchendo o log com um erro que não se resolve.
+ *
+ * 📌 O princípio já estava no arquivo, aplicado a outro caso: *"reenviar
+ * eternamente algo que o site nunca vai aceitar é um loop mudo"*. Faltava valer
+ * pro erro HTTP.
+ */
+describe('só o erro TRANSITÓRIO entra na fila do retry', () => {
+  const pedidoBase = {
+    id: 'p1',
+    numeroSite: 'SB1',
+    status: 'ENTREGUE',
+    rastreioCodigo: null,
+    rastreioUrl: null,
+    siteStatusEnviado: null,
+    siteRastreioEnviado: null,
+  };
+
+  const montar = (erro: unknown) => {
+    const update = vi.fn().mockResolvedValue({});
+    const post = vi.fn().mockRejectedValue(erro);
+    const svc = new SiteStatusService(
+      {
+        get: (k: string) => (k === 'SITE_PEDIDOS_STATUS_URL' ? 'https://site/x' : 'segredo'),
+      } as never,
+      { post } as never,
+      { pedido: { update } } as never,
+    );
+    return { svc, update };
+  };
+
+  it.each([
+    ['503 do soluço de banco', new HttpClientError(503, {}, 'https://site/x', 'POST', 1)],
+    ['429 de throttle', new HttpClientError(429, {}, 'https://site/x', 'POST', 1)],
+    ['500 genérico', new HttpClientError(500, {}, 'https://site/x', 'POST', 1)],
+    ['timeout/rede (status 0)', new HttpClientError(0, {}, 'https://site/x', 'POST', 1)],
+  ])('%s → marca siteErroEm (vai reenviar)', async (_r, erro) => {
+    const { svc, update } = montar(erro);
+    await svc.sincronizarPedido(pedidoBase as never);
+    expect(update.mock.calls[0][0].data.siteErroEm).toBeInstanceOf(Date);
+  });
+
+  it.each([
+    ['401 de segredo errado', new HttpClientError(401, {}, 'https://site/x', 'POST', 1)],
+    ['404 de pedido inexistente', new HttpClientError(404, {}, 'https://site/x', 'POST', 1)],
+    ['400 de payload recusado', new HttpClientError(400, {}, 'https://site/x', 'POST', 1)],
+  ])('%s → NÃO entra na fila, mas fica registrado', async (_r, erro) => {
+    const { svc, update } = montar(erro);
+    await svc.sincronizarPedido(pedidoBase as never);
+    const data = update.mock.calls[0][0].data;
+    expect(data.siteErroEm).toBeNull();
+    expect(String(data.siteErro)).toContain('PERMANENTE');
+  });
+
+  /**
+   * ⚠️ Erro que não é `HttpClientError` (bug nosso, falha inesperada) conta como
+   * transitório de propósito: desistir de avisar o site por causa de algo que
+   * ninguém classificou é pior que tentar de novo.
+   */
+  it('erro desconhecido é tratado como transitório', async () => {
+    const { svc, update } = montar(new Error('coisa estranha'));
+    await svc.sincronizarPedido(pedidoBase as never);
+    expect(update.mock.calls[0][0].data.siteErroEm).toBeInstanceOf(Date);
   });
 });
