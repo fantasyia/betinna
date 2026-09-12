@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { Search, FileSignature, Download } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
@@ -60,8 +61,11 @@ function fmtData(d: string | null) {
  * dele assinou**, sem pedir pra ninguém.
  */
 export default function ContratosPage() {
+  // O link que o contrato do ERP carrega chega com ?search=PROP-XXXX: sem ler
+  // daqui, ele abriria a lista inteira e o Leandro teria que procurar na mão.
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState('');
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = useState(searchParams.get('search') ?? '');
   const [baixando, setBaixando] = useState<string | null>(null);
   const toast = useToast();
 

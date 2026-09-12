@@ -23,7 +23,11 @@ const fakeContrato = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const build = (over: Record<string, unknown> = {}, config: unknown = {}) => {
+const build = (
+  over: Record<string, unknown> = {},
+  config: unknown = {},
+  frontendUrl = 'https://app.somatecblocking.com.br',
+) => {
   const prisma = {
     contrato: {
       findFirst: vi.fn().mockResolvedValue(fakeContrato(over)),
@@ -32,7 +36,8 @@ const build = (over: Record<string, unknown> = {}, config: unknown = {}) => {
     empresa: { findUnique: vi.fn().mockResolvedValue({ config }) },
   };
   const tiny = { incluir: vi.fn().mockResolvedValue({ id: '338242389' }), configurado: true };
-  const svc = new ContratoErpService(prisma as never, tiny as never);
+  const env = { get: vi.fn().mockReturnValue(frontendUrl) };
+  const svc = new ContratoErpService(prisma as never, tiny as never, env as never);
   return { svc, prisma, tiny };
 };
 
@@ -55,6 +60,36 @@ describe('ContratoErpService.enviar', () => {
         data: expect.objectContaining({ contratoErpId: '338242389', status: 'ATIVO' }),
       }),
     );
+  });
+
+  /**
+   * ⚠️ A v2 do Tiny NÃO anexa arquivo em contrato — medido contra a API em
+   * 12/09: rota de anexo não existe (404), e `contrato.alterar.php` aceita
+   * `anexos` com status OK e ignora em silêncio. A observação é a única via
+   * até o PDF, então ela não é enfeite: some o link, some o caminho.
+   */
+  it('a observação leva o caminho até o PDF assinado, já filtrado pela proposta', async () => {
+    const { svc, tiny } = build();
+
+    await svc.enviar('ctr-1', 'emp-1');
+
+    expect(tiny.incluir).toHaveBeenCalledWith(
+      expect.objectContaining({
+        observacao: expect.stringContaining(
+          'PDF assinado: https://app.somatecblocking.com.br/contratos?search=PROP-0007',
+        ),
+      }),
+    );
+  });
+
+  it('sem FRONTEND_URL, a observação sai sem link — e não com um endereço quebrado', async () => {
+    const { svc, tiny } = build({}, {}, '');
+
+    await svc.enviar('ctr-1', 'emp-1');
+
+    const obs = String((tiny.incluir.mock.calls[0][0] as { observacao: string }).observacao);
+    expect(obs).toContain('proposta PROP-0007');
+    expect(obs).not.toContain('PDF assinado');
   });
 
   it('o ciclo começa na PRIMEIRA COBRANÇA, não na assinatura — a carência já foi descontada', async () => {

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import {
   TinyContratosService,
@@ -45,7 +46,27 @@ export class ContratoErpService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contratos: TinyContratosService,
+    private readonly env: EnvService,
   ) {}
+
+  /**
+   * O caminho até o PDF assinado, escrito na OBSERVAÇÃO do contrato do ERP.
+   *
+   * ⚠️ **A v2 do Tiny não anexa arquivo em contrato** — medido contra a API em
+   * 12/09, não deduzido da doc: 15 nomes de rota de anexo devolvem 404 (contra
+   * um controle de rota existente, que responde 200 com erro de parâmetro), e
+   * `contrato.alterar.php` ACEITA `anexos`/`anexo`/`url_anexo` com status OK e
+   * **ignora em silêncio** — o `contrato.obter.php` seguinte não traz nenhum
+   * deles. Quem confiar no OK acha que anexou.
+   *
+   * Então o que dá é texto: o link leva quem abriu o contrato no ERP até a
+   * tela do app, já filtrada pela proposta, onde o PDF assinado é baixável.
+   */
+  private linkDoPdf(numeroProposta: string): string {
+    const base = (this.env.get('FRONTEND_URL') || '').replace(/\/+$/, '');
+    if (!base) return '';
+    return ` · PDF assinado: ${base}/contratos?search=${encodeURIComponent(numeroProposta)}`;
+  }
 
   async enviar(contratoId: string, empresaId: string): Promise<ResultadoContratoErp> {
     const contrato = await this.prisma.contrato.findFirst({
@@ -96,7 +117,9 @@ export class ContratoErpService {
       diaVencimento: contrato.diaVencimento,
       prazoMeses: contrato.prazoMeses,
       vencimento: cfg.vencimento,
-      observacao: `Contrato ${contrato.id} · proposta ${contrato.proposta.numero} (Betinna)`,
+      observacao:
+        `Contrato ${contrato.id} · proposta ${contrato.proposta.numero} (Betinna)` +
+        this.linkDoPdf(contrato.proposta.numero),
       nota: this.nota(cfg),
     });
 
