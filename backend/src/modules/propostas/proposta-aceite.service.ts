@@ -505,7 +505,6 @@ export class PropostaAceiteService {
           signatarioTelefone: true,
           clienteId: true,
           representanteId: true,
-          prazoEntrega: true,
           cliente: {
             select: {
               nome: true,
@@ -564,13 +563,6 @@ export class PropostaAceiteService {
         return;
       }
 
-      // Prazo de entrega na proposta é uma DATA; o contrato fala em dias
-      // corridos a partir da assinatura. Sem data, sai em branco — quem assina
-      // vê a lacuna, em vez de um número que o sistema inventou.
-      const prazoEntregaDias = p.prazoEntrega
-        ? Math.max(0, Math.ceil((p.prazoEntrega.getTime() - Date.now()) / 86_400_000))
-        : null;
-
       const envelope = await this.clicksign.enviarParaAssinatura({
         titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
         cliente: { nome, email, telefone: telefoneAssinatura },
@@ -589,8 +581,8 @@ export class PropostaAceiteService {
             cidade: p.cliente.cidade,
             uf: p.cliente.uf,
           },
-          prazoEntregaDias,
-          // Ainda não existe na proposta — decisão comercial pendente.
+          // Entrega está escrita no modelo (03 dias úteis + transportadora);
+          // instalação ainda não existe na proposta — decisão comercial pendente.
           prazoInstalacaoDias: null,
         }),
       });

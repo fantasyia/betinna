@@ -21,8 +21,11 @@ export interface PropostaParaContrato {
     cidade: string | null;
     uf: string | null;
   };
-  /** Dias corridos. Vazio = a proposta não definiu; sai em branco no contrato. */
-  prazoEntregaDias: number | null;
+  /**
+   * Dias corridos. Vazio = a proposta não definiu; sai em branco no contrato.
+   * Entrega NÃO é variável: o modelo diz "expedidos em até 03 dias úteis da
+   * assinatura, prazo de entrega da transportadora" (decisão do Léo, 12/09).
+   */
   prazoInstalacaoDias: number | null;
 }
 
@@ -183,17 +186,21 @@ export function formatarCnpj(cnpj: string): string {
  * não é enviada some do documento deixando o texto costurado errado; string
  * vazia deixa o espaço em branco, que é o comportamento certo.
  *
- * O que fica vazio hoje, e por quê: **prazo de entrega e de instalação** são
- * decisão comercial, e a proposta ainda não os carrega — o contrato sai com
- * "no prazo de  () dias" e quem assina vê a lacuna, em vez de um número que o
- * sistema inventou.
+ * O que fica vazio hoje, e por quê: **prazo de instalação** (4.2) é decisão
+ * comercial, e a proposta ainda não o carrega — o contrato sai com "no prazo
+ * de  () dias" e quem assina vê a lacuna, em vez de um número que o sistema
+ * inventou.
+ *
+ * **Complemento leva a própria vírgula.** O modelo escreve
+ * `n. {{numero}}{{complemento}}, {{bairro}}`: complemento vazio some sem deixar
+ * ", ," no preâmbulo (aconteceu no PDF da PROP-0025).
  */
 export function variaveisDoContrato(p: PropostaParaContrato): Record<string, string> {
   const limpo = (s: string | null | undefined): string => (s ?? '').trim();
   const dias = (n: number | null): [string, string] =>
     n && n > 0 ? [String(n), numeroPorExtenso(n)] : ['', ''];
-  const [entregaDias, entregaExt] = dias(p.prazoEntregaDias);
   const [instDias, instExt] = dias(p.prazoInstalacaoDias);
+  const complemento = limpo(p.endereco.complemento);
   const cidade = limpo(p.endereco.cidade);
   const uf = limpo(p.endereco.uf).toUpperCase();
 
@@ -202,14 +209,12 @@ export function variaveisDoContrato(p: PropostaParaContrato): Record<string, str
     cnpj: formatarCnpj(limpo(p.cnpj)),
     endereco_logradouro: limpo(p.endereco.logradouro),
     endereco_numero: limpo(p.endereco.numero),
-    endereco_complemento: limpo(p.endereco.complemento),
+    endereco_complemento: complemento ? `, ${complemento}` : '',
     endereco_bairro: limpo(p.endereco.bairro),
     endereco_cidade: cidade,
     endereco_uf: uf,
     // Cláusula 13.8 — foro da comarca da sede da CONTRATANTE.
     comarca: cidade && uf ? `${cidade}-${uf}` : cidade,
-    prazo_entrega_dias: entregaDias,
-    prazo_entrega_extenso: entregaExt,
     prazo_instalacao_dias: instDias,
     prazo_instalacao_extenso: instExt,
     aluguel_mensal: dinheiro(p.valor),

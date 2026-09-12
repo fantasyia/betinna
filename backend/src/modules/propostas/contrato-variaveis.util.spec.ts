@@ -24,11 +24,10 @@ const base = {
     cidade: 'Dracena',
     uf: 'sp',
   },
-  prazoEntregaDias: 30,
   prazoInstalacaoDias: null,
 };
 
-/** As 16 variáveis do modelo — a lista veio do próprio .docx, não da cabeça. */
+/** As 14 variáveis do modelo v4 — a lista veio do próprio .docx, não da cabeça. */
 const NO_MODELO = [
   'aluguel_mensal',
   'aluguel_mensal_extenso',
@@ -41,8 +40,6 @@ const NO_MODELO = [
   'endereco_logradouro',
   'endereco_numero',
   'endereco_uf',
-  'prazo_entrega_dias',
-  'prazo_entrega_extenso',
   'prazo_instalacao_dias',
   'prazo_instalacao_extenso',
   'razao_social',
@@ -59,7 +56,8 @@ describe('variáveis do contrato', () => {
     expect(v.cnpj).toBe('16.774.052/0001-55');
     expect(v.endereco_logradouro).toBe('Rua XV de Novembro');
     expect(v.endereco_numero).toBe('743');
-    expect(v.endereco_complemento).toBe('Sala 2');
+    // leva a própria vírgula: o modelo escreve `n. {{numero}}{{complemento}}, {{bairro}}`
+    expect(v.endereco_complemento).toBe(', Sala 2');
     expect(v.endereco_bairro).toBe('Centro');
     expect(v.endereco_cidade).toBe('Dracena');
     expect(v.endereco_uf).toBe('SP');
@@ -71,12 +69,17 @@ describe('variáveis do contrato', () => {
     expect(v.aluguel_mensal_extenso).toBe('mil quinhentos e sessenta e seis reais');
   });
 
-  it('cláusula 4: prazo em dias e por extenso; sem dado vai VAZIO, não inventado', () => {
-    const v = variaveisDoContrato(base);
-    expect(v.prazo_entrega_dias).toBe('30');
-    expect(v.prazo_entrega_extenso).toBe('trinta');
-    expect(v.prazo_instalacao_dias).toBe('');
-    expect(v.prazo_instalacao_extenso).toBe('');
+  it('cláusula 4.2: prazo de instalação em dias e por extenso; sem dado vai VAZIO, não inventado', () => {
+    expect(variaveisDoContrato(base).prazo_instalacao_dias).toBe('');
+    expect(variaveisDoContrato(base).prazo_instalacao_extenso).toBe('');
+    const v = variaveisDoContrato({ ...base, prazoInstalacaoDias: 15 });
+    expect(v.prazo_instalacao_dias).toBe('15');
+    expect(v.prazo_instalacao_extenso).toBe('quinze');
+  });
+
+  it('complemento vazio NÃO deixa vírgula dupla no preâmbulo', () => {
+    const v = variaveisDoContrato({ ...base, endereco: { ...base.endereco, complemento: null } });
+    expect(v.endereco_complemento).toBe('');
   });
 
   it('cláusula 13.8: comarca = cidade-UF da sede', () => {
@@ -103,7 +106,13 @@ describe('variáveis do contrato', () => {
         uf: null,
       },
     });
-    for (const k of ['cnpj', 'endereco_logradouro', 'endereco_uf', 'comarca']) {
+    for (const k of [
+      'cnpj',
+      'endereco_logradouro',
+      'endereco_complemento',
+      'endereco_uf',
+      'comarca',
+    ]) {
       expect(v[k]).toBe('');
     }
   });
