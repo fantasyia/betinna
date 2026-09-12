@@ -952,3 +952,133 @@ describe('FluxoEventBusService — filtro de origem do gatilho LEAD_CRIADO', () 
     expect(queue.add).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * 🔴 Fluxo de EMPRESA × mensagem na linha PESSOAL do rep (LEAD_RESPONDEU).
+ *
+ * Medido em produção 11/09 21:37: cinco mensagens de um contato no WhatsApp
+ * PESSOAL do rep — assunto tecido — dispararam o E4 cinco vezes. O lead casa
+ * por TELEFONE, e o LEAD_RESPONDEU não dizia em qual linha a mensagem chegou.
+ *
+ * Só não fez estrago porque a régua de e-mail estava vazia. Com ela ligada, um
+ * "bom dia" particular PARA a nutrição e abre tarefa "responder hoje".
+ */
+describe('LEAD_RESPONDEU × linha pessoal do rep', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let queue: ReturnType<typeof makeQueueMock>;
+  let service: FluxoEventBusService;
+  let logs: string[];
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    queue = makeQueueMock();
+    service = new FluxoEventBusService(prisma as never, queue as never, envMock() as never);
+    logs = [];
+    vi.spyOn(
+      (service as unknown as { logger: { log: (m: string) => void } }).logger,
+      'log',
+    ).mockImplementation((m: string) => {
+      logs.push(m);
+    });
+    prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+    prisma.fluxoExecucao.update.mockResolvedValue({});
+  });
+
+  const E4 = (config: Record<string, unknown> = {}) =>
+    fakeFluxo({
+      id: 'e4',
+      nome: 'E4 · Respondeu, chama alguém',
+      triggerTipo: 'LEAD_RESPONDEU',
+      nos: [{ id: 'trg', config }],
+    });
+
+  const evento = (proprietarioId: string | null) => ({
+    leadId: 'lead-julio',
+    conversationId: 'conv-1',
+    telefone: '11999990000',
+    texto: 'Boa noite Léo',
+    proprietarioId,
+  });
+
+  it('fluxo de EMPRESA ignora mensagem vinda do WhatsApp PESSOAL do rep', async () => {
+    prisma.fluxo.findMany.mockResolvedValue([E4()]);
+
+    await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, evento('rep-10fb0fca'));
+
+    expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ⭐ A linha de log é PARTE do conserto: sem ela o efeito só seria verificável
+   * por ausência — e "zero execução" é também o que se vê quando ninguém
+   * escreveu. Ignorado tem que ser contável, e em `log`, não `debug`.
+   */
+  it('deixa rastro contável de QUE ignorou, e por quê', async () => {
+    prisma.fluxo.findMany.mockResolvedValue([E4()]);
+
+    await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, evento('rep-10fb0fca'));
+
+    const linha = logs.find((l) => l.includes('LEAD_RESPONDEU ignorado'));
+    expect(linha).toBeDefined();
+    expect(linha).toContain('linha PESSOAL');
+    expect(linha).toContain('rep-10fb0fca');
+    expect(linha).toContain('lead-julio');
+    expect(linha).toContain('E4');
+  });
+
+  it('a linha CENTRAL da empresa continua disparando (proprietarioId null)', async () => {
+    prisma.fluxo.findMany.mockResolvedValue([E4()]);
+
+    await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, evento(null));
+
+    expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+  });
+
+  /** E-mail chega sem `proprietarioId` no payload (canal da empresa) — não muda nada. */
+  it('evento SEM o campo (e-mail, caminho legado) continua disparando', async () => {
+    prisma.fluxo.findMany.mockResolvedValue([E4()]);
+
+    await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, {
+      leadId: 'lead-julio',
+      conversationId: 'conv-1',
+      texto: 'respondi por e-mail',
+    });
+
+    expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+  });
+
+  /** Reabrir de propósito é decisão de quem desenha o fluxo — sem deploy. */
+  it('`escopo: "ambos"` no gatilho reabre a linha pessoal de propósito', async () => {
+    prisma.fluxo.findMany.mockResolvedValue([E4({ escopo: 'ambos' })]);
+
+    await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, evento('rep-10fb0fca'));
+
+    expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    expect(logs.some((l) => l.includes('LEAD_RESPONDEU ignorado'))).toBe(false);
+  });
+
+  /** Fluxo PESSOAL não mudou: o gate dele continua sendo a carteira do lead. */
+  it('fluxo PESSOAL segue gateado pela carteira, não pela porta', async () => {
+    prisma.fluxo.findMany.mockResolvedValue([
+      E4({}),
+      fakeFluxo({
+        id: 'meu',
+        usuarioId: 'rep-10fb0fca',
+        triggerTipo: 'LEAD_RESPONDEU',
+        nos: [{ id: 'trg', config: {} }],
+      }),
+    ]);
+    // lead-julio está na carteira do rep-10fb0fca
+    // o mock base do bus nao tem `lead` — o gate de carteira do fluxo pessoal usa
+    (prisma as unknown as { lead: unknown }).lead = {
+      findFirst: vi.fn().mockResolvedValue({ id: 'lead-julio' }),
+    };
+
+    await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, evento('rep-10fb0fca'));
+
+    // o da empresa foi ignorado; o pessoal disparou
+    expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    expect(prisma.fluxoExecucao.create.mock.calls[0][0].data.fluxoId).toBe('meu');
+  });
+});

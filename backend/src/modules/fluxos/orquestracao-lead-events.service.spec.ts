@@ -179,3 +179,59 @@ describe('OrquestracaoLeadEventsService', () => {
     expect(bus.disparar).toHaveBeenCalledWith('emp-1', 'MENSAGEM_CANAL', expect.anything());
   });
 });
+
+/**
+ * O LEAD_RESPONDEU passa a dizer em QUAL linha a mensagem chegou (D38).
+ *
+ * Sem isso o bus não tinha como distinguir o WhatsApp central da empresa do
+ * pessoal do rep — e conversa particular (tecido, 11/09) disparava o E4. O
+ * `retomar` logo abaixo já usava a porta pra não cruzar conversa; o gatilho é
+ * que saía cego.
+ */
+describe('LEAD_RESPONDEU carrega a porta da mensagem', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let bus: ReturnType<typeof makeBus>;
+  let svc: OrquestracaoLeadEventsService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    bus = makeBus();
+    svc = new OrquestracaoLeadEventsService(
+      prisma as never,
+      bus as never,
+      makeInbox() as never,
+      makeConversarIa() as never,
+      makeRedis() as never,
+    );
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-julio' }]);
+  });
+
+  it('mensagem no WhatsApp PESSOAL do rep → proprietarioId preenchido', async () => {
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '11999990000',
+        conteudo: 'Boa noite Léo',
+        proprietarioId: 'rep-10fb0fca',
+      } as never,
+      resultado(),
+    );
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'LEAD_RESPONDEU',
+      expect.objectContaining({ leadId: 'lead-julio', proprietarioId: 'rep-10fb0fca' }),
+    );
+  });
+
+  it('mensagem no WhatsApp CENTRAL → proprietarioId null (nunca ausente)', async () => {
+    await svc.aoReceberMensagem(
+      { empresaId: 'emp-1', peerTelefone: '11999990000', conteudo: 'oi' } as never,
+      resultado(),
+    );
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'LEAD_RESPONDEU',
+      expect.objectContaining({ proprietarioId: null }),
+    );
+  });
+});

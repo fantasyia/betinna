@@ -131,6 +131,12 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
         conversationId: resultado.conversationId,
         telefone: params.peerTelefone ?? null,
         texto: params.conteudo,
+        // Em QUAL linha a mensagem chegou (D38): null = WhatsApp central da
+        // empresa; preenchido = WhatsApp pessoal do rep. Sem isto o bus não tinha
+        // como saber, e conversa particular do rep disparava fluxo da empresa
+        // (E4 ×5 em 11/09, assunto tecido). O `retomar` logo abaixo já usava a
+        // porta pra não cruzar conversa; o gatilho é que ficou sem.
+        proprietarioId: params.proprietarioId ?? null,
       });
       // A PORTA tem que bater (auditoria 20/08): a execução foi aberta numa
       // conversa com um dono (empresa = null, ou o WhatsApp pessoal de um rep),

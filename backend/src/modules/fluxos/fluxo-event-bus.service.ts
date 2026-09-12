@@ -305,8 +305,9 @@ export class FluxoEventBusService {
           // Sem estes gates, o fluxo do rep reagiria a lead/conversa de outro
           // rep ou da empresa — exatamente o que o modelo proíbe.
           if (fluxo.usuarioId) {
-            // (LEAD_RESPONDEU não traz proprietarioId no payload — a carteira
-            // do lead logo abaixo é o gate dele.)
+            // (No LEAD_RESPONDEU o gate do fluxo pessoal é a CARTEIRA do lead,
+            // logo abaixo — o `proprietarioId` do payload é usado pelo fluxo de
+            // EMPRESA, mais adiante.)
             if (triggerTipo === 'MENSAGEM_CANAL') {
               if ((contexto['proprietarioId'] ?? null) !== fluxo.usuarioId) continue;
             }
@@ -318,6 +319,49 @@ export class FluxoEventBusService {
                 select: { id: true },
               });
               if (!dono) continue;
+            }
+          }
+
+          // ── Fluxo de EMPRESA × mensagem na linha PESSOAL do rep (LEAD_RESPONDEU) ──
+          //
+          // 🔴 Medido em produção 11/09 21:37: cinco mensagens de um contato no
+          // WhatsApp PESSOAL do rep — assunto tecido, nada a ver com a Somatec —
+          // dispararam o E4 cinco vezes. O lead casa por TELEFONE, então qualquer
+          // mensagem da pessoa, em qualquer linha, virava LEAD_RESPONDEU.
+          //
+          // Hoje só não fez estrago porque o primeiro portão do E4 respondia "Não"
+          // (régua de e-mail vazia). Com a régua ligada, um "bom dia" particular
+          // PARA a nutrição do contato e abre tarefa "responder hoje". Sorte, não
+          // desenho.
+          //
+          // O MENSAGEM_CANAL já resolve isto pelo `escopo` do gatilho (é o que
+          // impede a triagem de ouvir o celular do rep). O LEAD_RESPONDEU não
+          // carregava `proprietarioId` no payload — agora carrega, e a regra é a
+          // mesma: conversa particular do rep NÃO passa pelo fluxo da empresa.
+          //
+          // Default é ignorar. `escopo: "ambos"` ou `"pessoal"` no nó do gatilho
+          // reabre de propósito, sem deploy — mesmo vocabulário do MENSAGEM_CANAL.
+          // E-mail chega sem `proprietarioId` (canal da empresa) e não é afetado.
+          //
+          // 📌 A linha de log é PARTE do conserto, não enfeite: sem ela o efeito só
+          // seria verificável por ausência — e "zero execução" é também o que se
+          // vê quando ninguém escreveu. Ignorado tem que ser contável.
+          if (!fluxo.usuarioId && triggerTipo === 'LEAD_RESPONDEU') {
+            const porta = contexto['proprietarioId'];
+            const veioDeLinhaPessoal = typeof porta === 'string' && porta.length > 0;
+            if (veioDeLinhaPessoal) {
+              const cfg = (triggerNo.config ?? {}) as { escopo?: string };
+              const escopo = String(cfg.escopo ?? 'empresa')
+                .trim()
+                .toLowerCase();
+              if (escopo === 'empresa') {
+                this.logger.log(
+                  `FluxoEventBus: LEAD_RESPONDEU ignorado — mensagem veio da linha PESSOAL ` +
+                    `de ${porta} (lead ${String(contexto['leadId'] ?? '?')}, fluxo de empresa ` +
+                    `"${fluxo.nome}")`,
+                );
+                continue;
+              }
             }
           }
 
