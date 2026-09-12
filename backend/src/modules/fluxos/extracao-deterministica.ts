@@ -381,8 +381,12 @@ const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
  * ('moro aqui' não diz o que é o lugar), mas conta pra abstenção. Sem isto,
  * 'tenho uma loja e moro em cima' virava comércio — a abstenção só lia
  * substantivo, e 'moro' é verbo. Achado da varredura de 12/09.
+ *
+ * 'morador' desacompanhado entra AQUI, não em PERFIL_PALAVRAS: mesmo peso do
+ * verbo (varredura 5) — senão 'sou morador e tenho uma loja' vira comércio
+ * enquanto 'moro aqui e tenho uma loja' abstém.
  */
-const PERFIL_MORAR = rx('\\b(mor(o|amos|ando|ava|ei)|resid(o|imos))\\b');
+const PERFIL_MORAR = rx('\\b(mor(o|amos|ando|ava|ei)|resid(o|imos)|morador(es|a|as)?)\\b');
 
 export function perfilNaFrase(texto: string): string | null {
   let resto = texto;

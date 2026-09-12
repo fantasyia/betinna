@@ -641,6 +641,11 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
     '"%s" → null',
     (f) => expect(perfilNaFrase(f)).toBeNull(),
   );
+  /** Varredura 5: substantivo e verbo têm que pesar igual na abstenção. */
+  it('"sou morador e tenho uma loja no predio" → null (morador + comércio = conflito, como moro)', () => {
+    expect(perfilNaFrase('sou morador e tenho uma loja no predio')).toBeNull();
+    expect(perfilNaFrase('morador do predio comercial')).toBeNull();
+  });
   it('"sou morador de uma casa" → residencia (morador sem prédio não conta, casa sim)', () => {
     expect(perfilNaFrase('sou morador de uma casa')).toBe('residencia');
   });
