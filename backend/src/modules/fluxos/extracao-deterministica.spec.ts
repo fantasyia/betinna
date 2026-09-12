@@ -633,7 +633,16 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
   /** Varredura 3: 'sou síndico do prédio' classificava e 'sou morador' não — e morador é todo o resto do prédio. */
   it('vocabulário: "sou morador do predio" → condominio', () => {
     expect(perfilNaFrase('sou morador do predio')).toBe('condominio');
-    expect(perfilNaFrase('os moradores reclamaram')).toBe('condominio');
+    expect(perfilNaFrase('os moradores do condominio reclamaram')).toBe('condominio');
+  });
+
+  /** Varredura 4: 'morador de rua' virava condomínio. Morador só conta acompanhado. */
+  it.each(['morador de rua', 'moradores da minha rua', 'os moradores reclamaram'])(
+    '"%s" → null',
+    (f) => expect(perfilNaFrase(f)).toBeNull(),
+  );
+  it('"sou morador de uma casa" → residencia (morador sem prédio não conta, casa sim)', () => {
+    expect(perfilNaFrase('sou morador de uma casa')).toBe('residencia');
   });
 
   /** Escolha registrada (12/09): residência + carro elétrico juntos ABSTÉM. Decidir qual página ganha é produto, não regra. */

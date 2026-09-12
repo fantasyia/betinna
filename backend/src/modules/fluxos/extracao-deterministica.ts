@@ -352,6 +352,13 @@ const PERFIL_FRASES: Array<[RegExp, string]> = [
   [rx('\\bponto comercial\\b'), 'comercio'],
   [rx('\\b(carro|ve[ií]culo) el[ée]trico\\b'), 'carro_eletrico'],
   [rx('\\b[áa]rea comum\\b'), 'condominio'],
+  // 'morador' só conta ACOMPANHADO: 'morador de rua' não é morador de
+  // condomínio (varredura 4, 12/09) — terceira instância da classe 'casa de
+  // máquinas': palavra cujo sentido vira pelo que vem depois. Sozinho, abstém.
+  [
+    rx('\\bmorador(es|a|as)? d[oa]s? (pr[ée]dio|condom[íi]nio|edif[íi]cio|bloco|conjunto)\\b'),
+    'condominio',
+  ],
 ];
 const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
   [
@@ -366,7 +373,7 @@ const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
     rx('\\b(casa|apartamento|ap[êe]|s[íi]tio|ch[áa]cara|resid[êe]ncia|residencial)\\b'),
     'residencia',
   ],
-  [rx('\\b(condom[íi]nio|s[íi]ndic[oa]|morador(es|a|as)?)\\b'), 'condominio'],
+  [rx('\\b(condom[íi]nio|s[íi]ndic[oa])\\b'), 'condominio'],
   [rx('\\b(carregador(es)?|eletroposto|wallbox|recarga)\\b'), 'carro_eletrico'],
 ];
 /**
