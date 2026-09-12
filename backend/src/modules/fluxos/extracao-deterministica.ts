@@ -335,10 +335,20 @@ export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | n
 // byte de BACKSPACE no lugar do \\b — terceira vez neste arquivo. `od -c` pega;
 // editor e grep não.
 const rx = (fonte: string): RegExp => new RegExp(fonte, 'i');
+/** Sentinela: a frase é sobre um local, mas não dá pra dizer QUAL. Abstém. */
+const AMBIGUO = '__ambiguo__';
 const PERFIL_FRASES: Array<[RegExp, string]> = [
-  // compostos de comércio que carregam 'casa' — resolvidos primeiro e mascarados
+  // compostos que carregam 'casa' — resolvidos primeiro e mascarados
   [rx('\\bcasa de (bolos?|carnes?|ra[çc][ãa]o|festas?|massas?|p[ãa]es|sucos?)\\b'), 'comercio'],
   [rx('\\bcasa noturna\\b'), 'comercio'],
+  [rx('\\bcasa de (praia|campo|veraneio|fim de semana)\\b'), 'residencia'],
+  // ⚠️ Qualquer OUTRO 'casa de/da/do X' abstém. A varredura de 12/09 achou
+  // 'casa de máquinas' (é o quadro do PRÉDIO) caindo em residência porque o
+  // default de 'casa' era residência e a lista de compostos é enumeração —
+  // todo composto novo nascia errado. Invertido: o default do composto é
+  // 'não sei', e só as duas listas acima resolvem. Pega de graça 'casa da
+  // minha mãe' (local de outro), que também não deve preencher.
+  [rx('\\bcasa d[aeo]s? \\S+'), AMBIGUO],
   [rx('\\bponto comercial\\b'), 'comercio'],
   [rx('\\b(carro|ve[ií]culo) el[ée]trico\\b'), 'carro_eletrico'],
   [rx('\\b[áa]rea comum\\b'), 'condominio'],
@@ -347,8 +357,8 @@ const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
   [
     rx(
       '\\b(loja|padaria|mercad(o|inho)|supermercado|restaurante|lanchonete|farm[áa]cia|cl[íi]nica|' +
-        'escrit[óo]rio|oficina|sal[ãa]o|a[çc]ougue|bar|pizzaria|hotel|pousada|academia|petshop|pet shop|' +
-        'conveni[êe]ncia|com[ée]rcio|comercial|empresa|f[áa]brica)\\b',
+        'consult[óo]rio|escrit[óo]rio|oficina|sal[ãa]o|a[çc]ougue|bar|pizzaria|hotel|pousada|academia|' +
+        'petshop|pet shop|conveni[êe]ncia|com[ée]rcio|comercial|empresa|f[áa]brica)\\b',
     ),
     'comercio',
   ],
@@ -359,6 +369,13 @@ const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
   [rx('\\b(condom[íi]nio|s[íi]ndic[oa])\\b'), 'condominio'],
   [rx('\\b(carregador(es)?|eletroposto|wallbox|recarga)\\b'), 'carro_eletrico'],
 ];
+/**
+ * Verbo de morar é SINAL de residência, não categoria: sozinho não preenche
+ * ('moro aqui' não diz o que é o lugar), mas conta pra abstenção. Sem isto,
+ * 'tenho uma loja e moro em cima' virava comércio — a abstenção só lia
+ * substantivo, e 'moro' é verbo. Achado da varredura de 12/09.
+ */
+const PERFIL_MORAR = rx('\\b(mor(o|amos|ando|ava|ei)|resid(o|imos))\\b');
 
 export function perfilNaFrase(texto: string): string | null {
   let resto = texto;
@@ -371,6 +388,8 @@ export function perfilNaFrase(texto: string): string | null {
     }
   }
   for (const [re, cat] of PERFIL_PALAVRAS) if (re.test(resto)) categorias.add(cat);
+  if (categorias.has(AMBIGUO)) return null;
+  if (PERFIL_MORAR.test(resto) && !categorias.has('residencia')) return null;
   // Duas categorias = ambiguidade real. A rede não desempata.
   if (categorias.size !== 1) return null;
   return [...categorias][0];

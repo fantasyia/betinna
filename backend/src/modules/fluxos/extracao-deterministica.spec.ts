@@ -580,3 +580,43 @@ describe('extrairDeterministico — perfil_cliente entra na rede', () => {
     expect(extrairDeterministico(semPerfil, 'minha padaria', {}).perfil_cliente).toBeUndefined();
   });
 });
+
+/**
+ * Varredura da Testadora em 12/09 sobre o 75469dc: 7 falsos positivos em 3
+ * classes. Duas têm remédio de regra e estão aqui; a terceira (local de OUTRO,
+ * passado, futuro, menção incidental — "a loja do meu vizinho", "tinha uma
+ * loja", "passei na loja") não tem, e fica como limite conhecido.
+ */
+describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
+  describe('classe 1: verbo de morar conta pra abstenção', () => {
+    it.each(['tenho uma loja e moro em cima', 'moro na rua do mercado', 'moro em cima da padaria'])(
+      '"%s" → null',
+      (f) => expect(perfilNaFrase(f)).toBeNull(),
+    );
+
+    it('sozinho NÃO preenche: "moro aqui" → null', () => {
+      expect(perfilNaFrase('moro aqui e queimou tudo')).toBeNull();
+    });
+
+    it('com substantivo de residência continua preenchendo', () => {
+      expect(perfilNaFrase('moro em apartamento')).toBe('residencia');
+      expect(perfilNaFrase('moro numa casa')).toBe('residencia');
+    });
+  });
+
+  describe('classe 3: "casa de X" desconhecido abstém, em vez de virar residência', () => {
+    it.each(['queimou o quadro da casa de maquinas', 'e a casa da minha mae', 'casa do vizinho'])(
+      '"%s" → null',
+      (f) => expect(perfilNaFrase(f)).toBeNull(),
+    );
+
+    it('os compostos conhecidos continuam resolvendo', () => {
+      expect(perfilNaFrase('casa de praia')).toBe('residencia');
+      expect(perfilNaFrase('casa de racao')).toBe('comercio');
+    });
+  });
+
+  it('vocabulário: "no meu consultorio" → comercio', () => {
+    expect(perfilNaFrase('no meu consultorio')).toBe('comercio');
+  });
+});
