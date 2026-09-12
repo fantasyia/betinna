@@ -505,14 +505,19 @@ export class PropostaAceiteService {
           signatarioTelefone: true,
           clienteId: true,
           representanteId: true,
-          cliente: { select: { nome: true, email: true, cnpj: true, telefone: true } },
-          itens: {
+          prazoEntrega: true,
+          cliente: {
             select: {
-              produtoId: true,
-              produtoNome: true,
-              quantidade: true,
-              precoUnitario: true,
-              total: true,
+              nome: true,
+              email: true,
+              cnpj: true,
+              telefone: true,
+              endereco: true,
+              numero: true,
+              complemento: true,
+              bairro: true,
+              cidade: true,
+              uf: true,
             },
           },
         },
@@ -559,12 +564,12 @@ export class PropostaAceiteService {
         return;
       }
 
-      // SKU por item: é ele que vai pro contrato (MB-05), não o nome longo.
-      const produtos = await this.prisma.produto.findMany({
-        where: { id: { in: p.itens.map((i) => i.produtoId) } },
-        select: { id: true, sku: true },
-      });
-      const skuDe = new Map(produtos.map((x) => [x.id, x.sku]));
+      // Prazo de entrega na proposta é uma DATA; o contrato fala em dias
+      // corridos a partir da assinatura. Sem data, sai em branco — quem assina
+      // vê a lacuna, em vez de um número que o sistema inventou.
+      const prazoEntregaDias = p.prazoEntrega
+        ? Math.max(0, Math.ceil((p.prazoEntrega.getTime() - Date.now()) / 86_400_000))
+        : null;
 
       const envelope = await this.clicksign.enviarParaAssinatura({
         titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
@@ -572,18 +577,21 @@ export class PropostaAceiteService {
         // Volta no webhook de assinatura — rastro que não depende de id.
         metadata: { proposta: p.numero, proposta_id: p.id },
         variaveis: variaveisDoContrato({
-          numero: p.numero,
           valor: p.valor,
-          criadoEm: p.criadoEm,
-          validoAte: p.validoAte,
+          criadoEm: new Date(),
           clienteNome: p.cliente.nome,
-          itens: p.itens.map((i) => ({
-            sku: skuDe.get(i.produtoId) ?? '',
-            produtoNome: i.produtoNome,
-            quantidade: i.quantidade,
-            precoUnitario: i.precoUnitario,
-            total: i.total,
-          })),
+          cnpj: p.cliente.cnpj,
+          endereco: {
+            logradouro: p.cliente.endereco,
+            numero: p.cliente.numero,
+            complemento: p.cliente.complemento,
+            bairro: p.cliente.bairro,
+            cidade: p.cliente.cidade,
+            uf: p.cliente.uf,
+          },
+          prazoEntregaDias,
+          // Ainda não existe na proposta — decisão comercial pendente.
+          prazoInstalacaoDias: null,
         }),
       });
 
