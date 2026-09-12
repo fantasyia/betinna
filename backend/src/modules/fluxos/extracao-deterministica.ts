@@ -310,6 +310,71 @@ export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | n
  * @param texto      a fala da pessoa neste turno
  * @param jaTem      o que já existe (modelo deste turno + o que o lead tinha)
  */
+/**
+ * O TIPO DE LOCAL dito na frase — ou null.
+ *
+ * ⚠️ É o campo de maior custo de erro da rede: `perfil_cliente` decide a PÁGINA
+ * do link (proteção comercial × residencial). Errar a tensão a pessoa ainda vê
+ * o número na tela; errar o local manda ela pra uma página que ela nem sabe que
+ * tem alternativa. Por isso a régua aqui é a mais dura das três:
+ *
+ *   - só palavra INTEIRA (borda), nunca substring;
+ *   - frases compostas de comércio ("casa de bolos", "casa de carnes") são
+ *     resolvidas ANTES e mascaradas — senão "casa" as puxaria pra residência;
+ *   - DUAS categorias na mesma frase = a rede se cala ("a padaria do meu
+ *     condomínio", "carregador na minha casa"). Quem desempata é o modelo, que
+ *     viu a conversa inteira.
+ *
+ * O vocabulário é o da tabela do prompt do C1-L (padaria/mercado/loja →
+ * comércio; casa/apartamento → residência…) — a mesma lista que o modelo é
+ * instruído a usar. Autorizado pelo Léo em 12/09, depois de a rede ter
+ * convertido uma falha TOTAL em parcial numa conversa real: tensão e corrente
+ * salvas, e a pessoa ainda passou pelo consultivo só por causa deste campo.
+ */
+// ⚠️ Montadas de STRING com o escape explícito: a versão em literal nasceu com
+// byte de BACKSPACE no lugar do \\b — terceira vez neste arquivo. `od -c` pega;
+// editor e grep não.
+const rx = (fonte: string): RegExp => new RegExp(fonte, 'i');
+const PERFIL_FRASES: Array<[RegExp, string]> = [
+  // compostos de comércio que carregam 'casa' — resolvidos primeiro e mascarados
+  [rx('\\bcasa de (bolos?|carnes?|ra[çc][ãa]o|festas?|massas?|p[ãa]es|sucos?)\\b'), 'comercio'],
+  [rx('\\bcasa noturna\\b'), 'comercio'],
+  [rx('\\bponto comercial\\b'), 'comercio'],
+  [rx('\\b(carro|ve[ií]culo) el[ée]trico\\b'), 'carro_eletrico'],
+  [rx('\\b[áa]rea comum\\b'), 'condominio'],
+];
+const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
+  [
+    rx(
+      '\\b(loja|padaria|mercad(o|inho)|supermercado|restaurante|lanchonete|farm[áa]cia|cl[íi]nica|' +
+        'escrit[óo]rio|oficina|sal[ãa]o|a[çc]ougue|bar|pizzaria|hotel|pousada|academia|petshop|pet shop|' +
+        'conveni[êe]ncia|com[ée]rcio|comercial|empresa|f[áa]brica)\\b',
+    ),
+    'comercio',
+  ],
+  [
+    rx('\\b(casa|apartamento|ap[êe]|s[íi]tio|ch[áa]cara|resid[êe]ncia|residencial)\\b'),
+    'residencia',
+  ],
+  [rx('\\b(condom[íi]nio|s[íi]ndic[oa])\\b'), 'condominio'],
+  [rx('\\b(carregador(es)?|eletroposto|wallbox|recarga)\\b'), 'carro_eletrico'],
+];
+
+export function perfilNaFrase(texto: string): string | null {
+  let resto = texto;
+  const categorias = new Set<string>();
+  for (const [re, cat] of PERFIL_FRASES) {
+    if (re.test(resto)) {
+      categorias.add(cat);
+      // mascara pra o 'casa' de 'casa de bolos' não contar como residência
+      resto = resto.replace(new RegExp(re.source, 'gi'), ' ');
+    }
+  }
+  for (const [re, cat] of PERFIL_PALAVRAS) if (re.test(resto)) categorias.add(cat);
+  // Duas categorias = ambiguidade real. A rede não desempata.
+  if (categorias.size !== 1) return null;
+  return [...categorias][0];
+}
 export function extrairDeterministico(
   declaradas: VariavelGravavel[],
   texto: string,
@@ -365,6 +430,16 @@ export function extrairDeterministico(
     if (achado) {
       const lista = aceitos('corrente_quadro');
       if (!lista || lista.includes(achado.valor)) out.corrente_quadro = achado.valor;
+    }
+  }
+
+  if (falta('perfil_cliente')) {
+    const perfil = perfilNaFrase(texto);
+    if (perfil) {
+      const lista = aceitos('perfil_cliente');
+      // Enum do nó manda. Se o fluxo não declara o valor, a rede não o inventa —
+      // o roteador compara texto literal e um valor fora da lista cai no default.
+      if (!lista || lista.includes(perfil)) out.perfil_cliente = perfil;
     }
   }
 

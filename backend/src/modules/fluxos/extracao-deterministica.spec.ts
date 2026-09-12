@@ -3,6 +3,7 @@ import {
   conviteDaPergunta,
   correnteNaFrase,
   extrairDeterministico,
+  perfilNaFrase,
   tensaoNaFrase,
 } from './extracao-deterministica';
 import { parseVariaveisGravadas } from './variaveis-gravadas.util';
@@ -82,10 +83,15 @@ describe('extrairDeterministico — o caso que abriu o card', () => {
   const FALA =
     'queimou o freezer da minha padaria. o disjuntor geral aqui e de 63A e a tensao e 220V';
 
-  it('a frase completa entrega os dois campos que os portões leem', () => {
+  /**
+   * Os TRÊS que o modelo perdeu em 11/09 (0/5). "padaria" é o perfil — era o
+   * campo que sobrava depois da rede de tensão+corrente.
+   */
+  it('a frase completa entrega os três campos que os portões leem', () => {
     expect(extrairDeterministico(C1, FALA, {})).toEqual({
       corrente_quadro: '63',
       tensao_rede: '220V',
+      perfil_cliente: 'comercio',
     });
   });
 
@@ -482,5 +488,95 @@ describe('limite conhecido: resposta verbosa cai pro modelo', () => {
     expect(
       extrairDeterministico(C1, 'aqui e 220V mesmo, predio novo da esquina', {}).tensao_rede,
     ).toBe('220V');
+  });
+});
+
+/**
+ * 🔴 TIPO DE LOCAL (`perfil_cliente`) — o campo de maior custo de erro da rede.
+ *
+ * Ele decide a PÁGINA do link. Errar a tensão, a pessoa ainda vê o número na
+ * tela; errar o local, ela cai em "proteção residencial" com uma padaria e não
+ * tem como saber que existe outra página.
+ *
+ * Autorizado pelo Léo em 12/09 depois da rede ter salvado tensão e corrente numa
+ * conversa real (modelo 0/5) — e a pessoa ter passado pelo consultivo SÓ por
+ * causa deste campo. Vocabulário = tabela do prompt do C1-L.
+ */
+describe('perfilNaFrase — o tipo de local por regra, com a régua mais dura', () => {
+  it.each([
+    ['queimou o freezer da minha padaria', 'comercio'],
+    ['tenho uma loja de conveniencia', 'comercio'],
+    ['no restaurante queimou a camara fria', 'comercio'],
+    ['é na minha casa', 'residencia'],
+    ['moro em apartamento', 'residencia'],
+    ['sou sindico do condominio', 'condominio'],
+    ['o carregador do carro eletrico queimou', 'carro_eletrico'],
+    ['instalei um wallbox', 'carro_eletrico'],
+  ])('%j → %s', (frase, esperado) => {
+    expect(perfilNaFrase(frase)).toBe(esperado);
+  });
+
+  /**
+   * ⚠️ "casa de bolos" É comércio — e contém "casa". Sem resolver o composto
+   * antes, a rede mandaria uma confeitaria pra página residencial.
+   */
+  it.each([['tenho uma casa de bolos'], ['minha casa de carnes'], ['é uma casa noturna']])(
+    'composto de comércio com "casa" → comercio: %j',
+    (frase) => {
+      expect(perfilNaFrase(frase)).toBe('comercio');
+    },
+  );
+
+  /** DUAS categorias = a rede se cala. Quem desempata é o modelo. */
+  it.each([
+    ['a padaria do meu condominio'],
+    ['carregador do carro na minha casa'],
+    ['tenho loja e moro em cima, na casa'],
+  ])('ambíguo NÃO decide: %j', (frase) => {
+    expect(perfilNaFrase(frase)).toBeNull();
+  });
+
+  it.each([['queimou o freezer'], ['e 220v aqui'], ['nao sei o que e']])(
+    'sem palavra de local → nada: %j',
+    (frase) => {
+      expect(perfilNaFrase(frase)).toBeNull();
+    },
+  );
+
+  /** Só palavra inteira — "casal" ≠ casa, "barco" ≠ bar. */
+  it('não casa por substring', () => {
+    expect(perfilNaFrase('somos um casal')).toBeNull();
+    expect(perfilNaFrase('meu barco')).toBeNull();
+  });
+});
+
+describe('extrairDeterministico — perfil_cliente entra na rede', () => {
+  it('preenche o tipo de local quando o modelo não trouxe', () => {
+    const r = extrairDeterministico(C1, 'queimou o freezer da minha padaria, 63A e 220V', {});
+    expect(r.perfil_cliente).toBe('comercio');
+    expect(r.tensao_rede).toBe('220V');
+    expect(r.corrente_quadro).toBe('63');
+  });
+
+  it('NÃO sobrescreve o que o modelo trouxe', () => {
+    const r = extrairDeterministico(C1, 'minha padaria', { perfil_cliente: 'condominio' });
+    expect(r.perfil_cliente).toBeUndefined();
+  });
+
+  it('"nao sei" é lacuna também aqui', () => {
+    const r = extrairDeterministico(C1, 'é aqui em casa', { perfil_cliente: 'nao sei' });
+    expect(r.perfil_cliente).toBe('residencia');
+  });
+
+  it('respeita o enum do nó — valor não declarado não é gravado', () => {
+    const so2 = parseVariaveisGravadas(['perfil_cliente: comercio | residencia']);
+    expect(
+      extrairDeterministico(so2, 'sou sindico do condominio', {}).perfil_cliente,
+    ).toBeUndefined();
+  });
+
+  it('nó que não declara perfil_cliente nunca o recebe', () => {
+    const semPerfil = parseVariaveisGravadas(['tensao_rede: 127V | 220V']);
+    expect(extrairDeterministico(semPerfil, 'minha padaria', {}).perfil_cliente).toBeUndefined();
   });
 });
