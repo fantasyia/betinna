@@ -641,6 +641,16 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
     '"%s" → null',
     (f) => expect(perfilNaFrase(f)).toBeNull(),
   );
+  /** Varredura 6: 'aqui/lá/ali' no meio é o registro falado; uma palavra passa, e 'de rua' continua fora. */
+  it.each([
+    ['morador aqui do bloco', 'condominio'],
+    ['sou morador aqui do predio', 'condominio'],
+    ['moradora ali do edificio', 'condominio'],
+    ['morador de rua do predio', null],
+  ])('"%s" → %s', (f, esperado) => {
+    expect(perfilNaFrase(f)).toBe(esperado);
+  });
+
   /** Varredura 5: substantivo e verbo têm que pesar igual na abstenção. */
   it('"sou morador e tenho uma loja no predio" → null (morador + comércio = conflito, como moro)', () => {
     expect(perfilNaFrase('sou morador e tenho uma loja no predio')).toBeNull();

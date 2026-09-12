@@ -355,8 +355,13 @@ const PERFIL_FRASES: Array<[RegExp, string]> = [
   // 'morador' só conta ACOMPANHADO: 'morador de rua' não é morador de
   // condomínio (varredura 4, 12/09) — terceira instância da classe 'casa de
   // máquinas': palavra cujo sentido vira pelo que vem depois. Sozinho, abstém.
+  // Admite UMA palavra no meio — 'morador AQUI do prédio', 'moradora ALI do
+  // edifício' é o registro falado (varredura 6). Uma, não mais, por escolha:
+  // o 'morador de rua' é barrado pela lista de lugares, não pela adjacência.
   [
-    rx('\\bmorador(es|a|as)? d[oa]s? (pr[ée]dio|condom[íi]nio|edif[íi]cio|bloco|conjunto)\\b'),
+    rx(
+      '\\bmorador(es|a|as)?( \\S+)? d[oa]s? (pr[ée]dio|condom[íi]nio|edif[íi]cio|bloco|conjunto)\\b',
+    ),
     'condominio',
   ],
 ];
