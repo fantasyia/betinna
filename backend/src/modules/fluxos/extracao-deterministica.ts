@@ -366,7 +366,7 @@ const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
     rx('\\b(casa|apartamento|ap[êe]|s[íi]tio|ch[áa]cara|resid[êe]ncia|residencial)\\b'),
     'residencia',
   ],
-  [rx('\\b(condom[íi]nio|s[íi]ndic[oa])\\b'), 'condominio'],
+  [rx('\\b(condom[íi]nio|s[íi]ndic[oa]|morador(es|a|as)?)\\b'), 'condominio'],
   [rx('\\b(carregador(es)?|eletroposto|wallbox|recarga)\\b'), 'carro_eletrico'],
 ];
 /**

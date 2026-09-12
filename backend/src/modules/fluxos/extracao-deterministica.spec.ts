@@ -630,6 +630,17 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
     });
   });
 
+  /** Varredura 3: 'sou síndico do prédio' classificava e 'sou morador' não — e morador é todo o resto do prédio. */
+  it('vocabulário: "sou morador do predio" → condominio', () => {
+    expect(perfilNaFrase('sou morador do predio')).toBe('condominio');
+    expect(perfilNaFrase('os moradores reclamaram')).toBe('condominio');
+  });
+
+  /** Escolha registrada (12/09): residência + carro elétrico juntos ABSTÉM. Decidir qual página ganha é produto, não regra. */
+  it('"moro em apartamento e instalei carregador" → null (duas categorias reais)', () => {
+    expect(perfilNaFrase('moro em apartamento e instalei carregador')).toBeNull();
+  });
+
   it('vocabulário: "no meu consultorio" → comercio', () => {
     expect(perfilNaFrase('no meu consultorio')).toBe('comercio');
   });
