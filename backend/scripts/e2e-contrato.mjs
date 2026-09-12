@@ -241,7 +241,7 @@ if (acao === '--preparar') {
   const prop = await app('POST', '/propostas', {
     clienteId: cliente.id,
     itens: [{ produtoId: mb.id, quantidade: 1, desconto: 0 }],
-    formaPagamento: 'BOLETO',
+    formaPagamento: 'PIX',
     condicaoPagamento: '30dias',
     modalidade: 'LOCACAO',
     representanteId: rep?.id,
