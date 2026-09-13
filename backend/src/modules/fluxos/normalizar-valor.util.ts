@@ -30,6 +30,14 @@ export function normalizarValor(s: string): string {
  */
 export const NAO_SEI = new Set([
   'nao sei',
+  // ⚠️ O T1 grava LITERALMENTE esta quando a pessoa nao citou a tensao ("Nao
+  // citou? Grave `nao declarou`"). Sem ela na lista, `ehNaoSei` responde false,
+  // o `falta()` da rede deterministica conclui que o dado JA existe e nao
+  // resgata — justamente quando o T1 acabou de registrar que a pessoa nao
+  // informou. As variacoes de genero entram junto porque significam o mesmo.
+  'nao declarou',
+  'nao declarado',
+  'nao declarada',
   'nao informado',
   'nao confirmado',
   'nao informou',

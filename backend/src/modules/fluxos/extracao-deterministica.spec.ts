@@ -106,6 +106,22 @@ describe('extrairDeterministico — o caso que abriu o card', () => {
     expect(extrairDeterministico(C1, FALA, { tensao_rede: '  ' }).tensao_rede).toBe('220V');
   });
 
+  /**
+   * 🔴 A sentinela que o T1 grava. O prompt dele manda, com todas as letras:
+   * "Não citou? Grave `nao declarou`" — então o campo chega PREENCHIDO com uma
+   * palavra que significa ausência.
+   *
+   * Ela ficou fora de `NAO_SEI` e o efeito era mudo: `falta()` concluía que a
+   * tensão já era conhecida e a rede não resgatava — exatamente no caso em que
+   * o T1 tinha acabado de registrar que a pessoa não informou.
+   */
+  it.each(['nao declarou', 'não declarou', 'Nao Declarou'])(
+    'sentinela do T1 "%s" conta como lacuna — a rede resgata',
+    (sentinela) => {
+      expect(extrairDeterministico(C1, FALA, { tensao_rede: sentinela }).tensao_rede).toBe('220V');
+    },
+  );
+
   it('campo que o nó não declarou nunca é gravado', () => {
     const soCorrente = parseVariaveisGravadas(['corrente_quadro']);
     expect(extrairDeterministico(soCorrente, FALA, {})).toEqual({ corrente_quadro: '63' });
