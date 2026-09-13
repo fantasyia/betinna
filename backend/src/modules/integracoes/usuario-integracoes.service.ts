@@ -255,6 +255,31 @@ export class UsuarioIntegracoesService {
     });
   }
 
+  /**
+   * Credencial MORTA (refresh recusado com `invalid_grant`: senha trocada, app
+   * revogado, refresh expirado): desliga a conexão pra tela dizer "reconecte"
+   * em vez de "conectado" com lista vazia. Antes o Google só virava
+   * `logger.warn` e a agenda parava de espelhar em silêncio (auditoria
+   * 13/09/2026, achado I-F). A credencial fica no banco pro `desconectar`/
+   * reconexão normal; só o `ativo` cai.
+   */
+  async marcarCredencialInvalida(
+    usuarioId: string,
+    servico: ServicoUsuario,
+    motivo: string,
+  ): Promise<void> {
+    const r = await this.prisma.usuarioIntegracao.updateMany({
+      where: { usuarioId, servico, ativo: true },
+      data: { ativo: false, errosRecentes: { increment: 1 } },
+    });
+    this.invalidarCache(usuarioId, servico);
+    if (r.count > 0) {
+      this.logger.warn(
+        `Integração ${servico} do usuário ${usuarioId} DESLIGADA — credencial inválida (${motivo}). Precisa reconectar.`,
+      );
+    }
+  }
+
   private invalidarCache(usuarioId: string, servico: string): void {
     this.cache.delete(`${usuarioId}:${servico}`);
   }

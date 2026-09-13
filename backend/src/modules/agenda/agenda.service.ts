@@ -650,6 +650,11 @@ export class AgendaService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Falha ao criar evento Google (usuário=${usuarioId}): ${msg}`);
+      // Conta o erro na conexão: é o que faz o overlay mostrar "com erros" em
+      // vez de "conectado" com lista vazia (auditoria 13/09/2026, I-F).
+      await this.userIntegracoes
+        .registrarSyncErro(usuarioId, 'google_calendar')
+        .catch(() => undefined);
       return null;
     }
   }

@@ -146,10 +146,25 @@ export class GoogleOAuthService {
     }
     // Refresh
     this.logger.debug(`Refresh access_token Google — usuário=${userId}`);
-    const tokenRes = await this.requestToken({
-      grant_type: 'refresh_token',
-      refresh_token: c.refreshToken,
-    });
+    let tokenRes: GoogleTokenResponse;
+    try {
+      tokenRes = await this.requestToken({
+        grant_type: 'refresh_token',
+        refresh_token: c.refreshToken,
+      });
+    } catch (err) {
+      // `invalid_grant` = refresh MORTO (senha trocada, app revogado, app em
+      // "testing" com refresh de 7 dias). Não adianta tentar de novo: desliga a
+      // conexão pra tela pedir reconexão, em vez de "conectado" com agenda vazia
+      // (auditoria 13/09/2026, achado I-F).
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/invalid_grant/i.test(msg)) {
+        await this.userIntegracoes
+          .marcarCredencialInvalida(userId, 'google_calendar', 'invalid_grant')
+          .catch(() => undefined);
+      }
+      throw err;
+    }
     const novo: GoogleCalendarCredenciais = {
       accessToken: tokenRes.access_token,
       refreshToken: tokenRes.refresh_token ?? c.refreshToken,

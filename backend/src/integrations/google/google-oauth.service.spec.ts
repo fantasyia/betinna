@@ -221,3 +221,37 @@ describe('GoogleOAuthService.getAccessToken', () => {
     expect(ui.conectarInterno.mock.calls.at(-1)?.[3]).toBeUndefined();
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (I-F): refresh recusado com `invalid_grant` (senha
+ * trocada, app revogado, refresh expirado) só virava `logger.warn` — a agenda
+ * parava de espelhar e a tela seguia "conectado". Agora desliga a conexão.
+ */
+describe('GoogleOAuthService.getAccessToken — invalid_grant desliga a conexão', () => {
+  it('marca a credencial como inválida e propaga o erro', async () => {
+    const ui = { ...makeUserIntegracoes(), marcarCredencialInvalida: vi.fn(async () => undefined) };
+    ui.obterCredenciaisInternas.mockResolvedValueOnce({
+      credenciais: { accessToken: 'expired', refreshToken: 'rt', expiresAt: Date.now() - 1000 },
+    });
+    const http = makeHttp();
+    http.post.mockRejectedValueOnce(
+      new Error(
+        '{"error":"invalid_grant","error_description":"Token has been expired or revoked."}',
+      ),
+    );
+    const svc = new GoogleOAuthService(
+      makeEnv() as never,
+      http as never,
+      ui as never,
+      makeRedis() as never,
+    );
+
+    await expect(svc.getAccessToken('u1')).rejects.toThrow();
+
+    expect(ui.marcarCredencialInvalida).toHaveBeenCalledWith(
+      'u1',
+      'google_calendar',
+      'invalid_grant',
+    );
+  });
+});

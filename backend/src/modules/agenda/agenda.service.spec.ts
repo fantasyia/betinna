@@ -33,6 +33,7 @@ const makePrismaMock = () => ({
 
 const makeUserIntegracoesMock = () => ({
   findByServico: vi.fn().mockResolvedValue(null), // sem integração google por default
+  registrarSyncErro: vi.fn().mockResolvedValue(undefined), // I-F: conta o erro de sync
 });
 
 const makeGoogleCalendarMock = () => ({
