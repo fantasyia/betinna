@@ -400,7 +400,16 @@ export class ClickSignService {
     return (await this.resolver(empresaId)).base;
   }
 
-  /** Estado do envelope — usado pela varredura de pendentes. */
+  /**
+   * Estado do envelope, sob demanda.
+   *
+   * ⚠️ **Não existe "varredura de pendentes"** — o docblock dizia que existia e
+   * mandava a próxima pessoa procurar um job que nunca foi escrito. E não deve
+   * existir: a ClickSign PROÍBE polling em documentos, e desde 13/09/2026 os
+   * três desfechos (assinado, recusado, prazo vencido) chegam por webhook. Isto
+   * aqui é pra conferência pontual — "o que aconteceu com ESTE envelope?" —
+   * quando há suspeita de webhook perdido.
+   */
   async situacao(empresaId: string, envelopeId: string): Promise<string | null> {
     const r = await this.chamar<{ data: { attributes: { status: string } } }>(
       await this.resolver(empresaId),

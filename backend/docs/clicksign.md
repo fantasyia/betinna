@@ -147,6 +147,20 @@ fica sabendo.
   Sem `CLICKSIGN_WEBHOOK_SECRET` o endpoint **recusa tudo** — aceitar sem
   verificar deixaria qualquer um marcar contrato como assinado.
 - **Eventos assinados:** `document_closed`, `auto_close`, `refusal`, `deadline`.
+
+  🔴 **O `deadline` ficou 10 dias assinado e ignorado** (até 13/09/2026). Ele caía
+  no `else` do controller e sumia em `logger.debug`: o envelope expirava, o
+  contrato ficava `AGUARDANDO_ASSINATURA` **para sempre** e quem vendeu nunca
+  era avisado de que o negócio tinha morrido. Não quebrava nada — só não
+  acontecia, que é o jeito mais caro de falhar.
+
+  Hoje ele encerra o contrato como CANCELADO com o motivo dizendo que foi o
+  **prazo** (e não recusa: recusa é "não quero", prazo vencido é quase sempre
+  "esqueci", e a ação de quem vendeu é outra — reenviar, não refazer a proposta).
+
+  📌 A lição que sobrevive ao caso: **evento assinado e não tratado não pode sair
+  em `debug`.** O controller agora loga em WARN qualquer evento com nome que ele
+  não conhece — assim o próximo buraco desse tipo aparece em vez de sumir.
 - **Resposta:** 200 imediato, trabalho em background (exigência deles; qualquer
   coisa fora do 2xx conta como falha, inclusive redirecionamento — eles não
   seguem redirect).

@@ -193,3 +193,41 @@ describe('PDF assinado — a base vem da conta DA EMPRESA', () => {
     expect(fetch).toHaveBeenCalledWith('https://arquivo/contrato.pdf', expect.anything());
   });
 });
+
+describe('registrarExpiracao — prazo estourou sem assinatura', () => {
+  const corpoDeadline = () =>
+    Buffer.from(
+      JSON.stringify({
+        event: { name: 'deadline' },
+        document: { key: 'doc-1', status: 'running' },
+      }),
+      'utf8',
+    );
+
+  it('encerra o contrato dizendo que foi o PRAZO, não recusa', async () => {
+    const { svc, prisma } = montar();
+    await expect(svc.registrarExpiracao(corpoDeadline())).resolves.toBe('aplicado');
+    const dados = prisma.contrato.update.mock.calls[0][0].data;
+    expect(dados.status).toBe('CANCELADO');
+    expect(dados.motivoEncerramento).toMatch(/prazo/i);
+    expect(dados.motivoEncerramento).not.toMatch(/recus/i);
+  });
+
+  it('avisa quem vendeu — senão o negócio morre em silêncio', async () => {
+    const { svc, notificacoes } = montar();
+    await svc.registrarExpiracao(corpoDeadline());
+    expect(notificacoes.criarParaUsuario).toHaveBeenCalledWith(
+      expect.objectContaining({ titulo: expect.stringMatching(/EXPIROU/) }),
+    );
+  });
+
+  /**
+   * Webhook fora de ordem existe, e aqui ele é caro: aplicar a expiração em
+   * cima de um contrato já assinado desfaria uma assinatura VÁLIDA.
+   */
+  it.each(['ASSINADO', 'ATIVO'])('não mexe em contrato já %s', async (status) => {
+    const { svc, prisma } = montar({ ...CONTRATO, status });
+    await expect(svc.registrarExpiracao(corpoDeadline())).resolves.toBe('sem-contrato');
+    expect(prisma.contrato.update).not.toHaveBeenCalled();
+  });
+});

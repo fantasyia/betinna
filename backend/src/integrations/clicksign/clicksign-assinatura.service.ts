@@ -174,6 +174,47 @@ export class ClickSignAssinaturaService implements OnModuleInit {
   }
 
   /**
+   * Prazo estourou sem assinatura — o contrato não vai sair.
+   *
+   * Fica CANCELADO com o motivo dizendo que foi o PRAZO, e não recusa: são
+   * coisas diferentes comercialmente. Recusa é "não quero"; prazo vencido é,
+   * quase sempre, "esqueci" — e a ação de quem vendeu é outra (reenviar, não
+   * refazer a proposta). Guardar os dois como "cancelado" sem distinguir faria
+   * o rep tratar um esquecimento como perda.
+   *
+   * Não existe status EXPIRADO no enum, e não inventei um: valor de enum novo
+   * custa migration, e o motivo em texto já responde a pergunta que se faz
+   * olhando o contrato. Se um dia virar relatório, aí vale a coluna.
+   */
+  async registrarExpiracao(cru: Buffer): Promise<'aplicado' | 'sem-contrato'> {
+    const doc = this.documentoDo(cru);
+    if (!doc) return 'sem-contrato';
+    const contrato = await this.acharContrato(doc);
+    // Assinado depois do prazo (ou webhook fora de ordem): a assinatura ganha.
+    if (!contrato || contrato.status === 'ASSINADO' || contrato.status === 'ATIVO') {
+      return 'sem-contrato';
+    }
+
+    await this.prisma.contrato.update({
+      where: { id: contrato.id },
+      data: {
+        status: 'CANCELADO',
+        encerradoEm: new Date(),
+        motivoEncerramento: 'Prazo de assinatura expirado sem assinatura',
+      },
+    });
+    this.logger.warn(`Contrato ${contrato.id} expirou sem assinatura`);
+    await this.avisar(
+      contrato.empresaId,
+      contrato.representanteId,
+      `Contrato da ${contrato.proposta.numero} EXPIROU sem assinatura`,
+      `${contrato.cliente.nome} não assinou dentro do prazo. O contrato foi encerrado — ` +
+        `reenviar costuma bastar, não precisa refazer a proposta.`,
+    );
+    return 'aplicado';
+  }
+
+  /**
    * Pedido em RASCUNHO da proposta assinada → `AGUARDANDO_LIBERACAO`.
    *
    * Só mexe em rascunho: pedido que já andou (foi pro ERP, foi entregue) não

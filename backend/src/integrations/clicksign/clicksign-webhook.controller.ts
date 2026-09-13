@@ -22,6 +22,23 @@ import { ClickSignAssinaturaService } from './clicksign-assinatura.service';
 const EVENTOS_FECHAMENTO = ['document_closed', 'auto_close', 'close'];
 /** Recusa: o contrato não vai sair, e alguém precisa saber hoje. */
 const EVENTOS_RECUSA = ['refusal', 'document_refused'];
+/**
+ * Prazo do envelope estourou sem assinatura.
+ *
+ * 🔴 Este evento ESTÁ assinado na ClickSign (`document_closed`, `auto_close`,
+ * `refusal`, `deadline` — ver docs/clicksign.md) e até 13/09/2026 caía no
+ * `else` e sumia em `debug`. O efeito: o envelope expirava, o contrato ficava
+ * AGUARDANDO_ASSINATURA **para sempre**, e quem vendeu nunca era avisado de que
+ * o negócio tinha morrido. Nada quebrava, nada alertava — só não acontecia.
+ */
+const EVENTOS_EXPIRACAO = ['deadline', 'deadline_expired', 'document_deadline'];
+
+/**
+ * Eventos que a conta ASSINA. Serve pra uma coisa só: distinguir "chegou algo
+ * que não nos interessa" de "chegou algo que pedimos e não sabemos tratar" — o
+ * segundo é um buraco, e buraco não pode sair em `debug`.
+ */
+const EVENTOS_ASSINADOS = [...EVENTOS_FECHAMENTO, ...EVENTOS_RECUSA, ...EVENTOS_EXPIRACAO];
 
 /**
  * Retorno da assinatura eletrônica (ClickSign).
@@ -85,8 +102,19 @@ export class ClickSignWebhookController {
       });
     } else if (EVENTOS_RECUSA.includes(evento)) {
       void this.assinatura.registrarRecusa(cru).catch(() => undefined);
+    } else if (EVENTOS_EXPIRACAO.includes(evento)) {
+      void this.assinatura.registrarExpiracao(cru).catch((err: unknown) => {
+        this.logger.error(
+          `Falha processando expiração: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    } else if (EVENTOS_ASSINADOS.length && evento) {
+      // Evento com nome que não conhecemos. Pode ser ruído da ClickSign — ou um
+      // evento que a conta assinou depois e ninguém ligou aqui, que foi
+      // exatamente o caso do `deadline`. WARN pra aparecer, não DEBUG pra sumir.
+      this.logger.warn(`Evento "${evento}" do ClickSign não tem tratamento aqui — ignorado`);
     } else {
-      this.logger.debug(`Evento ${evento || '(sem nome)'} recebido e ignorado`);
+      this.logger.debug('Evento sem nome recebido e ignorado');
     }
     return { ok: true };
   }
