@@ -475,12 +475,48 @@ const contratoLocacaoSchema = z
   })
   .strip();
 
+/**
+ * NF de COMODATO — a remessa que tira o equipamento da empresa e o põe na
+ * planta do cliente, sem venda.
+ *
+ * Tudo opt-in e vazio de propósito, pelo mesmo motivo do contrato: CFOP e
+ * natureza de operação são decisão da contabilidade do tenant. ⚠️ E aqui errar
+ * é pior que no contrato — CFOP de venda numa remessa declara faturamento que
+ * não houve, e **NF rejeitada é beco sem saída pela API do Tiny**: ela guarda
+ * um snapshot do item, não gera segunda nota pro mesmo pedido e não tem
+ * endpoint de alterar. Só o painel.
+ *
+ * Os dois CFOPs existem porque a operação muda com a UF: dentro do estado e
+ * interestadual são códigos diferentes, e quem resolve é o endereço do cliente.
+ */
+const comodatoSchema = z
+  .object({
+    emiteNota: z.boolean().nullable().optional(),
+    /** Remessa em comodato dentro da MESMA UF da empresa. */
+    cfopMesmaUf: z
+      .string()
+      .regex(/^[0-9]{4}$/, 'CFOP tem 4 dígitos')
+      .nullable()
+      .optional(),
+    /** Remessa em comodato para OUTRA UF. */
+    cfopOutraUf: z
+      .string()
+      .regex(/^[0-9]{4}$/, 'CFOP tem 4 dígitos')
+      .nullable()
+      .optional(),
+    naturezaOperacao: z.string().max(120).nullable().optional(),
+    /** Texto livre que sai no corpo da nota (ex.: nº do contrato). */
+    textoNota: z.string().max(500).nullable().optional(),
+  })
+  .strip();
+
 const erpSchema = z
   .object({
     ecommerceId: z.number().int().positive().nullable().optional(),
     formaEnvioId: z.number().int().positive().nullable().optional(),
     formaFreteId: z.number().int().positive().nullable().optional(),
     contratoLocacao: contratoLocacaoSchema.nullable().optional(),
+    comodato: comodatoSchema.nullable().optional(),
   })
   .strip();
 

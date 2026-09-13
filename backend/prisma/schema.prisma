@@ -708,6 +708,9 @@ model Produto {
   /// a tela mostra "—" e ninguém negocia com o número errado.
   /// Vem da lista de preços "Locação mensal" do ERP.
   precoLocacaoMensal    Decimal?                     @db.Decimal(14, 2)
+  /// Quanto o equipamento VALE (≠ aluguel): é o valor que vai na NF de comodato.
+  /// Vazio até a contabilidade definir — sem ele o app RECUSA emitir a remessa.
+  valorBem              Decimal?             @db.Decimal(14, 2)
   /// Camada de MARKETING (editável no app, não vem do ERP). Tier comercial livre por
   /// tenant: entrada / valor_agregado / nobre, etc.
   tierComercial         String?

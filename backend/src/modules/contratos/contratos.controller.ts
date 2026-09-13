@@ -12,6 +12,7 @@ import { type ListContratosDto, listContratosSchema } from './contratos.dto';
 import { ContratosService } from './contratos.service';
 import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
+import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 
 /**
@@ -37,6 +38,7 @@ export class ContratosController {
     private readonly mensalidades: ContratoMensalidadeSyncService,
     private readonly erp: ContratoErpService,
     private readonly aprovacao: ContratoAprovacaoJob,
+    private readonly fiscal: FiscalPendenciasService,
   ) {}
 
   /**
@@ -120,6 +122,25 @@ export class ContratosController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.contratos.recalcularComissoes(user.empresaIdAtiva, id);
+  }
+
+  /**
+   * O que falta pra emitir — perguntável ANTES de tentar.
+   *
+   * ⚠️ Vem ANTES de `@Get(':id')` de propósito: rota fixa depois de rota com
+   * parâmetro vira id. "fiscal" seria lido como id de contrato e daria 404.
+   */
+  @Get('fiscal/pendencias')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary:
+      'Dados fiscais que faltam pra emitir NFS-e mensal e NF de comodato. **DIRETOR/ADMIN**.',
+  })
+  pendenciasFiscais(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.fiscal.verificar(user.empresaIdAtiva);
   }
 
   @Get()

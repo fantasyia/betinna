@@ -6,6 +6,7 @@ import { ContratosService } from './contratos.service';
 import { ContratoComodatoService } from './contrato-comodato.service';
 import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
+import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 
 /** Leitura dos contratos de locação — quem os cria é o aceite da proposta. */
@@ -17,6 +18,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
   controllers: [ContratosController],
   providers: [
     ContratosService,
+    FiscalPendenciasService,
     ContratoComodatoService,
     ContratoErpService,
     ContratoMensalidadeSyncService,
@@ -24,6 +26,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
   ],
   exports: [
     ContratosService,
+    FiscalPendenciasService,
     ContratoComodatoService,
     ContratoErpService,
     ContratoMensalidadeSyncService,
