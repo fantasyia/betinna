@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { z } from "zod";
 import { api, ApiError } from "./api.js";
+import { seg } from "./caminho.js";
 
 const server = new McpServer({ name: "betinna-kanban", version: "1.0.0" });
 
@@ -179,7 +180,7 @@ function posicaoNoFim(lista: Lista | undefined): number {
 async function boardIdDoCard(
   cardId: string,
 ): Promise<{ card: CardCompleto; boardId: string }> {
-  const card = await api.get<CardCompleto>(`/kanban/cards/${cardId}`);
+  const card = await api.get<CardCompleto>(`/kanban/cards/${seg(cardId)}`);
   return { card, boardId: card.lista.boardId };
 }
 
@@ -291,7 +292,7 @@ server.registerTool(
       boardId: string;
       incluirCards: boolean;
     }) => {
-      const b = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+      const b = await api.get<BoardCompleto>(`/kanban/boards/${seg(boardId)}`);
       // Sem os cards a resposta cabe sempre. Era o buraco que fazia card nascer
       // sem etiqueta: a ÚNICA fonte de ids falhava por tamanho, e quem não
       // conseguia o id seguia sem etiqueta.
@@ -348,7 +349,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ cardId }: { cardId: string }) => {
-    const c = await api.get<CardCompleto>(`/kanban/cards/${cardId}`);
+    const c = await api.get<CardCompleto>(`/kanban/cards/${seg(cardId)}`);
     return ok({
       id: c.id,
       titulo: c.titulo,
@@ -443,7 +444,7 @@ server.registerTool(
       lista: { nome: string };
     }
     const cards = await api.get<CardBusca[]>(
-      `/kanban/boards/${boardId}/busca?q=${encodeURIComponent(texto)}`,
+      `/kanban/boards/${seg(boardId)}/busca?q=${encodeURIComponent(texto)}`,
     );
     if (cards.length === 0)
       return ok({ resultado: "Nenhum card encontrado", cards: [] });
@@ -483,7 +484,7 @@ server.registerTool(
       usuario: Usuario;
     }
     const ativ = await api.get<Atividade[]>(
-      `/kanban/boards/${boardId}/atividades?limit=${limit}`,
+      `/kanban/boards/${seg(boardId)}/atividades?limit=${limit}`,
     );
     return ok(
       ativ.map((a) => ({
@@ -547,7 +548,7 @@ server.registerTool(
   },
   seguro(async ({ boardId, nome }: { boardId: string; nome: string }) => {
     const lista = await api.post<{ id: string; nome: string }>(
-      `/kanban/boards/${boardId}/listas`,
+      `/kanban/boards/${seg(boardId)}/listas`,
       { nome },
     );
     return ok({ id: lista.id, nome: lista.nome });
@@ -602,7 +603,7 @@ server.registerTool(
       responsaveis?: string[];
     }) => {
       const card = await api.post<{ id: string; titulo: string }>(
-        `/kanban/listas/${listaId}/cards`,
+        `/kanban/listas/${seg(listaId)}/cards`,
         {
           titulo,
           descricao,
@@ -616,7 +617,7 @@ server.registerTool(
       // Resolve NOME → id uma vez só: o quadro é o mesmo pra todas as etiquetas.
       const board = etiquetas?.length
         ? await api.get<BoardCompleto>(
-            `/kanban/boards/${(await boardIdDoCard(card.id)).boardId}`,
+            `/kanban/boards/${seg((await boardIdDoCard(card.id)).boardId)}`,
           )
         : null;
       for (const busca of etiquetas ?? []) {
@@ -627,7 +628,7 @@ server.registerTool(
         }
         const etiquetaId = r?.ok ? r.alvo.id : busca;
         try {
-          await api.post(`/kanban/cards/${card.id}/etiquetas/${etiquetaId}`);
+          await api.post(`/kanban/cards/${seg(card.id)}/etiquetas/${seg(etiquetaId)}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           avisoEtiquetas.push(`Etiqueta "${busca}" não aplicada: ${msg}`);
@@ -640,7 +641,7 @@ server.registerTool(
       for (const email of responsaveis ?? []) {
         try {
           const usuarioId = await resolverEmail(email);
-          await api.post(`/kanban/cards/${card.id}/membros/${usuarioId}`);
+          await api.post(`/kanban/cards/${seg(card.id)}/membros/${seg(usuarioId)}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           avisoResponsaveis.push(
@@ -687,9 +688,9 @@ server.registerTool(
     }) => {
       const usuarioId = await resolverEmail(email);
       if (remover) {
-        await api.delete(`/kanban/cards/${cardId}/membros/${usuarioId}`);
+        await api.delete(`/kanban/cards/${seg(cardId)}/membros/${seg(usuarioId)}`);
       } else {
-        await api.post(`/kanban/cards/${cardId}/membros/${usuarioId}`);
+        await api.post(`/kanban/cards/${seg(cardId)}/membros/${seg(usuarioId)}`);
       }
       return ok({ cardId, email, atribuido: !remover });
     },
@@ -730,7 +731,7 @@ server.registerTool(
         );
       }
       const card = await api.patch<{ id: string; titulo: string }>(
-        `/kanban/cards/${cardId}`,
+        `/kanban/cards/${seg(cardId)}`,
         definidos,
       );
       return ok({
@@ -765,7 +766,7 @@ server.registerTool(
       titulo: string;
       espelhosRemovidos: number;
       arquivosRemovidos: number;
-    }>(`/kanban/cards/${cardId}`);
+    }>(`/kanban/cards/${seg(cardId)}`);
     return ok(r);
   }),
 );
@@ -790,7 +791,7 @@ server.registerTool(
       listaDestino: string;
     }) => {
       const { boardId } = await boardIdDoCard(cardId);
-      const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+      const board = await api.get<BoardCompleto>(`/kanban/boards/${seg(boardId)}`);
       // Prioriza match exato por id; senão casa por nome (case-insensitive).
       let destino = board.listas.find((l) => l.id === listaDestino);
       if (!destino) {
@@ -812,7 +813,7 @@ server.registerTool(
             .join(", ")}`,
         );
       }
-      await api.patch(`/kanban/cards/${cardId}/mover`, {
+      await api.patch(`/kanban/cards/${seg(cardId)}/mover`, {
         listaId: destino.id,
         posicao: posicaoNoFim(destino),
       });
@@ -831,7 +832,7 @@ server.registerTool(
   },
   seguro(async ({ cardId, texto }: { cardId: string; texto: string }) => {
     const c = await api.post<{ id: string }>(
-      `/kanban/cards/${cardId}/comentarios`,
+      `/kanban/cards/${seg(cardId)}/comentarios`,
       { texto },
     );
     return ok({ comentarioId: c.id });
@@ -894,7 +895,7 @@ server.registerTool(
       const ck = await api.post<{
         id: string;
         itens: Array<{ id: string; texto: string }>;
-      }>(`/kanban/cards/${cardId}/checklists`, {
+      }>(`/kanban/cards/${seg(cardId)}/checklists`, {
         titulo,
         itens: itensResolvidos,
       });
@@ -918,7 +919,7 @@ server.registerTool(
   },
   seguro(
     async ({ itemId, concluido }: { itemId: string; concluido: boolean }) => {
-      await api.patch(`/kanban/checklist-itens/${itemId}`, { concluido });
+      await api.patch(`/kanban/checklist-itens/${seg(itemId)}`, { concluido });
       return ok({ itemId, concluido });
     },
   ),
@@ -968,7 +969,7 @@ server.registerTool(
           "Informe pelo menos um campo (texto, dataEntrega, responsavelEmail)",
         );
       }
-      await api.patch(`/kanban/checklist-itens/${itemId}`, payload);
+      await api.patch(`/kanban/checklist-itens/${seg(itemId)}`, payload);
       return ok({ itemId, atualizado: Object.keys(payload) });
     },
   ),
@@ -1003,7 +1004,7 @@ server.registerTool(
       valor: string | number | boolean | null;
     }) => {
       const { boardId } = await boardIdDoCard(cardId);
-      const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+      const board = await api.get<BoardCompleto>(`/kanban/boards/${seg(boardId)}`);
       const campo = board.campos.find(
         (c) => c.nome.toLowerCase() === nomeCampo.toLowerCase(),
       );
@@ -1024,7 +1025,7 @@ server.registerTool(
       ) {
         valorFinal = `${valor}T12:00:00Z`;
       }
-      await api.put(`/kanban/cards/${cardId}/campos/${campo.id}`, {
+      await api.put(`/kanban/cards/${seg(cardId)}/campos/${seg(campo.id)}`, {
         valor: valorFinal,
       });
       return ok({ cardId, campo: campo.nome, valor: valorFinal });
@@ -1059,7 +1060,7 @@ server.registerTool(
       nome?: string;
     }) => {
       const e = await api.post<Etiqueta>(
-        `/kanban/boards/${boardId}/etiquetas`,
+        `/kanban/boards/${seg(boardId)}/etiquetas`,
         {
           cor,
           nome: nome ?? null,
@@ -1097,14 +1098,14 @@ server.registerTool(
       remover: boolean;
     }) => {
       const { boardId } = await boardIdDoCard(cardId);
-      const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+      const board = await api.get<BoardCompleto>(`/kanban/boards/${seg(boardId)}`);
       const r = resolverEtiqueta(board.etiquetas, etiqueta);
       if (!r.ok) return erro(r.erro);
       const alvo = r.alvo;
       if (remover) {
-        await api.delete(`/kanban/cards/${cardId}/etiquetas/${alvo.id}`);
+        await api.delete(`/kanban/cards/${seg(cardId)}/etiquetas/${seg(alvo.id)}`);
       } else {
-        await api.post(`/kanban/cards/${cardId}/etiquetas/${alvo.id}`);
+        await api.post(`/kanban/cards/${seg(cardId)}/etiquetas/${seg(alvo.id)}`);
       }
       return ok({
         cardId,
@@ -1144,7 +1145,7 @@ server.registerTool(
         id: string;
         nome: string;
         arquivada: boolean;
-      }>(`/kanban/listas/${listaId}`, {
+      }>(`/kanban/listas/${seg(listaId)}`, {
         ...(nome !== undefined ? { nome } : {}),
         ...(arquivada !== undefined ? { arquivada } : {}),
       });
@@ -1179,7 +1180,7 @@ server.registerTool(
       lista: string;
       posicao: number;
     }) => {
-      const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+      const board = await api.get<BoardCompleto>(`/kanban/boards/${seg(boardId)}`);
       let alvo = board.listas.find((l) => l.id === lista);
       if (!alvo) {
         const porNome = board.listas.filter(
@@ -1209,7 +1210,7 @@ server.registerTool(
       else if (antes === undefined) novaPosicao = (depois as number) / 2;
       else if (depois === undefined) novaPosicao = antes + 1024;
       else novaPosicao = (antes + depois) / 2;
-      await api.patch(`/kanban/listas/${alvo.id}/mover`, {
+      await api.patch(`/kanban/listas/${seg(alvo.id)}/mover`, {
         posicao: novaPosicao,
       });
       return ok({ listaId: alvo.id, nome: alvo.nome, posicaoFinal: posicao });
@@ -1249,7 +1250,7 @@ server.registerTool(
       const criados: Array<{ id: string; texto: string }> = [];
       for (const item of itens) {
         const i = await api.post<{ id: string; texto: string }>(
-          `/kanban/checklists/${checklistId}/itens`,
+          `/kanban/checklists/${seg(checklistId)}/itens`,
           {
             texto: item.texto,
             dataEntrega: item.dataEntrega,
@@ -1276,7 +1277,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: true },
   },
   seguro(async ({ checklistId }: { checklistId: string }) => {
-    await api.delete(`/kanban/checklists/${checklistId}`);
+    await api.delete(`/kanban/checklists/${seg(checklistId)}`);
     return ok({ checklistId, excluido: true });
   }),
 );
@@ -1291,7 +1292,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: true },
   },
   seguro(async ({ itemId }: { itemId: string }) => {
-    await api.delete(`/kanban/checklist-itens/${itemId}`);
+    await api.delete(`/kanban/checklist-itens/${seg(itemId)}`);
     return ok({ itemId, excluido: true });
   }),
 );
@@ -1310,7 +1311,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: true },
   },
   seguro(async ({ anexoId }: { anexoId: string }) => {
-    await api.delete(`/kanban/anexos/${anexoId}`);
+    await api.delete(`/kanban/anexos/${seg(anexoId)}`);
     return ok({ anexoId, excluido: true });
   }),
 );
@@ -1342,7 +1343,7 @@ server.registerTool(
       itemId: string;
       posicao: number;
     }) => {
-      const card = await api.get<CardCompleto>(`/kanban/cards/${cardId}`);
+      const card = await api.get<CardCompleto>(`/kanban/cards/${seg(cardId)}`);
       const checklist = card.checklists.find((ck) =>
         ck.itens.some((i) => i.id === itemId),
       );
@@ -1363,7 +1364,7 @@ server.registerTool(
       else if (antes === undefined) novaPosicao = (depois as number) / 2;
       else if (depois === undefined) novaPosicao = antes + 1024;
       else novaPosicao = (antes + depois) / 2;
-      await api.patch(`/kanban/checklist-itens/${itemId}`, {
+      await api.patch(`/kanban/checklist-itens/${seg(itemId)}`, {
         posicao: novaPosicao,
       });
       return ok({ itemId, checklist: checklist.titulo, posicaoFinal: posicao });
@@ -1439,7 +1440,7 @@ server.registerTool(
       if (url) {
         if (!nome) return erro('Pra anexar um link, informe também "nome".');
         const a = await api.post<{ id: string; nome: string; tipo: string }>(
-          `/kanban/cards/${cardId}/anexos`,
+          `/kanban/cards/${seg(cardId)}/anexos`,
           { url, nome },
         );
         return ok({ id: a.id, nome: a.nome, tipo: a.tipo });
@@ -1472,7 +1473,7 @@ server.registerTool(
         basename(caminhoArquivo),
       );
       const a = await api.postForm<{ id: string; nome: string; tipo: string }>(
-        `/kanban/cards/${cardId}/anexos`,
+        `/kanban/cards/${seg(cardId)}/anexos`,
         form,
       );
       return ok({ id: a.id, nome: a.nome, tipo: a.tipo });
@@ -1699,7 +1700,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
-    const f = await api.get<Record<string, unknown>>(`/fluxos/${fluxoId}`);
+    const f = await api.get<Record<string, unknown>>(`/fluxos/${seg(fluxoId)}`);
     return ok(f);
   }),
 );
@@ -1713,7 +1714,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
-    const json = await api.get<unknown>(`/fluxos/${fluxoId}/exportar`);
+    const json = await api.get<unknown>(`/fluxos/${seg(fluxoId)}/exportar`);
     return ok(json);
   }),
 );
@@ -1764,7 +1765,7 @@ server.registerTool(
       if (origem) qs.set("origem", origem);
       if (status) qs.set("status", status);
       const resp = await api.get<unknown>(
-        `/fluxos/${fluxoId}/execucoes?${qs.toString()}`,
+        `/fluxos/${seg(fluxoId)}/execucoes?${qs.toString()}`,
       );
       return ok(resp);
     },
@@ -1780,7 +1781,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
-    const m = await api.get<unknown>(`/fluxos/${fluxoId}/metricas`);
+    const m = await api.get<unknown>(`/fluxos/${seg(fluxoId)}/metricas`);
     return ok(m);
   }),
 );
@@ -1933,7 +1934,7 @@ server.registerTool(
           "Informe pelo menos um campo (nome, descricao, remetenteEmail, triggerTipo, nos, arestas)",
         );
       }
-      const f = await api.put<FluxoResumo>(`/fluxos/${fluxoId}`, definidos);
+      const f = await api.put<FluxoResumo>(`/fluxos/${seg(fluxoId)}`, definidos);
       return ok({
         id: f.id,
         nome: f.nome,
@@ -1983,7 +1984,7 @@ server.registerTool(
         nome: string;
         status: string;
         nos: { tipo: string }[];
-      }>(`/fluxos/${fluxoId}/gatilho`, definidos);
+      }>(`/fluxos/${seg(fluxoId)}/gatilho`, definidos);
       return ok({
         id: f.id,
         nome: f.nome,
@@ -2066,7 +2067,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
-    await api.delete(`/fluxos/${fluxoId}`);
+    await api.delete(`/fluxos/${seg(fluxoId)}`);
     return ok({
       fluxoId,
       status: "ARQUIVADO",
@@ -2090,7 +2091,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
-    await api.post(`/fluxos/${fluxoId}/desarquivar`);
+    await api.post(`/fluxos/${seg(fluxoId)}/desarquivar`);
     return ok({ fluxoId, status: "RASCUNHO" });
   }),
 );
@@ -2110,7 +2111,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
-    await api.post(`/fluxos/${fluxoId}/pausar`);
+    await api.post(`/fluxos/${seg(fluxoId)}/pausar`);
     return ok({ fluxoId, status: "PAUSADO" });
   }),
 );
@@ -2132,7 +2133,7 @@ server.registerTool(
     const f = await api.get<{
       status?: string;
       _count?: { execucoes?: number };
-    }>(`/fluxos/${fluxoId}`);
+    }>(`/fluxos/${seg(fluxoId)}`);
     if (f.status !== "RASCUNHO") {
       return erro(
         `Fluxo está ${f.status ?? "?"} — só dá pra DELETAR rascunho. Use fluxos_arquivar (reversível).`,
@@ -2144,7 +2145,7 @@ server.registerTool(
         `Fluxo tem ${execs} execução(ões) no histórico — não apago (perderia o histórico). Use fluxos_arquivar.`,
       );
     }
-    await api.delete(`/fluxos/${fluxoId}/permanente`);
+    await api.delete(`/fluxos/${seg(fluxoId)}/permanente`);
     return ok({ fluxoId, excluido: true });
   }),
 );
@@ -2188,7 +2189,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ funilId }: { funilId: string }) => {
-    const f = await api.get<Record<string, unknown>>(`/funis/${funilId}`);
+    const f = await api.get<Record<string, unknown>>(`/funis/${seg(funilId)}`);
     return ok(f);
   }),
 );
@@ -2272,7 +2273,7 @@ server.registerTool(
       ...body
     }: { funilId: string } & Record<string, unknown>) => {
       const f = await api.patch<Record<string, unknown>>(
-        `/funis/${funilId}`,
+        `/funis/${seg(funilId)}`,
         body,
       );
       return ok(f);
@@ -2337,7 +2338,7 @@ server.registerTool(
       ...body
     }: { funilId: string } & Record<string, unknown>) => {
       const f = await api.post<Record<string, unknown>>(
-        `/funis/${funilId}/etapas`,
+        `/funis/${seg(funilId)}/etapas`,
         body,
       );
       return ok(f);
@@ -2377,7 +2378,7 @@ server.registerTool(
       ...body
     }: { funilId: string; etapaId: string } & Record<string, unknown>) => {
       const f = await api.patch<Record<string, unknown>>(
-        `/funis/${funilId}/etapas/${etapaId}`,
+        `/funis/${seg(funilId)}/etapas/${seg(etapaId)}`,
         body,
       );
       return ok(f);
@@ -2403,7 +2404,7 @@ server.registerTool(
   seguro(
     async ({ funilId, etapaIds }: { funilId: string; etapaIds: string[] }) => {
       const f = await api.put<Record<string, unknown>>(
-        `/funis/${funilId}/etapas/reordenar`,
+        `/funis/${seg(funilId)}/etapas/reordenar`,
         {
           etapaIds,
         },
@@ -2428,7 +2429,7 @@ server.registerTool(
   },
   seguro(async ({ funilId, etapaId }: { funilId: string; etapaId: string }) => {
     const f = await api.delete<Record<string, unknown>>(
-      `/funis/${funilId}/etapas/${etapaId}`,
+      `/funis/${seg(funilId)}/etapas/${seg(etapaId)}`,
     );
     return ok(f);
   }),
@@ -2466,7 +2467,7 @@ server.registerTool(
         limit: String(limit),
       });
       const resp = await api.get<unknown>(
-        `/funis/${funilId}/etapas/${etapaId}/leads?${qs}`,
+        `/funis/${seg(funilId)}/etapas/${seg(etapaId)}/leads?${qs}`,
       );
       return ok(resp);
     },
@@ -2919,7 +2920,7 @@ server.registerTool(
           noTitulo: string;
         }>;
       }
-    >(`/mullerbot/prompts/${promptId}`);
+    >(`/mullerbot/prompts/${seg(promptId)}`);
     return ok(p);
   }),
 );
@@ -3045,7 +3046,7 @@ server.registerTool(
       }
       const p = await api.patch<
         PromptCompleto & { tamanhoAntes?: number; tamanhoDepois?: number }
-      >(`/mullerbot/prompts/${promptId}`, definidos);
+      >(`/mullerbot/prompts/${seg(promptId)}`, definidos);
       // Devolve modelo/temperatura EFETIVOS: quem acabou de ajustar precisa ver
       // o que ficou valendo, não só "ok" (o backend pode normalizar/recusar).
       return ok({
@@ -3079,7 +3080,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: true },
   },
   seguro(async ({ promptId }: { promptId: string }) => {
-    await api.delete(`/mullerbot/prompts/${encodeURIComponent(promptId)}`);
+    await api.delete(`/mullerbot/prompts/${seg(encodeURIComponent(promptId))}`);
     return ok({ removido: promptId });
   }),
 );
@@ -3285,7 +3286,7 @@ server.registerTool(
     if (!args.id && !args.email) return erro("Informe `id` ou `email`.");
     if (args.id) {
       const u = await api.get<Record<string, unknown>>(
-        `/users/${encodeURIComponent(args.id)}`,
+        `/users/${seg(encodeURIComponent(args.id))}`,
       );
       return ok(projetarUsuario(u));
     }
@@ -3489,7 +3490,7 @@ server.registerTool(
         return erro("Informe titulo, usarComoFonte ou podeEnviar.");
       }
       const doc = await api.patch<DocumentoResumo>(
-        `/conhecimento/documento/${encodeURIComponent(documentoId)}`,
+        `/conhecimento/documento/${seg(encodeURIComponent(documentoId))}`,
         definidos,
       );
       return ok(projetarDocumento(doc));
@@ -3509,7 +3510,7 @@ server.registerTool(
   },
   seguro(async ({ documentoId }: { documentoId: string }) => {
     await api.delete(
-      `/conhecimento/documento/${encodeURIComponent(documentoId)}`,
+      `/conhecimento/documento/${seg(encodeURIComponent(documentoId))}`,
     );
     return ok({ removido: documentoId });
   }),
@@ -3647,7 +3648,7 @@ server.registerTool(
         id: string;
         titulo: string;
         ativo?: boolean;
-      }>(`/conhecimento/${encodeURIComponent(chunkId)}`, definidos);
+      }>(`/conhecimento/${seg(encodeURIComponent(chunkId))}`, definidos);
       return ok({ id: c.id, titulo: c.titulo, ativo: c.ativo !== false });
     },
   ),
@@ -3663,7 +3664,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: true },
   },
   seguro(async ({ chunkId }: { chunkId: string }) => {
-    await api.delete(`/conhecimento/${encodeURIComponent(chunkId)}`);
+    await api.delete(`/conhecimento/${seg(encodeURIComponent(chunkId))}`);
     return ok({ removido: chunkId });
   }),
 );
@@ -3773,7 +3774,7 @@ server.registerTool(
       if (Object.keys(definidos).length === 0)
         return erro("Informe `nome` ou `cor`.");
       const t = await api.patch<{ id: string; nome: string; cor?: string }>(
-        `/tags/${encodeURIComponent(tagId)}`,
+        `/tags/${seg(encodeURIComponent(tagId))}`,
         definidos,
       );
       return ok({ id: t.id, nome: t.nome, cor: t.cor });
@@ -3818,7 +3819,7 @@ server.registerTool(
         id: string;
         nome: string;
         _count?: { clientes?: number; leads?: number };
-      }>(`/tags/${encodeURIComponent(tagId)}`);
+      }>(`/tags/${seg(encodeURIComponent(tagId))}`);
       const leads = t._count?.leads ?? 0;
       const clientes = t._count?.clientes ?? 0;
       if (leads + clientes > 0 && confirmoRemocaoComUsos !== true) {
@@ -3829,7 +3830,7 @@ server.registerTool(
             "tags_renomear.",
         );
       }
-      await api.delete(`/tags/${encodeURIComponent(tagId)}`);
+      await api.delete(`/tags/${seg(encodeURIComponent(tagId))}`);
       return ok({
         removida: t.nome,
         id: t.id,
@@ -3936,7 +3937,7 @@ server.registerTool(
   seguro(
     async ({ conversationId }: { conversationId: string; confirmo: true }) => {
       const r = await api.delete<unknown>(
-        `/inbox/${encodeURIComponent(conversationId)}/mensagens`,
+        `/inbox/${seg(encodeURIComponent(conversationId))}/mensagens`,
       );
       return ok(r);
     },
@@ -3996,7 +3997,7 @@ server.registerTool(
         autor?: { nome?: string } | null;
       };
       const r = await api.get<Msg[] | { data?: Msg[] }>(
-        `/inbox/${encodeURIComponent(conversationId)}/mensagens?limit=${String(limit ?? 50)}`,
+        `/inbox/${seg(encodeURIComponent(conversationId))}/mensagens?limit=${String(limit ?? 50)}`,
       );
       // O api.get JÁ desembrulha o envelope ({success,data}) — e este endpoint
       // devolve o ARRAY direto em data. O `r?.data` aqui era um SEGUNDO
@@ -4138,7 +4139,7 @@ server.registerTool(
   seguro(async (args: { templateId: string } & Record<string, unknown>) => {
     const { templateId, ...resto } = args;
     const t = await api.patch<{ id: string; nome: string }>(
-      `/campanha-templates/${templateId}`,
+      `/campanha-templates/${seg(templateId)}`,
       resto,
     );
     return ok({ id: t.id, nome: t.nome, atualizado: true });
@@ -4252,7 +4253,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: true },
   },
   seguro(async ({ templateId }: { templateId: string }) => {
-    await api.delete(`/campanha-templates/${templateId}`);
+    await api.delete(`/campanha-templates/${seg(templateId)}`);
     return ok({ templateId, excluido: true });
   }),
 );
@@ -4271,7 +4272,7 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: true },
   },
   seguro(async ({ campanhaId }: { campanhaId: string }) => {
-    await api.delete(`/campanhas/${campanhaId}`);
+    await api.delete(`/campanhas/${seg(campanhaId)}`);
     return ok({ campanhaId, excluida: true });
   }),
 );

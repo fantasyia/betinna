@@ -4,6 +4,8 @@
  * de permissão e multi-tenant continua valendo no backend.
  */
 
+import { assertCaminhoSeguro } from './caminho.js';
+
 const API_URL = process.env.BETINNA_API_URL ?? '';
 const API_TOKEN = process.env.BETINNA_API_TOKEN ?? '';
 
@@ -115,7 +117,9 @@ async function interpretar<T>(res: Response): Promise<T> {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  // H-2 (13/09/2026): recusa path que a URL normalizaria pra outro lugar
+  // (`#`, `..`, `//`) — segunda camada, atrás do `seg()` dos call sites.
+  const res = await fetch(assertCaminhoSeguro(BASE, path), {
     method,
     headers: {
       Authorization: `Bearer ${API_TOKEN}`,
@@ -128,7 +132,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 /** POST multipart/form-data — NÃO seta Content-Type (o fetch põe o boundary). */
 async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(assertCaminhoSeguro(BASE, path), {
     method: 'POST',
     headers: { Authorization: `Bearer ${API_TOKEN}` },
     body: form,
