@@ -115,7 +115,12 @@ export class SupressaoService {
     const alvo = (email ?? '').trim().toLowerCase();
     if (!alvo) return false;
     try {
-      const tag = await this.acharTag(empresaId, SupressaoService.TAG_EMAIL_INVALIDO, 'invalido');
+      // Fragmento SEM acento de propósito. O `contains` vira ILIKE no Postgres, e
+      // ILIKE não dobra acento: `'%invalido%'` NUNCA casava "E-mail inválido ⛔",
+      // então esta checagem devolvia false pra sempre e o bounce não suprimia
+      // nada (auditoria 13/09/2026). "mail" existe na tag canônica e em qualquer
+      // renomeação razoável; o `find` por nome normalizado escolhe a certa.
+      const tag = await this.acharTag(empresaId, SupressaoService.TAG_EMAIL_INVALIDO, 'mail');
       if (!tag) return false;
       const n = await this.prisma.leadTag.count({
         where: {
