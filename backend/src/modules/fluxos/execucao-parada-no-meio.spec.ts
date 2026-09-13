@@ -208,3 +208,23 @@ describe('FluxoTriggersJob — alarme de fila parada respeita o cronLock', () =>
     expect(bus.dispararDireto).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (D-1): o claim guardava só o id do sucessor — a
+ * retomada de um DELAY "2 dias" saía com delay ZERO e a régua disparava agora.
+ */
+describe('FluxoTriggersJob — retomada respeita o alvo do DELAY gravado no claim', () => {
+  it('sucessor com alvo daqui a ~2 dias volta pra fila com esse delay', async () => {
+    const prisma = makePrisma();
+    const bus = makeBus();
+    const alvo = Date.now() + 2 * 24 * 60 * 60_000;
+    prisma.fluxoExecucao.findMany.mockResolvedValue([parada()]);
+    prisma.fluxoStepClaim.findFirst.mockResolvedValue({ proximos: [`no-3@${alvo}`] });
+
+    await makeJob(prisma, bus).alarmeDeFilaParada();
+
+    const opts = bus.dispararDireto.mock.calls[0][2] as { delayMs?: number };
+    expect(bus.dispararDireto).toHaveBeenCalledWith('exec-1', 'no-3', expect.anything());
+    expect(opts.delayMs).toBeGreaterThan(2 * 24 * 60 * 60_000 - 10_000);
+  });
+});

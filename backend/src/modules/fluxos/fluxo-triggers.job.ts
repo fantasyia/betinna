@@ -6,6 +6,7 @@ import { RedisService } from '@database/redis.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
+import { delayRestanteMs, lerProximo } from './proximo-claim.util';
 import { ConversarIaService, TTL_CLAIM_MS } from './conversar-ia.service';
 import { MullerWhatsappService } from '@modules/mullerbot/muller-whatsapp.service';
 import { CronMetricsService } from './cron-metrics.service';
@@ -488,11 +489,16 @@ export class FluxoTriggersJob {
           where: { id: e.id },
           data: { contexto: { ...ctx, _retomadoEm: new Date().toISOString() } },
         });
-        for (const noId of proximos) {
+        for (const bruto of proximos) {
+          // Com o ALVO gravado no claim (D-1, 13/09/2026): o sucessor de um DELAY
+          // volta pra fila com o que ainda falta, não com zero — antes a régua
+          // "daqui a 2 dias" saía no minuto em que o reaper passava.
+          const { noId, alvoEm } = lerProximo(bruto);
           // jobId FRESCO de propósito: o id determinístico do enqueue original
           // pode estar retido como concluído no BullMQ, e o `add` seria ignorado
           // — justamente o que precisamos que aconteça agora.
           await this.bus.dispararDireto(e.id, noId, {
+            delayMs: delayRestanteMs(alvoEm),
             jobId: `ret_${e.id}_${noId}_${Date.now()}`,
           });
         }

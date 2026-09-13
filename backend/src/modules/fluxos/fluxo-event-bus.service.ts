@@ -841,12 +841,14 @@ export class FluxoEventBusService {
   async dispararDireto(
     execucaoId: string,
     noId: string,
-    opts: { tentativas?: number; jobId?: string } = {},
+    opts: { tentativas?: number; jobId?: string; delayMs?: number } = {},
   ): Promise<void> {
     await this.queue.add(
       'step',
       { execucaoId, noId },
       {
+        // Retomada de sucessor de DELAY leva o que ainda falta (D-1, 13/09/2026).
+        ...(opts.delayMs && opts.delayMs > 0 ? { delay: opts.delayMs } : {}),
         attempts: opts.tentativas ?? 3,
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: { count: 100 },
