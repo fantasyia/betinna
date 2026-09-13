@@ -486,3 +486,38 @@ describe('falha de envio ao ERP deixa RASTRO', () => {
     await expect(svc.receber('blc_chave', PEDIDO)).resolves.toMatchObject({ numero: 'PED-0009' });
   });
 });
+
+/**
+ * Decisão do Léo (13/09/2026, auditoria F-3): o preço vem do CATÁLOGO, não do
+ * caller — o endpoint aceitava `valorUnitario` arbitrário atrás da chave do
+ * site e o pedido subia pro ERP na hora.
+ */
+describe('preço do pedido do site é conferido com o catálogo', () => {
+  it('valorUnitario diferente do precoTabela → recusa (422), nada é criado', async () => {
+    const { svc, prisma } = build({
+      produtos: [{ id: 'prod-1', sku: 'MB-01', nome: 'Master Block', precoTabela: 1500 }],
+    });
+
+    await expect(
+      svc.receber('emp-1', {
+        ...PEDIDO,
+        itens: [{ sku: 'MB-01', quantidade: 1, valorUnitario: 10 }],
+      } as never),
+    ).rejects.toThrow(/Preço divergente do catálogo/);
+
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+
+  it('valorUnitario igual ao precoTabela → passa', async () => {
+    const { svc, prisma } = build({
+      produtos: [{ id: 'prod-1', sku: 'MB-01', nome: 'Master Block', precoTabela: 1500 }],
+    });
+
+    await svc.receber('emp-1', {
+      ...PEDIDO,
+      itens: [{ sku: 'MB-01', quantidade: 2, valorUnitario: 1500 }],
+    } as never);
+
+    expect(prisma.pedido.create).toHaveBeenCalled();
+  });
+});

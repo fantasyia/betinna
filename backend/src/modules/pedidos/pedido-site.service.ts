@@ -80,7 +80,7 @@ export class PedidoSiteService {
 
     const produtos = await this.prisma.produto.findMany({
       where: { empresaId, sku: { in: dto.itens.map((i) => i.sku) } },
-      select: { id: true, sku: true, nome: true },
+      select: { id: true, sku: true, nome: true, precoTabela: true },
     });
     const porSku = new Map(produtos.map((p) => [p.sku, p]));
     const faltando = dto.itens.filter((i) => !porSku.get(i.sku));
@@ -89,6 +89,29 @@ export class PedidoSiteService {
       // que aceitar meio pedido e descobrir na expedição.
       throw new BusinessRuleException(
         `SKU não cadastrado: ${faltando.map((i) => i.sku).join(', ')}`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    // PREÇO vem do CATÁLOGO, não do caller (decisão do Léo 13/09/2026, auditoria
+    // F-3): o endpoint aceitava `valorUnitario` arbitrário atrás da mesma chave
+    // `blc_` que o próprio código documenta como "escopo mínimo (só criar lead)",
+    // e o pedido subia pro ERP na hora. O site já manda o preço do catálogo, então
+    // conferir custa nada e fecha a porta. Produto sem preço de tabela não é
+    // conferido (o site também não teria de onde tirar).
+    const divergentes = dto.itens.filter((i) => {
+      const tabela = porSku.get(i.sku)?.precoTabela;
+      if (tabela == null) return false;
+      const esperado = Number(tabela);
+      return Number.isFinite(esperado) && Math.abs(i.valorUnitario - esperado) > 0.005;
+    });
+    if (divergentes.length > 0) {
+      throw new BusinessRuleException(
+        `Preço divergente do catálogo: ${divergentes
+          .map(
+            (i) =>
+              `${i.sku} (enviado ${i.valorUnitario}, tabela ${Number(porSku.get(i.sku)?.precoTabela)})`,
+          )
+          .join(', ')}`,
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
