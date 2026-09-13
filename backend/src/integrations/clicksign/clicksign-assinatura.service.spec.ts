@@ -58,20 +58,17 @@ function montar(contrato: unknown = CONTRATO) {
   const etapa = { mover: vi.fn(async () => 'movido' as const) };
   const propostaErp = { enviar: vi.fn(async () => ({ orcamentoErpId: '999' })) };
   const comissoesContrato = { recalcular: vi.fn(async () => undefined) };
-  // Cópia no Drive: null = ninguém conectou o Google, que é o estado normal.
-  const drive = { guardarContrato: vi.fn(async () => null) };
   const svc = new ClickSignAssinaturaService(
     prisma as never,
     env as never,
     notificacoes as never,
     etapa as never,
     propostaErp as never,
-    drive as never,
     // Cronograma de comissão do contrato (locação paga por MÊS): a assinatura
     // dispara o recálculo, mas não depende dele pra concluir.
     comissoesContrato as never,
   );
-  return { svc, prisma, notificacoes, etapa, propostaErp, comissoesContrato, drive };
+  return { svc, prisma, notificacoes, etapa, propostaErp, comissoesContrato };
 }
 
 beforeEach(() => {
