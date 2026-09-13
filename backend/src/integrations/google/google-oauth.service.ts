@@ -22,8 +22,14 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 // calendar.events = eventos; tasks.readonly = TAREFAS (Google Tasks é API separada).
 // Sem tasks.readonly, tarefas criadas no Google nunca chegam na Betinna.
+//
+// drive.file = SÓ os arquivos que este app criar (cópia do contrato assinado).
+// Não é `drive`, de propósito: a Betinna não enxerga, não lista e não apaga o
+// resto do Drive de ninguém. ⚠️ Quem conectou ANTES de 12/09 não tem este
+// escopo — o Google só dá o que foi consentido, e reconectar é o único jeito.
 const SCOPE =
-  'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks.readonly openid email profile';
+  'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks.readonly ' +
+  'https://www.googleapis.com/auth/drive.file openid email profile';
 const TOKEN_REFRESH_MARGIN_MS = 60_000; // refresh 60s antes de expirar
 
 /**

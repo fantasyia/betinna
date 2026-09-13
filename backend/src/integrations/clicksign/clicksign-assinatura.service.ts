@@ -5,6 +5,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
+import { GoogleDriveService } from '@integrations/google/google-drive.service';
 import { PropostaErpService } from '@modules/propostas/proposta-erp.service';
 
 /** O recorte do payload que interessa. O resto do documento a gente ignora. */
@@ -43,6 +44,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     private readonly notificacoes: NotificacoesService,
     private readonly etapa: LeadEtapaSistemaService,
     private readonly propostaErp: PropostaErpService,
+    private readonly drive: GoogleDriveService,
     private readonly comissoesContrato: ContratoComissoesService,
   ) {
     this.storage = createClient(
@@ -76,7 +78,10 @@ export class ClickSignAssinaturaService implements OnModuleInit {
 
     const assinadoEm = doc.finished_at ? new Date(doc.finished_at) : new Date();
     const link = this.urlAbsoluta(doc.downloads?.signed_file_url);
-    const caminho = link ? await this.guardarPdf(contrato.empresaId, contrato.id, link) : null;
+    const guardado = link
+      ? await this.guardarPdf(contrato.empresaId, contrato.id, link, contrato.proposta.numero)
+      : { caminho: null, drive: null };
+    const caminho = guardado.caminho;
 
     await this.prisma.contrato.update({
       where: { id: contrato.id },
@@ -85,11 +90,15 @@ export class ClickSignAssinaturaService implements OnModuleInit {
         assinadoEm,
         assinaturaUrl: link ?? contrato.assinaturaUrl,
         ...(caminho ? { documentoUrl: caminho } : {}),
+        ...(guardado.drive
+          ? { driveArquivoId: guardado.drive.id, driveUrl: guardado.drive.url }
+          : {}),
       },
     });
     this.logger.log(
       `Contrato ${contrato.id} (proposta ${contrato.proposta.numero}) ASSINADO` +
-        (caminho ? ' — PDF guardado' : ' — sem PDF'),
+        (caminho ? ' — PDF guardado' : ' — sem PDF') +
+        (guardado.drive ? ' + cópia no Drive' : ''),
     );
 
     // A PROPOSTA acompanha o fato. Sem isto ela ficava ACEITA pra sempre, e
@@ -296,7 +305,8 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     empresaId: string,
     contratoId: string,
     url: string,
-  ): Promise<string | null> {
+    numeroProposta: string,
+  ): Promise<{ caminho: string | null; drive: { id: string; url: string } | null }> {
     const caminho = `${empresaId}/${contratoId}.pdf`;
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(60_000) });
@@ -306,14 +316,22 @@ export class ClickSignAssinaturaService implements OnModuleInit {
         .from(BUCKET)
         .upload(caminho, bytes, { contentType: 'application/pdf', upsert: true });
       if (error) throw new Error(error.message);
-      return caminho;
+      // Os MESMOS bytes vão pro Drive — baixar de novo seria pedir duas vezes
+      // um arquivo cujo link a ClickSign expira. A cópia é best-effort por
+      // dentro: devolve null quando ninguém conectou o Google.
+      const drive = await this.drive.guardarContrato(
+        empresaId,
+        `Contrato ${numeroProposta}.pdf`,
+        bytes,
+      );
+      return { caminho, drive };
     } catch (err) {
       this.logger.error(
         `Contrato ${contratoId}: PDF assinado não foi guardado (${
           err instanceof Error ? err.message : String(err)
         })`,
       );
-      return null;
+      return { caminho: null, drive: null };
     }
   }
 

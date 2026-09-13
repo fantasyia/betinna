@@ -1204,6 +1204,9 @@ model Contrato {
   assinadoEm            DateTime?
   /// PDF assinado guardado no Storage.
   documentoUrl          String?
+  /// Cópia no Google Drive (opcional — só quem conectou o Google tem).
+  driveArquivoId        String?
+  driveUrl              String?
 
   encerradoEm        DateTime?
   motivoEncerramento String?
