@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
-import { TINY_FILA_PENDENTES } from './tiny-webhook.controller';
+import { FILA_MAX, TINY_FILA_PENDENTES } from './tiny-webhook.controller';
 import { TinyProdutosSyncService } from './tiny-produtos-sync.service';
 
 /** Quem aplica pedido: o serviço vive no módulo de pedidos (regra de negócio). */
@@ -17,6 +17,8 @@ interface EventoNaFila {
   hash: string;
   recebidoEm: string;
   payload: string;
+  /** Quantas vezes já falhou em `aplicar` e voltou pra fila (I-B). */
+  tentativas?: number;
 }
 
 interface PayloadTiny {
@@ -33,12 +35,26 @@ export interface ResultadoProcessamento {
   repetidos: number;
   ignorados: number;
   erros: number;
+  /** Falharam em `aplicar` e voltaram pra fila pra próxima rodada. */
+  reenfileirados: number;
+  /** Esgotaram as tentativas e foram pra `tiny:webhook:mortos`. */
+  mortos: number;
 }
 
 /** Quantos eventos por rodada — a fila é capada em 500 e a rodada é de 1 min. */
 const LOTE = 50;
 /** Janela de deduplicação: o Tiny retenta o mesmo evento até 10 vezes. */
 const TTL_DEDUP_S = 24 * 60 * 60;
+/**
+ * Quantas vezes um evento que ESTOURA em `aplicar` volta pra fila antes de
+ * ir pros mortos (auditoria 13/09, I-B). Uma rodada por minuto → ~5 min de
+ * tolerância a soluço da API do Tiny/banco. Erro determinístico (payload que
+ * a gente não sabe ler) não fica em loop: cai nos mortos e para de custar.
+ */
+const MAX_TENTATIVAS = 5;
+/** Eventos que esgotaram as tentativas — ficam pra inspeção, capado. */
+export const TINY_FILA_MORTOS = 'tiny:webhook:mortos';
+const MORTOS_MAX = 200;
 
 /**
  * Processa os webhooks do Tiny que estavam só empilhando no Redis.
@@ -89,14 +105,17 @@ export class TinyWebhookProcessorService {
       repetidos: 0,
       ignorados: 0,
       erros: 0,
+      reenfileirados: 0,
+      mortos: 0,
     };
     const crus = await this.redis.rpop(TINY_FILA_PENDENTES, LOTE).catch(() => []);
     if (crus.length === 0) return r;
     r.lidos = crus.length;
 
     for (const cru of crus) {
+      let evento: EventoNaFila | null = null;
       try {
-        const evento = JSON.parse(cru) as EventoNaFila;
+        evento = JSON.parse(cru) as EventoNaFila;
         const novo = await this.redis
           .setNxEx(`tiny:webhook:visto:${evento.hash}`, '1', TTL_DEDUP_S)
           .catch(() => true);
@@ -108,20 +127,79 @@ export class TinyWebhookProcessorService {
         if (aplicou) r.aplicados += 1;
         else r.ignorados += 1;
       } catch (err) {
-        // Um evento problemático não pode segurar o lote. Ele já saiu da fila:
-        // reprocessar viria pela rodada diária, que é a rede de baixo.
+        // Um evento problemático não pode segurar o lote — mas também não pode
+        // sumir: o rpop já tirou ele da fila e o dedup já marcou "visto", então
+        // sem isto aqui um soluço do banco na hora de aplicar consumia o
+        // evento pra sempre (auditoria 13/09, I-B) e o pedido só chegava no
+        // sync diário. Volta pra fila com contador; esgotou → mortos.
         r.erros += 1;
-        this.logger.warn(
-          `[tiny] evento descartado por erro: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        const destino = await this.reenfileirar(evento, err);
+        if (destino === 'fila') r.reenfileirados += 1;
+        else if (destino === 'mortos') r.mortos += 1;
       }
     }
 
     this.logger.log(
       `[tiny] webhooks: ${r.lidos} lidos, ${r.aplicados} aplicados, ` +
-        `${r.repetidos} repetidos, ${r.ignorados} ignorados, ${r.erros} erros`,
+        `${r.repetidos} repetidos, ${r.ignorados} ignorados, ${r.erros} erros` +
+        (r.reenfileirados ? `, ${r.reenfileirados} reenfileirados` : '') +
+        (r.mortos ? `, ${r.mortos} mortos` : ''),
     );
     return r;
+  }
+
+  /**
+   * Devolve o evento pra fila (com `tentativas` + 1) ou, esgotadas as
+   * tentativas, pra `tiny:webhook:mortos`. JSON ilegível (`evento` null) não
+   * tem o que reprocessar — é descartado com log, como sempre foi.
+   *
+   * A chave de dedup é apagada ANTES de reenfileirar: sem isso a rodada
+   * seguinte diria "repetido" e o evento morreria do mesmo jeito, só que
+   * mais devagar.
+   */
+  private async reenfileirar(
+    evento: EventoNaFila | null,
+    err: unknown,
+  ): Promise<'fila' | 'mortos' | 'descartado'> {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!evento) {
+      this.logger.warn(`[tiny] evento ilegível descartado: ${msg}`);
+      return 'descartado';
+    }
+    const tentativas = (evento.tentativas ?? 0) + 1;
+    try {
+      if (tentativas >= MAX_TENTATIVAS) {
+        this.logger.error(
+          `[tiny] webhook ${evento.tipo} (hash ${evento.hash}) esgotou ${tentativas} tentativas — ` +
+            `movido pra ${TINY_FILA_MORTOS}: ${msg}`,
+        );
+        await this.redis.lpushCapped(
+          TINY_FILA_MORTOS,
+          JSON.stringify({ ...evento, tentativas, erro: msg.slice(0, 500) }),
+          MORTOS_MAX,
+        );
+        return 'mortos';
+      }
+      await this.redis.del(`tiny:webhook:visto:${evento.hash}`);
+      await this.redis.lpushCapped(
+        TINY_FILA_PENDENTES,
+        JSON.stringify({ ...evento, tentativas }),
+        FILA_MAX,
+      );
+      this.logger.warn(
+        `[tiny] webhook ${evento.tipo} (hash ${evento.hash}) falhou (${tentativas}/${MAX_TENTATIVAS}), ` +
+          `volta pra fila: ${msg}`,
+      );
+      return 'fila';
+    } catch (e2) {
+      // Redis fora no meio do reprocesso: o evento se perde como antes. Log
+      // diz isso em vez de fingir que reenfileirou.
+      this.logger.error(
+        `[tiny] não consegui reenfileirar o webhook ${evento.tipo} (hash ${evento.hash}): ` +
+          `${e2 instanceof Error ? e2.message : String(e2)} — erro original: ${msg}`,
+      );
+      return 'descartado';
+    }
   }
 
   private async aplicar(

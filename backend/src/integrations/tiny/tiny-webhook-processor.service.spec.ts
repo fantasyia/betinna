@@ -28,13 +28,24 @@ const EVENTO_ESTOQUE = JSON.stringify({
   dados: { idProduto: 335240597, sku: 'MB-01', nome: 'Master Block MB-01', saldo: 0 },
 });
 
-function build(eventos: string[], opts: { empresaCnpj?: string | null; novo?: boolean } = {}) {
+function build(
+  eventos: string[],
+  opts: { empresaCnpj?: string | null; novo?: boolean; tentativas?: number } = {},
+) {
   const naFila = eventos.map((payload, i) =>
-    JSON.stringify({ tipo: 'pedido', hash: `h${i}`, recebidoEm: '2026-08-29T06:00:00Z', payload }),
+    JSON.stringify({
+      tipo: 'pedido',
+      hash: `h${i}`,
+      recebidoEm: '2026-08-29T06:00:00Z',
+      payload,
+      ...(opts.tentativas !== undefined ? { tentativas: opts.tentativas } : {}),
+    }),
   );
   const redis = {
     rpop: vi.fn().mockResolvedValue(naFila),
     setNxEx: vi.fn().mockResolvedValue(opts.novo ?? true),
+    del: vi.fn().mockResolvedValue(1),
+    lpushCapped: vi.fn().mockResolvedValue(undefined),
   };
   const prisma = {
     empresa: {
@@ -104,6 +115,53 @@ describe('webhooks do Tiny — processamento', () => {
 
     expect(r.erros).toBe(1);
     expect(r.aplicados).toBe(1);
+  });
+
+  describe('erro em aplicar NÃO consome o evento (auditoria 13/09, I-B)', () => {
+    it('volta pra fila com tentativas+1 e apaga a chave de dedup', async () => {
+      // Antes: rpop → visto → aplicar estoura → evento sumia; o pedido só
+      // chegava no sync diário das 16:00 UTC.
+      const { svc, aplicador, redis } = build([EVENTO_PEDIDO]);
+      aplicador.sincronizarUm.mockRejectedValue(new Error('ECONNRESET tiny'));
+
+      const r = await svc.processarPendentes(aplicador as never);
+
+      expect(r.erros).toBe(1);
+      expect(r.reenfileirados).toBe(1);
+      expect(r.mortos).toBe(0);
+      expect(redis.del).toHaveBeenCalledWith('tiny:webhook:visto:h0');
+      const [fila, corpo] = redis.lpushCapped.mock.calls[0];
+      expect(fila).toBe('tiny:webhook:pendentes');
+      expect(JSON.parse(corpo as string)).toMatchObject({ hash: 'h0', tentativas: 1 });
+    });
+
+    it('esgotou as tentativas → vai pros mortos, não volta pra fila', async () => {
+      const { svc, aplicador, redis } = build([EVENTO_PEDIDO], { tentativas: 4 });
+      aplicador.sincronizarUm.mockRejectedValue(new Error('payload que nunca vai aplicar'));
+
+      const r = await svc.processarPendentes(aplicador as never);
+
+      expect(r.mortos).toBe(1);
+      expect(r.reenfileirados).toBe(0);
+      expect(redis.del).not.toHaveBeenCalled();
+      const [fila, corpo] = redis.lpushCapped.mock.calls[0];
+      expect(fila).toBe('tiny:webhook:mortos');
+      expect(JSON.parse(corpo as string)).toMatchObject({ hash: 'h0', tentativas: 5 });
+      expect(JSON.parse(corpo as string).erro).toContain('nunca vai aplicar');
+    });
+
+    it('envelope ilegível segue descartado (não há o que reprocessar)', async () => {
+      // O helper embrulha o payload num envelope válido; aqui é o ENVELOPE
+      // que está quebrado — não dá nem pra saber o hash pra reenfileirar.
+      const { svc, aplicador, redis } = build([]);
+      redis.rpop.mockResolvedValue(['{isso não é json}']);
+
+      const r = await svc.processarPendentes(aplicador as never);
+
+      expect(r.erros).toBe(1);
+      expect(r.reenfileirados).toBe(0);
+      expect(redis.lpushCapped).not.toHaveBeenCalled();
+    });
   });
 
   it('fila vazia não faz nada (nem log, nem chamada)', async () => {

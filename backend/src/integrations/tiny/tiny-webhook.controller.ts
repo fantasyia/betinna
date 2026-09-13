@@ -34,7 +34,7 @@ type Evento = (typeof EVENTOS)[number];
 
 /** Fila de eventos crus, pra o processamento (item 7) poder reprocessar. */
 export const TINY_FILA_PENDENTES = 'tiny:webhook:pendentes';
-const FILA_MAX = 500;
+export const FILA_MAX = 500;
 
 /**
  * Marca de chegada, POR EVENTO e SEM TTL.
