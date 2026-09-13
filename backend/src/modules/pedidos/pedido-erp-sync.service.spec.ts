@@ -745,3 +745,58 @@ describe('pedidos que vêm do ERP', () => {
     });
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (I-A): o sync casava o pedido pelo NÚMERO do Tiny. O
+ * Tiny reaproveita números (44/45 em 09/09, `aade93a`): o pedido novo (id 901,
+ * nº 55) achava o PED-0072 (nº 55, id 900) e gravava nele status/rastreio.
+ */
+describe('sync casa pelo VÍNCULO (erpPedidoId) antes do número', () => {
+  it('número igual mas id diferente → NÃO atualiza o pedido de outro id; cria o novo', async () => {
+    const { svc, prisma } = build({ detalhe: { ...PEDIDO_ERP, id: 901 } });
+    // Pedido antigo: mesmo nº 55, vinculado ao id 900 do Tiny.
+    prisma.pedido.findFirst.mockImplementation(async (args: { where: Record<string, unknown> }) =>
+      args.where.erpPedidoId === '900' ? { id: 'ped-72', erpPedidoId: '900' } : null,
+    );
+
+    const r = await svc.sincronizar('emp-1');
+
+    expect(prisma.pedido.update).not.toHaveBeenCalled();
+    expect(r.criados).toBe(1);
+  });
+
+  it('pedido ainda sem vínculo casa pelo número e GANHA o erpPedidoId', async () => {
+    const { svc, prisma } = build({
+      detalhe: { ...PEDIDO_ERP, situacao: 5 },
+      pedidoExistente: {
+        id: 'ped-1',
+        numero: 'PED-0007',
+        status: 'ENVIADO_ERP',
+        erpPedidoId: null,
+        observacoes: null,
+        total: 3150,
+        rastreioCodigo: null,
+        rastreioUrl: null,
+      },
+    });
+    // 1ª busca (por erpPedidoId=900) não acha; a 2ª (número + sem vínculo) acha.
+    prisma.pedido.findFirst.mockImplementation(async (args: { where: Record<string, unknown> }) =>
+      args.where.erpPedidoId === '900'
+        ? null
+        : {
+            id: 'ped-1',
+            numero: 'PED-0007',
+            status: 'ENVIADO_ERP',
+            erpPedidoId: null,
+            observacoes: null,
+            total: 3150,
+            rastreioCodigo: null,
+            rastreioUrl: null,
+          },
+    );
+
+    await svc.sincronizar('emp-1');
+
+    expect(prisma.pedido.update.mock.calls[0][0].data.erpPedidoId).toBe('900');
+  });
+});

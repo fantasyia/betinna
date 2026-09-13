@@ -364,26 +364,38 @@ export class PedidoErpSyncService {
     ate: Date,
   ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela' | 'jaCancelado'> {
     const numeroErp = String(d.numeroPedido ?? d.id);
-    const existente = await this.prisma.pedido.findFirst({
-      where: { empresaId, numeroErp },
-      select: {
-        id: true,
-        numero: true,
-        status: true,
-        observacoes: true,
-        total: true,
-        frete: true,
-        rastreioCodigo: true,
-        rastreioUrl: true,
-        representanteId: true,
-        numeroSite: true,
-        clienteId: true,
-        // O que o site já aceitou — é comparando com isto que se sabe se ele
-        // está atrasado, sem depender do `mudou` (que olha ERP × nosso banco).
-        siteStatusEnviado: true,
-        siteRastreioEnviado: true,
-      },
-    });
+    const selecao = {
+      id: true,
+      numero: true,
+      status: true,
+      erpPedidoId: true,
+      observacoes: true,
+      total: true,
+      frete: true,
+      rastreioCodigo: true,
+      rastreioUrl: true,
+      representanteId: true,
+      numeroSite: true,
+      clienteId: true,
+      // O que o site já aceitou — é comparando com isto que se sabe se ele
+      // está atrasado, sem depender do `mudou` (que olha ERP × nosso banco).
+      siteStatusEnviado: true,
+      siteRastreioEnviado: true,
+    } as const;
+    // Casa pelo VÍNCULO (id do Tiny) primeiro; pelo número só em pedido ainda
+    // SEM vínculo. O Tiny reaproveita números (44/45 em 09/09, `aade93a`):
+    // casando só por número, o pedido Tiny B (nº 44) achava o PED-0072 (nº 44,
+    // outro id) e gravava nele status/rastreio/site — e o pedido novo nunca
+    // saía de ENVIADO_ERP (auditoria 13/09/2026, achado I-A).
+    const existente =
+      (await this.prisma.pedido.findFirst({
+        where: { empresaId, erpPedidoId: String(d.id) },
+        select: selecao,
+      })) ??
+      (await this.prisma.pedido.findFirst({
+        where: { empresaId, numeroErp, erpPedidoId: null },
+        select: selecao,
+      }));
 
     const status = this.statusDe(d.situacao);
     const rastreioCodigo = d.transportador?.codigoRastreamento?.trim() || null;
@@ -485,6 +497,9 @@ export class PedidoErpSyncService {
       await this.prisma.pedido.update({
         where: { id: existente.id },
         data: {
+          // Pedido casado pelo número e ainda sem vínculo ganha o id do Tiny —
+          // da próxima vez casa pelo vínculo, imune à colisão de número.
+          ...(existente.erpPedidoId ? {} : { erpPedidoId: String(d.id) }),
           ...(statusAplicavel ? { status: statusAplicavel as never } : {}),
           rastreioCodigo,
           rastreioUrl,
