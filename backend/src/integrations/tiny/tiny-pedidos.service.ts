@@ -421,6 +421,35 @@ export class TinyPedidosService {
     return { itens, total: r.paginacao?.total ?? itens.length };
   }
 
+  /**
+   * O pedido JÁ existe no Tiny pra esta referência do site (`numeroPedidoEcommerce`)?
+   *
+   * Existe por causa do timeout no POST /pedidos (auditoria 13/09/2026, I-E):
+   * o Tiny criava o pedido, a resposta se perdia, o app ficava sem vínculo e
+   * o botão "Enviar pro ERP" criava o SEGUNDO (com 2ª NF possível). Antes de
+   * criar, o push pergunta se a referência já está lá.
+   *
+   * A busca do Tiny é "contém", então cada candidato é conferido no detalhe
+   * com igualdade exata — mesma cautela do `acharPorSku`.
+   */
+  async acharPorRefSite(empresaId: string, refSite: string): Promise<ResultadoPedido | null> {
+    const ref = refSite.trim();
+    if (!ref) return null;
+    const r = await this.client.get<{ itens?: PedidoTinyResumo[] }>(empresaId, '/pedidos', {
+      numeroPedidoEcommerce: ref,
+      limit: 5,
+    });
+    for (const item of r.itens ?? []) {
+      const d = await this.client.get<PedidoTinyDetalhe & { numeroOrdemCompra?: string }>(
+        empresaId,
+        `/pedidos/${item.id}`,
+      );
+      const bate = d?.ecommerce?.numeroPedidoEcommerce === ref || d?.numeroOrdemCompra === ref;
+      if (bate) return { id: item.id, numeroPedido: item.numeroPedido };
+    }
+    return null;
+  }
+
   /** Público porque o orçamento resolve item pelo MESMO SKU — uma regra só. */
   async acharPorSku(empresaId: string, sku: string): Promise<{ id: number } | null> {
     const r = await this.client.get<{ itens?: Array<{ id: number; sku?: string }> }>(

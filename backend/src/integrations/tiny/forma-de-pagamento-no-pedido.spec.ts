@@ -51,6 +51,7 @@ const build = (over: { forma?: string } = {}) => {
   };
   const pedidos = {
     criar: vi.fn().mockResolvedValue({ id: 339063965, numeroPedido: 54 }),
+    acharPorRefSite: vi.fn().mockResolvedValue(null), // I-E: nada no Tiny → cria
     informarVolumes: vi.fn().mockResolvedValue({}),
   };
   const svc = new TinyPedidoPushService(

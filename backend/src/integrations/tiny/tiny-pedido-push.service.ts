@@ -275,20 +275,41 @@ export class TinyPedidoPushService {
       observacoes: pedido.observacoes ?? undefined,
     };
 
+    // JÁ EXISTE LÁ? (auditoria 13/09/2026, I-E) Timeout no POST com o pedido
+    // criado do outro lado deixava o app sem `erpPedidoId`, o site gravava
+    // `erpErro`, e o botão "Enviar pro ERP" criava o SEGUNDO pedido. Antes de
+    // criar, pergunta pela referência do site — a mesma que vai em
+    // `numeroPedidoEcommerce`. Best-effort: se a consulta falhar, cria como antes.
+    const refSite = pedido.numeroSite ?? pedido.numero;
+    const jaNoTiny = await this.pedidos
+      .acharPorRefSite(pedido.empresaId, refSite)
+      .catch((err: unknown) => {
+        this.logger.warn(
+          `[erp] ${pedido.numero}: não consegui conferir se já existe no Tiny (${err instanceof Error ? err.message : String(err)}) — criando`,
+        );
+        return null;
+      });
     let r: ResultadoPedido;
-    try {
-      r = await this.pedidos.criar(pedido.empresaId, corpo);
-    } catch (err) {
-      // O Tiny recusa o bloco de pagamento quando a forma/meio não está
-      // configurada no painel. O pedido não pode ficar preso nisso: sobe sem
-      // financeiro, e a conta a receber sai pelo app quando a NF autorizar.
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!/pagamento/i.test(msg) || !corpo.pagamento) throw err;
+    if (jaNoTiny) {
       this.logger.warn(
-        `[erp] ${pedido.numero}: Tiny recusou as parcelas (${msg.slice(0, 160)}) — subindo sem financeiro`,
+        `[erp] ${pedido.numero}: JÁ existia no Tiny (id ${jaNoTiny.id}, ref ${refSite}) — vinculando em vez de criar de novo`,
       );
-      const { pagamento: _semUso, ...semPagamento } = corpo;
-      r = await this.pedidos.criar(pedido.empresaId, semPagamento);
+      r = jaNoTiny;
+    } else {
+      try {
+        r = await this.pedidos.criar(pedido.empresaId, corpo);
+      } catch (err) {
+        // O Tiny recusa o bloco de pagamento quando a forma/meio não está
+        // configurada no painel. O pedido não pode ficar preso nisso: sobe sem
+        // financeiro, e a conta a receber sai pelo app quando a NF autorizar.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/pagamento/i.test(msg) || !corpo.pagamento) throw err;
+        this.logger.warn(
+          `[erp] ${pedido.numero}: Tiny recusou as parcelas (${msg.slice(0, 160)}) — subindo sem financeiro`,
+        );
+        const { pagamento: _semUso, ...semPagamento } = corpo;
+        r = await this.pedidos.criar(pedido.empresaId, semPagamento);
+      }
     }
 
     // Volumes: 1 por unidade vendida. O POST não tem o campo; sem volume a

@@ -209,3 +209,54 @@ describe('contato do cliente', () => {
     expect((pedidoPost()[2] as Record<string, unknown>).enderecoEntrega).toBeUndefined();
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (I-E): timeout no POST /pedidos com o pedido criado do
+ * outro lado deixava o app sem vínculo, e "Enviar pro ERP" criava o 2º. Antes
+ * de criar, o push pergunta pela referência do site — com igualdade exata no
+ * detalhe, porque a busca do Tiny é "contém".
+ */
+describe('TinyPedidosService.acharPorRefSite', () => {
+  const buildBusca = (
+    itens: Array<{ id: number; numeroPedido?: number }>,
+    detalhes: Record<number, unknown>,
+  ) => {
+    const client = {
+      get: vi.fn((_e: string, caminho: string) => {
+        if (caminho === '/pedidos') return Promise.resolve({ itens });
+        const m = /^\/pedidos\/(\d+)$/.exec(caminho);
+        return Promise.resolve(m ? detalhes[Number(m[1])] : {});
+      }),
+      post: vi.fn(),
+    };
+    return { svc: new TinyPedidosService(client as never, { garantir: vi.fn() } as never), client };
+  };
+
+  it('acha o pedido cuja referência bate EXATAMENTE', async () => {
+    const { svc, client } = buildBusca([{ id: 900, numeroPedido: 44 }], {
+      900: { id: 900, ecommerce: { numeroPedidoEcommerce: 'SB2609BK93SS' } },
+    });
+
+    expect(await svc.acharPorRefSite('emp-1', 'SB2609BK93SS')).toEqual({
+      id: 900,
+      numeroPedido: 44,
+    });
+    expect(client.get).toHaveBeenCalledWith('emp-1', '/pedidos', {
+      numeroPedidoEcommerce: 'SB2609BK93SS',
+      limit: 5,
+    });
+  });
+
+  it('busca "contém" que devolve outro pedido NÃO casa (igualdade exata no detalhe)', async () => {
+    const { svc } = buildBusca([{ id: 901 }], {
+      901: { id: 901, ecommerce: { numeroPedidoEcommerce: 'SB2609BK93SS-2' } },
+    });
+
+    expect(await svc.acharPorRefSite('emp-1', 'SB2609BK93SS')).toBeNull();
+  });
+
+  it('nada no Tiny → null (o push cria)', async () => {
+    const { svc } = buildBusca([], {});
+    expect(await svc.acharPorRefSite('emp-1', 'PED-0001')).toBeNull();
+  });
+});

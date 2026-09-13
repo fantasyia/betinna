@@ -55,6 +55,7 @@ const build = (over: { pedido?: Record<string, unknown>; updateFalha?: boolean }
 
   const pedidos = {
     criar: vi.fn().mockResolvedValue({ id: 338952128, numeroPedido: 44 }),
+    acharPorRefSite: vi.fn().mockResolvedValue(null), // I-E: nada no Tiny → cria
     informarVolumes: vi.fn().mockResolvedValue({}),
   };
   const svc = new TinyPedidoPushService(
@@ -108,5 +109,22 @@ describe('write-back do pedido no ERP', () => {
     await expect(svc.enviarPedido('ped-1', 'emp-1')).rejects.toThrow(/já está no ERP/i);
     // E o mais importante: não chega a chamar o Tiny.
     expect(pedidos.criar).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (I-E): timeout no POST com o pedido criado do outro
+ * lado deixava o app sem vínculo — o botão "Enviar pro ERP" criava o 2º.
+ */
+describe('push reaproveita pedido que JÁ existe no Tiny pela referência do site', () => {
+  it('acharPorRefSite acha → vincula o id existente e NÃO chama criar', async () => {
+    const { svc, prisma, pedidos } = build();
+    pedidos.acharPorRefSite.mockResolvedValue({ id: 777, numeroPedido: 61 });
+
+    const r = await svc.enviarPedido('ped-1', 'emp-1');
+
+    expect(pedidos.criar).not.toHaveBeenCalled();
+    expect(r.idTiny).toBe(777);
+    expect(prisma.pedido.update.mock.calls[0][0].data).toMatchObject({ erpPedidoId: '777' });
   });
 });
