@@ -86,7 +86,13 @@ export class ConversaEsquecidaJob {
     const candidatas = await this.prisma.conversation.findMany({
       where: {
         empresaId,
-        status: 'ABERTA',
+        // ABERTA *e* PENDENTE: toda mensagem do cliente grava PENDENTE
+        // ("aguardando resposta nossa", no enum) — e é justamente a conversa em
+        // que o cliente escreveu e ninguém respondeu. Filtrar só ABERTA deixava
+        // o reaper mudo pro cenário que ele existe pra pegar (auditoria
+        // 13/09/2026, achado A-1); só alertava se a transferência tivesse sido
+        // silenciosa e o cliente nunca mais falado.
+        status: { in: ['ABERTA', 'PENDENTE'] },
         // Bot DESLIGADO nesta conversa especificamente (é o estado que a
         // transferência deixa). `null` = segue o global e o bot responde.
         botLigado: false,

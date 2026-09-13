@@ -146,13 +146,17 @@ describe('ConversaEsquecidaJob', () => {
     expect(prisma.agendaItem.create).toHaveBeenCalled();
   });
 
-  it('só olha conversa ABERTA com o bot DESLIGADO nela e ainda não alertada', async () => {
+  it('olha conversa ABERTA *e* PENDENTE com o bot DESLIGADO nela e ainda não alertada', async () => {
     prisma.conversation.findMany.mockResolvedValue([]);
 
     await job.varrer();
 
     const where = prisma.conversation.findMany.mock.calls[0][0].where as Record<string, unknown>;
-    expect(where.status).toBe('ABERTA');
+    // Regressão (auditoria 13/09/2026, A-1): toda mensagem do cliente grava
+    // PENDENTE no inbound — filtrar só ABERTA deixava o reaper mudo pro cenário
+    // "cliente escreveu, ninguém respondeu". O spec antigo afirmava 'ABERTA' e
+    // protegia o defeito.
+    expect(where.status).toEqual({ in: ['ABERTA', 'PENDENTE'] });
     expect(where.botLigado).toBe(false);
     expect(where.alertaEsquecidaEm).toBeNull();
   });
