@@ -140,7 +140,12 @@ export class TikTokWebhookController {
         return;
       }
       default:
-        this.logger.debug(`Webhook TikTok type não-tratado: ${env.type}`);
+        // Evento que a conta recebe e o código não conhece. WARN, não DEBUG: em
+        // 13/09/2026 o `deadline` do ClickSign ficou dez dias sumindo num
+        // `logger.debug` — contrato expirava e ninguém ficava sabendo. Aqui o
+        // ignore DELIBERADO tem `case` próprio, então o que cai neste
+        // ramo é genuinamente desconhecido e merece aparecer.
+        this.logger.warn(`Webhook TikTok type não-tratado: ${env.type}`);
     }
   }
 }

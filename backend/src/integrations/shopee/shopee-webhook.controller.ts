@@ -155,7 +155,12 @@ export class ShopeeWebhookController {
         return;
       }
       default:
-        this.logger.debug(`Webhook Shopee code não-tratado: ${env.code}`);
+        // Evento que a conta recebe e o código não conhece. WARN, não DEBUG: em
+        // 13/09/2026 o `deadline` do ClickSign ficou dez dias sumindo num
+        // `logger.debug` — contrato expirava e ninguém ficava sabendo. Aqui o
+        // ignore DELIBERADO tem `case` próprio, então o que cai neste
+        // ramo é genuinamente desconhecido e merece aparecer.
+        this.logger.warn(`Webhook Shopee code não-tratado: ${env.code}`);
     }
     // referência para evitar warning sobre client não-usado (mantido pra extensões)
     void this.client;
