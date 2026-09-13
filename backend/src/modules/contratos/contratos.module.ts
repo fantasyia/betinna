@@ -4,6 +4,7 @@ import { TinyModule } from '@integrations/tiny/tiny.module';
 import { ContratosController } from './contratos.controller';
 import { ContratosService } from './contratos.service';
 import { ContratoComodatoService } from './contrato-comodato.service';
+import { ContratoComodatoErpService } from './contrato-comodato-erp.service';
 import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
 import { FiscalPendenciasService } from './fiscal-pendencias.service';
@@ -19,6 +20,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
   providers: [
     ContratosService,
     FiscalPendenciasService,
+    ContratoComodatoErpService,
     ContratoComodatoService,
     ContratoErpService,
     ContratoMensalidadeSyncService,
@@ -27,6 +29,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
   exports: [
     ContratosService,
     FiscalPendenciasService,
+    ContratoComodatoErpService,
     ContratoComodatoService,
     ContratoErpService,
     ContratoMensalidadeSyncService,

@@ -35,7 +35,11 @@ const build = (
     },
     empresa: { findUnique: vi.fn().mockResolvedValue({ config }) },
   };
-  const tiny = { incluir: vi.fn().mockResolvedValue({ id: '338242389' }), configurado: true };
+  const tiny = {
+    incluir: vi.fn().mockResolvedValue({ id: '338242389' }),
+    alterar: vi.fn().mockResolvedValue(undefined),
+    configurado: true,
+  };
   const env = { get: vi.fn().mockReturnValue(frontendUrl) };
   const svc = new ContratoErpService(prisma as never, tiny as never, env as never);
   return { svc, prisma, tiny };
@@ -160,5 +164,80 @@ describe('ContratoErpService.enviar', () => {
     await svc.enviar('ctr-1', 'emp-1');
 
     expect(tiny.incluir.mock.calls[0][0].vencimento).toBe('C');
+  });
+});
+
+/**
+ * O contrato sobe assim que é assinado, e nesse momento a contabilidade em geral
+ * ainda não definiu ISS, código de serviço e natureza. Ele entra Ativo, cobrando
+ * e SEM emitir nota — foi o que aconteceu com o 340265142. Isto aqui é o que
+ * liga a emissão depois, sem abrir contrato por contrato no painel.
+ */
+describe('ContratoErpService.sincronizarFiscal', () => {
+  const FISCAL = {
+    emiteNota: true,
+    codigoListaServico: '14.01',
+    naturezaOperacao: 'Locação de bens móveis',
+    percentualIss: 2,
+    servicoCodigo: 'LOC-MB',
+    servicoNome: 'Locação MB',
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('com os dados fiscais preenchidos, LIGA a emissão no contrato que já está no ERP', async () => {
+    const { svc, tiny } = build(
+      { contratoErpId: '338242389' },
+      { erp: { contratoLocacao: FISCAL } },
+    );
+
+    await expect(svc.sincronizarFiscal('ctr-1', 'emp-1')).resolves.toEqual({ emiteNota: true });
+
+    expect(tiny.alterar).toHaveBeenCalledWith(
+      '338242389',
+      expect.objectContaining({
+        nota: expect.objectContaining({ codigoListaServico: '14.01', percentualIss: 2 }),
+      }),
+    );
+  });
+
+  /**
+   * ⚠️ `contrato.alterar.php` é SUBSTITUIÇÃO: payload incompleto zera o resto
+   * (medido em 05/09). O valor e o prazo têm que ir junto, mesmo sem mudar.
+   */
+  it('manda o contrato INTEIRO, não só o que mudou', async () => {
+    const { svc, tiny } = build(
+      { contratoErpId: '338242389' },
+      { erp: { contratoLocacao: FISCAL } },
+    );
+
+    await svc.sincronizarFiscal('ctr-1', 'emp-1');
+
+    expect(tiny.alterar).toHaveBeenCalledWith(
+      '338242389',
+      expect.objectContaining({
+        valorMensal: expect.any(Number),
+        prazoMeses: expect.any(Number),
+        diaVencimento: expect.any(Number),
+        cliente: expect.objectContaining({ nome: expect.any(String) }),
+      }),
+    );
+  });
+
+  it('pediu nota mas faltam dados: RECUSA — "sincronizei" com a emissão desligada é pior', async () => {
+    const { svc, tiny } = build(
+      { contratoErpId: '338242389' },
+      { erp: { contratoLocacao: { emiteNota: true } } },
+    );
+
+    await expect(svc.sincronizarFiscal('ctr-1', 'emp-1')).rejects.toThrow(/dados fiscais/i);
+    expect(tiny.alterar).not.toHaveBeenCalled();
+  });
+
+  it('contrato que nem está no ERP não tem o que sincronizar', async () => {
+    const { svc, tiny } = build({ contratoErpId: null }, { erp: { contratoLocacao: FISCAL } });
+
+    await expect(svc.sincronizarFiscal('ctr-1', 'emp-1')).rejects.toThrow(/não está no ERP/i);
+    expect(tiny.alterar).not.toHaveBeenCalled();
   });
 });

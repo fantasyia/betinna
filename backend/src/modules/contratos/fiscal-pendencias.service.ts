@@ -45,10 +45,20 @@ const CAMPOS_NFSE: Array<[string, string]> = [
   ['servicoNome', 'nome do serviço que o cliente lê na nota'],
 ];
 
+/**
+ * ⚠️ Natureza, não CFOP: `nota.fiscal.incluir.php` não aceita CFOP (nem na nota,
+ * nem por item). O CFOP mora na natureza cadastrada no painel do Tiny. São
+ * duas porque dentro do estado e interestadual têm CFOPs diferentes.
+ */
 const CAMPOS_COMODATO: Array<[string, string]> = [
-  ['cfopMesmaUf', 'CFOP da remessa em comodato dentro da mesma UF'],
-  ['cfopOutraUf', 'CFOP da remessa em comodato para outra UF'],
-  ['naturezaOperacao', 'natureza da operação da remessa'],
+  [
+    'naturezaMesmaUf',
+    'natureza de operação cadastrada no Tiny pra remessa na MESMA UF (é ela que carrega o CFOP)',
+  ],
+  [
+    'naturezaOutraUf',
+    'natureza de operação pra remessa INTERESTADUAL (CFOP diferente da anterior)',
+  ],
 ];
 
 /** Teto de produtos conferidos no ERP: diagnóstico não pode virar varredura. */

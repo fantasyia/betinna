@@ -1207,6 +1207,12 @@ model Contrato {
   assinadoEm            DateTime?
   /// PDF assinado guardado no Storage.
   documentoUrl          String?
+  /// NF de comodato — a remessa do equipamento, emitida SEMPRE a partir do
+  /// pedido de venda. O id guardado é o que faz a emissão ser idempotente:
+  /// nota fiscal não tem desfazer pela API.
+  comodatoNotaId        String?
+  comodatoNotaNumero    String?
+  comodatoEmitidaEm     DateTime?
   /// ⚠️ ÓRFÃOS: a cópia automática no Drive foi construída, deployada e
   /// DESCARTADA no mesmo dia (12/09) — o Léo preferiu anexar à mão. As colunas
   /// ficam porque a migration já rodou em produção, e apagar migration aplicada

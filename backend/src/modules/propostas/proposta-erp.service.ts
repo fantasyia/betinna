@@ -93,7 +93,7 @@ export class PropostaErpService {
 
     const produtos = await this.prisma.produto.findMany({
       where: { id: { in: proposta.itens.map((i) => i.produtoId) } },
-      select: { id: true, sku: true, nome: true },
+      select: { id: true, sku: true, nome: true, valorBem: true },
     });
     const skuPorProduto = new Map(produtos.map((p) => [p.id, p.sku]));
     const semSku = proposta.itens.filter((i) => !skuPorProduto.get(i.produtoId));
@@ -103,6 +103,38 @@ export class PropostaErpService {
           'o SKU é o que amarra o item ao ERP.',
         ErrorCode.INTEGRATION_ERROR,
       );
+    }
+
+    /**
+     * 🔴 LOCAÇÃO sobe valorada pelo EQUIPAMENTO, não pela mensalidade.
+     *
+     * O orçamento vira pedido de venda, e é do pedido que sai a NF de COMODATO
+     * (decisão do Léo, 12/09: a remessa nunca é nota avulsa). A nota declara o
+     * que está saindo da empresa — e o que sai é o equipamento, não o aluguel.
+     * Subir R$ 522/mês faria a remessa declarar um patrimônio de 522 reais
+     * saindo quando o bem vale muito mais, numa nota que não se corrige depois.
+     *
+     * A mensalidade não se perde: ela é o `valorMensal` do contrato recorrente,
+     * que é quem cobra todo mês — e é de lá que a comissão do rep sai.
+     *
+     * ⚠️ Só vale quando o tenant LIGOU o comodato. Enquanto a contabilidade não
+     * definiu a natureza da operação, o orçamento continua como sempre foi:
+     * trocar a valoração por conta própria mudaria, em silêncio, o número que o
+     * diretor aprova.
+     */
+    const valorBemPorProduto = new Map(produtos.map((p) => [p.id, p.valorBem]));
+    const comodatoLigado =
+      proposta.modalidade === 'LOCACAO' && (await this.comodatoLigado(empresaId));
+    if (comodatoLigado) {
+      const semValor = proposta.itens.filter((i) => valorBemPorProduto.get(i.produtoId) == null);
+      if (semValor.length > 0) {
+        throw new BusinessRuleException(
+          `Falta o valor do equipamento em: ${semValor.map((i) => i.produtoNome).join(', ')}. ` +
+            'Na locação o orçamento sobe valorado pelo BEM (é dele que a NF de comodato nasce) — ' +
+            'preencha "valorBem" no produto. Subir com a mensalidade faria a remessa declarar o valor errado.',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
     }
 
     const vendedorErpId = await this.resolverVendedor(empresaId, proposta.representante);
@@ -132,7 +164,9 @@ export class PropostaErpService {
         // O unitário JÁ com o desconto do item: é o preço que o cliente leu na
         // proposta. Mandar o cheio e o desconto separado faria o total do ERP
         // divergir do PDF que ele aprovou.
-        valorUnitario: Number(i.total) / Math.max(1, i.quantidade),
+        valorUnitario: comodatoLigado
+          ? Number(valorBemPorProduto.get(i.produtoId))
+          : Number(i.total) / Math.max(1, i.quantidade),
       })),
       ...(vendedorErpId ? { vendedorId: vendedorErpId } : {}),
       ...(proposta.validoAte ? { validadeDias: this.diasAte(proposta.validoAte) } : {}),
@@ -150,7 +184,11 @@ export class PropostaErpService {
         // lugar próprio, não existe no orçamento do Tiny.
         `[${proposta.numero}]`,
         `Proposta ${proposta.numero} (Betinna)`,
-        proposta.modalidade === 'LOCACAO' ? 'LOCAÇÃO MENSAL (valor por mês)' : 'VENDA',
+        proposta.modalidade === 'LOCACAO'
+          ? comodatoLigado
+            ? `LOCAÇÃO — itens valorados pelo EQUIPAMENTO (remessa em comodato). Aluguel: ${this.dinheiro(proposta.valor)}/mês, cobrado pelo contrato recorrente`
+            : 'LOCAÇÃO MENSAL (valor por mês)'
+          : 'VENDA',
         proposta.observacoes ?? '',
       ]
         .filter(Boolean)
@@ -310,5 +348,20 @@ export class PropostaErpService {
   private diasAte(data: Date): number {
     const dia = 24 * 60 * 60 * 1000;
     return Math.max(1, Math.ceil((data.getTime() - Date.now()) / dia));
+  }
+  /** A valoração pelo bem só entra quando a contabilidade ligou o comodato. */
+  private async comodatoLigado(empresaId: string): Promise<boolean> {
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const erp = ((empresa?.config as Record<string, unknown> | null)?.erp ?? {}) as {
+      comodato?: { emiteNota?: boolean | null };
+    };
+    return erp.comodato?.emiteNota === true;
+  }
+
+  private dinheiro(v: unknown): string {
+    return `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 }

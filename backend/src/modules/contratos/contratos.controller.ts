@@ -12,6 +12,7 @@ import { type ListContratosDto, listContratosSchema } from './contratos.dto';
 import { ContratosService } from './contratos.service';
 import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
+import { ContratoComodatoErpService } from './contrato-comodato-erp.service';
 import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 
@@ -39,6 +40,7 @@ export class ContratosController {
     private readonly erp: ContratoErpService,
     private readonly aprovacao: ContratoAprovacaoJob,
     private readonly fiscal: FiscalPendenciasService,
+    private readonly comodatoErp: ContratoComodatoErpService,
   ) {}
 
   /**
@@ -130,6 +132,45 @@ export class ContratosController {
    * ⚠️ Vem ANTES de `@Get(':id')` de propósito: rota fixa depois de rota com
    * parâmetro vira id. "fiscal" seria lido como id de contrato e daria 404.
    */
+  /**
+   * Emite a NF de COMODATO do contrato — a remessa do equipamento.
+   *
+   * 🔴 Manual por decisão do Léo (12/09), e o motivo é o custo do erro: nota
+   * fiscal não tem desfazer pela API do Tiny (sem segunda nota pro mesmo
+   * pedido, sem endpoint de alterar, rejeitada guarda snapshot do item). Um
+   * humano no gatilho é a última rede antes de o documento existir no mundo.
+   *
+   * Sai SEMPRE do pedido de venda — nunca avulsa.
+   */
+  @Post(':id/emitir-comodato')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'emitir_comodato', resource: 'contrato', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary: 'Emite a NF de comodato a partir do pedido de venda. **DIRETOR/ADMIN**.',
+  })
+  emitirComodato(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.comodatoErp.emitir(id, user.empresaIdAtiva);
+  }
+
+  /**
+   * Liga a emissão de nota do contrato no ERP depois que a contabilidade
+   * preencheu os dados fiscais. Sem isto, contrato que subiu antes da definição
+   * fica cobrando sem emitir NFS-e até alguém ligar no painel, um por um.
+   */
+  @Post(':id/sincronizar-fiscal')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'sincronizar_fiscal', resource: 'contrato', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Atualiza no ERP a emissão de nota do contrato. **DIRETOR/ADMIN**.' })
+  sincronizarFiscal(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.erp.sincronizarFiscal(id, user.empresaIdAtiva);
+  }
+
   @Get('fiscal/pendencias')
   @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({

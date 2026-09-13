@@ -27,6 +27,9 @@ function build(
     proposta?: Record<string, unknown> | null;
     vendedor?: number | null;
     contrato?: { status: string } | null;
+    /** `erp.comodato.emiteNota` do tenant — é ele que liga a valoração pelo bem. */
+    erp?: unknown;
+    produtos?: Array<Record<string, unknown>>;
   } = {},
 ) {
   const prisma = {
@@ -35,8 +38,13 @@ function build(
       update: vi.fn().mockResolvedValue({}),
     },
     produto: {
-      findMany: vi.fn().mockResolvedValue([{ id: 'prod-1', sku: 'MB-01', nome: 'MB-01' }]),
+      findMany: vi
+        .fn()
+        .mockResolvedValue(
+          opts.produtos ?? [{ id: 'prod-1', sku: 'MB-01', nome: 'MB-01', valorBem: null }],
+        ),
     },
+    empresa: { findUnique: vi.fn().mockResolvedValue({ config: { erp: opts.erp ?? {} } }) },
     // Sem contrato = proposta de VENDA: sobe direto. Com contrato, a subida só
     // acontece depois de assinado (caso próprio abaixo).
     contrato: { findFirst: vi.fn().mockResolvedValue(opts.contrato ?? null) },
@@ -143,5 +151,95 @@ describe('contrato assinado é a condição de subida', () => {
     const { svc, orcamentos } = build({ contrato: { status: 'ASSINADO' } });
     await svc.enviar('prop-1', 'emp-1');
     expect(orcamentos.criar).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * 🔴 LOCAÇÃO sobe valorada pelo EQUIPAMENTO, não pela mensalidade.
+ *
+ * O orçamento vira pedido de venda, e é do pedido que sai a NF de COMODATO
+ * (decisão do Léo, 12/09: a remessa nunca é nota avulsa). A nota declara o que
+ * SAI da empresa — o equipamento. Subir a mensalidade faria a remessa declarar
+ * R$ 522 de patrimônio saindo quando o bem vale muito mais, numa nota que não
+ * se corrige depois.
+ */
+describe('locação: orçamento valorado pelo EQUIPAMENTO', () => {
+  const LOCACAO = {
+    ...PROPOSTA,
+    modalidade: 'LOCACAO',
+    valor: 522,
+    itens: [{ produtoId: 'prod-1', produtoNome: 'MB-05', quantidade: 1, total: 522 }],
+  };
+  const COMODATO_LIGADO = { comodato: { emiteNota: true } };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('com o comodato ligado, o item vai pelo valor do BEM', async () => {
+    const { svc, orcamentos } = build({
+      proposta: LOCACAO,
+      contrato: { status: 'ASSINADO' },
+      erp: COMODATO_LIGADO,
+      produtos: [{ id: 'prod-1', sku: 'MB-05', nome: 'MB-05', valorBem: 4800 }],
+    });
+
+    await svc.enviar('p-1', 'emp-1');
+
+    expect(orcamentos.criar.mock.calls[0][1].itens[0].valorUnitario).toBe(4800);
+  });
+
+  it('e a observação avisa que a mensalidade é cobrada pelo contrato', async () => {
+    const { svc, orcamentos } = build({
+      proposta: LOCACAO,
+      contrato: { status: 'ASSINADO' },
+      erp: COMODATO_LIGADO,
+      produtos: [{ id: 'prod-1', sku: 'MB-05', nome: 'MB-05', valorBem: 4800 }],
+    });
+
+    await svc.enviar('p-1', 'emp-1');
+
+    const obs = String(orcamentos.criar.mock.calls[0][1].observacao);
+    expect(obs).toContain('valorados pelo EQUIPAMENTO');
+    expect(obs).toContain('R$ 522,00/mês');
+  });
+
+  it('sem valor do bem, RECUSA — subir com a mensalidade viraria remessa com valor errado', async () => {
+    const { svc, orcamentos } = build({
+      proposta: LOCACAO,
+      contrato: { status: 'ASSINADO' },
+      erp: COMODATO_LIGADO,
+      produtos: [{ id: 'prod-1', sku: 'MB-05', nome: 'MB-05', valorBem: null }],
+    });
+
+    await expect(svc.enviar('p-1', 'emp-1')).rejects.toThrow(/valor do equipamento/i);
+    expect(orcamentos.criar).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Enquanto a contabilidade não definiu a natureza da operação, o orçamento
+   * continua como sempre foi. Trocar a valoração por conta própria mudaria, em
+   * silêncio, o número que o diretor aprova.
+   */
+  it('com o comodato DESLIGADO, nada muda: sobe a mensalidade, como sempre', async () => {
+    const { svc, orcamentos } = build({
+      proposta: LOCACAO,
+      contrato: { status: 'ASSINADO' },
+      produtos: [{ id: 'prod-1', sku: 'MB-05', nome: 'MB-05', valorBem: 4800 }],
+    });
+
+    await svc.enviar('p-1', 'emp-1');
+
+    expect(orcamentos.criar.mock.calls[0][1].itens[0].valorUnitario).toBe(522);
+    expect(String(orcamentos.criar.mock.calls[0][1].observacao)).toContain('LOCAÇÃO MENSAL');
+  });
+
+  it('VENDA nunca é tocada pela regra do comodato', async () => {
+    const { svc, orcamentos } = build({
+      erp: COMODATO_LIGADO,
+      produtos: [{ id: 'prod-1', sku: 'MB-01', nome: 'MB-01', valorBem: null }],
+    });
+
+    await svc.enviar('p-1', 'emp-1');
+
+    expect(orcamentos.criar.mock.calls[0][1].itens[0].valorUnitario).toBe(1500);
   });
 });

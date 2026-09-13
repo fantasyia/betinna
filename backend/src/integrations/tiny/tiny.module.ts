@@ -4,6 +4,7 @@ import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { TinyClientService } from './tiny-client.service';
 import { TinyV2ClientService } from './tiny-v2-client.service';
 import { TinyContratosService } from './tiny-contratos.service';
+import { TinyNotasService } from './tiny-notas.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
@@ -32,6 +33,7 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
   imports: [IntegracoesModule, NotificacoesModule],
   controllers: [TinyOAuthController, TinyWebhookController],
   providers: [
+    TinyNotasService,
     TinyMapeamentoService,
     TinyOAuthService,
     TinyClientService,
@@ -51,6 +53,7 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
     TinyTokenRefreshJob,
   ],
   exports: [
+    TinyNotasService,
     TinyOAuthService,
     TinyClientService,
     TinyV2ClientService,

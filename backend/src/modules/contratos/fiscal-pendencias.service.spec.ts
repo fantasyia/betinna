@@ -19,9 +19,8 @@ const CFG_COMPLETA = {
   },
   comodato: {
     emiteNota: true,
-    cfopMesmaUf: '5908',
-    cfopOutraUf: '6908',
-    naturezaOperacao: 'Remessa em comodato',
+    naturezaMesmaUf: 'Remessa em comodato',
+    naturezaOutraUf: 'Remessa em comodato interestadual',
   },
 };
 
@@ -80,11 +79,7 @@ describe('FiscalPendenciasService', () => {
       'servicoNome',
     ]);
     expect(r.nfseMensal.faltando[0].onde).toBe('erp.contratoLocacao');
-    expect(r.comodato.faltando.map((p) => p.campo)).toEqual([
-      'cfopMesmaUf',
-      'cfopOutraUf',
-      'naturezaOperacao',
-    ]);
+    expect(r.comodato.faltando.map((p) => p.campo)).toEqual(['naturezaMesmaUf', 'naturezaOutraUf']);
     // Cada pendência explica a consequência — quem preenche é o contador, e ele
     // não lê nome de campo de banco.
     expect(r.nfseMensal.faltando[0].porque).toContain('ISS');

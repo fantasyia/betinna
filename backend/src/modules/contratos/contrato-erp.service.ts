@@ -169,6 +169,69 @@ export class ContratoErpService {
     };
   }
 
+  /**
+   * Liga (ou atualiza) a EMISSÃO DE NOTA de um contrato que já está no ERP.
+   *
+   * **Por que existe:** o contrato sobe assim que é assinado, e nesse momento a
+   * contabilidade normalmente ainda não definiu ISS, código de serviço e
+   * natureza. Ele entra Ativo e cobrando, com `emite_nota = N` — foi o que
+   * aconteceu com o 340265142. Quando os dados chegam, sem isto seria preciso
+   * abrir cada contrato no painel e ligar na mão, um por um.
+   *
+   * ⚠️ `contrato.alterar.php` é SUBSTITUIÇÃO: manda o contrato inteiro, não só
+   * o que mudou. Payload incompleto zera o resto (medido em 05/09).
+   *
+   * Não mexe em cobrança já emitida — o que muda é o que o ERP vai fazer nas
+   * PRÓXIMAS competências.
+   */
+  async sincronizarFiscal(contratoId: string, empresaId: string): Promise<{ emiteNota: boolean }> {
+    const contrato = await this.prisma.contrato.findFirst({
+      where: { id: contratoId, empresaId },
+      include: {
+        cliente: { select: { nome: true, cnpj: true } },
+        proposta: { select: { numero: true } },
+      },
+    });
+    if (!contrato) throw new NotFoundException('Contrato não encontrado', ErrorCode.NOT_FOUND);
+    if (!contrato.contratoErpId) {
+      throw new BusinessRuleException(
+        'Contrato ainda não está no ERP — use enviar-erp antes.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+
+    const cfg = await this.config(empresaId);
+    const nota = this.nota(cfg);
+    if (cfg.emiteNota && !nota) {
+      // `nota()` já loga o que falta; aqui o erro é pra quem clicou, porque
+      // "sincronizei" com a emissão continuando desligada é pior que uma recusa.
+      throw new BusinessRuleException(
+        'Emissão de nota pedida, mas faltam dados fiscais. Veja GET /contratos/fiscal/pendencias.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+
+    const inicio = contrato.primeiraCobrancaEm ?? contrato.assinadoEm ?? new Date();
+    await this.contratos.alterar(contrato.contratoErpId, {
+      inicio,
+      descricao: `Locação Master Block — ${contrato.proposta.numero}`,
+      cliente: { nome: contrato.cliente.nome, cpfCnpj: contrato.cliente.cnpj },
+      valorMensal: Number(contrato.valorMensal),
+      diaVencimento: contrato.diaVencimento,
+      prazoMeses: contrato.prazoMeses,
+      vencimento: cfg.vencimento,
+      observacao:
+        `Contrato ${contrato.id} · proposta ${contrato.proposta.numero} (Betinna)` +
+        this.linkDoPdf(contrato.proposta.numero),
+      nota,
+    });
+    this.logger.log(
+      `Contrato ${contrato.id} (${contrato.proposta.numero}) ressincronizado no ERP — ` +
+        `emissão de nota ${nota ? 'LIGADA' : 'desligada'}`,
+    );
+    return { emiteNota: Boolean(nota) };
+  }
+
   private async config(empresaId: string): Promise<ConfigContratoLocacao> {
     const empresa = await this.prisma.empresa.findUnique({
       where: { id: empresaId },

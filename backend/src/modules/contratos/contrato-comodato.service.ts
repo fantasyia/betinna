@@ -83,6 +83,32 @@ export class ContratoComodatoService {
    * a competência é o MÊS, e o sync roda todo dia — a diferença só apareceria
    * numa nota emitida na virada do mês.
    */
+  /**
+   * Mesma regra, entrada diferente: quando a NF de comodato é emitida PELO APP
+   * já se sabe qual contrato é — não há o que resolver por pedido → proposta.
+   *
+   * Idempotente pelo mesmo motivo: contrato que já tem data não é remarcado.
+   * Reemitir não pode empurrar a primeira competência pra frente.
+   */
+  async iniciarCobrancaPorContrato(contratoId: string, dataEmissao: string | null): Promise<void> {
+    const contrato = await this.prisma.contrato.findUnique({
+      where: { id: contratoId },
+      select: { id: true, primeiraCobrancaEm: true },
+    });
+    if (!contrato || contrato.primeiraCobrancaEm) return;
+
+    const inicio = this.dataDaNota(dataEmissao ? { dataEmissao } : null);
+    await this.prisma.contrato.update({
+      where: { id: contrato.id },
+      data: { primeiraCobrancaEm: inicio },
+    });
+    await this.comissoes.recalcular(contrato.id);
+    this.logger.log(
+      `Contrato ${contrato.id}: NF de comodato emitida — cobrança mensal começa em ` +
+        `${inicio.toISOString().slice(0, 10)}`,
+    );
+  }
+
   private dataDaNota(nota: NotaDoComodato | null): Date {
     const bruto = nota?.dataEmissao;
     const dia = typeof bruto === 'string' ? /^\d{4}-\d{2}-\d{2}/.exec(bruto)?.[0] : null;
