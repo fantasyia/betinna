@@ -1706,7 +1706,7 @@ describe('ConversarIaService', () => {
       expect(historico.filter((h) => h.content === 'sim combinado')).toHaveLength(0);
     });
 
-    it('lê o histórico no tamanho CONFIGURADO (historicoMensagens) da empresa', async () => {
+    it('lê o histórico com o PISO de 50 do nó (E-4, 13/09): empresa configurou 5 → nó usa 50', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
       prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: {} });
       prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
@@ -1723,8 +1723,8 @@ describe('ConversarIaService', () => {
 
       await svc.retomar('exec-1', 'conv-1', 'oi');
 
-      // montarHistorico usa take = historicoMensagens (não um valor fixo hardcoded).
-      expect(prisma.message.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5 }));
+      // Decisão do Léo (E-4): o nó aguenta até ~50 msgs; a config da Persona vale como MÍNIMO, nunca abaixo.
+      expect(prisma.message.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 50 }));
     });
 
     // Fecho com captura de e-mail: o lead manda o e-mail (pra receber o convite da
