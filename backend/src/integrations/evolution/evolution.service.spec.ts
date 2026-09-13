@@ -279,3 +279,19 @@ describe('EvolutionService — presença (digitando/pausado)', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('sendPresence'));
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (B-1): `req()` passava `retries: 1` pra TODO método,
+ * inclusive o POST de envio. O http-client retenta em timeout E em 5xx/429 —
+ * se o Evolution já tinha entregue, a mensagem saía 2×. Envio = `retries: 0`.
+ */
+describe('EvolutionService — envio nunca retenta o POST', () => {
+  it('sendText vai com retries: 0 (leitura de instância segue com retry)', async () => {
+    const { svc, http } = makeSvc();
+
+    await svc.enviarTexto('inst', '5511970535832', 'oi');
+
+    const opts = http.post.mock.calls[0][1] as { retries?: number };
+    expect(opts.retries).toBe(0);
+  });
+});

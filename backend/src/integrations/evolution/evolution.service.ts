@@ -85,13 +85,18 @@ export class EvolutionService {
     method: 'get' | 'post' | 'delete',
     path: string,
     body?: Record<string, unknown>,
+    extra?: { retries?: number },
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const opts = {
       headers: this.headers(),
       integration: 'evolution',
       redactKeys: ['apikey'],
-      retries: 1,
+      // `retries: 1` valia pra TODO método — inclusive o POST de ENVIO. O
+      // http-client retenta em timeout/rede E em 5xx/429; se o Evolution já
+      // entregou e a resposta se perdeu, o retry mandava a mensagem de novo e o
+      // cliente lia 2× (auditoria 13/09/2026, B-1). Envio passa `retries: 0`.
+      retries: extra?.retries ?? 1,
       timeoutMs: HTTP_TIMEOUT_MS,
       ...(body ? { body } : {}),
     };
@@ -778,7 +783,8 @@ export class EvolutionService {
   /** POST de envio cru com erro enriquecido (sem gate). */
   private async postEnvio<T>(path: string, body: Record<string, unknown>): Promise<T> {
     try {
-      return await this.req<T>('post', path, body);
+      // Envio NUNCA retenta: efeito colateral (mensagem no celular do cliente).
+      return await this.req<T>('post', path, body, { retries: 0 });
     } catch (err) {
       const detalhe = this.detalheErro(err);
       this.logger.warn(`Evolution envio falhou (${path}): ${detalhe}`);
