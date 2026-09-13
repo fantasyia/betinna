@@ -36,7 +36,7 @@ describe('CampanhaEnvioProcessor.onFailed — #erro-retry', () => {
       {} as never,
       deps.deadLetter as never,
       {} as never,
-      { suprimido: vi.fn(async () => false) } as never, // supressao
+      { suprimido: vi.fn(async () => false), emailSuprimido: vi.fn(async () => false) } as never, // supressao
     );
   });
 
@@ -112,19 +112,24 @@ function makeProc(canal: string, esperaMs: number) {
     esperaAntesDoProativoMs: vi.fn().mockResolvedValue(esperaMs),
   };
   const idempotency = { claimStrict: vi.fn().mockResolvedValue(true), release: vi.fn() };
+  const supressao = {
+    suprimido: vi.fn(async () => false),
+    emailSuprimido: vi.fn(async () => false),
+  };
+  const emailSvc = { enviarHtmlLivre: vi.fn().mockResolvedValue({ ok: true, id: 'em-1' }) };
   const proc = new CampanhaEnvioProcessor(
     prisma as never,
     { tentarFinalizarCampanha: vi.fn() } as never,
     whatsapp as never,
-    { enviarHtmlLivre: vi.fn().mockResolvedValue({}) } as never,
+    emailSvc as never,
     {} as never,
     idempotency as never,
     { record: vi.fn() } as never,
     pacing as never,
-    { suprimido: vi.fn(async () => false) } as never,
+    supressao as never,
     queue as never,
   );
-  return { proc, prisma, queue, whatsapp, pacing };
+  return { proc, prisma, queue, whatsapp, pacing, supressao, emailSvc };
 }
 
 describe('CampanhaEnvioProcessor.process — janela de envio', () => {
@@ -173,5 +178,23 @@ describe('CampanhaEnvioProcessor — não envia com o WhatsApp fora do ar', () =
     await expect(proc.process(makeJob(0, 3))).rejects.toBeInstanceOf(WhatsappIndisponivelError);
 
     expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (C-4): o processor só checava LGPD — quem tinha clicado
+ * "spam" (tag "E-mail inválido ⛔" no Cliente) recebia a campanha seguinte.
+ */
+describe('CampanhaEnvioProcessor — caixa queimada não recebe campanha', () => {
+  it('canal EMAIL + emailSuprimido → SUPRIMIDO, sem chamar o Resend', async () => {
+    const { proc, prisma, supressao, emailSvc } = makeProc('EMAIL', 0);
+    supressao.emailSuprimido.mockResolvedValue(true);
+
+    await proc.process(makeJob(0, 3));
+
+    expect(emailSvc.enviarHtmlLivre).not.toHaveBeenCalled();
+    expect(prisma.campanhaDestinatario.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'SUPRIMIDO' }) }),
+    );
   });
 });

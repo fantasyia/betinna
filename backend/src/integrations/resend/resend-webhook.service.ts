@@ -119,17 +119,18 @@ export class ResendWebhookService {
       where: { resendEmailId: emailId },
       data: patch,
     });
+    // Bounce e reclamação queimam o ENDEREÇO — sempre, seja e-mail de fluxo ou
+    // de campanha. Antes a supressão só rodava quando NÃO havia linha de
+    // campanha (count === 0): a linha de campanha ganhava `bounceEm` e o
+    // Cliente seguia alvo da campanha seguinte (auditoria 13/09/2026, C-4).
+    // Provedor lê "insiste em caixa inexistente" como marca de lista comprada,
+    // e é o sinal que mais rápido queima um domínio de envio.
+    if (tipo === 'email.bounced' || tipo === 'email.complained') {
+      const suprimiu = await this.suprimirDestinatarios(evento.data?.to, tipo);
+      if (r.count > 0) return 'aplicado';
+      return suprimiu ? 'emailSuprimido' : 'semDestinatario';
+    }
     if (r.count === 0) {
-      // E-mail de FLUXO não tem linha em `campanhaDestinatario` — e era aqui que
-      // o evento morria. Pra bounce e reclamação isso não é "normal": o endereço
-      // está morto e continuava sendo alvo, régua após régua. Provedor lê
-      // "insiste em caixa inexistente" como marca de lista comprada, e é o sinal
-      // que mais rápido queima um domínio de envio.
-      if (tipo === 'email.bounced' || tipo === 'email.complained') {
-        return (await this.suprimirDestinatarios(evento.data?.to, tipo))
-          ? 'emailSuprimido'
-          : 'semDestinatario';
-      }
       // Aí sim é normal: transacional (convite, comissão) gera entrega e
       // abertura, e não tem destinatário de campanha.
       return 'semDestinatario';
@@ -150,22 +151,42 @@ export class ResendWebhookService {
     if (enderecos.length === 0) return false;
     const motivo = tipo === 'email.complained' ? 'reclamacao' : 'bounce';
     let marcou = 0;
-    for (const email of enderecos) {
-      const leads = await this.prisma.lead
-        .findMany({
-          where: { contatoEmail: { equals: email, mode: 'insensitive' } },
-          select: { empresaId: true },
-          distinct: ['empresaId'],
-        })
-        .catch(() => [] as Array<{ empresaId: string }>);
-      for (const { empresaId } of leads) {
-        marcou += await this.supressao
-          .marcarEmailInvalido(empresaId, email, motivo)
-          .catch((err) => {
-            this.logger.warn(`[resend] falha ao suprimir ${email}: ${String(err)}`);
-            return 0;
-          });
+    // Best-effort de ponta a ponta: o webhook TEM que responder 200 (o Svix
+    // reentrega pra sempre), então nada daqui pode derrubar o `aplicar`.
+    try {
+      for (const email of enderecos) {
+        // Tenants onde o endereço existe — como LEAD ou como CLIENTE. Campanha
+        // mira Cliente, e cliente do site não tem Lead: só olhar Lead deixava
+        // a caixa morta fora do alcance (auditoria 13/09/2026, C-4).
+        const where = { equals: email, mode: 'insensitive' as const };
+        const [leads, clientes] = await Promise.all([
+          this.prisma.lead
+            .findMany({
+              where: { contatoEmail: where },
+              select: { empresaId: true },
+              distinct: ['empresaId'],
+            })
+            .catch(() => [] as Array<{ empresaId: string }>),
+          this.prisma.cliente
+            .findMany({
+              where: { email: where },
+              select: { empresaId: true },
+              distinct: ['empresaId'],
+            })
+            .catch(() => [] as Array<{ empresaId: string }>),
+        ]);
+        const tenants = new Set([...leads, ...clientes].map((x) => x.empresaId));
+        for (const empresaId of tenants) {
+          marcou += await this.supressao
+            .marcarEmailInvalido(empresaId, email, motivo)
+            .catch((err) => {
+              this.logger.warn(`[resend] falha ao suprimir ${email}: ${String(err)}`);
+              return 0;
+            });
+        }
       }
+    } catch (err) {
+      this.logger.warn(`[resend] supressão por bounce falhou: ${String(err)}`);
     }
     return marcou > 0;
   }

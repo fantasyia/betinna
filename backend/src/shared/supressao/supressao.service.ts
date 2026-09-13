@@ -122,13 +122,18 @@ export class SupressaoService {
       // renomeação razoável; o `find` por nome normalizado escolhe a certa.
       const tag = await this.acharTag(empresaId, SupressaoService.TAG_EMAIL_INVALIDO, 'mail');
       if (!tag) return false;
-      const n = await this.prisma.leadTag.count({
-        where: {
-          tagId: tag.id,
-          lead: { empresaId, contatoEmail: { equals: alvo, mode: 'insensitive' } },
-        },
-      });
-      return n > 0;
+      const email = { equals: alvo, mode: 'insensitive' as const };
+      const [nLeads, nClientes] = await Promise.all([
+        this.prisma.leadTag.count({
+          where: { tagId: tag.id, lead: { empresaId, contatoEmail: email } },
+        }),
+        // Cliente também (C-4): a campanha mira Cliente, e é nele que o
+        // bounce/reclamação de campanha fica carimbado.
+        this.prisma.clienteTag.count({
+          where: { tagId: tag.id, cliente: { empresaId, email } },
+        }),
+      ]);
+      return nLeads + nClientes > 0;
     } catch (err) {
       this.logger.warn(`Falha ao checar e-mail suprimido (${alvo}): ${String(err)}`);
       return false;
@@ -160,12 +165,27 @@ export class SupressaoService {
       where: { empresaId, contatoEmail: { equals: alvo, mode: 'insensitive' } },
       select: { id: true, variaveis: true },
     });
-    if (leads.length === 0) return 0;
-
-    await this.prisma.leadTag.createMany({
-      data: leads.map((l) => ({ leadId: l.id, tagId: tag.id, origem: `email:${motivo}` })),
-      skipDuplicates: true,
+    // CLIENTE também: campanha mira Cliente, e cliente do site não tem Lead.
+    // Só marcar Lead deixava quem clicou "spam" alvo da campanha seguinte
+    // (auditoria 13/09/2026, C-4).
+    const clientes = await this.prisma.cliente.findMany({
+      where: { empresaId, email: { equals: alvo, mode: 'insensitive' } },
+      select: { id: true },
     });
+    if (leads.length === 0 && clientes.length === 0) return 0;
+
+    if (leads.length > 0) {
+      await this.prisma.leadTag.createMany({
+        data: leads.map((l) => ({ leadId: l.id, tagId: tag.id, origem: `email:${motivo}` })),
+        skipDuplicates: true,
+      });
+    }
+    if (clientes.length > 0) {
+      await this.prisma.clienteTag.createMany({
+        data: clientes.map((c) => ({ clienteId: c.id, tagId: tag.id })),
+        skipDuplicates: true,
+      });
+    }
     // Rastro no lead: a tag diz "não mande"; o carimbo diz o que aconteceu e
     // quando — é o que permite auditar depois sem cruzar log de provedor.
     for (const l of leads) {
@@ -184,9 +204,10 @@ export class SupressaoService {
         .catch(() => undefined);
     }
     this.logger.warn(
-      `E-mail ${alvo} marcado como inválido (${motivo}) em ${leads.length} lead(s) da empresa ${empresaId}`,
+      `E-mail ${alvo} marcado como inválido (${motivo}) em ${leads.length} lead(s) e ` +
+        `${clientes.length} cliente(s) da empresa ${empresaId}`,
     );
-    return leads.length;
+    return leads.length + clientes.length;
   }
 
   /**

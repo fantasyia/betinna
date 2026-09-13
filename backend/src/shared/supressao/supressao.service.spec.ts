@@ -105,3 +105,49 @@ describe('SupressaoService.emailSuprimido — o ILIKE do Postgres não dobra ace
     expect(await svc.emailSuprimido('emp-1', 'viva@exemplo.com')).toBe(false);
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (C-4): bounce/reclamação só marcava LEAD, e o gate
+ * `emailSuprimido` só olhava LeadTag — campanha mira CLIENTE.
+ */
+describe('SupressaoService — e-mail queimado vale pro Cliente também', () => {
+  const tagMail = { id: 'mail', nome: 'E-mail inválido ⛔' };
+  const prismaC4 = () => ({
+    tag: {
+      findMany: vi.fn().mockResolvedValue([tagMail]),
+      upsert: vi.fn().mockResolvedValue(tagMail),
+    },
+    lead: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
+    cliente: { findMany: vi.fn().mockResolvedValue([]) },
+    leadTag: {
+      count: vi.fn().mockResolvedValue(0),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    clienteTag: {
+      count: vi.fn().mockResolvedValue(0),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    $queryRaw: vi.fn().mockResolvedValue([{ n: 0n }]),
+  });
+
+  it('marcarEmailInvalido etiqueta o Cliente que usa o endereço (mesmo sem Lead)', async () => {
+    const prisma = prismaC4();
+    prisma.cliente.findMany.mockResolvedValue([{ id: 'cli-1' }]);
+    const svc = new SupressaoService(prisma as never);
+
+    const n = await svc.marcarEmailInvalido('emp-1', 'morta@x.com', 'reclamacao');
+
+    expect(n).toBe(1);
+    expect(prisma.clienteTag.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: [{ clienteId: 'cli-1', tagId: 'mail' }] }),
+    );
+  });
+
+  it('emailSuprimido é true quando só o CLIENTE carrega a tag', async () => {
+    const prisma = prismaC4();
+    prisma.clienteTag.count.mockResolvedValue(1);
+    const svc = new SupressaoService(prisma as never);
+
+    expect(await svc.emailSuprimido('emp-1', 'morta@x.com')).toBe(true);
+  });
+});

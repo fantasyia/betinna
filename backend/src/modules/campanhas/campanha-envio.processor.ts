@@ -262,7 +262,24 @@ export class CampanhaEnvioProcessor extends WorkerHost {
       }
 
       if (canal === 'EMAIL' || canal === 'WHATSAPP_EMAIL') {
-        if (dest.email && mensagemEmailFinal) {
+        // Caixa queimada (hard bounce / reclamação de spam) não recebe campanha.
+        // Antes o processor só checava LGPD: quem clicou "spam" na campanha 1
+        // recebia a 2 (auditoria 13/09/2026, C-4). No canal só-e-mail o
+        // destinatário fecha SUPRIMIDO (não é erro); no misto, pula só o e-mail.
+        const emailQueimado = dest.email
+          ? await this.supressao.emailSuprimido(dest.campanha.empresaId, dest.email)
+          : false;
+        if (emailQueimado && canal === 'EMAIL') {
+          await this.prisma.campanhaDestinatario.update({
+            where: { id: destinatarioId },
+            data: { status: 'SUPRIMIDO', erro: 'E-mail inválido (bounce/reclamação)' },
+          });
+          this.logger.log(
+            `Campanha ${campanhaId}: destinatário ${destinatarioId} suprimido (e-mail queimado) — não enviado`,
+          );
+          return;
+        }
+        if (dest.email && mensagemEmailFinal && !emailQueimado) {
           const assunto = dest.campanha.assunto
             ? interpolar(dest.campanha.assunto, vars)
             : dest.campanha.nome;

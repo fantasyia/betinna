@@ -18,6 +18,7 @@ const build = (over: { leads?: Array<{ empresaId: string }> } = {}) => {
   const prisma = {
     campanhaDestinatario: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     lead: { findMany: vi.fn().mockResolvedValue(over.leads ?? [{ empresaId: 'emp-1' }]) },
+    cliente: { findMany: vi.fn().mockResolvedValue([]) },
   };
   const supressao = { marcarEmailInvalido: vi.fn().mockResolvedValue(1) };
   const inbound = { registrar: vi.fn().mockResolvedValue({ efeito: 'registrado' }) };
@@ -128,5 +129,39 @@ describe('e-mail RECEBIDO chega pelo mesmo webhook', () => {
     await svc.aplicar(evento('email.delivered'));
 
     expect(inbound.registrar).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (C-4): a supressão só rodava quando NÃO havia linha de
+ * campanha (count === 0). E-mail de CAMPANHA ganhava `bounceEm` e o Cliente
+ * seguia alvo da campanha seguinte.
+ */
+describe('bounce de e-mail de CAMPANHA também queima o endereço', () => {
+  it('linha de campanha casada (count 1) + reclamação → marcarEmailInvalido roda mesmo assim', async () => {
+    const { svc, prisma, supressao } = build();
+    prisma.campanhaDestinatario.updateMany.mockResolvedValue({ count: 1 });
+
+    const efeito = await svc.aplicar(evento('email.complained'));
+
+    expect(efeito).toBe('aplicado');
+    expect(supressao.marcarEmailInvalido).toHaveBeenCalledWith(
+      'emp-1',
+      'morto@empresa.com.br',
+      'reclamacao',
+    );
+  });
+
+  it('endereço que só existe como CLIENTE (sem lead) também é marcado', async () => {
+    const { svc, prisma, supressao } = build({ leads: [] });
+    prisma.cliente.findMany.mockResolvedValue([{ empresaId: 'emp-9' }]);
+
+    await svc.aplicar(evento('email.bounced'));
+
+    expect(supressao.marcarEmailInvalido).toHaveBeenCalledWith(
+      'emp-9',
+      'morto@empresa.com.br',
+      'bounce',
+    );
   });
 });
