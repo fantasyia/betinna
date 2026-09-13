@@ -325,6 +325,27 @@ describe('AuthGuard — token de API (bkt_) em /campanhas', () => {
 
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  // Auditoria 13/09/2026 (D-4): o PAT alcançava POST /fluxos/:id/ativar e
+  // DELETE /fluxos/:id/permanente — e um id injetado no path do MCP chegava
+  // lá. Mesma regra das campanhas: apertar o botão é decisão de gente.
+  it('POST /fluxos/:id/ativar é BLOQUEADO — ativar é decisão de gente', async () => {
+    const ctx = fakeContext({
+      method: 'POST',
+      path: '/fluxos/f1/ativar',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('DELETE /fluxos/:id/permanente é BLOQUEADO — apaga fluxo e histórico', async () => {
+    const ctx = fakeContext({
+      method: 'DELETE',
+      path: '/fluxos/f1/permanente',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });
 
 describe('AuthGuard — token de API (bkt_) em /integracoes/email', () => {

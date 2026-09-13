@@ -268,6 +268,27 @@ export class AuthGuard implements CanActivate {
       );
     }
 
+    // FLUXOS: mesma regra das campanhas, que faltava aqui (auditoria 13/09/2026,
+    // D-4). "Ninguém ativa fluxo sem pedido de gente" vivia só na ausência da
+    // tool no MCP — e um id injetado no path chegava em `/:id/ativar` mesmo
+    // assim. ATIVAR liga régua pra base real; PERMANENTE apaga fluxo e histórico;
+    // Importar (nasce RASCUNHO), pausar, arquivar e testar seguem liberados —
+    // é o trabalho do agente; o `testar` com envio real fica com a dupla chave
+    // do MCP (`confirmoEnvioReal`), porque a bateria de testes da Master
+    // Testadora depende dele com autorização do Léo.
+    if (moduloRequerido === 'fluxos') {
+      if (/^\/fluxos\/[^/]+\/ativar\/?$/.test(rel)) {
+        throw new ForbiddenException(
+          'Token de API não ativa fluxo — ativar é decisão de gente, na tela.',
+        );
+      }
+      if (/^\/fluxos\/[^/]+\/permanente\/?$/.test(rel)) {
+        throw new ForbiddenException(
+          'Token de API não apaga fluxo permanentemente — use arquivar, ou apague pelo app.',
+        );
+      }
+    }
+
     if (
       (moduloRequerido === 'contatos' ||
         moduloRequerido === 'usuarios' ||
