@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 import { ConversarIaService } from './conversar-ia.service';
 
 /**
@@ -16,7 +17,10 @@ function build(statusDaExecucao: string | null) {
       findUnique: vi.fn().mockResolvedValue(statusDaExecucao ? { status: statusDaExecucao } : null),
     },
   };
-  const whatsapp = { enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }) };
+  const whatsapp = {
+    enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }),
+    estaDisponivel: vi.fn().mockResolvedValue(true),
+  };
   const pacing = { aguardarSlot: vi.fn().mockResolvedValue(undefined) };
   const svc = new ConversarIaService(
     prisma as never,
@@ -158,5 +162,22 @@ describe('execução cancelada não ressuscita', () => {
   it('execução viva → devolve true e o fluxo segue normal', async () => {
     const { atualizar } = comPrisma(1);
     expect(await atualizar()).toBe(true);
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (B-3): o nó de IA enviava sem checar a instância — com
+ * o WhatsApp fora do ar o Evolution aceitava o POST, o turno carimbava
+ * `_iaEntregue` e o cliente ficava sem resposta. Agora gateia como o executor.
+ */
+describe('nó de IA não fala com o WhatsApp fora do ar', () => {
+  it('estaDisponivel=false → WhatsappIndisponivelError (reagendamento), sem enviarTexto', async () => {
+    const { enviar, whatsapp, pacing } = build('EM_EXECUCAO');
+    whatsapp.estaDisponivel.mockResolvedValue(false);
+
+    await expect(enviar('exec-c1')).rejects.toBeInstanceOf(WhatsappIndisponivelError);
+
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    expect(pacing.aguardarSlot).not.toHaveBeenCalled();
   });
 });

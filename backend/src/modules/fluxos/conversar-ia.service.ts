@@ -3257,6 +3257,18 @@ export class ConversarIaService implements OnModuleDestroy {
     ctxDaExecucao?: Record<string, unknown>,
   ): Promise<void> {
     if (!texto.trim()) return;
+    // GATE ANTES DE ENVIAR (mesmo do ENVIAR_WHATSAPP do executor): com a
+    // instância fora do ar o Evolution ACEITA o POST e devolve id — o turno
+    // carimbava `_iaEntregue` e a execução seguia, com o cliente sem resposta
+    // (auditoria 13/09/2026, B-3). `WhatsappIndisponivelError` é relançado pelos
+    // chamadores (:1439, :2490) e cai no reagendamento do executor.
+    if (!(await this.whatsapp.estaDisponivel(empresaId, proprietarioId ?? null))) {
+      throw new WhatsappIndisponivelError(
+        proprietarioId
+          ? 'WhatsApp pessoal do remetente não está conectado'
+          : 'WhatsApp da empresa não está conectado',
+      );
+    }
     // ÚLTIMA TRAVA antes de falar. A chamada ao modelo leva de 10 a 90s, e nesse
     // intervalo um PAUSAR_IA (rep assumiu, pós-venda, transferência) pode ter
     // cancelado esta execução. Sem esta checagem o bot falava DEPOIS da pausa —

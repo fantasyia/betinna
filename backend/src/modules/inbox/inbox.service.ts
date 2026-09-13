@@ -31,6 +31,7 @@ import type {
 } from './inbox.dto';
 import type { MensagemEntranteParams } from './inbox.types';
 import { type CtwaReferral, campanhaDoReferral } from '@integrations/evolution/ctwa-referral.util';
+import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 
 const conversationInclude = {
   cliente: { select: { id: true, nome: true, telefone: true, cidade: true } },
@@ -990,6 +991,13 @@ export class InboxService {
     });
     this.emitirEvento(conv, 'mensagem');
     try {
+      // GATE ANTES DE ENVIAR (mesmo do `responder` humano, :882): com a instância
+      // fora do ar o Evolution ACEITA o POST e devolve id — a linha fechava SENT
+      // e o cliente ficava sem resposta (auditoria 13/09/2026, B-3). Lançar aqui
+      // cai no catch → FAILED + rethrow, que é o que o bot geral espera.
+      if (!(await adapter.estaDisponivel(conv.empresaId, conv.proprietarioId))) {
+        throw new WhatsappIndisponivelError('WhatsApp desta conversa não está conectado');
+      }
       // idempotencyKey por balão (quando fornecida): o gate do provider deduplica se o mesmo
       // inbound for reprocessado após o TTL do lock — alinha com o nó "Conversar com IA".
       const r = await adapter.enviarTexto(conv.empresaId, conv.peerId, texto, {

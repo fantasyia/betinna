@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
 import { CampanhaEnvioProcessor } from './campanha-envio.processor';
+import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 import type { CampanhaEnvioJobData } from './campanha-envio.types';
 
 // Foco: onFailed só marca ERRO + dead-letter na falha FINAL (retries esgotados).
@@ -102,7 +103,10 @@ function makeProc(canal: string, esperaMs: number) {
     campanha: { findUnique: vi.fn().mockResolvedValue({ empresaId: 'emp-1' }) },
   };
   const queue = { add: vi.fn().mockResolvedValue({ id: 'j' }) };
-  const whatsapp = { enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }) };
+  const whatsapp = {
+    enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }),
+    estaDisponivel: vi.fn().mockResolvedValue(true),
+  };
   const pacing = {
     aguardarSlot: vi.fn().mockResolvedValue(undefined),
     esperaAntesDoProativoMs: vi.fn().mockResolvedValue(esperaMs),
@@ -153,5 +157,21 @@ describe('CampanhaEnvioProcessor.process — janela de envio', () => {
 
     expect(queue.add).not.toHaveBeenCalled();
     expect(whatsapp.enviarTexto).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (B-3): com a instância fora do ar o Evolution ACEITA o
+ * POST e devolve id — a campanha inteira fechava ENVIADO sem nada chegar. Agora
+ * o processor gateia por `estaDisponivel` como o ENVIAR_WHATSAPP dos fluxos.
+ */
+describe('CampanhaEnvioProcessor — não envia com o WhatsApp fora do ar', () => {
+  it('instância indisponível → WhatsappIndisponivelError (retry do BullMQ), sem chamar enviarTexto', async () => {
+    const { proc, whatsapp } = makeProc('WHATSAPP', 0);
+    whatsapp.estaDisponivel.mockResolvedValue(false);
+
+    await expect(proc.process(makeJob(0, 3))).rejects.toBeInstanceOf(WhatsappIndisponivelError);
+
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
   });
 });

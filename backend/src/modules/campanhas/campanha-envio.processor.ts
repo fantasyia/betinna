@@ -3,6 +3,7 @@ import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullm
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
+import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
 import { IdempotencyService } from '@shared/utils/idempotency.service';
@@ -230,6 +231,14 @@ export class CampanhaEnvioProcessor extends WorkerHost {
           // em vez de virar "skip" e marcar ENVIADO sem ter enviado (perda silenciosa).
           if (await this.idempotency.claimStrict(idemKey, 86_400)) {
             try {
+              // GATE ANTES DE ENVIAR (mesmo do ENVIAR_WHATSAPP dos fluxos): com a
+              // instância fora do ar o Evolution ACEITA o POST e devolve id, e a
+              // campanha inteira fechava ENVIADO com `waMessageId` sem nada chegar
+              // (auditoria 13/09/2026, B-3). `WhatsappIndisponivelError` cai no
+              // catch abaixo → libera o claim → retry/backoff do BullMQ.
+              if (!(await this.whatsapp.estaDisponivel(dest.campanha.empresaId))) {
+                throw new WhatsappIndisponivelError('WhatsApp da empresa não está conectado');
+              }
               // Pacing global por empresa (mesmo ponto único de fluxos/bot).
               await this.pacing.aguardarSlot(dest.campanha.empresaId);
               const r = await this.whatsapp.enviarTexto(
