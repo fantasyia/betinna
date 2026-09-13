@@ -7,12 +7,16 @@ import {
   NotFoundException,
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
+import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { ConditionDto, RegrasDto, UpsertSegmentoDto } from './segmentos.dto';
 
 @Injectable()
 export class SegmentosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly repScope: RepScopeService,
+  ) {}
 
   async list(user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
@@ -78,21 +82,36 @@ export class SegmentosService {
     const seg = await this.prisma.segmento.findFirst({ where: { id, empresaId } });
     if (!seg) throw new NotFoundException('Segmento não encontrado');
     const regras = seg.regrasJson as unknown as RegrasDto;
-    return this.executar(empresaId, regras, limit);
+    // Teto: a rota GET passava `limit` cru (`?limit=100000` despejava a base).
+    return this.executar(
+      empresaId,
+      regras,
+      Math.min(limit, 100),
+      await this.repScope.getRepIds(user),
+    );
   }
 
   /** Preview ao vivo enquanto edita regras (não salva). */
   async preview(user: AuthenticatedUser, regras: RegrasDto, limit = 20) {
     const empresaId = this.requireEmpresa(user);
-    return this.executar(empresaId, regras, limit);
+    return this.executar(empresaId, regras, limit, await this.repScope.getRepIds(user));
   }
 
-  private async executar(empresaId: string, regras: RegrasDto, limit: number) {
+  private async executar(
+    empresaId: string,
+    regras: RegrasDto,
+    limit: number,
+    escopoReps: string[] | null,
+  ) {
     const conditions = regras.conditions
       .map(toPrismaCondition)
       .filter(Boolean) as Prisma.ClienteWhereInput[];
     const where: Prisma.ClienteWhereInput = {
       empresaId,
+      // Carteira: era o único módulo de clientes sem RepScope — REP montava
+      // `representanteId neq <eu>` no preview e lia nome/CNPJ/e-mail da base
+      // inteira (auditoria 13/09/2026, F-1). Mesma regra de `clientes.baseWhere`.
+      ...(escopoReps !== null ? { representanteId: { in: escopoReps } } : {}),
       ...(regras.logic === 'OR' ? { OR: conditions } : { AND: conditions }),
     };
 

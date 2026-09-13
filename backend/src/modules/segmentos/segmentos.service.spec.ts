@@ -27,6 +27,11 @@ const makePrismaMock = () => ({
   },
 });
 
+// RepScope de mentira com a MESMA regra do real: REP vê só a própria carteira.
+const repScopeMock = {
+  getRepIds: vi.fn(async (u: AuthenticatedUser) => (u.role === 'REP' ? [u.id] : null)),
+};
+
 const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
   id: 'user-1',
   email: 'admin@betinna.ai',
@@ -72,7 +77,7 @@ describe('SegmentosService', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    service = new SegmentosService(prisma as never);
+    service = new SegmentosService(prisma as never, repScopeMock as never);
   });
 
   // -------------------------------------------------------------------------
@@ -555,5 +560,53 @@ describe('SegmentosService', () => {
 
       expect(prisma.cliente.findMany.mock.calls[0][0].take).toBe(50);
     });
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (F-1): `preview` e `listarClientes` filtravam só por
+ * `empresaId` — REP montava `representanteId neq <eu>` e lia a carteira da
+ * empresa inteira. Era o único módulo de clientes sem RepScope.
+ */
+describe('SegmentosService — carteira (RepScope) no preview e na listagem', () => {
+  const regras = {
+    logic: 'AND',
+    conditions: [{ campo: 'status', op: 'eq', valor: 'ATIVO' }],
+  } as never;
+
+  it('REP: o where recebe representanteId IN [ele mesmo], mesmo pedindo "neq eu"', async () => {
+    const prisma = makePrismaMock();
+    prisma.cliente.findMany.mockResolvedValue([]);
+    prisma.cliente.count.mockResolvedValue(0);
+    const svc = new SegmentosService(prisma as never, repScopeMock as never);
+
+    await svc.preview(fakeUser({ id: 'rep-7', role: 'REP' as UserRole }), regras, 100);
+
+    const where = prisma.cliente.findMany.mock.calls[0][0].where;
+    expect(where.representanteId).toEqual({ in: ['rep-7'] });
+    expect(where.empresaId).toBe('emp-1');
+  });
+
+  it('ADMIN/DIRECTOR: sem filtro de carteira', async () => {
+    const prisma = makePrismaMock();
+    prisma.cliente.findMany.mockResolvedValue([]);
+    prisma.cliente.count.mockResolvedValue(0);
+    const svc = new SegmentosService(prisma as never, repScopeMock as never);
+
+    await svc.preview(fakeUser(), regras, 20);
+
+    expect(prisma.cliente.findMany.mock.calls[0][0].where.representanteId).toBeUndefined();
+  });
+
+  it('listarClientes: limit é capado em 100 (a rota GET passava o querystring cru)', async () => {
+    const prisma = makePrismaMock();
+    prisma.segmento.findFirst.mockResolvedValue(fakeSegmento());
+    prisma.cliente.findMany.mockResolvedValue([]);
+    prisma.cliente.count.mockResolvedValue(0);
+    const svc = new SegmentosService(prisma as never, repScopeMock as never);
+
+    await svc.listarClientes(fakeUser(), 'seg-1', 100000);
+
+    expect(prisma.cliente.findMany.mock.calls[0][0].take).toBe(100);
   });
 });
