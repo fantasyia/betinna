@@ -235,6 +235,13 @@ export interface ConversarIaConfig {
    * Default false: fluxo existente não muda.
    */
   naoFalarPrimeiro?: boolean;
+  /**
+   * Pedir o e-mail do lead no fechamento (e segurar `classificou` até vir)?
+   * Default true — é o comportamento do T1 (convite da reunião com o diretor).
+   * Nó que fecha de outro jeito (C1: link da calculadora) põe false. Antes a
+   * instrução era hardcoded em todo nó (auditoria 13/09/2026, E-1).
+   */
+  pedirEmailNoFechamento?: boolean;
   /** Timeout da espera (horas). Default 24. */
   timeoutHoras?: number;
   /** Variáveis que a IA pode gravar (referência; a IA grava o que devolver no JSON). */

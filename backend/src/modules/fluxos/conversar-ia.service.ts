@@ -42,10 +42,21 @@ import {
   SINAIS_ROTEAMENTO,
 } from './fluxo-executor.types';
 
-/** Default de mensagens no histórico quando a empresa não configurou (= persona.service). */
-const HISTORICO_DEFAULT = 10;
+/**
+ * Piso de mensagens na memória do NÓ de IA. Decisão do Léo (13/09/2026, E-4):
+ * o corte real é por TOKENS (`capHistorico`, MULLERBOT_MAX_INPUT_TOKENS); em
+ * mensagens, o nó aguenta até ~50 (≈ 30 trocas) — com 10, uma entrevista de
+ * 6+ trocas perdia o opener e re-perguntava. A config da Persona (histórico do
+ * bot geral, default 10) vale como piso mínimo, nunca abaixo disto.
+ */
+const HISTORICO_DEFAULT = 50;
 /** Teto de re-disparos do ramo "timeout" por execução (anti-loop de follow-up). */
 const MAX_TIMEOUT_FOLLOWS = 5;
+/** Rajada por CONVERSA (E-3): mais que isto em RAJADA_JANELA_MS pausa a IA ali. */
+const RAJADA_MAX_INBOUND = 15;
+const RAJADA_JANELA_MS = 10 * 60_000;
+/** Quanto tempo a IA fica pausada na conversa que estourou (gente assume). */
+const RAJADA_PAUSA_MS = 30 * 60_000;
 
 /**
  * Quantas vezes REGERAR quando a resposta cai na trava de fala-com-operador.
@@ -1172,7 +1183,7 @@ export class ConversarIaService implements OnModuleDestroy {
           ? ((ctx as Record<string, unknown>)['texto'] as string).trim()
           : '';
       // `cfgBotOpener` veio do Promise.all lá em cima.
-      const limiteHistIni = cfgBotOpener?.historicoMensagens ?? HISTORICO_DEFAULT;
+      const limiteHistIni = Math.max(cfgBotOpener?.historicoMensagens ?? 0, HISTORICO_DEFAULT);
       const convIdCtx =
         typeof (ctx as Record<string, unknown>)['conversationId'] === 'string'
           ? ((ctx as Record<string, unknown>)['conversationId'] as string)
@@ -1801,6 +1812,41 @@ export class ConversarIaService implements OnModuleDestroy {
     if (!execucao.empresaId) return;
     const empresaId = execucao.empresaId;
 
+    // TETO POR CONVERSA (auditoria 13/09/2026, E-3). O teto de tokens é por
+    // EMPRESA e o anti-spam por número mora só no bot geral — que cala quando o
+    // fluxo assumiu. Um número mandando mensagem a cada 2s virava um turno atrás
+    // do outro (prompt inteiro + RAG cada), consumia o teto do tenant e
+    // derrubava a IA de TODAS as conversas até 00:00. Passou de
+    // RAJADA_MAX_INBOUND mensagens em RAJADA_JANELA_MS → pausa a IA NESTA
+    // conversa e chama gente; as outras seguem.
+    if (conversationId) {
+      let recebidas = 0;
+      try {
+        recebidas = await this.prisma.message.count({
+          where: {
+            conversationId,
+            direction: 'INBOUND',
+            criadoEm: { gte: new Date(Date.now() - RAJADA_JANELA_MS) },
+          },
+        });
+      } catch {
+        recebidas = 0; // fail-open: o teto por empresa continua valendo
+      }
+      if (recebidas > RAJADA_MAX_INBOUND) {
+        await this.prisma.conversation
+          .update({
+            where: { id: conversationId },
+            data: { precisaHumano: true, botPausadoAte: new Date(Date.now() + RAJADA_PAUSA_MS) },
+          })
+          .catch(() => undefined);
+        this.logger.warn(
+          `CONVERSAR_IA: ${recebidas} mensagens do lead em ${RAJADA_JANELA_MS / 60_000}min na conversa ` +
+            `${conversationId} — IA pausada nesta conversa, precisa humano (exec ${execucaoId})`,
+        );
+        return;
+      }
+    }
+
     // Claim atômico do turno (CAS): 2 mensagens do lead em rajada disparam 2 retomar
     // concorrentes; ambos passariam o guard de status acima (a execução só sai de
     // AGUARDANDO no fim — e no caminho "continua conversa" nem sai). Sem isto a IA roda
@@ -2257,12 +2303,20 @@ export class ConversarIaService implements OnModuleDestroy {
       // (o modelo vê as opções ao decidir, não só ao serializar) e mantém o
       // prompt legível pra quem for revisar o fluxo. Mesma função no OPENER.
       instrucaoVariaveis(declaradas) +
-      (temEmail
-        ? '\n[Dado] O e-mail do lead JÁ está registrado — NÃO peça e-mail de novo.'
-        : '\n[Dado] Ainda NÃO temos o e-mail do lead. No FECHAMENTO (quando for encerrar/' +
-          'classificar), peça o e-mail dele de forma calorosa — pra enviar o convite da reunião ' +
-          'com o diretor — e mantenha "classificou":false até recebê-lo; só classifique ' +
-          '(classificou:true) DEPOIS de ter o e-mail (ou se o lead recusar dar).') +
+      // "Peça o e-mail pra enviar o convite da reunião com o diretor" é texto do
+      // fluxo de REPS (T1) que estava hardcoded em TODO nó de IA de TODO tenant —
+      // e travava `classificou:true` até o e-mail chegar, inclusive no C1
+      // residencial, que fecha mandando o link da calculadora (auditoria
+      // 13/09/2026, E-1). Agora é config do nó: `pedirEmailNoFechamento` (default
+      // true, pra não mudar o T1 sem ninguém decidir; o C1 desliga na config).
+      (cfg.pedirEmailNoFechamento === false
+        ? ''
+        : temEmail
+          ? '\n[Dado] O e-mail do lead JÁ está registrado — NÃO peça e-mail de novo.'
+          : '\n[Dado] Ainda NÃO temos o e-mail do lead. No FECHAMENTO (quando for encerrar/' +
+            'classificar), peça o e-mail dele de forma calorosa — pra enviar o convite da reunião ' +
+            'com o diretor — e mantenha "classificou":false até recebê-lo; só classifique ' +
+            '(classificou:true) DEPOIS de ter o e-mail (ou se o lead recusar dar).') +
       // Vale em TODO turno, não só na abertura: sem repetir a regra aqui, a IA
       // pescava o nome do histórico e voltava a chamar o contato pelo apelido do
       // perfil do WhatsApp a partir da 2ª mensagem.
@@ -2276,7 +2330,7 @@ export class ConversarIaService implements OnModuleDestroy {
     // "histórico de mensagens", 1..50, default 10). MESMO número que o bot geral usa.
     // `cfgBot` veio do Promise.all acima. O histórico continua DEPOIS porque é o
     // único que depende de um dos quatro (o limite sai daqui).
-    const limiteHist = cfgBot?.historicoMensagens ?? HISTORICO_DEFAULT;
+    const limiteHist = Math.max(cfgBot?.historicoMensagens ?? 0, HISTORICO_DEFAULT);
     const ctxHist = (ctx as Record<string, unknown>)._iaHistorico;
     const doContexto: HistoricoMsg[] = Array.isArray(ctxHist) ? (ctxHist as HistoricoMsg[]) : [];
     // Fonte da verdade = a conversa REAL do inbox (cobre todas as execuções do lead);
