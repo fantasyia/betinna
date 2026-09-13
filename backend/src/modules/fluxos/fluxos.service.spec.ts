@@ -1183,3 +1183,74 @@ describe('FluxosService — favoritos', () => {
     expect(prisma.fluxoFavorito.create).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Decisão do Léo (13/09/2026, auditoria C-1): remetente (From) por fluxo só
+ * DIRECTOR/ADMIN, e o domínio precisa estar na allowlist da empresa. Antes
+ * qualquer REP gravava qualquer e-mail válido — relay pela conta Resend única.
+ */
+describe('FluxosService — remetenteEmail: papel + allowlist de domínio', () => {
+  const buildComAllowlist = (dominios: string[]) => {
+    const prisma = makePrismaMock() as ReturnType<typeof makePrismaMock> & {
+      empresa: { findUnique: ReturnType<typeof vi.fn> };
+    };
+    prisma.empresa = {
+      findUnique: vi.fn().mockResolvedValue({
+        config: { emailTransacional: { dominiosRemetente: dominios } },
+      }),
+    };
+    prisma.fluxo.create.mockResolvedValue({ id: 'f1' });
+    prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ id: 'f1' }));
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn(prisma),
+    );
+    const svc = new FluxosService(
+      prisma as never,
+      { disparar: vi.fn() } as never,
+      { del: vi.fn().mockResolvedValue(1) } as never,
+      { uploadOutbound: vi.fn() } as never,
+    );
+    return { svc, prisma };
+  };
+  const dto = {
+    nome: 'Régua',
+    nos: [],
+    arestas: [],
+    remetenteEmail: 'no-reply@somatecblocking.com.br',
+  };
+
+  it('REP não define remetente — 403', async () => {
+    const { svc } = buildComAllowlist(['somatecblocking.com.br']);
+    await expect(
+      svc.create(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), dto as never),
+    ).rejects.toThrow(/Só DIRECTOR\/ADMIN/);
+  });
+
+  it('DIRECTOR com domínio FORA da allowlist — recusa e diz quais valem', async () => {
+    const { svc, prisma } = buildComAllowlist(['somatecblocking.com.br']);
+    await expect(
+      svc.create(fakeUser({ role: 'DIRECTOR' as UserRole }), {
+        ...dto,
+        remetenteEmail: 'x@outra-empresa.com',
+      } as never),
+    ).rejects.toThrow(/não está na lista de remetentes permitidos/);
+    expect(prisma.fluxo.create).not.toHaveBeenCalled();
+  });
+
+  it('DIRECTOR com domínio permitido — grava', async () => {
+    const { svc, prisma } = buildComAllowlist(['somatecblocking.com.br']);
+    await svc.create(fakeUser({ role: 'DIRECTOR' as UserRole }), dto as never);
+    expect(prisma.fluxo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ remetenteEmail: 'no-reply@somatecblocking.com.br' }),
+      }),
+    );
+  });
+
+  it('lista vazia = nenhum remetente customizado', async () => {
+    const { svc } = buildComAllowlist([]);
+    await expect(
+      svc.create(fakeUser({ role: 'DIRECTOR' as UserRole }), dto as never),
+    ).rejects.toThrow(/lista vazia/);
+  });
+});

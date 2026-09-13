@@ -517,6 +517,48 @@ export class FluxosService {
 
   // ─── CRUD ───────────────────────────────────────────────────────
 
+  /**
+   * Remetente (From) por fluxo — quem pode e de qual domínio.
+   *
+   * Decisão do Léo (13/09/2026, auditoria C-1): só DIRECTOR/ADMIN definem o
+   * remetente, e o domínio tem que estar na allowlist da EMPRESA
+   * (`Empresa.config.emailTransacional.dominiosRemetente`). Antes qualquer
+   * REP gravava qualquer e-mail válido e, como a conta Resend é única, saía
+   * como qualquer domínio verificado nela — relay pela marca do tenant.
+   * Lista vazia = nenhum remetente customizado (vale o default do env).
+   */
+  private async assertRemetenteEmail(
+    user: AuthenticatedUser,
+    empresaId: string,
+    remetenteEmail: string | null | undefined,
+  ): Promise<void> {
+    if (!remetenteEmail) return;
+    if (user.role !== 'ADMIN' && user.role !== 'DIRECTOR') {
+      throw new ForbiddenException(
+        'Só DIRECTOR/ADMIN definem o remetente do e-mail de um fluxo.',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+    const dominio = remetenteEmail.split('@')[1]?.trim().toLowerCase() ?? '';
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const cfg = (empresa?.config as Record<string, unknown> | null) ?? {};
+    const lista = ((cfg.emailTransacional as { dominiosRemetente?: unknown } | undefined)
+      ?.dominiosRemetente ?? []) as unknown;
+    const permitidos = (Array.isArray(lista) ? lista : [])
+      .map((d) => String(d).trim().toLowerCase())
+      .filter(Boolean);
+    if (!dominio || !permitidos.includes(dominio)) {
+      throw new BusinessRuleException(
+        `Domínio "${dominio || '?'}" não está na lista de remetentes permitidos da empresa ` +
+          `(Configurações → E-mail transacional → domínios${permitidos.length ? `: ${permitidos.join(', ')}` : ' — lista vazia'}).`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+  }
+
   async create(user: AuthenticatedUser, dto: CreateFluxoDto): Promise<FluxoWithRel> {
     const empresaId = this.requireEmpresa(user);
     // Gestão cria fluxo da EMPRESA; qualquer outro papel cria fluxo PESSOAL
@@ -527,6 +569,7 @@ export class FluxosService {
     this.validarOperadores(dto.nos);
 
     // Cria fluxo + nós + arestas em transação
+    await this.assertRemetenteEmail(user, empresaId, dto.remetenteEmail);
     const grafo = this.remapearGrafo(dto.nos, dto.arestas);
     let fluxoId!: string;
     await this.prisma.$transaction(async (tx) => {
@@ -842,7 +885,10 @@ export class FluxosService {
       const updateData: Prisma.FluxoUpdateInput = { versao: { increment: 1 } };
       if (dto.nome !== undefined) updateData.nome = dto.nome;
       if (dto.descricao !== undefined) updateData.descricao = dto.descricao;
-      if (dto.remetenteEmail !== undefined) updateData.remetenteEmail = dto.remetenteEmail;
+      if (dto.remetenteEmail !== undefined) {
+        await this.assertRemetenteEmail(user, existing.empresaId, dto.remetenteEmail);
+        updateData.remetenteEmail = dto.remetenteEmail;
+      }
       if (dto.triggerTipo !== undefined) updateData.triggerTipo = dto.triggerTipo;
       if (dto.triggerConfig !== undefined) {
         updateData.triggerConfig = dto.triggerConfig

@@ -207,6 +207,22 @@ const emailTransacionalSchema = z
   .object({
     fromNome: z.string().trim().min(1).max(80).nullable(),
     replyTo: z.string().trim().email().max(160).nullable(),
+    /**
+     * Allowlist de domínios que um fluxo pode usar como remetente (From).
+     * Decisão do Léo (13/09/2026, C-1): a conta Resend é única, então sem
+     * isto um remetente customizado saía como qualquer domínio verificado
+     * nela. Vazio = nenhum remetente customizado (vale o default do env).
+     */
+    dominiosRemetente: z
+      .array(
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, 'Domínio inválido (ex.: marketing.empresa.com.br)'),
+      )
+      .max(20)
+      .nullable(),
   })
   .partial()
   .optional();
