@@ -6,7 +6,7 @@ import App from './App';
 import { ToastProvider } from '@/components/toast';
 import { ApiError } from '@/lib/api';
 import { initSentry } from '@/lib/sentry';
-import { bootstrapAuthFromBackend } from '@/lib/auth-store';
+import { bootstrapAuthFromBackend, onTrocaDeUsuario } from '@/lib/auth-store';
 import { registerPwa } from '@/lib/pwa';
 import { initI18n } from '@/lib/i18n';
 import { bootstrapTheme } from '@/hooks/useTheme';
@@ -182,6 +182,13 @@ const queryClient = new QueryClient({
 // fica sem sessão. Sem await: o App renderiza imediatamente e mostra
 // spinner via `isInitializing()` enquanto a sessão é resolvida — evita
 // flash do /login.
+// Usuário da aba mudou (logout, 401 definitivo, outra pessoa logou) → o cache
+// de dados morre junto. A queryKey é `[path, empresaId]`, sem usuário: sem
+// isto, num PC compartilhado o próximo usuário via a Inbox/leads do anterior
+// por até 60s stale / 5min gc (auditoria 13/09/2026, G-2). O "Sair" já dava
+// reload; o caminho por router (401, outra aba) não.
+onTrocaDeUsuario(() => queryClient.clear());
+
 void bootstrapAuthFromBackend();
 
 createRoot(root).render(

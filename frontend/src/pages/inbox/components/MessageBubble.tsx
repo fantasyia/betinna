@@ -183,6 +183,18 @@ export function MessageBubble({
               🤖 {nomeExibido} ·
             </span>
           )}
+          {/* Auditoria 13/09/2026 (G-1): a linha FAILED (Evolution recusou, instância
+              fora) vinha do backend com status e aparecia IGUAL às enviadas — o
+              operador via "respondido" e o cliente nunca recebeu. */}
+          {outbound && msg.status === 'FAILED' && (
+            <span
+              className="text-[10px] font-semibold text-danger"
+              data-testid={`msg-falhou-${msg.id}`}
+              title={String(msg.meta?.erro ?? 'Falha no envio — a mensagem NÃO chegou')}
+            >
+              ⚠ não enviada ·
+            </span>
+          )}
           {fmtHHMM(msg.criadoEm)}
         </span>
       </div>

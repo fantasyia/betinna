@@ -641,3 +641,34 @@ describe('scheduleRefresh (timer)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+// ─── Troca de usuário limpa quem tem cache por usuário (G-2, 13/09/2026) ──────
+
+describe('onTrocaDeUsuario', () => {
+  it('dispara quando a sessão SAI (logout / 401) e quando entra OUTRO usuário', async () => {
+    const store = await loadStore();
+    const limpar = vi.fn();
+    store.onTrocaDeUsuario(limpar);
+
+    store.setSession(makeSession({ user: makeUser({ id: 'diretor-1' }) }));
+    expect(limpar).not.toHaveBeenCalled(); // 1º login: não havia usuário anterior
+
+    store.setSession(null); // logout / 401 definitivo
+    expect(limpar).toHaveBeenCalledTimes(1);
+
+    store.setSession(makeSession({ user: makeUser({ id: 'rep-2' }) }));
+    store.setSession(makeSession({ user: makeUser({ id: 'diretor-1' }) })); // outra pessoa na mesma aba
+    expect(limpar).toHaveBeenCalledTimes(2);
+  });
+
+  it('refresh do MESMO usuário (token novo, id igual) NÃO limpa', async () => {
+    const store = await loadStore();
+    const limpar = vi.fn();
+    store.onTrocaDeUsuario(limpar);
+
+    store.setSession(makeSession({ user: makeUser({ id: 'u-1' }), accessToken: 'a' }));
+    store.setSession(makeSession({ user: makeUser({ id: 'u-1' }), accessToken: 'b' }));
+
+    expect(limpar).not.toHaveBeenCalled();
+  });
+});

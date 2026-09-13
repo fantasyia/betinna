@@ -37,8 +37,37 @@ export function isInitializing(): boolean {
   return initializing;
 }
 
+/**
+ * Ganchos de "o usuário desta aba MUDOU" (logout, 401 definitivo, login de
+ * outra pessoa na mesma aba). Quem tem cache por usuário — o QueryClient do
+ * TanStack — se registra aqui. Auditoria 13/09/2026 (G-2): a queryKey é
+ * `[path, empresaId]`, sem usuário, e nada limpava o cache; num PC
+ * compartilhado o REP que entrava na aba do DIRECTOR via a Inbox dele por até
+ * 60s (stale) / 5min (gc).
+ */
+const aoTrocarUsuario: Array<() => void> = [];
+export function onTrocaDeUsuario(fn: () => void): () => void {
+  aoTrocarUsuario.push(fn);
+  return () => {
+    const i = aoTrocarUsuario.indexOf(fn);
+    if (i >= 0) aoTrocarUsuario.splice(i, 1);
+  };
+}
+
 export function setSession(next: AuthSession | null): void {
+  const usuarioAnterior = session?.user?.id ?? null;
   session = next;
+  // Sessão que sai (null) ou entra com OUTRO id: tudo que era do usuário
+  // anterior morre. Refresh do mesmo usuário (id igual) não dispara.
+  if (usuarioAnterior && (next?.user?.id ?? null) !== usuarioAnterior) {
+    for (const f of aoTrocarUsuario) {
+      try {
+        f();
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
   // Persiste a empresa ativa em localStorage SEMPRE que houver uma — assim o
   // header X-Empresa-Id sobrevive a refreshes de sessão (antes ele "piscava"
   // pra null num refresh e o PUT saía sem empresa → 403 "Empresa não definida").

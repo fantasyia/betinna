@@ -105,6 +105,11 @@ export interface Mensagem {
   /** Fase 2 — true quando a mensagem foi gerada pelo bot Muller (tag 🤖). */
   enviadaPorBot?: boolean;
   /**
+   * Status de envio (Prisma `MessageStatus`). O backend sempre mandou; o tipo
+   * não expunha e a UI tratava FAILED como enviada (auditoria 13/09/2026, G-1).
+   */
+  status?: 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'RECEIVED';
+  /**
    * Meta JSON da mensagem. Hoje pode conter:
    * - senderName (pushName do membro que mandou — grupos)
    * - jid, ownerKey (debug WhatsApp)
