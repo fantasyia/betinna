@@ -69,7 +69,12 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       } catch {
         primeira = true;
       }
-      if (primeira) {
+      // GRUPO (@g.us) não dispara gatilho de conversa. Decisão do Léo (13/09/2026,
+      // auditoria A-2): bot só em conversa 1:1. O inbound segue persistindo o
+      // grupo na Inbox (decisão de 16/06) — o que muda é só o gatilho: antes cada
+      // mensagem de grupo abria uma execução da triagem que morria sem lead.
+      const ehGrupo = (params.peerId ?? '').endsWith('@g.us');
+      if (primeira && !ehGrupo) {
         await this.bus.disparar(params.empresaId, 'MENSAGEM_CANAL', {
           canal: params.canal,
           conversationId: resultado.conversationId,

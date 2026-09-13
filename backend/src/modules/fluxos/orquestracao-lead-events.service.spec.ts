@@ -235,3 +235,39 @@ describe('LEAD_RESPONDEU carrega a porta da mensagem', () => {
     );
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (A-2, decisão do Léo): grupo não dispara gatilho de
+ * conversa — bot só em conversa 1:1. Antes cada mensagem de grupo abria uma
+ * execução da triagem que morria sem lead.
+ */
+describe('OrquestracaoLeadEvents — grupo (@g.us) não dispara MENSAGEM_CANAL', () => {
+  it('mensagem em grupo é persistida mas não vira gatilho', async () => {
+    const prisma = makePrisma();
+    const bus = makeBus();
+    prisma.lead.findFirst.mockResolvedValue(null);
+    const svc = new OrquestracaoLeadEventsService(
+      prisma as never,
+      bus as never,
+      makeInbox() as never,
+      makeConversarIa() as never,
+      makeRedis() as never,
+    );
+
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerId: '120363@g.us',
+        conteudo: 'bom dia grupo',
+        canal: 'WHATSAPP',
+      } as never,
+      resultado(),
+    );
+
+    expect(bus.disparar).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'MENSAGEM_CANAL',
+      expect.anything(),
+    );
+  });
+});
