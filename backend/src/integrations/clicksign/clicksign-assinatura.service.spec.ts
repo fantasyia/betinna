@@ -46,6 +46,21 @@ const corpo = (extra: Record<string, unknown> = {}) =>
     'utf8',
   );
 
+/** A API devolve o arquivo ora como URL completa, ora como caminho. */
+const corpoComCaminhoRelativo = () =>
+  Buffer.from(
+    JSON.stringify({
+      event: { name: 'document_closed' },
+      document: {
+        key: 'doc-1',
+        status: 'closed',
+        finished_at: '2026-09-04T16:13:30.000Z',
+        downloads: { signed_file_url: '/2026/09/13/contrato.pdf' },
+      },
+    }),
+    'utf8',
+  );
+
 function montar(contrato: unknown = CONTRATO) {
   const prisma = {
     contrato: { findFirst: vi.fn(async () => contrato), update: vi.fn(async () => ({})) },
@@ -58,6 +73,10 @@ function montar(contrato: unknown = CONTRATO) {
   const etapa = { mover: vi.fn(async () => 'movido' as const) };
   const propostaErp = { enviar: vi.fn(async () => ({ orcamentoErpId: '999' })) };
   const comissoesContrato = { recalcular: vi.fn(async () => undefined) };
+  // A base da conta agora vem da EMPRESA (sandbox × produção são hosts
+  // diferentes) — é ela que monta a URL quando a ClickSign devolve o arquivo
+  // como caminho relativo.
+  const clicksign = { baseDaEmpresa: vi.fn(async () => 'https://sandbox.clicksign.com') };
   const svc = new ClickSignAssinaturaService(
     prisma as never,
     env as never,
@@ -67,8 +86,9 @@ function montar(contrato: unknown = CONTRATO) {
     // Cronograma de comissão do contrato (locação paga por MÊS): a assinatura
     // dispara o recálculo, mas não depende dele pra concluir.
     comissoesContrato as never,
+    clicksign as never,
   );
-  return { svc, prisma, notificacoes, etapa, propostaErp, comissoesContrato };
+  return { svc, prisma, notificacoes, etapa, propostaErp, comissoesContrato, clicksign };
 }
 
 beforeEach(() => {
@@ -146,5 +166,30 @@ describe('ClickSignAssinaturaService.registrarAssinado', () => {
     expect(prisma.contrato.update).not.toHaveBeenCalled();
     expect(prisma.pedido.updateMany).not.toHaveBeenCalled();
     expect(propostaErp.enviar).not.toHaveBeenCalled();
+  });
+});
+
+describe('PDF assinado — a base vem da conta DA EMPRESA', () => {
+  /**
+   * A ClickSign devolve `signed_file_url` ora como URL completa, ora como
+   * caminho. Montar o caminho contra o host errado (sandbox × produção) dá 404
+   * num download best-effort: o contrato fica assinado e SEM cópia local, e
+   * nada acusa — por isso a base não pode mais vir do ambiente.
+   */
+  it('caminho relativo é montado contra a base da empresa', async () => {
+    const { svc, clicksign } = montar();
+    await svc.registrarAssinado(corpoComCaminhoRelativo());
+    expect(clicksign.baseDaEmpresa).toHaveBeenCalledWith('emp-1');
+    expect(fetch).toHaveBeenCalledWith(
+      'https://sandbox.clicksign.com/2026/09/13/contrato.pdf',
+      expect.anything(),
+    );
+  });
+
+  it('URL completa passa intacta — não consulta a integração', async () => {
+    const { svc, clicksign } = montar();
+    await svc.registrarAssinado(corpo());
+    expect(clicksign.baseDaEmpresa).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith('https://arquivo/contrato.pdf', expect.anything());
   });
 });

@@ -26,6 +26,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'instagram',
   'facebook',
   'openai',
+  'clicksign',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -39,11 +40,12 @@ type ServicoEmpresa =
   | 'tiktok'
   | 'instagram'
   | 'facebook'
-  | 'openai';
+  | 'openai'
+  | 'clicksign';
 
 interface ServicoMeta {
   nome: string;
-  tipo: 'erp' | 'mensageria' | 'marketplace' | 'social' | 'ia' | 'email' | 'agenda';
+  tipo: 'erp' | 'mensageria' | 'marketplace' | 'social' | 'ia' | 'email' | 'agenda' | 'assinatura';
   obrigatorio: boolean;
   color: string;
   icon: string;
@@ -158,6 +160,26 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     connectMode: 'credentials',
     credentialFields: [{ name: 'apiKey', label: 'Chave da API (sk-...)', type: 'password' }],
   },
+  clicksign: {
+    nome: 'ClickSign (assinatura eletrônica)',
+    tipo: 'assinatura',
+    obrigatorio: false,
+    color: '#00b8a9',
+    icon: '✍️',
+    description:
+      'Conta da empresa pra assinar o contrato da proposta aceita. O TEXTO do contrato não vem ' +
+      'daqui: ele é um Modelo dentro da ClickSign, e é a chave dele que vai no campo abaixo. ' +
+      'Sem conexão, usa a conta do ambiente (Railway).',
+    connectMode: 'credentials',
+    credentialFields: [
+      { name: 'accessToken', label: 'Token de acesso', type: 'password' },
+      { name: 'templateKey', label: 'Chave do modelo de contrato' },
+      { name: 'signatarioNome', label: 'Quem assina pela empresa (nome da PESSOA)' },
+      { name: 'signatarioEmail', label: 'E-mail de quem assina pela empresa' },
+      { name: 'signatarioDocumento', label: 'CPF de quem assina (assinatura automática)' },
+      { name: 'signatarioNascimento', label: 'Nascimento de quem assina (AAAA-MM-DD)' },
+    ],
+  },
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
@@ -170,9 +192,11 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'tiktok',
   'instagram',
   'facebook',
+  'clicksign',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
+  assinatura: 'Assinatura eletrônica',
   erp: 'ERP',
   mensageria: 'Mensageria',
   marketplace: 'Marketplace',

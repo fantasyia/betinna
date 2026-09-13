@@ -18,6 +18,10 @@ export const SERVICOS_EMPRESA = [
   // OpenAI da EMPRESA (chave única lida por api+worker) — escopo 'ambos':
   // também existe por-usuário (cada rep a sua) em SERVICOS_USUARIO.
   'openai',
+  // Assinatura eletrônica do contrato. Escopo empresa porque a CONTA da
+  // ClickSign é do tenant: o modelo do contrato, o Termo de Assinatura
+  // Automática e o signatário da casa vivem todos dentro dela.
+  'clicksign',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -37,6 +41,7 @@ export type ServicoIntegracao = (typeof SERVICOS_INTEGRACAO)[number];
 
 export type ServicoTipo =
   | 'erp'
+  | 'assinatura'
   | 'mensageria'
   | 'marketplace'
   | 'social'
@@ -143,6 +148,16 @@ export const SERVICO_METADATA: Record<
   // escopo 'ambos': chave da EMPRESA (DIRECTOR, lida por api+worker pelo bot/fluxos
   // de IA) OU chave pessoal de cada rep (UsuarioIntegracoesService, sem flag).
   openai: { nome: 'OpenAI', tipo: 'ia', escopo: 'ambos', obrigatorio: false, requerDirector: true },
+  // D45: o que sai daqui é contrato assinado em nome da empresa. Trocar a conta
+  // da assinatura eletrônica muda quem responde juridicamente pelo documento —
+  // é decisão do mandatário do tenant, não do operacional.
+  clicksign: {
+    nome: 'ClickSign (assinatura eletrônica)',
+    tipo: 'assinatura',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
 };
 
 /**

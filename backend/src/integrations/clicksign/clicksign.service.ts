@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
+import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
@@ -51,6 +52,56 @@ export interface EnvelopeCriado {
  * Sequência de um contrato: envelope → documento a partir do modelo →
  * signatários → requisitos (autenticação + concordância) → dispara.
  */
+/** Conta padrão da ClickSign, quando o tenant não informa outra. */
+const BASE_PADRAO = 'https://app.clicksign.com';
+
+/** Configuração efetiva da assinatura eletrônica de UMA empresa. */
+export interface ConfigClickSign {
+  base: string;
+  token: string;
+  modelo: string;
+  canalToken: 'whatsapp' | 'sms' | 'email';
+  somatec: SignatarioContrato | null;
+  autoAssinatura: boolean;
+  /** De onde a configuração veio — entra na mensagem de erro do 401. */
+  origem: 'empresa' | 'ambiente';
+}
+
+/**
+ * Tira do valor os erros de paste que já aconteceram neste projeto:
+ *
+ * - o NOME da variável colado junto do valor (`CORS_ORIGINS=http://...`);
+ * - aspas em volta;
+ * - **os sinais `<>` do exemplo**, quando alguém cola o valor DENTRO do
+ *   `<coloque-aqui>` da instrução em vez de no lugar dele. Foi o que aconteceu
+ *   em 03/09: o token ficou com 38 caracteres em vez de 36 e a ClickSign
+ *   devolveu 401.
+ *
+ * Um token com lixo invisível não quebra nada visível — só faz o contrato não
+ * sair, que é a falha mais cara de diagnosticar. Vale pras DUAS fontes: o campo
+ * do app é colado pela mesma mão que colava no Railway.
+ */
+function limpar(bruto: unknown): string {
+  if (typeof bruto !== 'string' || !bruto) return '';
+  return bruto
+    .trim()
+    .replace(/^[A-Z0-9_]+=/, '')
+    .replace(/^['"<]+|['">]+$/g, '')
+    .trim();
+}
+
+/**
+ * Canal do token de autenticação do CLIENTE: `whatsapp`, `sms` ou `email`.
+ *
+ * É UM só — a API trata os três como "requisito do tipo token" e recusa o
+ * segundo. Fica configurável porque trocar o canal é decisão operacional (nem
+ * todo cliente industrial tem WhatsApp no telefone do cadastro).
+ */
+function canalDeToken(v: string): 'whatsapp' | 'sms' | 'email' {
+  const x = v.toLowerCase();
+  return x === 'sms' || x === 'email' || x === 'whatsapp' ? x : 'whatsapp';
+}
+
 @Injectable()
 export class ClickSignService {
   private readonly logger = new Logger(ClickSignService.name);
@@ -58,74 +109,111 @@ export class ClickSignService {
   constructor(
     private readonly env: EnvService,
     private readonly http: HttpClientService,
+    private readonly integracoes: IntegracoesService,
   ) {}
 
-  /** `false` quando o tenant ainda não tem assinatura eletrônica ligada. */
-  get configurado(): boolean {
-    return Boolean(this.token) && Boolean(this.modelo);
+  /** `false` quando a empresa ainda não tem assinatura eletrônica utilizável. */
+  async configurado(empresaId: string): Promise<boolean> {
+    const cfg = await this.resolver(empresaId);
+    return Boolean(cfg.token) && Boolean(cfg.modelo);
   }
 
-  /**
-   * Lê a variável tolerando os erros de paste que já aconteceram neste projeto:
-   *
-   * - o NOME da variável colado junto do valor (`CORS_ORIGINS=http://...`);
-   * - aspas em volta;
-   * - **os sinais `<>` do exemplo**, quando alguém cola o valor DENTRO do
-   *   `<coloque-aqui>` da instrução em vez de no lugar dele. Foi o que
-   *   aconteceu em 03/09: o token ficou com 38 caracteres em vez de 36 e a
-   *   ClickSign devolveu 401.
-   *
-   * Um token com lixo invisível não quebra nada visível — só faz o contrato não
-   * sair, que é a falha mais cara de diagnosticar.
-   */
   private ler(chave: string): string {
-    const bruto = this.env.get(chave as never) as string | undefined;
-    if (!bruto) return '';
-    return bruto
-      .trim()
-      .replace(/^[A-Z0-9_]+=/, '')
-      .replace(/^['"<]+|['">]+$/g, '')
-      .trim();
-  }
-
-  private get base(): string {
-    return (this.ler('CLICKSIGN_API_URL') || 'https://app.clicksign.com').replace(/\/$/, '');
-  }
-  private get token(): string {
-    return this.ler('CLICKSIGN_ACCESS_TOKEN');
-  }
-  private get modelo(): string {
-    return this.ler('CLICKSIGN_TEMPLATE_KEY');
-  }
-  /**
-   * Canal do token de autenticação do CLIENTE: `whatsapp`, `sms` ou `email`.
-   *
-   * É UM só — a API trata os três como "requisito do tipo token" e recusa o
-   * segundo. Fica configurável porque trocar o canal é decisão operacional (nem
-   * todo cliente industrial tem WhatsApp no telefone do cadastro) e não deveria
-   * exigir deploy.
-   */
-  private get canalToken(): 'whatsapp' | 'sms' | 'email' {
-    const v = this.ler('CLICKSIGN_AUTH_CANAL').toLowerCase();
-    return v === 'sms' || v === 'email' || v === 'whatsapp' ? v : 'whatsapp';
+    return limpar(this.env.get(chave as never));
   }
 
   /**
-   * Quem assina pela casa. É signatário de verdade, não imagem no documento.
+   * Credenciais guardadas do tenant, ou `null` quando ele não ligou a integração.
    *
-   * ⚠️ A assinatura automática exige do signatário **nome, e-mail, data de
-   * nascimento e CPF** — não é opcional. Sem os quatro a ClickSign recusa, e o
-   * contrato fica assinado só pelo cliente.
+   * `obterCredenciaisInternas` ESTOURA em "não configurada" e em "desativada" —
+   * que lá são exceção e aqui são rotina: a maioria das empresas não tem
+   * assinatura eletrônica ligada. Daí o catch.
    */
-  private get somatec(): SignatarioContrato | null {
+  private async credenciaisDaEmpresa(empresaId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const conn = await this.integracoes.obterCredenciaisInternas(empresaId, 'clicksign');
+      return conn.credenciais;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolve a configuração da empresa: conexão cifrada do tenant, ou o ambiente.
+   *
+   * ⚠️ **A fonte é escolhida INTEIRA, nunca campo a campo.** Cair pro ambiente
+   * em cada campo que faltar produz a pior combinação possível: o token de um
+   * tenant com o signatário da casa de outro. Os dois são amarrados à CONTA da
+   * ClickSign — o modelo do contrato, o Termo de Assinatura Automática e o
+   * e-mail de quem assina só existem dentro dela. Misturar não dá erro nenhum:
+   * dá contrato saindo pela conta errada, que ninguém descobre olhando log.
+   *
+   * O ambiente segue valendo como caminho de tenant único (é o estado de hoje:
+   * a Somatec está no env do Railway). Ele para de ser lido no instante em que
+   * a empresa conecta a própria conta pelo app.
+   */
+  private async resolver(empresaId: string): Promise<ConfigClickSign> {
+    const guardadas = await this.credenciaisDaEmpresa(empresaId);
+    return guardadas && limpar(guardadas.accessToken)
+      ? ClickSignService.daEmpresa(guardadas)
+      : this.doAmbiente();
+  }
+
+  private static daEmpresa(c: Record<string, unknown>): ConfigClickSign {
+    const nome = limpar(c.signatarioNome);
+    const email = limpar(c.signatarioEmail);
+    return {
+      base: (limpar(c.apiUrl) || BASE_PADRAO).replace(/\/$/, ''),
+      token: limpar(c.accessToken),
+      modelo: limpar(c.templateKey),
+      canalToken: canalDeToken(limpar(c.authCanal)),
+      somatec:
+        nome && email
+          ? {
+              nome,
+              email,
+              nascimento: limpar(c.signatarioNascimento) || undefined,
+              documento: limpar(c.signatarioDocumento) || undefined,
+            }
+          : null,
+      // ⚠️ Vem de JSON: chega como booleano `false` OU como string "false"
+      // (campo de formulário). Tratar só a string deixaria o booleano passar
+      // como LIGADO — assinatura automática que o tenant desligou e continuou
+      // valendo, sem nada acusando na tela.
+      autoAssinatura:
+        c.assinaturaAutomatica === false
+          ? false
+          : limpar(c.assinaturaAutomatica).toLowerCase() !== 'false',
+      origem: 'empresa',
+    };
+  }
+
+  /**
+   * Configuração do ambiente (Railway) — o caminho de tenant único.
+   *
+   * ⚠️ A assinatura automática exige do signatário da casa **nome, e-mail, data
+   * de nascimento e CPF** — não é opcional. Sem os quatro a ClickSign recusa, e
+   * o contrato fica assinado só pelo cliente.
+   */
+  private doAmbiente(): ConfigClickSign {
     const nome = this.ler('CLICKSIGN_SIGNATARIO_NOME');
     const email = this.ler('CLICKSIGN_SIGNATARIO_EMAIL');
-    if (!nome || !email) return null;
     return {
-      nome,
-      email,
-      nascimento: this.ler('CLICKSIGN_SIGNATARIO_NASCIMENTO') || undefined,
-      documento: this.ler('CLICKSIGN_SIGNATARIO_DOCUMENTO') || undefined,
+      base: (this.ler('CLICKSIGN_API_URL') || BASE_PADRAO).replace(/\/$/, ''),
+      token: this.ler('CLICKSIGN_ACCESS_TOKEN'),
+      modelo: this.ler('CLICKSIGN_TEMPLATE_KEY'),
+      canalToken: canalDeToken(this.ler('CLICKSIGN_AUTH_CANAL')),
+      somatec:
+        nome && email
+          ? {
+              nome,
+              email,
+              nascimento: this.ler('CLICKSIGN_SIGNATARIO_NASCIMENTO') || undefined,
+              documento: this.ler('CLICKSIGN_SIGNATARIO_DOCUMENTO') || undefined,
+            }
+          : null,
+      autoAssinatura: this.ler('CLICKSIGN_SOMATEC_AUTO').toLowerCase() !== 'false',
+      origem: 'ambiente',
     };
   }
 
@@ -135,15 +223,24 @@ export class ClickSignService {
    * Só deve ser chamado DEPOIS do aceite do cliente — mandar contrato pra quem
    * ainda não aceitou a proposta inverte a conversa comercial.
    */
-  async enviarParaAssinatura(dados: ContratoParaAssinar): Promise<EnvelopeCriado> {
-    if (!this.configurado) {
+  async enviarParaAssinatura(
+    empresaId: string,
+    dados: ContratoParaAssinar,
+  ): Promise<EnvelopeCriado> {
+    // Resolvida UMA vez e carregada pelo método inteiro: o contrato não pode
+    // começar numa conta e terminar noutra se alguém trocar a integração no
+    // meio do envio.
+    const cfg = await this.resolver(empresaId);
+    if (!cfg.token || !cfg.modelo) {
       throw new IntegrationException(
-        'ClickSign não configurado (falta CLICKSIGN_ACCESS_TOKEN e/ou CLICKSIGN_TEMPLATE_KEY)',
+        cfg.origem === 'empresa'
+          ? 'ClickSign da empresa sem token e/ou modelo de contrato na integração'
+          : 'ClickSign não configurado (falta CLICKSIGN_ACCESS_TOKEN e/ou CLICKSIGN_TEMPLATE_KEY)',
         ErrorCode.INTEGRATION_ERROR,
       );
     }
 
-    const envelope = await this.chamar<{ data: { id: string } }>('POST', '/envelopes', {
+    const envelope = await this.chamar<{ data: { id: string } }>(cfg, 'POST', '/envelopes', {
       data: {
         type: 'envelopes',
         attributes: { name: dados.titulo, locale: 'pt-BR', auto_close: true },
@@ -152,6 +249,7 @@ export class ClickSignService {
     const envelopeId = envelope.data.id;
 
     const documento = await this.chamar<{ data: { id: string } }>(
+      cfg,
       'POST',
       `/envelopes/${envelopeId}/documents`,
       {
@@ -160,7 +258,7 @@ export class ClickSignService {
           attributes: {
             // A API exige extensão .docx aqui — é o formato do modelo.
             filename: 'contrato.docx',
-            template: { key: this.modelo, data: dados.variaveis },
+            template: { key: cfg.modelo, data: dados.variaveis },
             ...(dados.metadata ? { metadata: dados.metadata } : {}),
           },
         },
@@ -176,10 +274,9 @@ export class ClickSignService {
     // com ela desligada o Leandro entra como signatário normal e o fluxo roda
     // inteiro. É explícita de propósito — cair pro manual em silêncio esconderia
     // que o automático nunca funcionou.
-    const auto = this.ler('CLICKSIGN_SOMATEC_AUTO').toLowerCase() !== 'false';
     const paraAssinar: Array<SignatarioContrato & { automatico: boolean }> = [
       { ...dados.cliente, automatico: false },
-      ...(this.somatec ? [{ ...this.somatec, automatico: auto }] : []),
+      ...(cfg.somatec ? [{ ...cfg.somatec, automatico: cfg.autoAssinatura }] : []),
     ];
     const signatarios: Array<{
       id: string;
@@ -189,6 +286,7 @@ export class ClickSignService {
     }> = [];
     for (const s of paraAssinar) {
       const criado = await this.chamar<{ data: { id: string } }>(
+        cfg,
         'POST',
         `/envelopes/${envelopeId}/signers`,
         {
@@ -240,7 +338,7 @@ export class ClickSignService {
     // e sem telefone no cadastro cai pro e-mail: degradar a autenticação é
     // melhor que não conseguir mandar o contrato.
     for (const s of signatarios) {
-      const token = s.telefone ? this.canalToken : 'email';
+      const token = s.telefone ? cfg.canalToken : 'email';
       const requisitos = s.automatico
         ? [
             { action: 'provide_evidence', auth: 'auto_signature' },
@@ -257,7 +355,7 @@ export class ClickSignService {
             { action: 'agree', role: 'sign' },
           ];
       for (const attributes of requisitos) {
-        await this.chamar('POST', `/envelopes/${envelopeId}/requirements`, {
+        await this.chamar(cfg, 'POST', `/envelopes/${envelopeId}/requirements`, {
           data: {
             type: 'requirements',
             attributes,
@@ -270,7 +368,7 @@ export class ClickSignService {
       }
     }
 
-    await this.chamar('PATCH', `/envelopes/${envelopeId}`, {
+    await this.chamar(cfg, 'PATCH', `/envelopes/${envelopeId}`, {
       data: { id: envelopeId, type: 'envelopes', attributes: { status: 'running' } },
     });
 
@@ -278,7 +376,7 @@ export class ClickSignService {
     // ficou "em andamento" e nenhum signatário recebeu nada. O aviso é uma
     // chamada à parte — sem ela o contrato existe e ninguém fica sabendo, que é
     // a pior falha possível aqui (parece que funcionou).
-    await this.chamar('POST', `/envelopes/${envelopeId}/notifications`, {
+    await this.chamar(cfg, 'POST', `/envelopes/${envelopeId}/notifications`, {
       data: {
         type: 'notifications',
         attributes: { message: 'Segue o contrato para assinatura eletrônica.' },
@@ -291,9 +389,21 @@ export class ClickSignService {
     return { envelopeId, documentoId: documento.data.id, signatarios };
   }
 
+  /**
+   * Base da conta da empresa — a URL do PDF assinado é montada contra ela.
+   *
+   * Existe porque a ClickSign às vezes devolve o arquivo como CAMINHO relativo,
+   * e montá-lo contra a base errada (sandbox × produção) dá download que falha
+   * em silêncio: o contrato fica assinado e sem cópia local, sem nada acusando.
+   */
+  async baseDaEmpresa(empresaId: string): Promise<string> {
+    return (await this.resolver(empresaId)).base;
+  }
+
   /** Estado do envelope — usado pela varredura de pendentes. */
-  async situacao(envelopeId: string): Promise<string | null> {
+  async situacao(empresaId: string, envelopeId: string): Promise<string | null> {
     const r = await this.chamar<{ data: { attributes: { status: string } } }>(
+      await this.resolver(empresaId),
       'GET',
       `/envelopes/${envelopeId}`,
     );
@@ -301,11 +411,12 @@ export class ClickSignService {
   }
 
   private async chamar<T = unknown>(
+    cfg: ConfigClickSign,
     metodo: 'GET' | 'POST' | 'PATCH',
     caminho: string,
     corpo?: unknown,
   ): Promise<T> {
-    const url = `${this.base}/api/v3${caminho}${caminho.includes('?') ? '&' : '?'}access_token=${this.token}`;
+    const url = `${cfg.base}/api/v3${caminho}${caminho.includes('?') ? '&' : '?'}access_token=${cfg.token}`;
     const opcoes = {
       headers: { 'Content-Type': 'application/vnd.api+json', Accept: 'application/vnd.api+json' },
       integration: 'clicksign',
@@ -323,8 +434,14 @@ export class ClickSignService {
       const msg = err instanceof Error ? err.message : String(err);
       // 401 aqui é quase sempre token com lixo no valor, não token errado —
       // dizer isso na mensagem economiza meia hora de caça.
+      // 401 aqui é quase sempre token com lixo no valor, não token errado — e
+      // dizer ONDE conferir importa agora que existem duas fontes possíveis.
+      const onde =
+        cfg.origem === 'empresa'
+          ? 'o token guardado na integração ClickSign da empresa'
+          : 'CLICKSIGN_ACCESS_TOKEN no ambiente';
       const dica = /status 401/.test(msg)
-        ? ' — token recusado. Confira se CLICKSIGN_ACCESS_TOKEN no ambiente tem só o valor ' +
+        ? ` — token recusado. Confira se ${onde} tem só o valor ` +
           '(sem o nome da variável junto, sem aspas e sem espaço no fim).'
         : '';
       throw new IntegrationException(

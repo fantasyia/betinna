@@ -17,6 +17,51 @@ Ele é um **Modelo** dentro do ClickSign, com variáveis `{{...}}`; o app manda 
 os dados que mudam por cliente (`contrato-variaveis.util.ts`). Quando o jurídico
 mexer numa cláusula, é edição no painel — sem deploy, sem commit, sem build.
 
+## Duas fontes de configuração — e a fonte é escolhida INTEIRA
+
+A partir de 13/09/2026 a conta da ClickSign pode ser **da empresa**, guardada
+cifrada em `IntegracaoConexao(servico='clicksign')` como toda integração de
+escopo empresa (D9/D45 — conectar é DIRECTOR-only). O ambiente continua valendo
+como caminho de **tenant único**, que é o estado de hoje (a Somatec está no env
+do Railway).
+
+```
+empresa tem conexão ativa COM accessToken ?  → usa a conta DELA, inteira
+                                    senão  → usa o ambiente, inteiro
+```
+
+⚠️ **Não existe mistura campo a campo, e isso é de propósito.** Completar com o
+ambiente o campo que falta na integração do tenant produz a pior combinação
+possível: o token de uma conta com o signatário da casa de outra. Os dois são
+amarrados à CONTA — o modelo do contrato, o Termo de Assinatura Automática e o
+e-mail de quem assina só existem dentro dela. Misturar **não dá erro nenhum**:
+dá contrato saindo pela conta errada, que ninguém descobre olhando log.
+
+Campos aceitos na conexão (espelham as variáveis abaixo):
+
+| campo | equivale a |
+|---|---|
+| `accessToken` | `CLICKSIGN_ACCESS_TOKEN` |
+| `templateKey` | `CLICKSIGN_TEMPLATE_KEY` |
+| `apiUrl` | `CLICKSIGN_API_URL` |
+| `authCanal` | `CLICKSIGN_AUTH_CANAL` |
+| `signatarioNome` / `signatarioEmail` | idem |
+| `signatarioNascimento` / `signatarioDocumento` | idem |
+| `assinaturaAutomatica` | `CLICKSIGN_SOMATEC_AUTO` |
+
+📌 `assinaturaAutomatica` é lido tanto como booleano `false` quanto como string
+`"false"` — o JSON vem de formulário e as duas formas aparecem. Tratar só a
+string deixaria o booleano passar como LIGADO: assinatura automática que o
+tenant desligou e continuou valendo, sem nada acusando na tela.
+
+🔴 **O segredo do webhook (`CLICKSIGN_WEBHOOK_SECRET`) continua só no ambiente,
+e não é esquecimento.** O webhook é de ENTRADA: a ClickSign bate numa URL só, e
+o HMAC precisa ser conferido **antes** de o corpo ser lido — quer dizer, antes
+de existir qualquer empresa pra escolher o segredo. Torná-lo por tenant exigiria
+testar o HMAC contra todos os segredos cadastrados, ou confiar no corpo não
+verificado pra descobrir o tenant. Enquanto for uma conta só, o ambiente é a
+resposta honesta.
+
 ## Variáveis de ambiente (api **e** worker)
 
 | variável | sandbox | produção |

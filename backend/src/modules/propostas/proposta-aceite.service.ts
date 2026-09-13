@@ -487,7 +487,7 @@ export class PropostaAceiteService {
    * log de erro e aviso pro responsável — o contrato é reenviado depois.
    */
   private async enviarContratoParaAssinatura(propostaId: string, empresaId: string): Promise<void> {
-    if (!this.clicksign.configurado) return;
+    if (!(await this.clicksign.configurado(empresaId))) return;
     try {
       const p = await this.prisma.proposta.findFirst({
         where: { id: propostaId, empresaId },
@@ -563,7 +563,7 @@ export class PropostaAceiteService {
         return;
       }
 
-      const envelope = await this.clicksign.enviarParaAssinatura({
+      const envelope = await this.clicksign.enviarParaAssinatura(empresaId, {
         titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
         cliente: { nome, email, telefone: telefoneAssinatura },
         // Volta no webhook de assinatura — rastro que não depende de id.

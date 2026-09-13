@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { PropostaErpService } from '@modules/propostas/proposta-erp.service';
+import { ClickSignService } from './clicksign.service';
 
 /** O recorte do payload que interessa. O resto do documento a gente ignora. */
 interface DocumentoWebhook {
@@ -44,6 +45,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     private readonly etapa: LeadEtapaSistemaService,
     private readonly propostaErp: PropostaErpService,
     private readonly comissoesContrato: ContratoComissoesService,
+    private readonly clicksign: ClickSignService,
   ) {
     this.storage = createClient(
       this.env.get('SUPABASE_URL'),
@@ -75,7 +77,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     if (contrato.status === 'ASSINADO' && contrato.documentoUrl) return 'repetido';
 
     const assinadoEm = doc.finished_at ? new Date(doc.finished_at) : new Date();
-    const link = this.urlAbsoluta(doc.downloads?.signed_file_url);
+    const link = await this.urlAbsoluta(contrato.empresaId, doc.downloads?.signed_file_url);
     const caminho = link ? await this.guardarPdf(contrato.empresaId, contrato.id, link) : null;
 
     await this.prisma.contrato.update({
@@ -277,13 +279,13 @@ export class ClickSignAssinaturaService implements OnModuleInit {
    * a API devolve URL completa em outros pontos. Aceitar as duas formas é mais
    * barato que descobrir em produção qual delas veio.
    */
-  private urlAbsoluta(url?: string): string | null {
+  private async urlAbsoluta(empresaId: string, url?: string): Promise<string | null> {
     if (!url) return null;
     if (/^https?:\/\//i.test(url)) return url;
-    const base = (this.env.get('CLICKSIGN_API_URL') ?? 'https://app.clicksign.com').replace(
-      /\/$/,
-      '',
-    );
+    // A base vem da conta DA EMPRESA: sandbox e produção são hosts diferentes,
+    // e montar contra o host errado dá 404 num download best-effort — o
+    // contrato fica assinado e sem cópia, sem nada acusando.
+    const base = await this.clicksign.baseDaEmpresa(empresaId);
     return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
   }
 

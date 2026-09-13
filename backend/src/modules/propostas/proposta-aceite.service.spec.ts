@@ -79,7 +79,12 @@ function makeService(txProverbCount: number, recusaCount = 1) {
   };
   // ClickSign desligado nos testes de aceite: o envio do contrato é best-effort
   // e tem teste próprio. `configurado: false` mantém o caminho antigo intacto.
-  const clicksign = { configurado: false, enviarParaAssinatura: vi.fn() };
+  // `configurado` agora é por empresa (credencial cifrada do tenant), então é
+  // função assíncrona — não mais um getter booleano.
+  const clicksign = {
+    configurado: vi.fn().mockResolvedValue(false),
+    enviarParaAssinatura: vi.fn(),
+  };
   // Marco do funil: o aceite move a etapa do lead, e o move é best-effort.
   const etapa = { mover: vi.fn(async () => 'movido' as const) };
   const svc = new PropostaAceiteService(
