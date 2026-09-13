@@ -21,12 +21,6 @@ export interface PropostaParaContrato {
     cidade: string | null;
     uf: string | null;
   };
-  /**
-   * Dias corridos. Vazio = a proposta não definiu; sai em branco no contrato.
-   * Entrega NÃO é variável: o modelo diz "expedidos em até 03 dias úteis da
-   * assinatura, prazo de entrega da transportadora" (decisão do Léo, 12/09).
-   */
-  prazoInstalacaoDias: number | null;
 }
 
 const MESES = [
@@ -186,10 +180,10 @@ export function formatarCnpj(cnpj: string): string {
  * não é enviada some do documento deixando o texto costurado errado; string
  * vazia deixa o espaço em branco, que é o comportamento certo.
  *
- * O que fica vazio hoje, e por quê: **prazo de instalação** (4.2) é decisão
- * comercial, e a proposta ainda não o carrega — o contrato sai com "no prazo
- * de  () dias" e quem assina vê a lacuna, em vez de um número que o sistema
- * inventou.
+ * **Prazo não é variável nenhuma** (decisão do Léo, 12/09): a 4.1 diz
+ * "expedidos em até 03 dias úteis da assinatura, entrega pela transportadora"
+ * e a 4.2 diz "iniciar a obra em 10 (dez) dias após a entrega". Os dois estão
+ * escritos no modelo — tirar daqui é o que impede o contrato sair com lacuna.
  *
  * **Complemento leva a própria vírgula.** O modelo escreve
  * `n. {{numero}}{{complemento}}, {{bairro}}`: complemento vazio some sem deixar
@@ -197,9 +191,6 @@ export function formatarCnpj(cnpj: string): string {
  */
 export function variaveisDoContrato(p: PropostaParaContrato): Record<string, string> {
   const limpo = (s: string | null | undefined): string => (s ?? '').trim();
-  const dias = (n: number | null): [string, string] =>
-    n && n > 0 ? [String(n), numeroPorExtenso(n)] : ['', ''];
-  const [instDias, instExt] = dias(p.prazoInstalacaoDias);
   const complemento = limpo(p.endereco.complemento);
   const cidade = limpo(p.endereco.cidade);
   const uf = limpo(p.endereco.uf).toUpperCase();
@@ -215,8 +206,6 @@ export function variaveisDoContrato(p: PropostaParaContrato): Record<string, str
     endereco_uf: uf,
     // Cláusula 13.8 — foro da comarca da sede da CONTRATANTE.
     comarca: cidade && uf ? `${cidade}-${uf}` : cidade,
-    prazo_instalacao_dias: instDias,
-    prazo_instalacao_extenso: instExt,
     aluguel_mensal: dinheiro(p.valor),
     aluguel_mensal_extenso: valorPorExtenso(p.valor),
     data_extenso: dataPorExtenso(p.criadoEm),

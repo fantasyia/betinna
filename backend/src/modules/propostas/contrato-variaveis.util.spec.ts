@@ -24,10 +24,9 @@ const base = {
     cidade: 'Dracena',
     uf: 'sp',
   },
-  prazoInstalacaoDias: null,
 };
 
-/** As 14 variáveis do modelo v4 — a lista veio do próprio .docx, não da cabeça. */
+/** As 12 variáveis do modelo v5 — a lista veio do próprio .docx, não da cabeça. */
 const NO_MODELO = [
   'aluguel_mensal',
   'aluguel_mensal_extenso',
@@ -40,8 +39,6 @@ const NO_MODELO = [
   'endereco_logradouro',
   'endereco_numero',
   'endereco_uf',
-  'prazo_instalacao_dias',
-  'prazo_instalacao_extenso',
   'razao_social',
 ];
 
@@ -69,12 +66,14 @@ describe('variáveis do contrato', () => {
     expect(v.aluguel_mensal_extenso).toBe('mil quinhentos e sessenta e seis reais');
   });
 
-  it('cláusula 4.2: prazo de instalação em dias e por extenso; sem dado vai VAZIO, não inventado', () => {
-    expect(variaveisDoContrato(base).prazo_instalacao_dias).toBe('');
-    expect(variaveisDoContrato(base).prazo_instalacao_extenso).toBe('');
-    const v = variaveisDoContrato({ ...base, prazoInstalacaoDias: 15 });
-    expect(v.prazo_instalacao_dias).toBe('15');
-    expect(v.prazo_instalacao_extenso).toBe('quinze');
+  /**
+   * Os dois prazos da Cláusula 4 estão ESCRITOS no modelo desde 12/09 (03 dias
+   * úteis pra expedir, 10 dias pra iniciar a obra). Se voltarem a ser variável
+   * sem o .docx mudar junto, o contrato sai com lacuna — daí o teste.
+   */
+  it('prazo não é variável: o modelo já traz os dois escritos', () => {
+    const v = variaveisDoContrato(base);
+    expect(Object.keys(v).some((k) => k.startsWith('prazo_'))).toBe(false);
   });
 
   it('complemento vazio NÃO deixa vírgula dupla no preâmbulo', () => {

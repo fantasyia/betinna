@@ -581,9 +581,6 @@ export class PropostaAceiteService {
             cidade: p.cliente.cidade,
             uf: p.cliente.uf,
           },
-          // Entrega está escrita no modelo (03 dias úteis + transportadora);
-          // instalação ainda não existe na proposta — decisão comercial pendente.
-          prazoInstalacaoDias: null,
         }),
       });
 
