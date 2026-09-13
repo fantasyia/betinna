@@ -177,3 +177,34 @@ describe('FluxoTriggersJob — execução parada no meio', () => {
     expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Auditoria 13/09/2026 (D-5): este era o ÚNICO cron do job sem `cronLock`.
+ * Em rolling deploy dois processos viam a mesma execução parada e cada um
+ * despachava o sucessor com jobId próprio (`ret_..._${Date.now()}`) — passo
+ * rodava 2×. Com o lock, quem perde não toca em nada.
+ */
+describe('FluxoTriggersJob — alarme de fila parada respeita o cronLock', () => {
+  it('outro processo com o lock → não conta, não varre, não despacha', async () => {
+    const prisma = makePrisma();
+    const bus = makeBus();
+    const job = new FluxoTriggersJob(
+      prisma as never,
+      { criarParaRole: notificacoes.criarParaRole } as never,
+      bus as never,
+      { get: () => 'production' } as never,
+      { acquire: vi.fn().mockResolvedValue(false) } as never,
+      notificacoes as never,
+      notificacoes as never,
+      { responderPendente: vi.fn().mockResolvedValue(false) } as never,
+      notificacoes as never,
+      notificacoes as never,
+    );
+
+    await job.alarmeDeFilaParada();
+
+    expect(prisma.fluxoExecucao.count).not.toHaveBeenCalled();
+    expect(bus.execucoesComJobVivo).not.toHaveBeenCalled();
+    expect(bus.dispararDireto).not.toHaveBeenCalled();
+  });
+});

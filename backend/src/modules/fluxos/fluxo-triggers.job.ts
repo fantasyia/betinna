@@ -278,6 +278,11 @@ export class FluxoTriggersJob {
   @Cron('*/5 * * * *', { name: 'fluxo-fila-parada', timeZone: 'UTC' })
   async alarmeDeFilaParada(): Promise<void> {
     if (this.env.get('NODE_ENV') === 'test') return;
+    // Era o ÚNICO cron deste job sem lock. Em rolling deploy (dois processos
+    // vivos), os dois liam a mesma execução parada, os dois gravavam
+    // `_retomadoEm` e despachavam sucessores com jobIds distintos
+    // (`ret_..._${Date.now()}`) → passo rodava 2× (auditoria 13/09/2026, D-5).
+    if (!(await this.cronLock.acquire('fluxo-fila-parada', 4 * 60))) return;
     const travadas = await this.prisma.fluxoExecucao.count({
       where: {
         status: 'PENDENTE',
