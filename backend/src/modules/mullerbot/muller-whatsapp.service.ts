@@ -15,6 +15,8 @@ import type { HistoricoMsg } from './mullerbot-cache.service';
 import { BotAuditoriaService } from './bot-auditoria.service';
 import { BotCustoService } from './bot-custo.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { SupressaoService } from '@shared/supressao/supressao.service';
+import { pedidoRemocaoNoTexto } from '@modules/fluxos/pedido-remocao.util';
 
 /**
  * Fase 2 — Motor do bot no WhatsApp: número da EMPRESA e (opt-in) o PESSOAL
@@ -332,6 +334,7 @@ export class MullerWhatsappService implements OnModuleInit {
     private readonly pacing: WhatsappPacingService,
     private readonly pedidoStatus: PedidoStatusBotService,
     private readonly notificacoes: NotificacoesService,
+    private readonly supressao: SupressaoService,
   ) {}
 
   onModuleInit(): void {
@@ -465,6 +468,31 @@ export class MullerWhatsappService implements OnModuleInit {
         this.logger.warn(
           `[bot] anti-spam: peer=${params.peerId} excedeu ${SPAM_LIMITE}/min — pausado + precisa humano`,
         );
+        return;
+      }
+
+      // OPT-OUT dito no WhatsApp (auditoria 13/09/2026, B-4): "para de me mandar
+      // mensagem", "PARAR", "sair da lista"… Aqui não virava NADA — o bot
+      // respondia educado e a próxima campanha mandava de novo. Agora: tag
+      // LGPD direto (lead + cliente pelo telefone), bot pausado nesta conversa
+      // e UMA confirmação curta. Direito legal: tem que funcionar sempre.
+      if (pedidoRemocaoNoTexto(params.conteudo ?? '')) {
+        const telefone = params.peerTelefone ?? params.peerId.replace(/@.*$/, '');
+        await this.supressao
+          .aplicarLgpd(params.empresaId, { telefone })
+          .catch((err) =>
+            this.logger.warn(`[bot] LGPD não aplicada (${telefone}): ${String(err)}`),
+          );
+        await this.prisma.conversation
+          .update({ where: { id: convId }, data: { botLigado: false, precisaHumano: false } })
+          .catch(() => undefined);
+        await this.inbox
+          .responderComoBot(
+            convId,
+            'Entendido — não vamos mais te procurar por aqui. Se um dia precisar de algo, é só chamar.',
+          )
+          .catch(() => undefined);
+        this.logger.warn(`[bot] opt-out LGPD aplicado — conv=${convId} peer=${params.peerId}`);
         return;
       }
 

@@ -80,6 +80,7 @@ function build(prisma: ReturnType<typeof makePrisma>, muller: ReturnType<typeof 
       contextoPorTelefone: vi.fn().mockResolvedValue(''),
     } as never,
     notificacoes as never,
+    { aplicarLgpd: vi.fn().mockResolvedValue(0) } as never, // supressao (B-4)
   );
   return { svc, inbox, auditoria, notificacoes };
 }

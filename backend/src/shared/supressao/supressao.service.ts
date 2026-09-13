@@ -211,6 +211,61 @@ export class SupressaoService {
   }
 
   /**
+   * Aplica a tag LGPD ("Não Reabordar") — o opt-out dito pelo próprio contato.
+   *
+   * Até 13/09/2026 a tag só nascia pelo link de descadastro de e-mail: quem
+   * escrevia "para de me mandar mensagem" no WhatsApp virava, no máximo, uma
+   * variável `pedido_remocao=sim` que dependia de o autor do fluxo ter ligado o
+   * ramo certo a um MUDAR_TAG com o nome exato; no bot geral não virava nada
+   * (auditoria, achados B-4/E-2). Aqui a tag entra direto, no lead (por id) e
+   * em todo lead/cliente com o mesmo telefone (sufixo-8, D18). Idempotente.
+   */
+  async aplicarLgpd(
+    empresaId: string,
+    alvo: { leadId?: string | null; telefone?: string | null },
+    origem = 'whatsapp:pedido_remocao',
+  ): Promise<number> {
+    const tag = await this.prisma.tag.upsert({
+      where: { empresaId_nome: { empresaId, nome: SupressaoService.TAG_LGPD } },
+      create: { empresaId, nome: SupressaoService.TAG_LGPD, categoria: 'alerta' },
+      update: {},
+    });
+    const leadIds = new Set<string>();
+    const clienteIds = new Set<string>();
+    if (alvo.leadId) leadIds.add(alvo.leadId);
+    const suf = this.sufixoTelefone(alvo.telefone);
+    if (suf) {
+      const leads = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Lead"
+         WHERE "empresaId" = ${empresaId}
+           AND RIGHT(REGEXP_REPLACE(COALESCE("contatoTelefone",''),'[^0-9]','','g'), 8) = ${suf}`;
+      const clientes = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Cliente"
+         WHERE "empresaId" = ${empresaId}
+           AND RIGHT(REGEXP_REPLACE(COALESCE(telefone,''),'[^0-9]','','g'), 8) = ${suf}`;
+      for (const l of leads) leadIds.add(l.id);
+      for (const c of clientes) clienteIds.add(c.id);
+    }
+    if (leadIds.size) {
+      await this.prisma.leadTag.createMany({
+        data: [...leadIds].map((leadId) => ({ leadId, tagId: tag.id, origem })),
+        skipDuplicates: true,
+      });
+    }
+    if (clienteIds.size) {
+      await this.prisma.clienteTag.createMany({
+        data: [...clienteIds].map((clienteId) => ({ clienteId, tagId: tag.id, origem })),
+        skipDuplicates: true,
+      });
+    }
+    const total = leadIds.size + clienteIds.size;
+    this.logger.warn(
+      `LGPD aplicada (${origem}) em ${leadIds.size} lead(s) e ${clienteIds.size} cliente(s) da empresa ${empresaId}`,
+    );
+    return total;
+  }
+
+  /**
    * Marca o telefone como sem WhatsApp, no lead E no cliente.
    *
    * Casa por SUFIXO de 8 dígitos (D18) porque é assim que telefone bate neste

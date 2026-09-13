@@ -176,6 +176,7 @@ function build(
       ehPerguntaDePedido: vi.fn().mockReturnValue(false),
       contextoPorTelefone: vi.fn().mockResolvedValue(''),
     } as never,
+    { aplicarLgpd: vi.fn().mockResolvedValue(0) } as never, // supressao (B-4)
   );
   // Expostos pros testes de anti-spam (contador no Redis) e falha de envio.
   (svc as unknown as Record<string, unknown>).__redis = redis;

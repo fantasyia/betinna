@@ -314,7 +314,7 @@ describe('ConversarIaService', () => {
       whatsapp as never,
       bus as never,
       { aguardarSlot: vi.fn() } as never,
-      { suprimido: vi.fn(async () => false) } as never, // supressao
+      { suprimido: vi.fn(async () => false), aplicarLgpd: vi.fn(async () => 0) } as never, // supressao
       // inbox: a saída do fluxo passa a ser GRAVADA na conversa (antes só
       // aparecia quando o eco do WhatsApp voltava, assíncrono e sem prazo).
       { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
@@ -1931,7 +1931,7 @@ describe('ConversarIaService — captura do turno chega no lead na hora', () => 
       makeWhatsapp() as never,
       makeBus() as never,
       { aguardarSlot: vi.fn() } as never,
-      { suprimido: vi.fn(async () => false) } as never,
+      { suprimido: vi.fn(async () => false), aplicarLgpd: vi.fn(async () => 0) } as never,
       // inbox: sem ele o envio falha e o turno rota pro ramo de erro ANTES de
       // chegar na gravação — o teste passaria a medir outra coisa.
       { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
@@ -2070,7 +2070,7 @@ describe('ConversarIaService — overrides do prompt e enum das variáveis', () 
       makeWhatsapp() as never,
       makeBus() as never,
       { aguardarSlot: vi.fn() } as never,
-      { suprimido: vi.fn(async () => false) } as never, // supressao
+      { suprimido: vi.fn(async () => false), aplicarLgpd: vi.fn(async () => 0) } as never, // supressao
       makeQueue() as never,
     );
   });
