@@ -85,15 +85,19 @@ export class EmailInboundService {
     const texto = this.cortarCitacao(
       String(raiz.text ?? raiz.texto ?? raiz['text-plain'] ?? this.semHtml(raiz.html)),
     );
-    const quando = raiz.date ?? raiz.data ?? raiz.timestamp;
+    // `created_at`/`message_id` são os nomes do Resend (snake_case); os outros
+    // são de provedores genéricos. Sem os do Resend, o e-mail recebido entrava
+    // sem data e sem dedup (auditoria 13/09/2026, C-7).
+    const quando = raiz.date ?? raiz.data ?? raiz.timestamp ?? raiz.created_at;
     const dt = quando ? new Date(String(quando)) : undefined;
+    const messageId = raiz.messageId ?? raiz.message_id;
     return {
       de,
       deNome: this.soNome(this.primeiro(raiz.from ?? raiz.de ?? raiz.sender)),
       para,
       assunto,
       texto,
-      messageId: raiz.messageId ? String(raiz.messageId) : this.cabecalhoId(raiz),
+      messageId: messageId ? String(messageId) : this.cabecalhoId(raiz),
       data: dt && !Number.isNaN(dt.getTime()) ? dt : undefined,
     };
   }

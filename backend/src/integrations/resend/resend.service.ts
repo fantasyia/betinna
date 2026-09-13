@@ -150,4 +150,55 @@ export class ResendService {
       throw new IntegrationException(`Resend falhou: ${msg}`, ErrorCode.INTEGRATION_ERROR);
     }
   }
+
+  /**
+   * Corpo de um e-mail RECEBIDO (Enable Receiving). O webhook `email.received`
+   * traz só metadata — a doc do Resend é explícita: "Webhooks do not include
+   * the email body, headers, or attachments". Sem esta chamada a resposta do
+   * lead entrava na Inbox só com o assunto (auditoria 13/09/2026, C-7).
+   * Best-effort: devolve null em falha e quem chama registra o que tiver.
+   */
+  async obterRecebido(emailId: string): Promise<{
+    text: string | null;
+    html: string | null;
+    subject: string | null;
+    from: string | null;
+    to: string[];
+    messageId: string | null;
+    createdAt: string | null;
+  } | null> {
+    const apiKey = this.env.get('RESEND_API_KEY');
+    if (!apiKey || !emailId) return null;
+    try {
+      const res = await this.http.get<{
+        text?: string;
+        html?: string;
+        subject?: string;
+        from?: string;
+        to?: string[] | string;
+        message_id?: string;
+        created_at?: string;
+      }>(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        integration: 'resend',
+        redactKeys: ['authorization'],
+        retries: 2,
+      });
+      const d = res.data ?? {};
+      return {
+        text: d.text ?? null,
+        html: d.html ?? null,
+        subject: d.subject ?? null,
+        from: d.from ?? null,
+        to: Array.isArray(d.to) ? d.to : d.to ? [d.to] : [],
+        messageId: d.message_id ?? null,
+        createdAt: d.created_at ?? null,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Resend: não consegui buscar o corpo do e-mail recebido ${emailId} — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
 }

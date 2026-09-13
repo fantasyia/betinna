@@ -4,6 +4,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { SupressaoService } from '@shared/supressao/supressao.service';
 import { EmailInboundService } from '@integrations/email/email-inbound.service';
+import { ResendService } from './resend.service';
 
 /** Eventos que dizem algo sobre o destinatário. O resto o Resend manda e ignoramos. */
 export type EventoResend =
@@ -43,6 +44,7 @@ export class ResendWebhookService {
     private readonly prisma: PrismaService,
     private readonly supressao: SupressaoService,
     private readonly inbound: EmailInboundService,
+    private readonly resend: ResendService,
   ) {}
 
   get configurado(): boolean {
@@ -105,7 +107,33 @@ export class ResendWebhookService {
     // `EmailInboundService`, que é agnóstico de provedor: se um dia a entrada
     // vier por outro caminho, só o transporte muda.
     if (/received|inbound/i.test(tipo)) {
-      const r = await this.inbound.registrar(evento as unknown as Record<string, unknown>);
+      // O evento traz só METADATA (email_id, from, to, subject, message_id,
+      // created_at). O corpo vem de `GET /emails/receiving/{id}` — sem isto a
+      // resposta do lead entrava na Inbox só com o assunto, sem dedup e sem
+      // data (auditoria 13/09/2026, achado C-7). Best-effort: sem corpo,
+      // registra o que o evento trouxe.
+      const dados = (evento.data ?? {}) as Record<string, unknown>;
+      const idRecebido = typeof dados.email_id === 'string' ? dados.email_id : null;
+      let corpo: Awaited<ReturnType<ResendService['obterRecebido']>> = null;
+      try {
+        corpo = idRecebido ? await this.resend.obterRecebido(idRecebido) : null;
+      } catch {
+        corpo = null;
+      }
+      const completo = {
+        ...evento,
+        data: {
+          ...dados,
+          ...(corpo?.text != null ? { text: corpo.text } : {}),
+          ...(corpo?.html != null ? { html: corpo.html } : {}),
+          ...(corpo?.subject && !dados.subject ? { subject: corpo.subject } : {}),
+          ...(corpo?.from && !dados.from ? { from: corpo.from } : {}),
+          ...(corpo?.to.length && !dados.to ? { to: corpo.to } : {}),
+          ...(corpo?.messageId && !dados.message_id ? { message_id: corpo.messageId } : {}),
+          ...(corpo?.createdAt && !dados.created_at ? { created_at: corpo.createdAt } : {}),
+        },
+      };
+      const r = await this.inbound.registrar(completo as unknown as Record<string, unknown>);
       return `entrada:${r.efeito}`;
     }
     const emailId = evento.data?.email_id;

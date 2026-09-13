@@ -14,7 +14,7 @@ import { SupressaoService } from '@shared/supressao/supressao.service';
  * sinal que mais rápido queima um domínio de envio: o provedor lê como lista
  * comprada. E o domínio de marketing acabou de nascer, sem reputação.
  */
-const build = (over: { leads?: Array<{ empresaId: string }> } = {}) => {
+const build = (over: { leads?: Array<{ empresaId: string }>; corpo?: unknown } = {}) => {
   const prisma = {
     campanhaDestinatario: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     lead: { findMany: vi.fn().mockResolvedValue(over.leads ?? [{ empresaId: 'emp-1' }]) },
@@ -22,13 +22,16 @@ const build = (over: { leads?: Array<{ empresaId: string }> } = {}) => {
   };
   const supressao = { marcarEmailInvalido: vi.fn().mockResolvedValue(1) };
   const inbound = { registrar: vi.fn().mockResolvedValue({ efeito: 'registrado' }) };
+  // C-7: o corpo do e-mail recebido vem da API, não do webhook.
+  const resend = { obterRecebido: vi.fn().mockResolvedValue(over.corpo ?? null) };
   const svc = new ResendWebhookService(
     { get: () => '' } as never,
     prisma as never,
     supressao as never,
     inbound as never,
+    resend as never,
   );
-  return { svc, prisma, supressao, inbound };
+  return { svc, prisma, supressao, inbound, resend };
 };
 
 const evento = (type: string, to = ['morto@empresa.com.br']) => ({
@@ -163,5 +166,55 @@ describe('bounce de e-mail de CAMPANHA também queima o endereço', () => {
       'morto@empresa.com.br',
       'bounce',
     );
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (C-7): o webhook `email.received` do Resend NÃO traz o
+ * corpo — a resposta do lead entrava na Inbox só com o assunto, sem dedup e
+ * sem data. Agora o corpo vem de `GET /emails/receiving/{id}`.
+ */
+describe('e-mail recebido: o corpo vem da API do Resend', () => {
+  it('busca o corpo pelo email_id e entrega texto, message_id e created_at ao inbound', async () => {
+    const { svc, inbound, resend } = build({
+      corpo: {
+        text: 'Oi, tenho interesse sim. Pode me ligar amanhã?',
+        html: null,
+        subject: 'Re: Sua proposta',
+        from: 'lead@x.com',
+        to: ['comercial@somatec.com.br'],
+        messageId: '<abc@x.com>',
+        createdAt: '2026-09-13T20:00:00.000Z',
+      },
+    });
+
+    await svc.aplicar({
+      type: 'email.received',
+      data: {
+        email_id: 'rcv-1',
+        from: 'lead@x.com',
+        to: ['comercial@somatec.com.br'],
+        subject: 'Re: Sua proposta',
+      },
+    } as never);
+
+    expect(resend.obterRecebido).toHaveBeenCalledWith('rcv-1');
+    const entregue = inbound.registrar.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(entregue.data.text).toBe('Oi, tenho interesse sim. Pode me ligar amanhã?');
+    expect(entregue.data.message_id).toBe('<abc@x.com>');
+    expect(entregue.data.created_at).toBe('2026-09-13T20:00:00.000Z');
+  });
+
+  it('API fora do ar → registra o que o evento trouxe (não perde o evento)', async () => {
+    const { svc, inbound, resend } = build();
+    resend.obterRecebido.mockRejectedValue(new Error('502'));
+
+    const efeito = await svc.aplicar({
+      type: 'email.received',
+      data: { email_id: 'rcv-2', from: 'lead@x.com', subject: 'Re: oi' },
+    } as never);
+
+    expect(efeito).toBe('entrada:registrado');
+    expect(inbound.registrar).toHaveBeenCalled();
   });
 });
