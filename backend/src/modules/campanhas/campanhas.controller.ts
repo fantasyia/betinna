@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
@@ -177,6 +178,9 @@ export class CampanhasController {
   // ─── Workflow ────────────────────────────────────────────────────────────
 
   @Post(':id/agendar')
+  // Decisão do Léo (13/09/2026, B-8): GERENTE cria e edita campanha; DISPARAR/AGENDAR/
+  // REENVIAR só ADMIN/DIRECTOR — sai pelo número central e não tem desfazer (D45).
+  @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'campanhas', action: 'edit' })
   @Audit({ action: 'agendar', resource: 'campanha', resourceIdFrom: 'params.id' })
   @ApiOperation({ summary: 'Agenda campanha para disparo futuro' })
@@ -189,6 +193,9 @@ export class CampanhasController {
   }
 
   @Post(':id/disparar')
+  // Decisão do Léo (13/09/2026, B-8): GERENTE cria e edita campanha; DISPARAR/AGENDAR/
+  // REENVIAR só ADMIN/DIRECTOR — sai pelo número central e não tem desfazer (D45).
+  @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'campanhas', action: 'edit' })
   @Audit({ action: 'disparar', resource: 'campanha', resourceIdFrom: 'params.id' })
   @ApiOperation({
@@ -219,6 +226,9 @@ export class CampanhasController {
   }
 
   @Post(':id/reenviar-erros')
+  // Decisão do Léo (13/09/2026, B-8): GERENTE cria e edita campanha; DISPARAR/AGENDAR/
+  // REENVIAR só ADMIN/DIRECTOR — sai pelo número central e não tem desfazer (D45).
+  @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'campanhas', action: 'edit' })
   @Audit({ action: 'reenviar-erros', resource: 'campanha', resourceIdFrom: 'params.id' })
   @ApiOperation({
