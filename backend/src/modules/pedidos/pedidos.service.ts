@@ -1,3 +1,4 @@
+import { SiteStatusService } from './site-status.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
@@ -81,7 +82,38 @@ export class PedidosService {
     private readonly sequence: SequenceService,
     private readonly notificacoes: NotificacoesService,
     private readonly metrics: MetricsService,
+    private readonly site: SiteStatusService,
   ) {}
+
+  /**
+   * Cancelou no app → o site precisa saber AGORA. Antes ninguém avisava: o sync
+   * seguinte via `status === 'CANCELADO'` no banco, nada "mudou", e saía antes
+   * de chamar o site — a página do cliente ficava "a caminho" pra sempre
+   * (auditoria 13/09/2026, achado I-C). Best-effort: falha vira `siteErroEm`
+   * + retry pelo `SiteStatusRetryJob`, como no sync.
+   */
+  private async avisarSiteDoCancelamento(pedidoId: string): Promise<void> {
+    try {
+      const p = await this.prisma.pedido.findUnique({
+        where: { id: pedidoId },
+        select: {
+          id: true,
+          numeroSite: true,
+          status: true,
+          rastreioCodigo: true,
+          rastreioUrl: true,
+          siteStatusEnviado: true,
+          siteRastreioEnviado: true,
+        },
+      });
+      if (!p?.numeroSite) return;
+      await this.site.sincronizarPedido(p);
+    } catch (err) {
+      this.logger.warn(
+        `Pedido ${pedidoId}: site não foi avisado do cancelamento — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   // ─── Acesso ────────────────────────────────────────────────────────────
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -718,6 +750,7 @@ export class PedidosService {
       );
     }
 
+    await this.avisarSiteDoCancelamento(id);
     return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
   }
 
@@ -897,6 +930,7 @@ export class PedidosService {
           `ERP (nº ${solicitacao.pedido.numeroErp}) — precisa de cancelamento MANUAL no ERP.`,
       );
     }
+    if (dto.decisao === 'APROVADA') await this.avisarSiteDoCancelamento(solicitacao.pedido.id);
     return updated;
   }
 

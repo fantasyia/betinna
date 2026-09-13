@@ -117,6 +117,7 @@ describe('PedidosService', () => {
         erpPush: { inc: vi.fn() },
         notificacoesEnviadas: { inc: vi.fn() },
       } as never,
+      { sincronizarPedido: vi.fn().mockResolvedValue(null) } as never, // site (I-C)
     );
   });
 
