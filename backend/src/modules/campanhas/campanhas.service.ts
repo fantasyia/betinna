@@ -64,6 +64,12 @@ type CampanhaDetalhe = Prisma.CampanhaGetPayload<{ include: typeof campanhaDetal
 /** Sanitiza e formata telefone para JID do WhatsApp (55XX9XXXXYYYY@s.whatsapp.net). */
 export function toWhatsAppJid(telefone: string): string {
   const digits = telefone.replace(/\D/g, '');
+  // INTERNACIONAL (E.164 com `+`): preserva o `+` e NÃO prefixa 55. Antes
+  // `+1 212 555 0123` virava `5512125550123@s.whatsapp.net` — o celular de
+  // alguém no DDD 12 recebia a campanha (auditoria 13/09/2026, B-5). O `+` é
+  // o único sinal confiável: sem ele, 11 dígitos são indistinguíveis de um
+  // celular BR. Os fluxos já preservavam o `+`; o Evolution respeita.
+  if (telefone.includes('+')) return `+${digits}`;
   const withCountry = digits.startsWith('55') ? digits : `55${digits}`;
   return `${withCountry}@s.whatsapp.net`;
 }

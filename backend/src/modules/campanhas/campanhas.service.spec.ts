@@ -122,6 +122,15 @@ describe('CampanhasService', () => {
     it('remove formatação (parênteses, hífens, espaços)', () => {
       expect(toWhatsAppJid('(11) 98765-4321')).toBe('5511987654321@s.whatsapp.net');
     });
+
+    // Auditoria 13/09/2026 (B-5): estrangeiro em E.164 virava número BR de outra pessoa.
+    it('E.164 estrangeiro preserva o + e NÃO ganha 55', () => {
+      expect(toWhatsAppJid('+1 212 555 0123')).toBe('+12125550123');
+    });
+
+    it('E.164 brasileiro (+55) também preserva o +', () => {
+      expect(toWhatsAppJid('+55 11 98765-4321')).toBe('+5511987654321');
+    });
   });
 
   // -------------------------------------------------------------------------
