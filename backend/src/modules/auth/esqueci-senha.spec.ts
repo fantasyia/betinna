@@ -116,7 +116,7 @@ describe('AuthSessionService.esqueciSenha', () => {
 
     const r = await svc.esqueciSenha('naoexiste@x.com');
 
-    expect(r).toEqual({ enviado: true });
+    expect(r).toEqual({ enviado: true, restantes: 4 }); // MESMA forma da conta existente (C-5)
     expect(email.enviarRecuperacaoSenha).not.toHaveBeenCalled();
   });
 
@@ -174,7 +174,7 @@ describe('AuthSessionService.esqueciSenha', () => {
 
     const r = await svc.esqueciSenha('leandro@betinna.ai');
 
-    expect(r).toEqual({ enviado: true });
+    expect(r).toEqual({ enviado: true, restantes: 4 });
     expect(email.enviarRecuperacaoSenha).not.toHaveBeenCalled();
   });
 });
@@ -329,5 +329,20 @@ describe('AuthSessionService.welcomeFinalize — gate por modo', () => {
       /já está ativa/,
     );
     expect(updateUserById).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (C-5): a resposta "neutra" era `{enviado:true}` e a de
+ * conta ativa `{enviado:true, restantes:N}` — o campo extra entregava quem tem
+ * conta. Este spec compara as DUAS formas, chave a chave.
+ */
+describe('esqueciSenha — a resposta não revela se a conta existe', () => {
+  it('conta existente e inexistente devolvem exatamente as mesmas chaves e valores', async () => {
+    const existe = await build().svc.esqueciSenha('leandro@betinna.ai');
+    const naoExiste = await build({ usuario: null }).svc.esqueciSenha('ninguem@x.com');
+
+    expect(Object.keys(existe).sort()).toEqual(Object.keys(naoExiste).sort());
+    expect(existe).toEqual(naoExiste);
   });
 });

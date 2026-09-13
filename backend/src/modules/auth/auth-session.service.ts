@@ -259,6 +259,12 @@ export class AuthSessionService {
         return { enviado: false, motivo: 'limite_diario', restantes: 0 };
       }
       const restantes = resetMaxDia() - doDia;
+      // A MESMA forma de resposta exista a conta ou não. Antes o caminho neutro
+      // devolvia `{enviado:true}` e o de conta ativa `{enviado:true, restantes}`:
+      // a presença do campo entregava quem tem conta (auditoria 13/09/2026, C-5).
+      // `restantes` é por ENDEREÇO e já foi contado antes de olhar o banco, então
+      // não revela nada — o que revelava era só o caminho que o omitia.
+      const mesmaRespostaSempre = { enviado: true as const, restantes };
 
       const usuario = await this.prisma.usuario.findFirst({
         where: { email: alvo },
@@ -270,7 +276,7 @@ export class AuthSessionService {
       // Desligado não redefine senha — seria porta de volta pra quem saiu.
       if (!usuario || usuario.status === 'INATIVO') {
         this.logger.log(`[reset] ${alvo}: sem conta ativa — nada enviado (resposta neutra)`);
-        return neutro;
+        return mesmaRespostaSempre;
       }
 
       // O Supabase guarda UM token de recovery por usuário: cada generateLink
@@ -299,7 +305,7 @@ export class AuthSessionService {
           this.logger.error(
             `[reset] ${alvo}: Supabase não gerou o token — ${error?.message ?? 'sem hashed_token'}`,
           );
-          return neutro;
+          return mesmaRespostaSempre;
         }
         await this.redis.setEx(chaveToken, tokenHash, RESET_TOKEN_CACHE_S);
         // Mapa reverso: na hora de redefinir só se tem o hash, e qualquer
@@ -325,7 +331,7 @@ export class AuthSessionService {
         this.logger.error(
           `[reset] ${alvo}: e-mail NÃO saiu — ${JSON.stringify(enviado).slice(0, 200)}`,
         );
-        return neutro;
+        return mesmaRespostaSempre;
       }
       this.logger.log(`[reset] ${alvo}: link enviado (${doDia}º de ${resetMaxDia()} hoje)`);
       return { enviado: true, restantes };
