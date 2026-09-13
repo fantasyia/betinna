@@ -326,6 +326,160 @@ describe('FluxoExecutorService', () => {
     });
   });
 
+  describe('MODO SECO do teste nas ações internas (auditoria 13/09, D-3)', () => {
+    // Até 13/09 só WhatsApp/e-mail/webhook respeitavam o modo seco. Teste do T1
+    // contra conversa real criava lead REAL, pausava o bot REAL e cancelava a
+    // execução C1 real do cliente. Agora as cinco simulam e o log diz "simulado".
+    const ctxSeco = (extra: Record<string, unknown> = {}) => ({ _teste: true, ...extra });
+    const simulado = () => {
+      const data = prisma.fluxoExecucaoLog.create.mock.calls[0][0].data;
+      expect(data.status).toBe('CONCLUIDO');
+      expect(data.output).toEqual(expect.objectContaining({ simulado: true }));
+      return data.output as Record<string, unknown>;
+    };
+    const prepararNo = (
+      acaoTipo: string,
+      config: Record<string, unknown>,
+      ctx: Record<string, unknown>,
+    ) => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: ctx }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo({ tipo: 'ACAO', acaoTipo, config }));
+    };
+
+    it('TRANSFERIR_ATENDIMENTO: não pausa o bot nem notifica ninguém', async () => {
+      prepararNo('TRANSFERIR_ATENDIMENTO', {}, ctxSeco({ conversationId: 'conv-1' }));
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: 'conv-1',
+        peerNome: 'F',
+        atribuidoId: null,
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.conversation.updateMany).not.toHaveBeenCalled();
+      expect(notificacoes.criarParaRole).not.toHaveBeenCalled();
+      expect(notificacoes.criarParaUsuario).not.toHaveBeenCalled();
+      simulado();
+    });
+
+    it('CRIAR_LEAD: valida a conversa mas NÃO cria o lead', async () => {
+      prepararNo(
+        'CRIAR_LEAD',
+        { funilEtapaId: 'et-triagem' },
+        ctxSeco({ conversationId: 'conv-1' }),
+      );
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: 'conv-1',
+        peerId: '5511987654321@s.whatsapp.net',
+        peerNome: 'Fulano',
+        leadId: null,
+        clienteId: null,
+        proprietarioId: null,
+        utmCampaign: null,
+        metadata: {},
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.lead.create).not.toHaveBeenCalled();
+      expect(simulado().peerNome).toBe('Fulano');
+    });
+
+    it('CRIAR_LEAD: conversa inexistente ainda FALHA no teste (o teste serve pra ver isso)', async () => {
+      prepararNo('CRIAR_LEAD', {}, ctxSeco({ conversationId: 'conv-x' }));
+      prisma.conversation.findFirst.mockResolvedValue(null);
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(
+        /não encontrada/,
+      );
+    });
+
+    it('PAUSAR_IA: não toca conversa nenhuma nem cancela execução', async () => {
+      prepararNo('PAUSAR_IA', {}, ctxSeco({ leadId: 'lead-1', conversationId: 'conv-1' }));
+      const executeRaw = vi.fn().mockResolvedValue(0);
+      (prisma as unknown as { $executeRaw: unknown }).$executeRaw = executeRaw;
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.conversation.updateMany).not.toHaveBeenCalled();
+      expect(executeRaw).not.toHaveBeenCalled();
+      expect(simulado().botLigado).toBe(false);
+    });
+
+    it('LIBERAR_LOTE: valida a etapa destino mas NÃO move lead nem dispara evento', async () => {
+      prepararNo(
+        'LIBERAR_LOTE',
+        { etapaOrigemId: 'et-prosp', etapaDestinoId: 'et-abord', quantidade: 2 },
+        ctxSeco(),
+      );
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-abord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.lead.findMany).not.toHaveBeenCalled();
+      expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+      expect(bus.disparar).not.toHaveBeenCalled();
+      expect(simulado().quantidade).toBe(2);
+    });
+
+    it('CRIAR_TAREFA: valida o cliente do contexto mas NÃO cria a tarefa', async () => {
+      prepararNo(
+        'CRIAR_TAREFA',
+        { titulo: 'Ligar pra {{lead.nome}}' },
+        ctxSeco({ clienteId: 'cli-1' }),
+      );
+      prisma.cliente.findFirst.mockResolvedValue({ representanteId: 'rep-1' });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.agendaItem.create).not.toHaveBeenCalled();
+      expect(prisma.usuario.findFirst).not.toHaveBeenCalled();
+      simulado();
+    });
+
+    it('"enviar de verdade" segue criando (o gate é só do modo seco)', async () => {
+      prepararNo(
+        'TRANSFERIR_ATENDIMENTO',
+        {},
+        ctxSeco({ conversationId: 'conv-1', _testeEnviaDeVerdade: true }),
+      );
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: 'conv-1',
+        peerNome: 'F',
+        atribuidoId: null,
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.conversation.updateMany).toHaveBeenCalledOnce();
+    });
+
+    it('cancelarExecucoesDoLead casa só execuções da MESMA natureza (teste ↔ teste, real ↔ real)', async () => {
+      const executeRaw = vi.fn().mockResolvedValue(1);
+      (prisma as unknown as { $executeRaw: unknown }).$executeRaw = executeRaw;
+      const cancelar = (
+        service as unknown as {
+          cancelarExecucoesDoLead: (e: string, l: string, x: string, t: boolean) => Promise<number>;
+        }
+      ).cancelarExecucoesDoLead.bind(service);
+
+      await cancelar('emp-1', 'lead-1', 'exec-1', true);
+      await cancelar('emp-1', 'lead-1', 'exec-1', false);
+
+      // Tagged template: (strings, ...values). O 4º valor é o flag `teste`.
+      const sql = (executeRaw.mock.calls[0][0] as TemplateStringsArray).join('?');
+      expect(sql).toContain('AND teste = ?');
+      expect(executeRaw.mock.calls[0].slice(1)).toEqual(['emp-1', 'lead-1', true, 'exec-1']);
+      expect(executeRaw.mock.calls[1].slice(1)).toEqual(['emp-1', 'lead-1', false, 'exec-1']);
+    });
+  });
+
   describe('CRIAR_LEAD (triagem do Click-to-WhatsApp)', () => {
     /** Conversa de WhatsApp vinda de anúncio, com a atribuição já gravada (etapa 1). */
     const conversaComAnuncio = (over: Record<string, unknown> = {}) => ({

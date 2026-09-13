@@ -2022,6 +2022,17 @@ export class FluxoExecutorService {
       }
       clienteRepId = cliente.representanteId;
     }
+    // MODO SECO do teste (auditoria 13/09, D-3): tarefa de teste nascia no
+    // quadro de uma pessoa real e ficava lá. Mesma regra do WhatsApp/e-mail —
+    // a validação acima roda mesmo assim, que é o que um teste quer conferir.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo: 'Execução de TESTE — tarefa não criada (marque "enviar de verdade" pra valer)',
+        titulo: interpolate(cfg.titulo, ctx),
+        clienteId,
+      };
+    }
     // Responsável: 1) o escolhido no nó (validado na empresa); 2) rep do cliente;
     // 3) rep do lead; 4) fallback primeiro ADMIN/DIRECTOR.
     //
@@ -2504,6 +2515,17 @@ export class FluxoExecutorService {
     if (!conversa) {
       throw new Error(`Conversa ${conversationId} não encontrada na empresa ${empresaId}`);
     }
+    // MODO SECO do teste (auditoria 13/09, D-3): teste do T1 contra conversa
+    // real criava lead REAL no funil. A conversa é validada antes de propósito.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo: 'Execução de TESTE — lead não criado (marque "enviar de verdade" pra valer)',
+        conversationId,
+        peerNome: conversa.peerNome,
+        jaTemLead: Boolean(conversa.leadId),
+      };
+    }
     // Grupo não é contato comercial — não vira lead.
     if (conversa.peerId.includes('@g.us')) {
       return { criado: false, motivo: 'grupo', conversationId };
@@ -2751,6 +2773,17 @@ export class FluxoExecutorService {
     if (!conversa) {
       throw new Error(`Conversa ${conversationId} não encontrada na empresa ${empresaId}`);
     }
+    // MODO SECO do teste (auditoria 13/09, D-3): o handoff pausava o bot numa
+    // conversa REAL e notificava o SAC de verdade.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo:
+          'Execução de TESTE — atendimento não transferido (marque "enviar de verdade" pra valer)',
+        conversationId,
+        atendenteId: cfg.atendenteId ?? null,
+      };
+    }
 
     // Atendente específico (modo A): valida que é da empresa antes de atribuir.
     let atendenteId: string | null = null;
@@ -2864,6 +2897,19 @@ export class FluxoExecutorService {
     this.assertEmpresaId(empresaId, 'PAUSAR_IA');
     const leadId = ctx['leadId'] as string | undefined;
     const religar = cfg.religar === true;
+    // MODO SECO do teste (auditoria 13/09, D-3): o pior caso da família —
+    // teste do T1 com ramo LGPD→PAUSAR_IA silenciava o bot na conversa REAL e
+    // CANCELAVA a execução C1 real do cliente.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo: religar
+          ? 'Execução de TESTE — IA não religada (marque "enviar de verdade" pra valer)'
+          : 'Execução de TESTE — IA não pausada (marque "enviar de verdade" pra valer)',
+        leadId,
+        botLigado: religar,
+      };
+    }
 
     // ⚠️ NÃO exige `leadId`. Este nó não precisa de lead — precisa de TELEFONE,
     // que é como ele acha a conversa. Exigir lead derrubou dois pedidos REAIS
@@ -2955,8 +3001,11 @@ export class FluxoExecutorService {
     // último instante por `execucaoViva` no conversar-ia.
     // Só há o que cancelar quando existe lead: as execuções vivas são indexadas
     // por ele. Pausa vinda de contexto de PEDIDO não tem fila de lead pra matar.
+    const ehTeste = (ctx as Record<string, unknown>)['_teste'] === true;
     const canceladas =
-      religar || !leadId ? 0 : await this.cancelarExecucoesDoLead(empresaId, leadId, execucaoId);
+      religar || !leadId
+        ? 0
+        : await this.cancelarExecucoesDoLead(empresaId, leadId, execucaoId, ehTeste);
     return {
       leadId,
       sufixo,
@@ -2977,11 +3026,16 @@ export class FluxoExecutorService {
    *
    * Best-effort: falhar aqui não pode impedir a pausa em si, que é o efeito
    * principal da ação.
+   *
+   * `teste` casa só execuções da MESMA natureza (auditoria 13/09, D-3): um
+   * teste "enviar de verdade" nunca mata a régua REAL do cliente, e uma
+   * execução real não derruba o teste de quem está medindo.
    */
   private async cancelarExecucoesDoLead(
     empresaId: string,
     leadId: string,
     execucaoIdAtual: string,
+    teste: boolean,
   ): Promise<number> {
     try {
       // Raw como no supersede do conversar-ia: filtro por chave de JSON no
@@ -2992,6 +3046,7 @@ export class FluxoExecutorService {
         WHERE "empresaId" = ${empresaId}
           AND status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
           AND (contexto #>> '{leadId}') = ${leadId}
+          AND teste = ${teste}
           AND id <> ${execucaoIdAtual}`;
     } catch (err) {
       this.logger.warn(
@@ -3328,6 +3383,17 @@ export class FluxoExecutorService {
     });
     if (!destino) {
       throw new Error(`Etapa destino ${cfg.etapaDestinoId} não encontrada na empresa ${empresaId}`);
+    }
+    // MODO SECO do teste (auditoria 13/09, D-3): o lote movia leads REAIS de
+    // etapa e disparava LEAD_ETAPA_MUDOU pra cada um.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo: 'Execução de TESTE — lote não liberado (marque "enviar de verdade" pra valer)',
+        etapaOrigemId: cfg.etapaOrigemId,
+        etapaDestinoId: cfg.etapaDestinoId,
+        quantidade,
+      };
     }
     const etapaEnum: 'NOVO' | 'GANHO' | 'PERDIDO' =
       destino.tipo === 'GANHO' ? 'GANHO' : destino.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
