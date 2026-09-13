@@ -11,8 +11,8 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { readFile } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, extname, resolve, sep } from "node:path";
 import { z } from "zod";
 import { api, ApiError } from "./api.js";
 import { seg } from "./caminho.js";
@@ -1448,7 +1448,41 @@ server.registerTool(
       // ── ARQUIVO ──
       if (!caminhoArquivo)
         return erro("Informe caminhoArquivo (arquivo) ou url + nome (link).");
-      const ext = extname(caminhoArquivo).toLowerCase();
+      // H-1 (auditoria 13/09/2026): `readFile` de QUALQUER caminho absoluto subia
+      // pro bucket do tenant — inclusive `.claude.json`, com os tokens de API —
+      // e qualquer membro do quadro baixava. Só lê dentro das pastas listadas em
+      // BETINNA_MCP_ANEXOS_DIR (separadas por `;`), nunca arquivo oculto. Sem a
+      // variável, anexo por ARQUIVO fica desligado; anexo por LINK segue.
+      const pastas = (process.env.BETINNA_MCP_ANEXOS_DIR ?? "")
+        .split(";")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (pastas.length === 0) {
+        return erro(
+          "Anexo por ARQUIVO local está desligado nesta instância (defina BETINNA_MCP_ANEXOS_DIR " +
+            "com as pastas permitidas, separadas por ';'). Use url + nome.",
+        );
+      }
+      let real: string;
+      try {
+        real = await realpath(resolve(caminhoArquivo));
+      } catch {
+        return erro(
+          `Não consegui ler o arquivo em "${caminhoArquivo}". Use caminho ABSOLUTO.`,
+        );
+      }
+      const norm = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
+      const dentroDePastaPermitida = pastas.some((p) => {
+        const base = norm(resolve(p));
+        return norm(real) === base || norm(real).startsWith(base.endsWith(sep) ? base : base + sep);
+      });
+      if (!dentroDePastaPermitida || basename(real).startsWith(".")) {
+        return erro(
+          `Arquivo fora das pastas permitidas (ou oculto): "${caminhoArquivo}". ` +
+            `Permitidas: ${pastas.join(", ")}.`,
+        );
+      }
+      const ext = extname(real).toLowerCase();
       const mime = EXT_MIME[ext];
       if (!mime) {
         return erro(
@@ -1457,7 +1491,7 @@ server.registerTool(
       }
       let buf: Buffer;
       try {
-        buf = await readFile(caminhoArquivo);
+        buf = await readFile(real);
       } catch {
         return erro(
           `Não consegui ler o arquivo em "${caminhoArquivo}". Use caminho ABSOLUTO.`,
@@ -2016,13 +2050,21 @@ server.registerTool(
         .boolean()
         .default(false)
         .describe(
-          "true = envia WhatsApp/e-mail DE VERDADE. Default false (modo seco).",
+          "true = envia WhatsApp/e-mail DE VERDADE. Default false (modo seco). " +
+            "Com true, EXIGE `confirmoEnvioReal: true` e `conversationId`.",
+        ),
+      confirmoEnvioReal: z
+        .literal(true)
+        .optional()
+        .describe(
+          "Dupla chave do envio real: só passe true depois de o Léo autorizar ESTE teste. " +
+            "Sem isso, `enviarDeVerdade` é recusado.",
         ),
       conversationId: z
         .string()
         .optional()
         .describe(
-          "Conversa REAL contra a qual testar (chega no contexto da execução).",
+          "Conversa REAL contra a qual testar (chega no contexto da execução). Obrigatória no envio real.",
         ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
@@ -2032,13 +2074,24 @@ server.registerTool(
       fluxoId,
       contexto,
       enviarDeVerdade,
+      confirmoEnvioReal,
       conversationId,
     }: {
       fluxoId: string;
       contexto?: Record<string, unknown>;
       enviarDeVerdade?: boolean;
+      confirmoEnvioReal?: true;
       conversationId?: string;
     }) => {
+      // Envio real com um boolean só não bastava (auditoria 13/09/2026, H-3):
+      // a mensagem sai pro WhatsApp do cliente e não tem desfazer. Mesma dupla
+      // chave do `inbox_conversa_zerar` e do `leads_excluir`.
+      if (enviarDeVerdade === true && (confirmoEnvioReal !== true || !conversationId)) {
+        return erro(
+          "Envio REAL exige `confirmoEnvioReal: true` E `conversationId`. " +
+            "Sem os dois, rode em modo seco (enviarDeVerdade: false).",
+        );
+      }
       // enviarDeVerdade/conversationId são TOP-LEVEL no endpoint (irmãos do
       // contexto) — dentro do contexto eles seriam ignorados em silêncio.
       const r = await api.post<unknown>("/fluxos/testar", {
