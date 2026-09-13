@@ -83,7 +83,13 @@ export class FluxoEventBusService {
     if (!leadId || contexto['conversationId']) return contexto;
     try {
       const conversa = await this.prisma.conversation.findFirst({
-        where: { empresaId, leadId, canal: 'WHATSAPP' },
+        // Caixa da EMPRESA (`proprietarioId: null`), como `conversaDaEmpresaDoLead`
+        // do conversar-ia. Sem o filtro, a conversa mais recente podia ser a do
+        // WhatsApp PESSOAL de um rep (D38) e o fluxo da empresa nascia com ela:
+        // PAUSAR_IA, estado da conversa e histórico da IA na caixa errada,
+        // respondidos pelo número central (auditoria 13/09/2026, D-2). Fluxo
+        // pessoal recebe `proprietarioId` no próprio evento e filtra em :312.
+        where: { empresaId, leadId, canal: 'WHATSAPP', proprietarioId: null },
         orderBy: { ultimaMsgEm: 'desc' },
         select: { id: true },
       });
