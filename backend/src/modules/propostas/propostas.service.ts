@@ -1,3 +1,4 @@
+import { escapeHtml } from '@shared/utils/interpolate';
 import { Injectable, Logger } from '@nestjs/common';
 import { anexarDescricaoDoProduto } from './descricao-do-produto.util';
 import { Prisma, type PropostaModalidade } from '@prisma/client';
@@ -811,8 +812,8 @@ export class PropostasService {
     const aceite = await this.aceiteSvc.gerarLink(alvo.id, alvo.empresaId, alvo.status);
 
     const html =
-      `<p>Olá, ${data.cliente.nome}!</p>` +
-      `<p>Segue a proposta comercial <strong>${data.numero}</strong> da ${data.empresa.nome}.</p>` +
+      `<p>Olá, ${escapeHtml(data.cliente.nome)}!</p>` + // nome vem do cadastro/site: escapado (C-2, 13/09)
+      `<p>Segue a proposta comercial <strong>${data.numero}</strong> da ${escapeHtml(data.empresa.nome)}.</p>` +
       `<p>Valor total: <strong>${new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'BRL',

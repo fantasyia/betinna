@@ -1832,7 +1832,10 @@ export class FluxoExecutorService {
     emails = vivos;
 
     const assunto = interpolate(cfg.assunto, ctx);
-    const corpo = interpolate(cfg.corpo, ctx);
+    // Corpo é HTML: valor interpolado (`{{lead.nome}}` digitado no site,
+    // `{{custom.*}}` capturado pela IA) é escapado — antes ia cru e virava HTML
+    // com a marca do tenant, inclusive no e-mail interno pro REP (C-2, 13/09).
+    const corpo = interpolate(cfg.corpo, ctx, { escapeHtml: true });
     this.assertSemPlaceholder('ENVIAR_EMAIL', { assunto, corpo });
 
     // MODO SECO do teste, mesma regra do WhatsApp: e-mail de teste chegaria na

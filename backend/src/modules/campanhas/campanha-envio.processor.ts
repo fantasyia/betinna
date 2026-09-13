@@ -20,6 +20,11 @@ import { CampanhasService } from './campanhas.service';
 function interpolar(template: string, vars: Record<string, unknown>): string {
   return interpolate(template, vars, { ausenteVazio: true });
 }
+// E-mail é HTML: o valor (`{{cliente.nome}}` do checkout) é escapado — antes ia
+// cru e virava HTML com a marca do tenant (auditoria 13/09/2026, C-2).
+function interpolarHtml(template: string, vars: Record<string, unknown>): string {
+  return interpolate(template, vars, { ausenteVazio: true, escapeHtml: true });
+}
 
 // ─── Processor ───────────────────────────────────────────────────────────────
 
@@ -192,7 +197,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
       ? interpolar(dest.campanha.mensagemWa, vars)
       : null;
     let mensagemEmailFinal = dest.campanha.mensagemEmail
-      ? interpolar(dest.campanha.mensagemEmail, vars)
+      ? interpolarHtml(dest.campanha.mensagemEmail, vars)
       : null;
 
     if (dest.campanha.usarIaPersonalizacao) {

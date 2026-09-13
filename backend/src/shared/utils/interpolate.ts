@@ -17,7 +17,7 @@
 export function interpolate(
   template: string,
   vars: unknown,
-  opts: { ausenteVazio?: boolean } = {},
+  opts: { ausenteVazio?: boolean; escapeHtml?: boolean } = {},
 ): string {
   const ausente = (match: string): string => (opts.ausenteVazio ? '' : match);
   return template.replace(/\{\{([\w.]+)\}\}/g, (match, key: string) => {
@@ -27,8 +27,24 @@ export function interpolate(
       if (val == null || typeof val !== 'object') return ausente(match);
       val = (val as Record<string, unknown>)[part];
     }
-    return val != null ? String(val) : ausente(match);
+    if (val == null) return ausente(match);
+    // `escapeHtml: true` quando o template é HTML (e-mail): o VALOR vem de
+    // gente de fora (nome digitado no site, cidade capturada pela IA) e ia cru
+    // pro corpo — `Ana</p><a href="https://evil">Regularize</a>` virava HTML
+    // com a marca do tenant (auditoria 13/09/2026, C-2). O template em si é
+    // do autor e fica intacto; só o valor interpolado é escapado.
+    return opts.escapeHtml ? escapeHtml(String(val)) : String(val);
   });
+}
+
+/** Escapa os 5 caracteres que viram HTML. Pra VALOR dentro de template HTML. */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**

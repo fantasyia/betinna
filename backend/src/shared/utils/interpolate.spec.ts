@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interpolate, placeholdersPendentes } from './interpolate';
+import { escapeHtml, interpolate, placeholdersPendentes } from './interpolate';
 
 describe('interpolate', () => {
   const vars = { cliente: { nome: 'João' }, empresa: { nome: 'Acme' } };
@@ -46,5 +46,30 @@ describe('placeholdersPendentes', () => {
 
   it('chave só com "{" solto não conta — o regex é estreito de propósito', () => {
     expect(placeholdersPendentes('preço { 10 } e { { a } }')).toEqual([]);
+  });
+});
+
+/**
+ * Auditoria 13/09/2026 (C-2): valor interpolado num template HTML ia cru —
+ * nome digitado no site virava HTML no e-mail com a marca do tenant.
+ */
+describe('interpolate — escapeHtml pra template de e-mail', () => {
+  it('escapa o VALOR, não o template', () => {
+    const html = interpolate(
+      '<p>Olá, {{lead.nome}}!</p>',
+      { lead: { nome: 'Ana</p><a href="https://evil">x</a>' } },
+      { escapeHtml: true },
+    );
+    expect(html).toBe(
+      '<p>Olá, Ana&lt;/p&gt;&lt;a href=&quot;https://evil&quot;&gt;x&lt;/a&gt;!</p>',
+    );
+  });
+
+  it('sem a opção, segue cru (WhatsApp é texto puro)', () => {
+    expect(interpolate('Oi {{n}}', { n: '<b>' })).toBe('Oi <b>');
+  });
+
+  it('escapeHtml cobre & < > " \'', () => {
+    expect(escapeHtml(`&<>"'`)).toBe('&amp;&lt;&gt;&quot;&#39;');
   });
 });
