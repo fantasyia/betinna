@@ -245,7 +245,13 @@ describe('FluxoExecutorService', () => {
       emailSvc as never,
       conversarIa as never,
       bus as never,
-      { aguardarSlot: vi.fn(), esperaAntesDoProativoMs: vi.fn().mockResolvedValue(0) } as never,
+      {
+        aguardarSlot: vi.fn(),
+        esperaAntesDoProativoMs: vi.fn().mockResolvedValue(0),
+        // Canal de e-mail (Bateria 3, P4/P5): janela própria + cota própria.
+        esperaAntesDoEmailMs: vi.fn().mockResolvedValue(0),
+        reservarCotaEmailDoDia: vi.fn().mockResolvedValue(undefined),
+      } as never,
       integracaoStatus as never,
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
@@ -2617,7 +2623,13 @@ describe('FluxoExecutorService — lead resolvido pelo cliente', () => {
       emailSvc as never,
       conversarIa as never,
       bus as never,
-      { aguardarSlot: vi.fn(), esperaAntesDoProativoMs: vi.fn().mockResolvedValue(0) } as never,
+      {
+        aguardarSlot: vi.fn(),
+        esperaAntesDoProativoMs: vi.fn().mockResolvedValue(0),
+        // Canal de e-mail (Bateria 3, P4/P5): janela própria + cota própria.
+        esperaAntesDoEmailMs: vi.fn().mockResolvedValue(0),
+        reservarCotaEmailDoDia: vi.fn().mockResolvedValue(undefined),
+      } as never,
       { marcarDesconectado: vi.fn() } as never,
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never,

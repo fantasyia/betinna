@@ -216,6 +216,30 @@ export function resolveTetoDiario(raw: unknown): TetoDiarioConfig {
   };
 }
 
+/**
+ * Teto diário do canal de E-MAIL (Bateria 3, P5 — 14/09/2026).
+ *
+ * Nasce INATIVO de propósito: o número é decisão comercial do Léo, e ligar com
+ * um valor inventado mudaria o volume da régua sem ninguém ter escolhido. A
+ * mecânica fica pronta; virar `ativo: true` + `maxPorDia` na config da empresa
+ * (`emailTransacional.tetoDiario`) liga.
+ */
+export const TETO_DIARIO_EMAIL_DEFAULT: TetoDiarioConfig = { ativo: false, maxPorDia: 500 };
+
+export function resolveTetoDiarioEmail(raw: unknown): TetoDiarioConfig {
+  const c = (raw ?? {}) as Partial<TetoDiarioConfig>;
+  return {
+    ativo: typeof c.ativo === 'boolean' ? c.ativo : TETO_DIARIO_EMAIL_DEFAULT.ativo,
+    maxPorDia: naFaixa(c.maxPorDia, 1, 100_000, TETO_DIARIO_EMAIL_DEFAULT.maxPorDia),
+  };
+}
+
+/** Chave do contador diário — a data é de BRASÍLIA, igual à janela (P5). */
+export function chaveTetoDiarioEmail(empresaId: string, agora: Date): string {
+  const meiaNoite = new Date(emBrt(agora).inicioDoDiaUtc + 12 * 3600_000);
+  return `email:dia:${empresaId}:${meiaNoite.toISOString().slice(0, 10)}`;
+}
+
 /** Chave do contador diário — a data é a de BRASÍLIA, igual à janela. */
 export function chaveTetoDiario(empresaId: string, agora: Date): string {
   const meiaNoite = new Date(emBrt(agora).inicioDoDiaUtc + 12 * 3600_000);

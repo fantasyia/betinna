@@ -519,9 +519,13 @@ export class FluxoExecutorService {
     // Então o gatilho vira só atalho, e o critério de verdade é a conversa viva.
     // Falha FECHADO: sem inbound recente, é abordagem e espera.
     let ehResposta = false;
+    // ENVIAR_EMAIL entrou aqui em 14/09 (Bateria 3, P4): a guarda testava só os
+    // dois de WhatsApp, e nenhum e-mail era adiado pra janela — nunca.
     if (
       no.tipo === 'ACAO' &&
-      (no.acaoTipo === 'ENVIAR_WHATSAPP' || no.acaoTipo === 'CONVERSAR_IA')
+      (no.acaoTipo === 'ENVIAR_WHATSAPP' ||
+        no.acaoTipo === 'CONVERSAR_IA' ||
+        no.acaoTipo === 'ENVIAR_EMAIL')
     ) {
       const fluxo = await this.prisma.fluxo.findUnique({
         where: { id: execucao.fluxoId },
@@ -548,7 +552,7 @@ export class FluxoExecutorService {
       const esperaJanela =
         ehResposta || this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
           ? 0
-          : await this.pacing.esperaAntesDoProativoMs(execucao.empresaId).catch((err) => {
+          : await this.esperaDoCanal(no.acaoTipo, execucao.empresaId).catch((err) => {
               // Falha FECHADO: Redis/DB soluçando não pode virar mensagem fora da
               // janela (era `.catch(() => 0)` — auditoria 13/09, D-7). Reagenda.
               this.logger.warn(
@@ -1235,6 +1239,15 @@ export class FluxoExecutorService {
       .catch(() => null);
     if (!existe) throw new LeadRemovidoError(leadId);
     throw new Error(`Lead ${leadId} nao encontrado na empresa ${empresaId}`);
+  }
+
+  /**
+   * Espera da janela/teto no canal do nó — e-mail tem cota própria (P4/P5).
+   */
+  private esperaDoCanal(acaoTipo: string | null | undefined, empresaId: string): Promise<number> {
+    return acaoTipo === 'ENVIAR_EMAIL'
+      ? this.pacing.esperaAntesDoEmailMs(empresaId)
+      : this.pacing.esperaAntesDoProativoMs(empresaId);
   }
 
   private async conversaViva(empresaId: string, leadId?: string): Promise<boolean> {
@@ -1949,6 +1962,10 @@ export class FluxoExecutorService {
     // reputação do domínio, e quem para de chegar junto é o transacional —
     // confirmação de pedido, rastreio, senha.
     const remetenteEmail = await this.remetenteDoFluxo(fluxoId);
+    // TETO DIÁRIO do canal (P5): reserva UMA vez por passo, aqui — último ponto
+    // antes do envio de verdade, depois de LGPD/bounce terem podado a lista.
+    // Estourar levanta ForaDaJanelaEnvioError, que o executor já sabe reagendar.
+    await this.pacing.reservarCotaEmailDoDia(empresaId);
     for (const para of emails) {
       const ehContato = !!emailContatoLgpd && para.trim().toLowerCase() === emailContatoLgpd;
       const r = await this.emailSvc.enviarHtmlLivre({

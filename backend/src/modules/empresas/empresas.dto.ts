@@ -226,6 +226,19 @@ const emailTransacionalSchema = z
      * isto um remetente customizado saía como qualquer domínio verificado
      * nela. Vazio = nenhum remetente customizado (vale o default do env).
      */
+    /**
+     * Teto diário do canal de e-mail (Bateria 3, P5 — 14/09/2026). Nasce
+     * inativo: o número é decisão comercial, e o caminho de envio só o respeita
+     * quando `ativo: true`.
+     */
+    tetoDiario: z
+      .object({
+        ativo: z.boolean(),
+        maxPorDia: z.number().int().min(1).max(100_000),
+      })
+      .partial()
+      .nullable()
+      .optional(),
     dominiosRemetente: z
       .array(
         z

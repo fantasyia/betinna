@@ -8,14 +8,17 @@ import {
   JANELA_ENVIO_DEFAULT,
   type JanelaEnvioConfig,
   TETO_DIARIO_DEFAULT,
+  TETO_DIARIO_EMAIL_DEFAULT,
   type TetoDiarioConfig,
   chaveTetoDiario,
+  chaveTetoDiarioEmail,
   esperaAteJanelaMs,
   esperaAteProximoDiaMs,
   incrementoMs,
   resolveEnvioWhatsapp,
   resolveJanelaEnvio,
   resolveTetoDiario,
+  resolveTetoDiarioEmail,
 } from './whatsapp-pacing.util';
 
 /**
@@ -117,6 +120,83 @@ return novo`;
       return 0; // Redis fora não segura envio (mesma postura do resto do pacing).
     }
     return usado >= teto.maxPorDia ? esperaAteProximoDiaMs(janela, agora) : 0;
+  }
+
+  /**
+   * Quantos ms faltam até poder mandar um E-MAIL proativo (0 = pode agora).
+   *
+   * A Bateria 3 (P4, 14/09) mediu que a janela de horário NÃO governava e-mail:
+   * a guarda do executor testava só `ENVIAR_WHATSAPP`/`CONVERSAR_IA`, então
+   * nenhum e-mail era adiado, nunca. Hoje isso não morde porque a etiquetagem da
+   * régua fria é manual e em lote (o humano é o relógio) — e volta a morder no
+   * dia em que ela virar automática.
+   *
+   * A JANELA é a mesma do WhatsApp: é o horário comercial da empresa, não uma
+   * regra de canal. O TETO é próprio (`emailTransacional.tetoDiario`) — misturar
+   * a cota dos dois canais faria uma campanha de WhatsApp calar a régua de
+   * e-mail, e vice-versa.
+   */
+  async esperaAntesDoEmailMs(empresaId: string): Promise<number> {
+    if (!empresaId) return 0;
+    const agora = new Date();
+    const { janela } = await this.lerConfig(empresaId);
+    const esperaJanela = esperaAteJanelaMs(janela, agora);
+    if (esperaJanela > 0) return esperaJanela;
+    const teto = await this.lerTetoEmail(empresaId);
+    if (!teto.ativo) return 0;
+    let usado = 0;
+    try {
+      usado = Number((await this.redis.get(chaveTetoDiarioEmail(empresaId, agora))) ?? 0) || 0;
+    } catch {
+      return 0; // Redis fora não segura envio (mesma postura do resto do pacing).
+    }
+    return usado >= teto.maxPorDia ? esperaAteProximoDiaMs(janela, agora) : 0;
+  }
+
+  /**
+   * Consome 1 da cota diária de e-mail — chamar imediatamente ANTES do envio,
+   * como o `aguardarSlot` faz no WhatsApp. Estourar ADIA (erro de janela), não
+   * descarta: quem chama reagenda.
+   */
+  async reservarCotaEmailDoDia(empresaId: string): Promise<void> {
+    if (!empresaId) return;
+    const teto = await this.lerTetoEmail(empresaId);
+    if (!teto.ativo) return;
+    const agora = new Date();
+    let r: unknown;
+    try {
+      r = await this.redis.eval(
+        WhatsappPacingService.TETO_LUA,
+        [chaveTetoDiarioEmail(empresaId, agora)],
+        [teto.maxPorDia, 36 * 3600],
+      );
+    } catch {
+      return;
+    }
+    if (Number(r) === -1) {
+      const { janela } = await this.lerConfig(empresaId);
+      const espera = esperaAteProximoDiaMs(janela, agora);
+      this.logger.warn(
+        `Teto diário de E-MAIL atingido (${teto.maxPorDia}/dia) na empresa ${empresaId} — ` +
+          `adiando ${Math.round(espera / 60000)} min`,
+      );
+      throw new ForaDaJanelaEnvioError(espera, new Date(Date.now() + espera), 'teto_diario');
+    }
+  }
+
+  /** `Empresa.config.emailTransacional.tetoDiario` (default: inativo). */
+  private async lerTetoEmail(empresaId: string): Promise<TetoDiarioConfig> {
+    try {
+      const empresa = await this.prisma.empresa.findUnique({
+        where: { id: empresaId },
+        select: { config: true },
+      });
+      const raw = (empresa?.config as { emailTransacional?: { tetoDiario?: unknown } } | null)
+        ?.emailTransacional;
+      return resolveTetoDiarioEmail(raw?.tetoDiario);
+    } catch {
+      return TETO_DIARIO_EMAIL_DEFAULT;
+    }
   }
 
   /**
