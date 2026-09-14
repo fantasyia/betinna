@@ -112,6 +112,15 @@ async function interpretar<T>(res: Response): Promise<T> {
     // code + details: sem eles, "Dados inválidos" não diz NADA de acionável.
     const codigo = json.error?.code ? ` [${json.error.code}]` : '';
     const msg = `${base}${codigo}${formatarDetalhes(json.error?.details)}`;
+    if (res.status === 403) {
+      // 403 do PAT quase sempre é ESCOPO faltando, não permissão do usuário — e a
+      // mensagem genérica mandava o agente tentar de novo pra sempre (H-8).
+      throw new ApiError(
+        `${msg}. Se for token de API: o escopo desta rota não está marcado no token ` +
+          `(Quadros → Tokens de API). Rotas de ativar/disparar são barradas de propósito.`,
+        403,
+      );
+    }
     if (res.status === 401) {
       throw new ApiError(`${msg}. O token pode ter sido revogado — gere outro em Quadros → Tokens de API.`, 401);
     }

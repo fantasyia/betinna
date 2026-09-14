@@ -116,6 +116,53 @@ function ok(payload: unknown) {
   };
 }
 
+/** Sobrou só o suficiente pra reconhecer o contato — nunca pra discar (H-7). */
+function mascararTelefone(v: unknown): string | null {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const d = s.replace(/\D/g, "");
+  if (d.length < 4) return "****";
+  const ddd = d.length >= 10 ? d.slice(-11, -9) || d.slice(0, 2) : "";
+  return `${ddd ? `(${ddd}) ` : ""}****-${d.slice(-4)}`;
+}
+
+/** `joao.silva@empresa.com.br` → `j****@empresa.com.br` (H-7). */
+function mascararEmail(v: unknown): string | null {
+  const s = String(v ?? '').trim();
+  if (!s.includes("@")) return s ? "****" : null;
+  const [local, dominio] = s.split("@");
+  return `${local.slice(0, 1)}****@${dominio}`;
+}
+
+/**
+ * Tira telefone/e-mail da LISTAGEM e põe no lugar a versão mascarada + a flag
+ * de existência — o mesmo desenho da Hafidme, onde a busca não entrega contato
+ * e revelar é ação individual (auditoria 13/09, H-7; decisão do Léo, 14/09).
+ *
+ * `contatos_ver` (um contato por vez, por id) continua devolvendo tudo: é o
+ * "revelar". Assim a base inteira não escorre pra dentro do contexto de uma
+ * conversa só porque alguém pediu "lista os contatos".
+ */
+function mascararContatos(resp: unknown): unknown {
+  if (!resp || typeof resp !== "object") return resp;
+  const env = resp as { data?: unknown };
+  const lista = Array.isArray(env.data) ? env.data : Array.isArray(resp) ? resp : null;
+  if (!lista) return resp;
+  const mascarados = lista.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const c = item as Record<string, unknown>;
+    const { telefone, email, ...resto } = c;
+    return {
+      ...resto,
+      temTelefone: Boolean(telefone),
+      temEmail: Boolean(email),
+      telefoneMascarado: mascararTelefone(telefone),
+      emailMascarado: mascararEmail(email),
+    };
+  });
+  return Array.isArray(resp) ? mascarados : { ...env, data: mascarados };
+}
+
 function erro(message: string) {
   return {
     content: [{ type: "text" as const, text: `ERRO: ${message}` }],
@@ -2144,8 +2191,12 @@ server.registerTool(
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
-    await api.post(`/fluxos/${seg(fluxoId)}/desarquivar`);
-    return ok({ fluxoId, status: "RASCUNHO" });
+    // Status vem do SERVIDOR (H-7/H-9, 13/09): devolver "RASCUNHO" fixo fazia a
+    // tool mentir no dia em que o backend mudasse o destino do desarquivar.
+    const r = await api.post<{ status?: string } | undefined>(
+      `/fluxos/${seg(fluxoId)}/desarquivar`,
+    );
+    return ok({ fluxoId, status: r?.status ?? "(ver fluxos_ver)" });
   }),
 );
 
@@ -2643,7 +2694,12 @@ server.registerTool(
   {
     description:
       "Lista contatos da empresa (Lead + Cliente + Conversa unificados e deduplicados por " +
-      "telefone), paginado. Contém DADOS PESSOAIS — use só o necessário. Somente leitura.",
+      "telefone), paginado. Somente leitura.\n\n" +
+      "⚠️ A listagem NÃO entrega telefone e e-mail: cada contato volta com `temTelefone`/" +
+      "`temEmail` (existe ou não) e a versão MASCARADA (ex.: `(47) ****-1234`, " +
+      "`j****@empresa.com.br`), que já basta pra identificar e trabalhar a base. " +
+      "Pra ver o dado inteiro de UM contato, use `contatos_ver` — é o \"revelar\", um por vez. " +
+      "Mesma etapa que a Hafidme faz com a base de representantes dela.",
     inputSchema: {
       page: z.number().int().min(1).default(1).describe("Página (1-based)"),
       limit: z
@@ -2688,7 +2744,7 @@ server.registerTool(
       if (args.tipo) qs.set("tipo", args.tipo);
       if (args.representanteId) qs.set("representanteId", args.representanteId);
       const resp = await api.get<unknown>(`/contatos?${qs.toString()}`);
-      return ok(resp);
+      return ok(mascararContatos(resp));
     },
   ),
 );
@@ -3589,7 +3645,9 @@ server.registerTool(
         .boolean()
         .optional()
         .describe("Inclui os trechos gerados da configuração da empresa."),
-      limit: z.number().int().positive().max(200).optional(),
+      // O backend capa em 100 (knowledge.dto) — declarar 200 aqui só produzia 422
+      // depois de o agente montar a chamada (H-11).
+      limit: z.number().int().positive().max(100).optional(),
     },
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
