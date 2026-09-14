@@ -14,6 +14,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@shared/decorators/public.decorator';
 import { UnauthorizedException } from '@shared/errors/app-exception';
 import { ResendWebhookService } from './resend-webhook.service';
+import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
 
 /**
  * Webhook do Resend — entrega, abertura, clique, bounce.
@@ -28,7 +29,10 @@ import { ResendWebhookService } from './resend-webhook.service';
 export class ResendWebhookController {
   private readonly logger = new Logger(ResendWebhookController.name);
 
-  constructor(private readonly svc: ResendWebhookService) {}
+  constructor(
+    private readonly svc: ResendWebhookService,
+    private readonly antiReplay: WebhookAntiReplayService,
+  ) {}
 
   @Public()
   @Post('resend')
@@ -56,6 +60,17 @@ export class ResendWebhookController {
       // verificar deixaria qualquer um inflar o engajamento de uma campanha, e
       // engajamento inflado decide qual e-mail a pessoa recebe depois.
       throw new UnauthorizedException('Assinatura do webhook inválida');
+    }
+    // O Svix reentrega o MESMO evento (retry por timeout nosso, replay manual
+    // no painel) com o mesmo svix-id. Sem dedup, a reentrega contava abertura/
+    // clique de novo (auditoria 13/09, C-9). Redis fora = fail-open (o evento
+    // é idempotente no que importa: bounceEm/entregueEm são datas, não somas —
+    // só os contadores de abertura/clique inflam, e isso é tolerável).
+    if (svixId) {
+      const { fresh } = await this.antiReplay
+        .checkAndMarkWebhook('resend', svixId, svixTimestamp)
+        .catch(() => ({ fresh: true }));
+      if (!fresh) return { ok: true, efeito: 'replay' };
     }
 
     const efeito = await this.svc.aplicar(body);

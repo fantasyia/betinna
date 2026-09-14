@@ -203,6 +203,19 @@ const envioWhatsappSchema = z
   .optional();
 
 // Remetente por-tenant do e-mail transacional (Resend). Vazio/null = default do env (#R4).
+/**
+ * Endereços que RECEBEM resposta de e-mail deste tenant (roteamento do inbound).
+ * O serviço de entrada já lia `config.emailInbound.enderecos`, mas o campo não
+ * existia aqui e o `.strip()` descartava — só o caminho do replyTo funcionava
+ * (auditoria 13/09/2026, C-8).
+ */
+const emailInboundSchema = z
+  .object({
+    enderecos: z.array(z.string().trim().toLowerCase().email().max(160)).max(20).nullable(),
+  })
+  .partial()
+  .optional();
+
 const emailTransacionalSchema = z
   .object({
     fromNome: z.string().trim().min(1).max(80).nullable(),
@@ -548,6 +561,7 @@ export const tenantConfigPatchSchema = z
     inboxInterna: inboxInternaSchema.nullable(),
     envioWhatsapp: envioWhatsappSchema.nullable(),
     emailTransacional: emailTransacionalSchema.nullable(),
+    emailInbound: emailInboundSchema.nullable(),
     alertaConversaEsquecida: alertaConversaEsquecidaSchema.nullable(),
     estoque: estoqueSchema.nullable(),
     comissaoOriginacao: comissaoOriginacaoSchema.nullable(),

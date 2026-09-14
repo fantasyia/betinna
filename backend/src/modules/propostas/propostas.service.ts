@@ -834,6 +834,8 @@ export class PropostasService {
       // Sem chave, um timeout na volta do Resend fazia o retry mandar o mesmo
       // e-mail de novo e o cliente recebia a proposta duplicada.
       idempotencyKey: `proposta-email:${id}:${data.cliente.email}`,
+      // Sem isto saía como "Betinna.ai", sem reply-to do tenant (auditoria 13/09, C-6).
+      empresaId: alvo.empresaId,
     });
     if (!enviado.ok) {
       throw new BusinessRuleException(

@@ -25,6 +25,7 @@ import {
   listConexoesSchema,
 } from './integracoes.dto';
 import { IntegracoesService } from './integracoes.service';
+import { Throttle, seconds } from '@nestjs/throttler';
 
 @ApiTags('integracoes')
 @ApiBearerAuth()
@@ -72,6 +73,9 @@ export class IntegracoesController {
 
   @Post('email/teste')
   @Roles('ADMIN', 'DIRECTOR')
+  // Manda e-mail de verdade a cada chamada — sem teto próprio virava
+  // ferramenta de spam com a marca do tenant (auditoria 13/09, C-12).
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   @Audit({ action: 'email_teste', resource: 'integracao' })
   @ApiOperation({
     summary: 'Envia um e-mail de teste (ou a amostra de um template real, com a marca do tenant)',

@@ -101,14 +101,19 @@ export class ResendService {
     }
 
     // Remetente: override por-tenant (fromNome) > env RESEND_FROM_NAME > 'Betinna.ai'.
-    const fromName = params.fromNome?.trim() || this.env.get('RESEND_FROM_NAME') || 'Betinna.ai';
+    // Quebra de linha em header é injeção de header (auditoria 13/09, C-12):
+    // assunto/fromNome vêm de config do tenant e de template interpolado.
+    const semQuebra = (v: string) => v.replace(/[\r\n]+/g, ' ').trim();
+    const fromName = semQuebra(
+      params.fromNome?.trim() || this.env.get('RESEND_FROM_NAME') || 'Betinna.ai',
+    );
     const from = `${fromName} <${fromEmail}>`;
 
     const body = {
       from,
       to: [params.para],
-      subject: params.assunto,
-      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
+      subject: semQuebra(params.assunto),
+      ...(params.replyTo ? { reply_to: semQuebra(params.replyTo) } : {}),
       ...(params.html ? { html: params.html } : {}),
       ...(params.texto ? { text: params.texto } : {}),
       ...(params.attachments && params.attachments.length > 0

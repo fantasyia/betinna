@@ -156,20 +156,31 @@ export class EmailInboundService {
   private async tenantDoDestinatario(para: string[]): Promise<string | null> {
     if (para.length === 0) return null;
     const alvos = para.map((p) => p.toLowerCase());
+    // orderBy: sem ele o "1º que casar" dependia da ordem física da tabela
+    // (auditoria 13/09, C-8). Duas passadas: endereço DECLARADO em
+    // emailInbound.enderecos ganha de replyTo de qualquer outra empresa.
     const empresas = await this.prisma.empresa
-      .findMany({ where: { ativo: true }, select: { id: true, config: true } })
+      .findMany({
+        where: { ativo: true },
+        select: { id: true, config: true },
+        orderBy: { criadoEm: 'asc' },
+      })
       .catch(() => [] as Array<{ id: string; config: unknown }>);
-    for (const e of empresas) {
+    const lidas = empresas.map((e) => {
       const cfg = (e.config as Record<string, unknown> | null) ?? {};
       const inbound = (cfg.emailInbound as { enderecos?: unknown } | undefined)?.enderecos;
-      const lista = (Array.isArray(inbound) ? inbound : []).map((x) => String(x).toLowerCase());
+      const declarados = (Array.isArray(inbound) ? inbound : []).map((x) =>
+        String(x).toLowerCase(),
+      );
       const replyTo = String(
         (cfg.emailTransacional as { replyTo?: string } | undefined)?.replyTo ?? '',
       ).toLowerCase();
-      if (replyTo) lista.push(replyTo);
-      if (lista.some((end) => end && alvos.includes(end))) return e.id;
-    }
-    return null;
+      return { id: e.id, declarados, replyTo };
+    });
+    const explicita = lidas.find((e) => e.declarados.some((end) => end && alvos.includes(end)));
+    if (explicita) return explicita.id;
+    const porReplyTo = lidas.find((e) => e.replyTo && alvos.includes(e.replyTo));
+    return porReplyTo?.id ?? null;
   }
 
   // ─── Parsing ─────────────────────────────────────────────────────────

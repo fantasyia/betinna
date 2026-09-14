@@ -97,9 +97,16 @@ export class ResendWebhookService {
    */
   async aplicar(evento: {
     type?: string;
-    data?: { email_id?: string; to?: string[] };
+    data?: { email_id?: string; to?: string[]; bounce?: { type?: string } };
   }): Promise<'aplicado' | 'ignorado' | 'semDestinatario' | 'emailSuprimido' | string> {
     const tipo = evento.type ?? '';
+    // Bounce TRANSITÓRIO (caixa cheia, servidor fora por uma hora) não é caixa
+    // morta: marcar o endereço como inválido por isso apagava um contato bom
+    // (auditoria 13/09, C-9). Só Permanent/Undetermined queimam.
+    if (tipo === 'email.bounced' && /transient/i.test(evento.data?.bounce?.type ?? '')) {
+      this.logger.log(`[resend] bounce transitório em ${evento.data?.email_id ?? '?'} — ignorado`);
+      return 'ignorado';
+    }
 
     // E-MAIL RECEBIDO (o "Enable Receiving" do domínio no Resend). Chega pelo
     // MESMO webhook, já assinado — então a resposta do lead vira evento sem

@@ -270,7 +270,7 @@ export function templateReenvioConvite(p: ReenvioConviteParams): {
     html: layout({
       marca: p.marca,
       preheader: `Clique pra definir sua senha e acessar o ${p.empresaNome}.`,
-      title: `Olá, ${escapeHtml(p.nome)} 👋`,
+      title: `Olá, ${p.nome} 👋`, // o layout escapa o title (C-12: era duplo)
       bodyHtml: `
         <p>Você foi convidado(a) pra acessar o <strong>${escapeHtml(p.empresaNome)}</strong>.</p>
         <p>Como o convite anterior expirou ou não foi finalizado, segue um link novo válido por 24h:</p>
@@ -306,7 +306,7 @@ export function templateRecuperarSenha(p: RecuperarSenhaParams): {
     html: layout({
       marca: p.marca,
       preheader: 'Link pra criar uma senha nova.',
-      title: `Olá, ${escapeHtml(p.nome)}`,
+      title: `Olá, ${p.nome}`, // o layout escapa o title (C-12: era duplo)
       bodyHtml: `
         <p>Recebemos um pedido pra redefinir a senha da sua conta.</p>
         <p>Clique no botão abaixo pra criar uma senha nova. O link vale por 1 hora e só pode ser usado uma vez.</p>

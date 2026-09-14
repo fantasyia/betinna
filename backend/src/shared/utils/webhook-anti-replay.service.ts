@@ -28,6 +28,7 @@ export type WebhookProvider =
   | 'mercadolivre'
   | 'iugu'
   | 'evolution'
+  | 'resend'
   | 'fluxo';
 
 export interface AntiReplayResult {
