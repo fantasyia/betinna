@@ -1453,6 +1453,10 @@ export class InboxService {
           },
           direction: MessageDirection.OUTBOUND,
           externalId: null,
+          // Só linha que ainda pode estar em voo. Uma FAILED do contato B (mesmo
+          // texto, mesma janela) recebia o externalId da mensagem entregue ao
+          // contato A — e virava "enviada" no chat errado (auditoria 13/09, A-5).
+          status: { in: [MessageStatus.PENDING, MessageStatus.SENT] },
           conteudo: params.conteudo,
           criadoEm: { gte: new Date(Date.now() - 2 * 60 * 1000) },
         },
