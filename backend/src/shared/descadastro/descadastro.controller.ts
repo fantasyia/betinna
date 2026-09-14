@@ -28,7 +28,12 @@ export class DescadastroController {
 
   @Public()
   @Get('descadastrar')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  // Teto ALTO de propósito (auditoria 13/09, C-12): o "cancelar inscrição" do
+  // Gmail é chamado pelo SERVIDOR do Google, então os cliques de uma campanha
+  // inteira chegam de poucos IPs e caem no mesmo balde. Descadastro que falha
+  // vira clique em "spam", que queima o domínio de envio — o oposto do que o
+  // limite deveria proteger. Segue capado contra abuso real.
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
   paginaConfirmar(@Res() res: Response, @Query('t') token?: string): void {
     if (!token) {
       html(res, pagina('Link inválido', 'Este link de descadastro está incompleto.'));
@@ -52,7 +57,8 @@ export class DescadastroController {
    */
   @Public()
   @Post('descadastrar')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  // Mesma razão do GET acima (C-12): o one-click do Gmail sai da infra deles.
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
   async descadastrar(
     @Res() res: Response,
     @Query('t') tokenQuery?: string,

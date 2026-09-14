@@ -59,6 +59,19 @@ interface BaseLayoutParams {
  * Layout master — todos templates passam pelo mesmo wrapper pra manter
  * identidade visual consistente.
  */
+/**
+ * Escapa uma URL pra dentro de `url('…')` no CSS (auditoria 13/09, C-12).
+ *
+ * `escapeAttr` resolve o contexto de ATRIBUTO HTML, não o de CSS: aspas simples,
+ * parênteses e quebra de linha fecham a função `url()` e deixam declarar regra
+ * nova. Quem edita a marca é ADMIN/DIRECTOR — risco baixo, escape errado do
+ * mesmo jeito. Só http(s) passa; o resto vira string vazia (sem imagem).
+ */
+function escaparUrlCss(url: string): string {
+  if (!/^https?:\/\//i.test(url)) return '';
+  return url.replace(/['"()\\\r\n\s]/g, (c) => encodeURIComponent(c));
+}
+
 function layout(p: BaseLayoutParams): string {
   return p.marca ? layoutDoTenant(p, p.marca) : layoutGenerico(p);
 }
@@ -88,7 +101,7 @@ function layoutDoTenant(
 ): string {
   const acao = m.corAcao ?? m.corPrimaria;
   const textura = m.headerImgUrl
-    ? `background-image:url('${escapeAttr(m.headerImgUrl)}');background-size:600px 90px;background-repeat:no-repeat;`
+    ? `background-image:url('${escaparUrlCss(m.headerImgUrl)}');background-size:600px 90px;background-repeat:no-repeat;`
     : '';
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
