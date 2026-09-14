@@ -128,6 +128,23 @@ describe('SupressaoService — e-mail queimado vale pro Cliente também', () => 
       createMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     $queryRaw: vi.fn().mockResolvedValue([{ n: 0n }]),
+    $executeRaw: vi.fn().mockResolvedValue(1),
+  });
+
+  it('marcarEmailInvalido carimba o Lead por MERGE jsonb (||), nunca read-modify-write (B-7)', async () => {
+    const prisma = prismaC4();
+    prisma.lead.findMany.mockResolvedValue([{ id: 'lead-1' }, { id: 'lead-2' }]);
+    const svc = new SupressaoService(prisma as never);
+
+    await svc.marcarEmailInvalido('emp-1', 'morta@x.com', 'bounce');
+
+    expect(prisma.lead.update).not.toHaveBeenCalled();
+    const [strings, ...valores] = prisma.$executeRaw.mock.calls[0];
+    expect((strings as TemplateStringsArray).join('?')).toContain(
+      `COALESCE("variaveis", '{}'::jsonb) || ?::jsonb`,
+    );
+    expect(JSON.parse(valores[0] as string)).toMatchObject({ emailInvalidoMotivo: 'bounce' });
+    expect(valores[1]).toEqual(['lead-1', 'lead-2']);
   });
 
   it('marcarEmailInvalido etiqueta o Cliente que usa o endereço (mesmo sem Lead)', async () => {

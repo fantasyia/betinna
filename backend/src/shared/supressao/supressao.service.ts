@@ -163,7 +163,7 @@ export class SupressaoService {
     });
     const leads = await this.prisma.lead.findMany({
       where: { empresaId, contatoEmail: { equals: alvo, mode: 'insensitive' } },
-      select: { id: true, variaveis: true },
+      select: { id: true },
     });
     // CLIENTE também: campanha mira Cliente, e cliente do site não tem Lead.
     // Só marcar Lead deixava quem clicou "spam" alvo da campanha seguinte
@@ -188,20 +188,25 @@ export class SupressaoService {
     }
     // Rastro no lead: a tag diz "não mande"; o carimbo diz o que aconteceu e
     // quando — é o que permite auditar depois sem cruzar log de provedor.
-    for (const l of leads) {
-      const base = (l.variaveis as Record<string, unknown> | null) ?? {};
-      await this.prisma.lead
-        .update({
-          where: { id: l.id },
-          data: {
-            variaveis: {
-              ...base,
-              emailInvalidoEm: new Date().toISOString(),
-              emailInvalidoMotivo: motivo,
-            },
-          },
-        })
-        .catch(() => undefined);
+    // MERGE no banco (`||`), nunca read-modify-write: o bounce chega concorrente
+    // com o turno de IA que acabou de gravar uma resposta do lead, e o RMW
+    // apagava a captura (regra da casa; auditoria 13/09/2026, B-7).
+    if (leads.length > 0) {
+      const carimbo = JSON.stringify({
+        emailInvalidoEm: new Date().toISOString(),
+        emailInvalidoMotivo: motivo,
+      });
+      const ids = leads.map((l) => l.id);
+      await this.prisma.$executeRaw`
+        UPDATE "Lead"
+           SET "variaveis" = COALESCE("variaveis", '{}'::jsonb) || ${carimbo}::jsonb,
+               "atualizadoEm" = NOW()
+         WHERE "id" = ANY(${ids}::text[])`.catch((err: unknown) => {
+        this.logger.warn(
+          `Carimbo emailInvalido em ${ids.length} lead(s) falhou: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return 0;
+      });
     }
     this.logger.warn(
       `E-mail ${alvo} marcado como inválido (${motivo}) em ${leads.length} lead(s) e ` +
