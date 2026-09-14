@@ -215,7 +215,12 @@ export class TinyOAuthService {
         body: params,
         integration: 'tiny',
         redactKeys: ['client_secret', 'code', 'refresh_token', 'access_token'],
-        retries: 2,
+        // NUNCA retenta: o refresh_token do Tiny ROTACIONA a cada troca e o
+        // `code` é de uso único. Timeout depois de o Keycloak já ter trocado →
+        // o retry reenviava o token velho → invalid_grant → conexão derrubada
+        // (auditoria 13/09/2026, I-D). 5xx real vira erro visível e o cron de
+        // renovação tenta de novo na rodada seguinte, com o token ainda válido.
+        retries: 0,
       });
       if (!res.data?.access_token) {
         throw new IntegrationException('Tiny /token sem access_token', ErrorCode.INTEGRATION_ERROR);
