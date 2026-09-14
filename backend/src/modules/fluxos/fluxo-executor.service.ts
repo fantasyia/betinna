@@ -61,6 +61,7 @@ import {
   type WebhookExternoConfig,
   type LiberarLoteConfig,
   type ExecucaoContexto,
+  PEDIDOS_EXPLICITOS_DO_LEAD,
   SINAIS_ROTEAMENTO,
 } from './fluxo-executor.types';
 
@@ -949,6 +950,33 @@ export class FluxoExecutorService {
       return;
     }
 
+    // ── P1 (Bateria 3, 14/09): pedido EXPLÍCITO do lead ganha de classificação ──
+    //
+    // Medido: o lead escreve "quero falar com uma pessoa", a IA grava
+    // `pediu_contato: sim` E `classificacao_final: Indefinido` na mesma passada.
+    // O roteador da classificação roda ANTES e manda pra Descartado; o portão
+    // "Pediu pra falar com uma pessoa?" existe no grafo, mas num ramo adiante
+    // que nunca é alcançado. Ninguém erra, nada falha — a pessoa que pediu
+    // atendimento humano é descartada em silêncio.
+    //
+    // O conserto vive aqui, e não no grafo, de propósito: vale pra QUALQUER
+    // fluxo que tenha o portão, não muda desenho nenhum, e não exige
+    // full-replace de fluxo ativo (que cancelaria as conversas em voo).
+    // Não inventa destino: só desvia pro nó que o autor já desenhou.
+    const desvio = await this.portaoDeSinalExplicito(no, contexto, execucao.fluxoId);
+    if (desvio) {
+      await this.prisma.fluxoExecucao.update({
+        where: { id: execucaoId },
+        data: { contexto: toJsonInput({ ...contexto, _desviouPedidoExplicito: true }) },
+      });
+      await this.enfileirarSucessor(execucaoId, desvio.noId, jobId, 0);
+      this.logger.warn(
+        `Execução ${execucaoId}: ${desvio.motivo} — roteamento desviado do nó "${no.titulo}" ` +
+          `para "${desvio.titulo}" (P1, 14/09)`,
+      );
+      return;
+    }
+
     // Determina próximos nós
     const labelParaNavegar =
       no.tipo === 'CONDICAO'
@@ -1248,6 +1276,53 @@ export class FluxoExecutorService {
     return acaoTipo === 'ENVIAR_EMAIL'
       ? this.pacing.esperaAntesDoEmailMs(empresaId)
       : this.pacing.esperaAntesDoProativoMs(empresaId);
+  }
+
+  /**
+   * O lead pediu algo EXPLICITAMENTE e este roteador ia decidir por ele?
+   *
+   * Devolve o portão do próprio fluxo que trata o pedido (nó CONDICAO cujo
+   * `campo` é a variável do sinal), ou null. Só age em roteador — condição
+   * simples já pergunta uma coisa só, e desviar dela seria atropelar o desenho.
+   * Desvia UMA vez por execução (`_desviouPedidoExplicito`): o portão em si lê o
+   * mesmo campo, então não há como voltar aqui em laço.
+   */
+  private async portaoDeSinalExplicito(
+    no: FluxoNo,
+    ctx: ExecucaoContexto,
+    fluxoId: string,
+  ): Promise<{ noId: string; titulo: string; motivo: string } | null> {
+    if (no.tipo !== 'CONDICAO') return null;
+    const cfg = no.config as unknown as CondicaoConfig;
+    if (cfg.modo !== 'roteador') return null;
+    if ((ctx as Record<string, unknown>)['_desviouPedidoExplicito'] === true) return null;
+
+    for (const sinal of PEDIDOS_EXPLICITOS_DO_LEAD) {
+      const bruto = resolveCampoFresco(sinal.variavel, ctx);
+      const valor = String(bruto ?? '')
+        .trim()
+        .toLowerCase();
+      if (!valor || !sinal.afirmativos.includes(valor as never)) continue;
+      // Este roteador JÁ é o portão do sinal? Então não há o que desviar.
+      if (cfg.variavel === sinal.variavel || cfg.campo === sinal.variavel) return null;
+
+      const portoes = await this.prisma.fluxoNo
+        .findMany({
+          where: { fluxoId, tipo: 'CONDICAO' },
+          select: { id: true, titulo: true, config: true },
+        })
+        .catch(() => []);
+      const portao = portoes.find(
+        (p) => (p.config as { campo?: string } | null)?.campo === sinal.variavel && p.id !== no.id,
+      );
+      if (!portao) continue; // fluxo sem portão: segue o roteamento normal.
+      return {
+        noId: portao.id,
+        titulo: portao.titulo ?? sinal.variavel,
+        motivo: `lead declarou "${sinal.variavel}=${valor}"`,
+      };
+    }
+    return null;
   }
 
   private async conversaViva(empresaId: string, leadId?: string): Promise<boolean> {

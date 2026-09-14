@@ -343,6 +343,22 @@ export const SINAIS_ROTEAMENTO = [
   'trilho',
   'pedido_remocao',
   'encerrar_conversa',
+  // `pediu_contato` entrou em 14/09 (Bateria 3, P1): é sinal TERMINAL da
+  // conversa e precisa ser limpo entre abordagens como os outros — senão o
+  // "quero falar com uma pessoa" de meses atrás desvia a triagem de hoje.
+  'pediu_contato',
+] as const;
+
+/**
+ * Sinais que o LEAD declarou explicitamente — valem mais que a classificação da
+ * IA, que é inferência (Bateria 3, P1 — 14/09/2026).
+ *
+ * Cada entrada diz qual variável carrega o pedido e o que conta como "sim".
+ * O motor usa isso pra desviar o roteamento até o portão que trata o pedido,
+ * quando o fluxo tem um — ver `portaoDeSinalExplicito` no executor.
+ */
+export const PEDIDOS_EXPLICITOS_DO_LEAD = [
+  { variavel: 'pediu_contato', afirmativos: ['sim', 'true', 'yes', '1'] },
 ] as const;
 
 /** Contexto de execução — enriquecido progressivamente. */
