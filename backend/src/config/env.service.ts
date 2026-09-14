@@ -64,6 +64,32 @@ export class EnvService {
       });
     }
 
+    // Credencial do Google NO WORKER = configuração MORTA que pode divergir.
+    //
+    // O callback do OAuth é rota HTTP e o worker não sobe servidor; toda conexão
+    // com o Google nasce e renova na api. Medido em 14/09 (Bateria 3, P7): os
+    // dois serviços tinham CLIENT_ID de projetos diferentes, e o REDIRECT_URI do
+    // worker ainda apontava pro host anterior ao cutover de 07/09.
+    //
+    // Hoje não quebra nada — e é justamente esse o problema. No dia em que
+    // alguém mover a sincronização de agenda pra um job do worker (coisa natural
+    // de fazer), o refresh sai com a credencial errada, o Google responde
+    // invalid_grant, e o código MARCA A CONEXÃO COMO INVÁLIDA — a integração cai
+    // e nada no log liga a causa ao efeito.
+    //
+    // Configuração morta que DIVERGE é pior que ausente: parece intencional.
+    if (this.get('SERVICE_TYPE') === 'worker' && this.get('GOOGLE_CLIENT_ID')) {
+      issues.push({
+        key: 'GOOGLE_CLIENT_ID',
+        severity: 'warning',
+        message:
+          'GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI estão setados no WORKER, que nunca ' +
+          'faz OAuth (o callback é rota HTTP, só existe na api). São configuração morta ' +
+          'e podem divergir da api sem ninguém perceber — em 14/09 divergiam. ' +
+          'Remova as três do serviço worker no Railway (o schema aceita ausentes).',
+      });
+    }
+
     // SUPABASE_JWT_SECRET vazio: cai pro JWKS (funciona em projetos com plano
     // adequado, mas o JWKS pode falhar/lentificar). HS256 com secret é mais
     // estável.
