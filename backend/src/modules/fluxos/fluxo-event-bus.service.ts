@@ -13,6 +13,7 @@ import {
 import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
 import { matchFiltroPayload, type FiltroPayload } from './match-payload-filtro.util';
 import { normalizarValor } from './normalizar-valor.util';
+import { decidirEntrada, postoNaDisputa, resolveNutricao } from './nutricao-porta-unica.util';
 import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
 import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
 
@@ -293,6 +294,31 @@ export class FluxoEventBusService {
       this.logger.debug(
         `FluxoEventBus: ${triggerTipo} em empresa ${empresaId} → ${fluxos.length} fluxo(s)`,
       );
+
+      // Config do tenant lida UMA vez por evento (a porta única de nutrição
+      // consulta a ordem das réguas). Memoizada porque o loop abaixo pode ter N
+      // fluxos e a resposta é a mesma pros N.
+      let configDaEmpresa: Record<string, unknown> | null | undefined;
+      const lerConfigDaEmpresa = async (): Promise<Record<string, unknown> | null> => {
+        if (configDaEmpresa === undefined) {
+          try {
+            const emp = await this.prisma.empresa.findUnique({
+              where: { id: empresaId },
+              select: { config: true },
+            });
+            configDaEmpresa = (emp?.config ?? null) as Record<string, unknown> | null;
+          } catch (err) {
+            // Config é AJUSTE, não pré-requisito: não pode derrubar o disparo.
+            // Sem ela vale o default — que é a ordem decidida, não "sem trava".
+            this.logger.warn(
+              `FluxoEventBus: não consegui ler a config da empresa ${empresaId} ` +
+                `(${err instanceof Error ? err.message : String(err)}) — valendo o padrão`,
+            );
+            configDaEmpresa = null;
+          }
+        }
+        return configDaEmpresa;
+      };
 
       for (const fluxo of fluxos) {
         // #6: isola a falha por-fluxo — um fluxo problemático não aborta os demais.
@@ -712,6 +738,31 @@ export class FluxoEventBusService {
             }
           }
 
+          // ── PORTA ÚNICA DAS RÉGUAS DE NUTRIÇÃO (P6b, 14/09) ──
+          //
+          // Lead que satisfaz o gatilho de duas réguas entrava nas DUAS e recebia
+          // as sequências intercaladas: medido, E1 mandou 5 e-mails e E6 mandou 3,
+          // mesmo lead, mesma janela. Oito e-mails de assuntos desconexos da mesma
+          // marca é o que faz marcar como spam — e reclamação pesa mais que bounce.
+          //
+          // A ordem (E6 > E1 > E3 > E2), quem interrompe e o descarte de quem perde
+          // a vez são decisão de produto e moram no util, junto do porquê. Aqui só
+          // fica a parte que precisa do banco: QUEM está em curso neste lead.
+          //
+          // A decisão roda DENTRO da transação abaixo, junto do lock por lead —
+          // duas réguas disparando no mesmo instante veriam as duas "nenhuma outra
+          // em curso" e entrariam juntas, que é o defeito de novo (mesma família do
+          // D-12). Aqui em cima só descobrimos se este fluxo está na disputa.
+          const leadIdNutricao =
+            typeof contexto['leadId'] === 'string' ? (contexto['leadId'] as string) : undefined;
+          const nutricaoCfg = leadIdNutricao
+            ? resolveNutricao((await lerConfigDaEmpresa())?.['nutricao'])
+            : resolveNutricao({ ativo: false });
+          const naDisputa =
+            Boolean(leadIdNutricao) &&
+            postoNaDisputa({ id: fluxo.id, nome: fluxo.nome }, nutricaoCfg) >= 0;
+          let recusaNutricao: string | null = null;
+
           // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"
           // não pode ter duas execuções ativas pro MESMO lead (senão duas IAs conversam
           // em paralelo, cada uma sem o histórico da outra → re-apresenta a empresa).
@@ -742,8 +793,48 @@ export class FluxoEventBusService {
               },
             });
           const execucao =
-            supersedeDoLead || guardaConversaId
+            supersedeDoLead || guardaConversaId || naDisputa
               ? await this.prisma.$transaction(async (tx) => {
+                  // Porta única de nutrição: cadeado por LEAD (não por fluxo — a
+                  // disputa é entre fluxos diferentes), tomado ANTES dos demais
+                  // pra manter ordem fixa de lock e não criar deadlock novo.
+                  if (naDisputa && leadIdNutricao) {
+                    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`nutricao:${empresaId}:${leadIdNutricao}`}))`;
+                    const emCurso = await tx.$queryRaw<
+                      Array<{ execucaoId: string; fluxoId: string; fluxoNome: string }>
+                    >`
+                      SELECT e."id" AS "execucaoId", e."fluxoId" AS "fluxoId", f."nome" AS "fluxoNome"
+                        FROM "FluxoExecucao" e
+                        JOIN "Fluxo" f ON f."id" = e."fluxoId"
+                       WHERE e."empresaId" = ${empresaId}
+                         AND e."status" IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
+                         AND (e.contexto #>> '{leadId}') = ${leadIdNutricao}
+                         AND e."fluxoId" <> ${fluxo.id}`;
+                    const decisao = decidirEntrada(
+                      { id: fluxo.id, nome: fluxo.nome },
+                      emCurso,
+                      nutricaoCfg,
+                    );
+                    if (!decisao.admitir) {
+                      recusaNutricao = decisao.motivo;
+                      return null;
+                    }
+                    if (decisao.cancelar.length > 0) {
+                      await tx.fluxoExecucao.updateMany({
+                        where: { id: { in: decisao.cancelar } },
+                        data: {
+                          status: 'CANCELADO',
+                          aguardandoNoId: null,
+                          timeoutEm: null,
+                          terminouEm: new Date(),
+                        },
+                      });
+                      this.logger.log(
+                        `Fluxo "${fluxo.nome}": ${decisao.cancelar.length} régua(s) do lead ` +
+                          `${leadIdNutricao} encerrada(s) — ${decisao.motivo} (porta única de nutrição)`,
+                      );
+                    }
+                  }
                   // Ordem FIXA dos locks (lead antes de conversa) — dois caminhos
                   // pegando os mesmos dois cadeados em ordens diferentes é deadlock.
                   if (supersedeDoLead) {
@@ -791,6 +882,16 @@ export class FluxoEventBusService {
                 })
               : await criarExecucao(this.prisma);
           if (!execucao) {
+            if (recusaNutricao) {
+              // LOG, não debug: é envio que DEIXOU de acontecer. Quem for conferir
+              // "por que o lead não recebeu o E2" precisa achar a resposta aqui, e
+              // não concluir que o gatilho falhou.
+              this.logger.log(
+                `Fluxo "${fluxo.nome}": lead ${leadIdNutricao} NÃO admitido — ${recusaNutricao} ` +
+                  '(porta única de nutrição, P6b)',
+              );
+              continue;
+            }
             // Rajada: outra mensagem da MESMA conversa criou a execução enquanto
             // esta esperava o lock. A resposta dela entra pelo retomar da IA (A-9).
             this.logger.debug(
