@@ -40,7 +40,7 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 // Mesma normalização usada pelo match de etiqueta no bus — mora num util pra
 // os dois caminhos não divergirem (a IA solta "Nao e lead"/"Não é lead"
 // indistintamente; um acento a menos desviava tudo pro ramo errado).
-import { normalizarValor } from './normalizar-valor.util';
+import { ehNaoSei, normalizarValor } from './normalizar-valor.util';
 import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
 import {
   FLUXO_QUEUE,
@@ -247,7 +247,7 @@ export function partesDeDataNoFuso(
 /** Quanto esperar quando o pacing não responde (D-7): melhor 5 min a mais que 1 msg às 3h. */
 const PACING_INDISPONIVEL_ESPERA_MS = 5 * 60_000;
 
-function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
+export function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
   if (config.modo === 'roteador') {
     const norm = normalizarValor;
     // Variável que NÃO EXISTE no contexto (typo no nome, evento errado) caía em
@@ -280,8 +280,37 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
   // grava "Não" e o config tem "Nao" (ou vice-versa) — comparação crua mandava o
   // lead pro ramo errado sem erro nenhum. gt/lt/gte/lte seguem numéricos.
   const ehTextoDosDoisLados = typeof ref !== 'number' && typeof ref !== 'boolean';
-  const valTxt = normalizarValor(String(val ?? ''));
+  let valTxt = normalizarValor(String(val ?? ''));
   const refTxt = normalizarValor(String(ref ?? ''));
+  // ── "não sei" NÃO preenche campo (P1b, 14/09) ─────────────────────────────
+  //
+  // Comparar contra VAZIO é o jeito que os fluxos perguntam "já temos o dado?".
+  // E `tensao_rede: "nao sei"` respondia que SIM: é texto, não é string vazia.
+  //
+  // O estrago é no C1. O portão "Já sabemos a tensão?" dava Sim, o fluxo seguia
+  // pra corrente e o link saía sem a tensão — ou seja, o modelo era escolhido
+  // sem saber o padrão da rede. É o mesmo que comprar o equipamento sem saber a
+  // voltagem da casa: pode até ligar, mas ninguém pode afirmar que protege.
+  // Decisão do Léo em 14/09: isso não acontece. Sem tensão, não se dimensiona.
+  //
+  // `NAO_SEI` já era a definição de ausência dos outros dois caminhos (a
+  // gravação, que não deixa "não sei" apagar valor concreto, e a rede de
+  // extração, que continua resgatando o dado). O portão era o único dos três
+  // que lia "não sei" como resposta — e, por ser o que decide o caminho, era
+  // justamente onde a divergência virava modelo errado.
+  //
+  // Escopo estreito de propósito: só quando a comparação é contra VAZIO. Portão
+  // que compara com valor explícito (`classificacao_final eq "Indefinido"`)
+  // segue exatamente como era.
+  const testaPreenchimento =
+    refTxt === '' && (config.operador === 'eq' || config.operador === 'neq');
+  if (testaPreenchimento && valTxt !== '' && ehNaoSei(val)) {
+    logCondicao.warn(
+      `CONDICAO: campo "${config.campo}" vale "${String(val)}" — tratado como VAZIO ` +
+        'porque "não sei" é ausência de informação, não resposta (P1b)',
+    );
+    valTxt = '';
+  }
   switch (config.operador) {
     case 'eq':
       resultado = ehTextoDosDoisLados ? valTxt === refTxt : val == ref;
