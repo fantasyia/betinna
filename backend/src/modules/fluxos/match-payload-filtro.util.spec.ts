@@ -58,3 +58,18 @@ describe('matchFiltroPayload', () => {
     );
   });
 });
+
+describe('operador desconhecido (auditoria 13/09, D-9)', () => {
+  it('NÃO dispara — antes `default: true` disparava o fluxo pra todo POST', () => {
+    expect(
+      matchFiltroPayload(
+        { evento: 'x' },
+        {
+          caminho: 'evento',
+          operador: 'equals' as never,
+          valor: 'x',
+        },
+      ),
+    ).toBe(false);
+  });
+});

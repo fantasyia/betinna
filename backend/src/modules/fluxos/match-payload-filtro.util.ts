@@ -27,6 +27,9 @@ export function valorPorCaminho(obj: unknown, caminho: string): unknown {
   return cur;
 }
 
+/** Operadores que o filtro entende — fonte única (validação ao salvar + runtime). */
+export const OPERADORES_FILTRO_PAYLOAD = new Set(['eq', 'neq', 'contains']);
+
 /** true se o payload casa o filtro. Sem `caminho` → não filtra (retorna true). */
 export function matchFiltroPayload(payload: unknown, filtro: FiltroPayload | undefined): boolean {
   if (!filtro?.caminho?.trim()) return true;
@@ -41,6 +44,9 @@ export function matchFiltroPayload(payload: unknown, filtro: FiltroPayload | und
     case 'contains':
       return atual.includes(alvo);
     default:
-      return true;
+      // Operador desconhecido = NÃO dispara. `return true` fazia o fluxo rodar
+      // pra TODO POST do webhook (auditoria 13/09, D-9) — o oposto do que o
+      // autor pediu. O salvar já recusa; isto cobre o que entrou antes.
+      return false;
   }
 }

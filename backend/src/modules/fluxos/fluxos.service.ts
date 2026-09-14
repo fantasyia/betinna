@@ -25,6 +25,7 @@ import type {
   UploadFluxoMidiaDto,
   DefinirGatilhoDto,
 } from './fluxos.dto';
+import { OPERADORES_FILTRO_PAYLOAD } from './match-payload-filtro.util';
 
 /** Fluxo serializado pro arquivo de export/import (.json). */
 export interface ExportedFluxo {
@@ -379,6 +380,19 @@ export class FluxosService {
       const cfg = (no.config ?? {}) as { modo?: string; operador?: string };
       // Roteador não usa operador; nó sem operador ainda é obra em andamento e
       // o `validarGrafo` cobre no ativar.
+      // Gatilho WEBHOOK_RECEBIDO: o filtro de payload tem os operadores dele
+      // (D-9). Operador inválido no filtro disparava o fluxo pra todo POST.
+      const filtro = (
+        no.config as { filtroPayload?: { caminho?: string; operador?: string } } | null
+      )?.filtroPayload;
+      if (filtro?.caminho?.trim() && !OPERADORES_FILTRO_PAYLOAD.has(filtro.operador ?? '')) {
+        const nome = no.titulo ? `"${no.titulo}"` : `id=${no.id}`;
+        throw new BusinessRuleException(
+          `O filtro do gatilho ${nome} usa o operador "${filtro.operador ?? ''}", que o motor não conhece — ` +
+            `o fluxo não dispararia nunca. Use um destes: ${[...OPERADORES_FILTRO_PAYLOAD].join(', ')}.`,
+          ErrorCode.FLUXO_INVALIDO,
+        );
+      }
       if (cfg.modo === 'roteador' || !cfg.operador?.trim()) continue;
       if (OPERADORES_CONDICAO.has(cfg.operador.trim())) continue;
       const nome = no.titulo ? `"${no.titulo}"` : `id=${no.id}`;
@@ -1151,7 +1165,25 @@ export class FluxosService {
    * cascateiam os logs) e o fluxo (que cascateia nós e arestas).
    */
   async excluirPermanente(user: AuthenticatedUser, id: string): Promise<{ ok: true }> {
-    this.assertPodeGerirFluxo(user, await this.findOne(user, id)); // tenant + dono
+    const fluxo = await this.findOne(user, id);
+    this.assertPodeGerirFluxo(user, fluxo); // tenant + dono
+    // A trava "não apaga ATIVO / com execução em voo" morava só no cliente MCP
+    // (auditoria 13/09, H-4); a API aceitava e cascateava as execuções.
+    if (fluxo.status === 'ATIVO') {
+      throw new BusinessRuleException(
+        'Fluxo ATIVO não pode ser excluído permanentemente — pause ou arquive antes.',
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+    const vivas = await this.prisma.fluxoExecucao.count({
+      where: { fluxoId: id, status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] } },
+    });
+    if (vivas > 0) {
+      throw new BusinessRuleException(
+        `Fluxo tem ${vivas} execução(ões) em andamento — espere terminar ou cancele antes de excluir.`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
     await this.prisma.$transaction([
       this.prisma.fluxoExecucao.deleteMany({ where: { fluxoId: id } }),
       this.prisma.fluxo.delete({ where: { id } }),
