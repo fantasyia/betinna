@@ -51,6 +51,8 @@ const HTTP_TIMEOUT_MS = 30_000;
  * Derivado do timeout (≈4×) em vez de constante mágica.
  */
 const PENDING_TTL_S = Math.ceil((HTTP_TIMEOUT_MS / 1000) * 4);
+/** Intervalo de re-leitura da chave enquanto outra tentativa está em voo (B-2). */
+const PENDING_POLL_MS = 1000;
 
 @Injectable()
 export class EvolutionService {
@@ -681,7 +683,7 @@ export class EvolutionService {
    *  - zumbi / close / deslogada → DISCONNECTED (Conectar reseta+recria)
    *  - nunca pareada → connect pra pegar o QR → QR_PENDING
    */
-  async estadoComQr(instance: string): Promise<EstadoWhats> {
+  async estadoComQr(instance: string, opts: { podeGerarQr?: boolean } = {}): Promise<EstadoWhats> {
     if (!this.env.get('EVOLUTION_API_URL') || !this.env.get('EVOLUTION_API_KEY')) {
       return { status: 'DISCONNECTED' };
     }
@@ -694,7 +696,11 @@ export class EvolutionService {
     // ainda existe, e pedir QR aqui é pedir pra pessoa quebrar o que ia voltar.
     if (!this.precisaDeQr(inst)) return { status: 'CONNECTING' };
     // Nunca pareada → tenta o QR direto (connect é seguro aqui).
+    // `podeGerarQr: false` = quem pergunta só pode VER (SAC): sem connect e sem
+    // QR na resposta — o QR é o que pareia um celular como número da empresa
+    // (D45; auditoria 13/09/2026, B-6).
     if (!inst.ownerJid) {
+      if (opts.podeGerarQr === false) return { status: 'QR_PENDING' };
       const qr = await this.extrairQrDataUrl(await this.conectar(instance).catch(() => null));
       if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
     }
@@ -764,9 +770,25 @@ export class EvolutionService {
     if (!claimed) {
       const cached = await this.redis.get(k).catch(() => null);
       if (cached && cached !== 'PENDING') return JSON.parse(cached) as T; // já enviado: no-op
-      // 'PENDING' de outra tentativa em voo → não re-POST (no-op seguro).
-      this.logger.log(`Envio WhatsApp suprimido por idempotência (${idempotencyKey})`);
-      return { key: { id: undefined } } as T;
+      // 'PENDING' de outra tentativa em voo. Antes devolvia `{ key: { id: undefined } }` —
+      // a FORMA de sucesso — e o chamador marcava SENT/`_iaEntregue` sem a mensagem ter
+      // saído (SIGKILL entre o SETNX e o POST: o retry do BullMQ chegava em 2-5s, via
+      // PENDING, e "sucedia"; auditoria 13/09/2026, B-2). Agora ESPERA a tentativa em
+      // voo terminar: resultado gravado → devolve o mesmo id; chave sumiu (POST falhou
+      // ou o dono morreu e o TTL curto expirou) → reclaima e envia. Só se o PENDING
+      // sobreviver à janela inteira é que estoura — erro, não sucesso falso.
+      const resultado = await this.aguardarEnvioEmVoo<T>(k);
+      if (resultado.tipo === 'pronto') return resultado.valor;
+      if (resultado.tipo === 'em_voo') {
+        throw new Error(
+          `Envio WhatsApp ainda em voo por outra tentativa (${idempotencyKey}) — não confirmado`,
+        );
+      }
+      // 'livre': a chave sumiu — cai no envio normal abaixo (a reclaim é o setNx de novo).
+      const reclaimed = await this.redis.setNxEx(k, 'PENDING', PENDING_TTL_S).catch(() => true);
+      if (!reclaimed) {
+        throw new Error(`Envio WhatsApp disputado por outra tentativa (${idempotencyKey})`);
+      }
     }
     try {
       const r = await this.postEnvio<T>(path, body);
@@ -778,6 +800,25 @@ export class EvolutionService {
       await this.redis.del(k).catch(() => undefined);
       throw err;
     }
+  }
+
+  /**
+   * Espera (até o TTL do PENDING) a tentativa em voo da mesma chave terminar.
+   *  - 'pronto': o outro POST terminou e gravou o resultado — use-o.
+   *  - 'livre': a chave sumiu (falha real liberou, ou o dono morreu e expirou).
+   *  - 'em_voo': ainda PENDING depois da janela toda.
+   */
+  private async aguardarEnvioEmVoo<T>(
+    k: string,
+  ): Promise<{ tipo: 'pronto'; valor: T } | { tipo: 'livre' } | { tipo: 'em_voo' }> {
+    const limite = Date.now() + PENDING_TTL_S * 1000;
+    while (Date.now() < limite) {
+      await new Promise((r) => setTimeout(r, PENDING_POLL_MS));
+      const cached = await this.redis.get(k).catch(() => null);
+      if (cached === null) return { tipo: 'livre' };
+      if (cached !== 'PENDING') return { tipo: 'pronto', valor: JSON.parse(cached) as T };
+    }
+    return { tipo: 'em_voo' };
   }
 
   /** POST de envio cru com erro enriquecido (sem gate). */

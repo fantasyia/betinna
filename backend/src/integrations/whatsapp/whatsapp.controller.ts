@@ -41,10 +41,18 @@ export class WhatsAppController {
   @ApiOperation({
     summary: 'Status do WhatsApp empresa (incluindo qrDataUrl quando pendente)',
   })
-  status(@CurrentUser() user: AuthenticatedUser) {
+  async status(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
-    if (this.viaEvolution) return this.evolution.estadoComQr(this.instancia(empresaId));
-    return this.sessions.statusEmpresa(empresaId);
+    // SAC vê o status, mas NÃO recebe o QR: com ele pareava o próprio celular
+    // como o número da empresa (D45; auditoria 13/09/2026, B-6).
+    const podeParear = user.role === 'ADMIN' || user.role === 'DIRECTOR';
+    if (this.viaEvolution) {
+      return this.evolution.estadoComQr(this.instancia(empresaId), { podeGerarQr: podeParear });
+    }
+    const estado = await this.sessions.statusEmpresa(empresaId);
+    if (podeParear) return estado;
+    const { qrDataUrl: _qr, ...semQr } = estado as { qrDataUrl?: string };
+    return semQr;
   }
 
   @Post('conectar')

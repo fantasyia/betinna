@@ -106,13 +106,57 @@ describe('EvolutionService — gate de idempotência (dedup de envio)', () => {
     expect(r.key?.id).toBe('X');
   });
 
-  it('PENDING de tentativa em voo: no-op seguro (não re-POST)', async () => {
-    const { svc, http, redis } = makeSvc();
-    redis.setNxEx.mockResolvedValueOnce(false);
-    redis.get.mockResolvedValueOnce('PENDING');
-    const r = await svc.enviarTexto('inst', '5511999@s.whatsapp.net', 'oi', 0, undefined, KEY);
-    expect(http.post).not.toHaveBeenCalled();
-    expect(r.key?.id).toBeUndefined();
+  // B-2 (auditoria 13/09): PENDING nunca mais vira "sucesso sem id". Ou espera o
+  // resultado da tentativa em voo, ou reclaima a chave liberada, ou ESTOURA.
+  it('PENDING em voo que TERMINA: devolve o id que a outra tentativa gravou, sem re-POST', async () => {
+    vi.useFakeTimers();
+    try {
+      const { svc, http, redis } = makeSvc();
+      redis.setNxEx.mockResolvedValueOnce(false);
+      redis.get
+        .mockResolvedValueOnce('PENDING') // leitura inicial
+        .mockResolvedValueOnce('PENDING') // 1º poll
+        .mockResolvedValueOnce(JSON.stringify({ key: { id: 'OUTRA' } })); // 2º poll
+      const p = svc.enviarTexto('inst', '5511999@s.whatsapp.net', 'oi', 0, undefined, KEY);
+      await vi.advanceTimersByTimeAsync(2500);
+      const r = await p;
+      expect(http.post).not.toHaveBeenCalled();
+      expect(r.key?.id).toBe('OUTRA');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('PENDING cujo dono morreu (chave expirou): reclaima e ENVIA', async () => {
+    vi.useFakeTimers();
+    try {
+      const { svc, http, redis } = makeSvc();
+      redis.setNxEx.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      redis.get.mockResolvedValueOnce('PENDING').mockResolvedValueOnce(null);
+      const p = svc.enviarTexto('inst', '5511999@s.whatsapp.net', 'oi', 0, undefined, KEY);
+      await vi.advanceTimersByTimeAsync(1500);
+      const r = await p;
+      expect(http.post).toHaveBeenCalledTimes(1);
+      expect(r.key?.id).toBe('X');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('PENDING que sobrevive à janela inteira: ESTOURA (nunca sucesso falso)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { svc, http, redis } = makeSvc();
+      redis.setNxEx.mockResolvedValueOnce(false);
+      redis.get.mockResolvedValue('PENDING');
+      const p = svc.enviarTexto('inst', '5511999@s.whatsapp.net', 'oi', 0, undefined, KEY);
+      const esperado = expect(p).rejects.toThrow(/em voo/);
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      await esperado;
+      expect(http.post).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('POST falha de verdade → libera a chave (del) pra retry legítimo', async () => {
