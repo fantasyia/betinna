@@ -97,7 +97,7 @@ export function lacunasDeExemplo(texto: string): string[] {
   //
   // `<style>`/`<script>` saem inteiros antes: são código, e chave e colchete ali
   // são sintaxe, não texto.
-  const semCodigo = texto.replace(/<(style|script)[^>]*>[\s\S]*?<\/>/gi, ' ');
+  const semCodigo = texto.replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');
   const delimitado = /[[<{%]{1,2}\s*[a-z][a-z0-9_.]{2,39}\s*[\]>}%]{1,2}/g;
   // `__chave__` não tem delimitador de abrir e fechar diferentes — vai separado
   // pra não afrouxar o padrão de cima, que é o que segura o falso positivo.
