@@ -2,7 +2,10 @@ import { pedidoRemocaoNoTexto } from './pedido-remocao.util';
 import { diaBrasilia, mesBrasilia } from '@shared/utils/data-brasilia.util';
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
-import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
+import {
+  WhatsappIndisponivelError,
+  numeroInvalidoDoErro,
+} from '@integrations/evolution/whatsapp-indisponivel.error';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { MessageDirection, Prisma } from '@prisma/client';
@@ -2582,8 +2585,9 @@ export class ConversarIaService implements OnModuleDestroy {
     const respostaTexto =
       limpo || (docIds.length > 0 ? 'Segue o arquivo solicitado. 📎' : respostaPersonalizada);
     const idemTurno = `fx:${execucaoId}:${no.id}:t${(ctx._iaTurno as number) ?? 0}`;
+    let textoEnviado: string | null = null;
     try {
-      await this.enviarWhatsapp(
+      textoEnviado = await this.enviarWhatsapp(
         empresaId,
         lead.contatoTelefone,
         respostaTexto,
@@ -2613,10 +2617,12 @@ export class ConversarIaService implements OnModuleDestroy {
     );
 
     // Atualiza a memória da conversa (pergunta do lead + resposta da IA).
+    // Memória = o que o cliente LEU (B-10). Cauda abortada fica de fora; null
+    // (não passou pelo envio) mantém o texto — a entrega anterior já disse isso.
     const novoHist: HistoricoMsg[] = [
       ...historico,
       { role: 'user' as const, content: textoLead, at: Date.now() },
-      { role: 'assistant' as const, content: respostaTexto, at: Date.now() },
+      { role: 'assistant' as const, content: textoEnviado ?? respostaTexto, at: Date.now() },
     ].slice(-limiteHist);
 
     // Janela de ENCERRAMENTO EDUCADO configurada no nó (ausente/0 = encerra na hora).
@@ -3370,8 +3376,12 @@ export class ConversarIaService implements OnModuleDestroy {
      * CONCLUIDO ele sumia sempre, e a 2ª defesa não existia na prática.
      */
     ctxDaExecucao?: Record<string, unknown>,
-  ): Promise<void> {
-    if (!texto.trim()) return;
+  ): Promise<string | null> {
+    // Devolve o texto que SAIU de fato (balões enviados, unidos por \n) — ou
+    // null quando nem passou pelo envio (já entregue, execução encerrada). O
+    // histórico guardava a resposta INTEIRA mesmo com a cauda abortada, e a IA
+    // achava que tinha dito o que nunca disse (auditoria 13/09, B-10).
+    if (!texto.trim()) return null;
     // GATE ANTES DE ENVIAR (mesmo do ENVIAR_WHATSAPP do executor): com a
     // instância fora do ar o Evolution ACEITA o POST e devolve id — o turno
     // carimbava `_iaEntregue` e a execução seguia, com o cliente sem resposta
@@ -3396,7 +3406,7 @@ export class ConversarIaService implements OnModuleDestroy {
           `CONVERSAR_IA: execução ${execucaoId} já encerrada (cancelada ou concluída) — ` +
             `envio ABORTADO`,
         );
-        return;
+        return null;
       }
       // JÁ ENTREGUE? Medido em produção (05/09): o worker recebeu SIGTERM no
       // meio do nó, o passo falhou DEPOIS de mandar os balões, o BullMQ
@@ -3409,9 +3419,10 @@ export class ConversarIaService implements OnModuleDestroy {
           `CONVERSAR_IA: turno ${idemKey} JÁ foi entregue ao cliente numa tentativa ` +
             `anterior — não reenvia (exec ${execucaoId})`,
         );
-        return;
+        return null;
       }
     }
+    const enviados: string[] = [];
     // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
     // `reativo` = resposta a quem escreveu (faixa rápida); opener = proativo (lento).
     //
@@ -3459,100 +3470,117 @@ export class ConversarIaService implements OnModuleDestroy {
     // guarda existe pra pegar.
     const inicioDoEnvio = new Date();
 
-    await enviarEmBaloes(
-      texto,
-      {
-        quebrarMensagens: teto !== null ? teto > 1 : (cfg?.quebrarMensagens ?? false),
-        maxMensagens: teto !== null ? teto : (cfg?.maxMensagens ?? 3),
-        mostrarDigitando: cfg?.mostrarDigitando ?? false,
-        delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
-        pausaEntreBaloesMs: cfg?.pausaEntreBaloesMs,
-      },
-      {
-        deveAbortar: convParaAbortar
-          ? async () => {
-              try {
-                const novas = await this.prisma.message.count({
-                  where: {
-                    conversationId: convParaAbortar,
-                    direction: 'INBOUND',
-                    criadoEm: { gt: inicioDoEnvio },
-                  },
-                });
-                if (novas > 0) {
-                  this.logger.log(
-                    `CONVERSAR_IA: cliente escreveu durante o envio — resto dos balões ` +
-                      `ABORTADO (conversa ${convParaAbortar}, ${novas} mensagem(ns) nova(s))`,
-                  );
+    try {
+      await enviarEmBaloes(
+        texto,
+        {
+          quebrarMensagens: teto !== null ? teto > 1 : (cfg?.quebrarMensagens ?? false),
+          maxMensagens: teto !== null ? teto : (cfg?.maxMensagens ?? 3),
+          mostrarDigitando: cfg?.mostrarDigitando ?? false,
+          delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
+          pausaEntreBaloesMs: cfg?.pausaEntreBaloesMs,
+        },
+        {
+          deveAbortar: convParaAbortar
+            ? async () => {
+                try {
+                  const novas = await this.prisma.message.count({
+                    where: {
+                      conversationId: convParaAbortar,
+                      direction: 'INBOUND',
+                      criadoEm: { gt: inicioDoEnvio },
+                    },
+                  });
+                  if (novas > 0) {
+                    this.logger.log(
+                      `CONVERSAR_IA: cliente escreveu durante o envio — resto dos balões ` +
+                        `ABORTADO (conversa ${convParaAbortar}, ${novas} mensagem(ns) nova(s))`,
+                    );
+                  }
+                  return novas > 0;
+                } catch {
+                  // Fail-open: um hiccup de banco não pode engolir a resposta.
+                  // Falar demais é recuperável; emudecer no meio de uma frase não.
+                  return false;
                 }
-                return novas > 0;
-              } catch {
-                // Fail-open: um hiccup de banco não pode engolir a resposta.
-                // Falar demais é recuperável; emudecer no meio de uma frase não.
-                return false;
               }
-            }
-          : undefined,
-        // Chave de idempotência por balão = TURNO + POSIÇÃO, sem o conteúdo. Havia um
-        // hash do texto aqui, com a ideia de "se a resposta re-gerada for diferente, o
-        // balão certo sai". Em campo foi o contrário: o modelo NUNCA re-gera igual, então
-        // toda re-execução tinha chave nova e o cliente recebia tudo de novo. O que se
-        // quer numa re-execução do MESMO turno é suprimir — o cliente já leu a resposta.
-        enviar: (() => {
-          let i = 0;
-          return (balao: string) => {
-            const ctx = {
-              ...(idemKey ? { idempotencyKey: chaveDoBalao(idemKey, i++) } : {}),
-              ...(proprietarioId ? { proprietarioId } : {}),
+            : undefined,
+          // Chave de idempotência por balão = TURNO + POSIÇÃO, sem o conteúdo. Havia um
+          // hash do texto aqui, com a ideia de "se a resposta re-gerada for diferente, o
+          // balão certo sai". Em campo foi o contrário: o modelo NUNCA re-gera igual, então
+          // toda re-execução tinha chave nova e o cliente recebia tudo de novo. O que se
+          // quer numa re-execução do MESMO turno é suprimir — o cliente já leu a resposta.
+          enviar: (() => {
+            let i = 0;
+            return (balao: string) => {
+              const ctx = {
+                ...(idemKey ? { idempotencyKey: chaveDoBalao(idemKey, i++) } : {}),
+                ...(proprietarioId ? { proprietarioId } : {}),
+              };
+              return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(async (r) => {
+                enviados.push(balao);
+                // GRAVA a saída na conversa. O envio do fluxo ia direto pro
+                // provider e só virava Message quando o ECO (fromMe) voltasse
+                // pelo webhook — assíncrono e sem prazo. Quem lê a conversa
+                // depois (o C2 montando histórico, o inbox, um relatório) podia
+                // não achar nada: o bot não sabia o que ele mesmo tinha dito.
+                //
+                // Best-effort: a mensagem JÁ saiu; falhar o registro não pode
+                // desfazer envio nem derrubar o passo.
+                await this.inbox
+                  .processarMensagemEntrante({
+                    empresaId,
+                    canal: 'WHATSAPP',
+                    peerId,
+                    tipo: 'TEXT',
+                    conteudo: balao,
+                    direction: 'OUTBOUND',
+                    enviadaPorBot: true,
+                    externalId: r.externalId ?? undefined,
+                    proprietarioId: proprietarioId ?? undefined,
+                  })
+                  .catch((err: unknown) =>
+                    this.logger.warn(
+                      `CONVERSAR_IA: falha ao registrar a saída na conversa: ` +
+                        `${err instanceof Error ? err.message : String(err)}`,
+                    ),
+                  );
+              });
             };
-            return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(async (r) => {
-              // GRAVA a saída na conversa. O envio do fluxo ia direto pro
-              // provider e só virava Message quando o ECO (fromMe) voltasse
-              // pelo webhook — assíncrono e sem prazo. Quem lê a conversa
-              // depois (o C2 montando histórico, o inbox, um relatório) podia
-              // não achar nada: o bot não sabia o que ele mesmo tinha dito.
-              //
-              // Best-effort: a mensagem JÁ saiu; falhar o registro não pode
-              // desfazer envio nem derrubar o passo.
-              await this.inbox
-                .processarMensagemEntrante({
-                  empresaId,
-                  canal: 'WHATSAPP',
-                  peerId,
-                  tipo: 'TEXT',
-                  conteudo: balao,
-                  direction: 'OUTBOUND',
-                  enviadaPorBot: true,
-                  externalId: r.externalId ?? undefined,
-                  proprietarioId: proprietarioId ?? undefined,
-                })
-                .catch((err: unknown) =>
-                  this.logger.warn(
-                    `CONVERSAR_IA: falha ao registrar a saída na conversa: ` +
-                      `${err instanceof Error ? err.message : String(err)}`,
-                  ),
-                );
-            });
-          };
-        })(),
-        // Presença sai pela MESMA porta dos balões (auditoria 20/08): sem o
-        // dono, o "digitando…" ia pela instância da EMPRESA numa conversa que
-        // é do WhatsApp pessoal do rep — a da empresa nem conhece esse peer.
-        digitando: (ms) =>
-          void this.whatsapp
-            .enviarPresenca(empresaId, peerId, 'composing', ms, proprietarioId ?? undefined)
-            .catch(() => undefined),
-        pausado: () =>
-          this.whatsapp
-            .enviarPresenca(empresaId, peerId, 'paused', undefined, proprietarioId ?? undefined)
-            .catch(() => undefined),
-      },
-    );
+          })(),
+          // Presença sai pela MESMA porta dos balões (auditoria 20/08): sem o
+          // dono, o "digitando…" ia pela instância da EMPRESA numa conversa que
+          // é do WhatsApp pessoal do rep — a da empresa nem conhece esse peer.
+          digitando: (ms) =>
+            void this.whatsapp
+              .enviarPresenca(empresaId, peerId, 'composing', ms, proprietarioId ?? undefined)
+              .catch(() => undefined),
+          pausado: () =>
+            this.whatsapp
+              .enviarPresenca(empresaId, peerId, 'paused', undefined, proprietarioId ?? undefined)
+              .catch(() => undefined),
+        },
+      );
+    } catch (err) {
+      // Número que o provedor recusou como inexistente: carimba o contato
+      // (B-9) — antes só o ENVIAR_WHATSAPP do executor fazia isso; aqui o erro
+      // caía no ramo de erro sem deixar rastro na ficha. Best-effort.
+      const numeroRuim = numeroInvalidoDoErro(err);
+      if (numeroRuim) {
+        await this.supressao
+          .marcarWhatsappInvalido(empresaId, numeroRuim)
+          .catch((e: unknown) =>
+            this.logger.warn(`não consegui marcar ${numeroRuim} como sem WhatsApp: ${String(e)}`),
+          );
+      }
+      throw err;
+    }
     if (execucaoId && idemKey) {
       await this.marcarTurnoEntregue(execucaoId, idemKey);
       // Banco E memória: quem persistir o contexto depois leva o marcador junto.
       if (ctxDaExecucao) ctxDaExecucao._iaEntregue = idemKey;
     }
+    return enviados.join('\n');
   }
 
   /**
