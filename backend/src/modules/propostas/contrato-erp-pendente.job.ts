@@ -26,6 +26,18 @@ const TENTATIVAS_ANTES_DE_AVISAR = 3;
  */
 @Injectable()
 export class ContratoErpPendenteJob {
+  /**
+   * ⛔ DECISÃO DO LÉO (14/09/2026): a automação vai só ATÉ O APP.
+   *
+   * O contrato assinado NÃO sobe mais sozinho pro ERP — a subida virou ação
+   * MANUAL na tela da proposta, com a trava anti-duplicação (advisory lock por
+   * proposta + o guard `Proposta.orcamentoErpId`), porque quem toca dali pra
+   * frente é o Leandro. O cron continua vivo, mas só AVISA quem precisa clicar.
+   *
+   * Pra voltar ao automático: `false` aqui (nada mais muda).
+   */
+  private static readonly SO_AVISA = true;
+
   private readonly logger = new Logger(ContratoErpPendenteJob.name);
 
   constructor(
@@ -55,6 +67,20 @@ export class ContratoErpPendenteJob {
     if (pendentes.length === 0) return;
 
     this.logger.warn(`${pendentes.length} contrato(s) assinado(s) sem orçamento no ERP`);
+
+    // SÓ AVISA (decisão do Léo, 14/09): um aviso por contrato, no máximo uma vez
+    // por dia — quem sobe é gente, clicando na proposta. Sem isto o cron subiria
+    // sozinho, que é exatamente o que ele pediu pra sair.
+    if (ContratoErpPendenteJob.SO_AVISA) {
+      for (const c of pendentes) {
+        const chaveAviso = `contrato-erp-aviso:${c.id}`;
+        const primeiroDoDia = await this.reivindicarAvisoDiario(chaveAviso);
+        if (!primeiroDoDia) continue;
+        await this.avisarParaSubirNaMao(c.empresaId, c.proposta.numero);
+      }
+      return;
+    }
+
     for (const c of pendentes) {
       const chave = `contrato-erp-tentativas:${c.id}`;
       const tentativas = await this.contarTentativa(chave);
@@ -91,6 +117,37 @@ export class ContratoErpPendenteJob {
       // Redis fora do ar não pode impedir a tentativa — só o controle dela.
       return 1;
     }
+  }
+
+  /**
+   * Primeira vez no dia pra este contrato? (evita 48 avisos/dia — o cron roda de
+   * 30 em 30 min e o contrato fica pendente até alguém clicar).
+   * Redis fora → devolve `true`: melhor um aviso a mais que nenhum.
+   */
+  private async reivindicarAvisoDiario(chave: string): Promise<boolean> {
+    try {
+      const n = await this.redis.incr(chave);
+      if (n === 1) await this.redis.setEx(chave, '1', 24 * 60 * 60);
+      return n === 1;
+    } catch {
+      return true;
+    }
+  }
+
+  private async avisarParaSubirNaMao(empresaId: string, numero: string): Promise<void> {
+    await this.notificacoes
+      .criarParaRole({
+        empresaId,
+        roles: ['DIRECTOR', 'ADMIN'],
+        tipo: 'GENERICO',
+        prioridade: 'NORMAL',
+        titulo: `Contrato da ${numero} assinado — subir pro ERP`,
+        mensagem:
+          'O contrato está assinado e guardado. A subida pro ERP é manual: abra a proposta e ' +
+          'use "Enviar pro ERP". Clicar duas vezes não duplica — o segundo envio é recusado.',
+        link: '/propostas',
+      })
+      .catch(() => undefined);
   }
 
   private async avisar(empresaId: string, numero: string, motivo: string): Promise<void> {
