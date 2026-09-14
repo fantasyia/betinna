@@ -30,11 +30,13 @@ const getSessionMock = vi.fn<[], AuthSession | null>();
 const getStoredEmpresaIdMock = vi.fn<[], string | null>();
 const refreshAccessTokenMock = vi.fn<[], Promise<AuthSession | null>>();
 const clearSessionMock = vi.fn<[], void>();
+const refreshFoiTransitorioMock = vi.fn<[], boolean>(() => false);
 
 vi.mock('./auth-store', () => ({
   getSession: () => getSessionMock(),
   getStoredEmpresaId: () => getStoredEmpresaIdMock(),
   refreshAccessToken: () => refreshAccessTokenMock(),
+  refreshFoiTransitorio: () => refreshFoiTransitorioMock(),
   clearSession: () => clearSessionMock(),
 }));
 
@@ -456,6 +458,23 @@ describe('refresh-on-401', () => {
     expect(refreshAccessTokenMock).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(out).toEqual({ v: 42 });
+  });
+
+  it('refresh TRANSITÓRIO (5xx/rede) → NÃO derruba a sessão nem re-tenta com o token velho (G-3)', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({}, { status: 401 }),
+    );
+    // O auth-store devolve a sessão ATUAL (token velho) e avisa que foi transitório.
+    refreshAccessTokenMock.mockResolvedValue(makeSession());
+    refreshFoiTransitorioMock.mockReturnValue(true);
+
+    await expect(api.get('/protegido')).rejects.toMatchObject({
+      status: 401,
+      code: 'AUTH_REQUIRED',
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1); // sem retry com token velho
+    expect(clearSessionMock).not.toHaveBeenCalled(); // e sem deslogar
+    refreshFoiTransitorioMock.mockReturnValue(false);
   });
 
   it('refresh falha (null) → clearSession + ApiError AUTH_REQUIRED 401, sem retry', async () => {

@@ -15,7 +15,13 @@
  * Em testes E2E (Playwright), VITE_API_URL aponta pra Railway staging URL.
  */
 import * as Sentry from '@sentry/react';
-import { clearSession, getSession, getStoredEmpresaId, refreshAccessToken } from './auth-store';
+import {
+  clearSession,
+  getSession,
+  getStoredEmpresaId,
+  refreshAccessToken,
+  refreshFoiTransitorio,
+} from './auth-store';
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 const API_PREFIX = '/api/v1';
@@ -214,9 +220,15 @@ async function request<T>(
   // original; se não, limpa sessão e propaga erro pra router redirecionar.
   if (response.status === 401 && retryWithRefresh && !opts.skipAuth) {
     const refreshed = await refreshAccessToken();
-    if (refreshed) {
-      // Retry sem refresh-loop (retryWithRefresh=false na recursão)
+    if (refreshed && !refreshFoiTransitorio()) {
+      // Token NOVO: retry sem refresh-loop (retryWithRefresh=false na recursão)
       return request<T>(path, opts, false);
+    }
+    if (refreshed) {
+      // O refresh voltou a MESMA sessão: o backend deu 5xx/429 (ou a rede
+      // caiu) e o auth-store já reagendou. Repetir com o token velho daria 401
+      // de novo e deslogava no meio do trabalho (auditoria 13/09, G-3).
+      throw new ApiError(401, 'AUTH_REQUIRED', 'Sessão em renovação — tente de novo');
     }
     clearSession();
     throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');

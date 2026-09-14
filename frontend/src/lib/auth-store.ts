@@ -319,7 +319,19 @@ export function refreshAccessToken(): Promise<AuthSession | null> {
   return refreshEmVoo;
 }
 
+/**
+ * O ÚLTIMO refresh falhou por causa TRANSITÓRIA (5xx/429/rede)? Nesse caso
+ * `refreshAccessToken` devolve a sessão atual (token velho) e reagenda — e o
+ * `api.ts` não pode tratar isso como "token novo, tenta de novo": o retry
+ * daria 401 outra vez e derrubaria a sessão (auditoria 13/09, G-3).
+ */
+let refreshTransitorio = false;
+export function refreshFoiTransitorio(): boolean {
+  return refreshTransitorio;
+}
+
 async function doRefreshAccessToken(): Promise<AuthSession | null> {
+  refreshTransitorio = false;
   try {
     const res = await fetchWithTimeout(`${API_BASE}/api/v1/auth/refresh`, {
       method: 'POST',
@@ -330,6 +342,7 @@ async function doRefreshAccessToken(): Promise<AuthSession | null> {
       // derruba a sessão quando o backend de fato REJEITA a credencial (401/403).
       // Antes, um blip do servidor deslogava o usuário no meio do trabalho.
       if (res.status >= 500 || res.status === 429) {
+        refreshTransitorio = true;
         agendarRetentativaDeRefresh();
         return getSession();
       }
@@ -350,6 +363,7 @@ async function doRefreshAccessToken(): Promise<AuthSession | null> {
       if (transitorio) {
         // Mantém a sessão e reagenda — mesmo tratamento que o refresh já dá pra
         // 5xx/rede. Deslogar aqui seria punir o usuário por um soluço de rede.
+        refreshTransitorio = true;
         agendarRetentativaDeRefresh();
         return null;
       }
@@ -373,6 +387,7 @@ async function doRefreshAccessToken(): Promise<AuthSession | null> {
     // Falha de REDE (offline, DNS, timeout): não é credencial inválida. Mantém a
     // sessão em memória e tenta de novo em 30s — uma oscilação de conexão
     // deslogava o usuário em silêncio, no meio de um cadastro.
+    refreshTransitorio = true;
     agendarRetentativaDeRefresh();
     return getSession();
   }
