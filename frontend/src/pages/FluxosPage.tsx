@@ -257,6 +257,20 @@ export default function FluxosPage() {
         await api.delete(`/fluxos/${id}`);
         toast.success('Fluxo arquivado');
       } else {
+        // ATIVAR é a ação mais irreversível da tela: a partir do clique o fluxo
+        // passa a mandar WhatsApp/e-mail de verdade pra quem entrar no gatilho.
+        // Excluir já confirmava; ativar era um clique só (auditoria 13/09, G-6).
+        if (action === 'ativar') {
+          const ok = await confirm({
+            title: 'Ativar este fluxo?',
+            message:
+              'A partir de agora ele dispara DE VERDADE: quem entrar no gatilho vai receber as ' +
+              'mensagens (WhatsApp/e-mail) configuradas nos nós. Dá pra pausar depois, mas o que ' +
+              'já saiu não volta.',
+            confirmLabel: 'Ativar',
+          });
+          if (!ok) return;
+        }
         await api.post(`/fluxos/${id}/${action}`);
         toast.success(`Fluxo ${action === 'ativar' ? 'ativado' : 'pausado'}`);
       }

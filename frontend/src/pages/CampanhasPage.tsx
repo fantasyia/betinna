@@ -293,13 +293,22 @@ export default function CampanhasPage() {
     useApiQuery<PaginatedResponse<Campanha>>(listPath);
   const { data: resumo } = useApiQuery<Resumo>('/campanhas/resumo');
 
-  async function callAction(id: string, action: 'disparar' | 'pausar' | 'cancelar') {
+  async function callAction(
+    id: string,
+    action: 'disparar' | 'pausar' | 'cancelar',
+    quantos?: number,
+  ) {
     if (actingId) return; // guard anti-duplo-clique / ação concorrente
     if (action === 'disparar') {
       const ok = await confirmAsync({
         title: 'Disparar esta campanha agora?',
+        // O NÚMERO muda a decisão de quem clica (auditoria 13/09, G-6):
+        // "toda a audiência" não diz se são 12 ou 4.000 pessoas.
         message:
-          'A campanha será enviada para TODA a audiência imediatamente. Os envios já feitos não podem ser desfeitos.',
+          (quantos
+            ? `${quantos.toLocaleString('pt-BR')} ${quantos === 1 ? 'pessoa vai receber' : 'pessoas vão receber'} agora. `
+            : 'A campanha será enviada para TODA a audiência imediatamente. ') +
+          'Os envios já feitos não podem ser desfeitos.',
         confirmLabel: 'Disparar agora',
         variant: 'danger',
       });
@@ -390,7 +399,7 @@ export default function CampanhasPage() {
               type="button"
               data-testid={`campanha-disparar-${c.id}`}
               disabled={actingId === c.id}
-              onClick={() => callAction(c.id, 'disparar')}
+              onClick={() => callAction(c.id, 'disparar', destCount(c))}
               className={cn(BTN, 'px-2.5 py-1 text-[12px]')}
             >
               ▶ Disparar
@@ -583,10 +592,15 @@ function CampanhaDetailModal({
                 disabled={acting}
                 onClick={async () => {
                   // CAÇADA-BUG #3: envio em massa irreversível → confirma antes.
+                  const quantos = c ? destCount(c) : undefined;
                   const ok = await confirmAsync({
                     title: 'Disparar esta campanha agora?',
+                    // Com o NÚMERO na frente (G-6): 12 ou 4.000 é outra decisão.
                     message:
-                      'A campanha será enviada para TODA a audiência imediatamente. Os envios já feitos não podem ser desfeitos.',
+                      (quantos
+                        ? `${quantos.toLocaleString('pt-BR')} ${quantos === 1 ? 'pessoa vai receber' : 'pessoas vão receber'} agora. `
+                        : 'A campanha será enviada para TODA a audiência imediatamente. ') +
+                      'Os envios já feitos não podem ser desfeitos.',
                     confirmLabel: 'Disparar agora',
                     variant: 'danger',
                   });

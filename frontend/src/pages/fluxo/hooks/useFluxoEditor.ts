@@ -325,6 +325,16 @@ export function useFluxoEditor({
             action: {
               label: 'Reativar agora',
               onClick: async () => {
+                // Mesma confirmação da lista (G-6): reativar é voltar a mandar
+                // mensagem de verdade. Aqui o `window.confirm` é proposital — o
+                // clique nasce dentro de um toast, fora da árvore de diálogos.
+                if (
+                  !window.confirm(
+                    'Reativar este fluxo? Ele volta a disparar DE VERDADE para quem entrar no gatilho.',
+                  )
+                ) {
+                  return;
+                }
                 try {
                   await api.post(`/fluxos/${fluxoId}/ativar`, {});
                   toast.success('Fluxo reativado');

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { Input, Select, Field } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import type { NodePayload } from '@/pages/fluxo/lib/types';
@@ -90,8 +90,19 @@ export function CronTriggerConfig({
         .then((r) => {
           if (!cancel) setPreview(r);
         })
-        .catch(() => {
-          if (!cancel) setPreview({ valido: false, erro: 'Falha ao validar', proximas: [] });
+        .catch((err: unknown) => {
+          if (cancel) return;
+          // 403 aqui não é agendamento inválido — é o papel do usuário não
+          // podendo validar cron (REP). "Falha ao validar" mandava o rep
+          // procurar erro na expressão que estava certa (auditoria 13/09, G-5).
+          const semPermissao = err instanceof ApiError && err.status === 403;
+          setPreview({
+            valido: false,
+            erro: semPermissao
+              ? 'Seu perfil não pode validar agendamentos — peça a um gestor pra conferir.'
+              : `Falha ao validar: ${apiErrorMessage(err)}`,
+            proximas: [],
+          });
         })
         .finally(() => {
           if (!cancel) setCarregando(false);
