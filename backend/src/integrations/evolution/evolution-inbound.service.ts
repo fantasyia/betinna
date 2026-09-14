@@ -146,6 +146,11 @@ export class EvolutionInboundService {
       this.logger.warn(
         `[evolution] falha no evento ${evento} (${instance}): ${err instanceof Error ? err.message : String(err)}`,
       );
+      // Propaga: o controller é quem LIBERA a marca de anti-replay no erro. Com o
+      // engole aqui, o `.catch` dele era código morto e a reentrega/poll de uma
+      // mensagem que falhou por erro transitório de banco era descartada como
+      // "replay" (auditoria 13/09/2026, A-8).
+      throw err;
     }
   }
 
@@ -234,6 +239,10 @@ export class EvolutionInboundService {
     }
     if (falhas > 0) {
       this.logger.warn(`[evolution] ${falhas}/${msgs.length} mensagem(ns) do lote falharam`);
+      // As outras mensagens do lote já foram processadas (isolamento acima);
+      // estourar aqui só devolve ao controller o "houve falha" pra ele liberar
+      // a marca de anti-replay (A-8). Não desfaz nada.
+      throw new Error(`${falhas}/${msgs.length} mensagem(ns) do lote falharam`);
     }
   }
 

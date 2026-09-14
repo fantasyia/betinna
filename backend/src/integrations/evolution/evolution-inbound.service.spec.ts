@@ -339,10 +339,34 @@ describe('EvolutionInboundService — fluxo principal (roteamento instância →
     expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
   });
 
-  it('erro do inbox NÃO propaga (catch no processarEvento) — webhook não pode 500', async () => {
+  it('erro do inbox PROPAGA — é o controller (já com 200 respondido) que libera o anti-replay (A-8)', async () => {
+    // O controller faz `void processarEvento().catch(release)`: o 200 já saiu. Engolir
+    // aqui deixava o `.catch` morto e a reentrega era descartada como replay.
     const { svc, inbox } = setup();
     inbox.processarMensagemEntrante.mockRejectedValue(new Error('db down'));
-    await expect(svc.processarEvento(upsert({ messages: [msgTexto()] }))).resolves.toBeUndefined();
+    await expect(svc.processarEvento(upsert({ messages: [msgTexto()] }))).rejects.toThrow(
+      /1\/1 mensagem/,
+    );
+  });
+
+  it('num lote, a falha de UMA não impede as outras — e ainda assim propaga no fim', async () => {
+    const { svc, inbox } = setup();
+    inbox.processarMensagemEntrante
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValueOnce(undefined);
+    await expect(
+      svc.processarEvento(
+        upsert({
+          messages: [
+            msgTexto(),
+            msgTexto({
+              key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: false, id: 'WAID2' },
+            }),
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/1\/2 mensagem/);
+    expect(inbox.processarMensagemEntrante).toHaveBeenCalledTimes(2);
   });
 });
 
