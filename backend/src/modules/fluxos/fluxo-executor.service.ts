@@ -859,10 +859,12 @@ export class FluxoExecutorService {
     // de 6h já apareceria estourado e a execução desistiria na primeira falha —
     // sem nenhuma espera. Só escreve se houver o que limpar.
     if (logStatus === 'CONCLUIDO' && contexto._envioIndisponivelDesde !== undefined) {
-      const { _envioIndisponivelDesde, _envioReagendos, ...limpo } = contexto as Record<
-        string,
-        unknown
-      >;
+      // Limpa a partir do contexto ORIGINAL da execução, não do enriquecido: o
+      // enriquecido carrega o espelho ACHATADO do lead (variáveis copiadas pro
+      // topo a cada passo), e persistir isso congelava valores que o passo
+      // seguinte deveria reler frescos (auditoria 13/09, D-13).
+      const { _envioIndisponivelDesde, _envioReagendos, ...limpo } =
+        (execucao.contexto as Record<string, unknown> | null) ?? {};
       void _envioIndisponivelDesde;
       void _envioReagendos;
       await this.prisma.fluxoExecucao

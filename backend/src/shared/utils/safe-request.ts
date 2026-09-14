@@ -1,6 +1,11 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
+import { request as httpsRequest } from 'node:https';
+import { request as httpRequest } from 'node:http';
+
+/** Assinatura do callback de lookup do net.connect. */
+type LookupCb = (err: Error | null, address: string, family: number) => void;
 
 /**
  * Erro específico de SSRF — quando uma URL falha nas verificações de segurança.
@@ -130,7 +135,26 @@ function isPrivateIpv6(ip: string): boolean {
  * @param url URL completa (ex: 'https://api.example.com/webhook')
  * @throws SsrfBlockedError quando URL não é segura
  */
+/** IPs aprovados na validação, pra conexão usar EXATAMENTE eles (D-11). */
+export interface UrlValidada {
+  url: URL;
+  /** Endereços que passaram na checagem; vazio = hostname já era IP literal. */
+  ips: Array<{ address: string; family: number }>;
+}
+
 export async function assertSafeUrl(url: string): Promise<URL> {
+  return (await validarUrlComIps(url)).url;
+}
+
+/**
+ * Igual ao `assertSafeUrl`, mas devolve os IPs aprovados.
+ *
+ * Existe porque validar o NOME e depois conectar pelo NOME resolve o DNS duas
+ * vezes: um domínio malicioso responde IP público na validação e IP interno na
+ * conexão (DNS rebinding). Quem conecta precisa dos endereços que passaram
+ * (auditoria 13/09/2026, D-11).
+ */
+export async function validarUrlComIps(url: string): Promise<UrlValidada> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -154,6 +178,7 @@ export async function assertSafeUrl(url: string): Promise<URL> {
     throw new SsrfBlockedError(`Hostname bloqueado: ${hostname}`);
   }
 
+  const aprovados: Array<{ address: string; family: number }> = [];
   // Se o hostname já é um IP literal, verifica direto
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
     if (isPrivateIpv4(hostname)) {
@@ -167,6 +192,7 @@ export async function assertSafeUrl(url: string): Promise<URL> {
     // DNS resolve para detectar rebinding pra IP privado
     try {
       const resolved = await dnsLookup(hostname, { all: true });
+      aprovados.push(...resolved.map((r) => ({ address: r.address, family: r.family })));
       for (const r of resolved) {
         if (r.family === 4 && isPrivateIpv4(r.address)) {
           throw new SsrfBlockedError(`Hostname ${hostname} resolve para IP privado ${r.address}`);
@@ -182,7 +208,7 @@ export async function assertSafeUrl(url: string): Promise<URL> {
     }
   }
 
-  return parsed;
+  return { url: parsed, ips: aprovados };
 }
 
 /**
@@ -197,8 +223,14 @@ export async function safeRequest(
   init: RequestInit = {},
   opts: { timeoutMs?: number } = {},
 ): Promise<Response> {
-  const validated = await assertSafeUrl(url);
+  const { url: validated, ips } = await validarUrlComIps(url);
   const timeoutMs = opts.timeoutMs ?? 10_000;
+  // PINAGEM DO IP (D-11): com hostname (não IP literal), conecta no endereço que
+  // passou na validação, em vez de deixar o fetch resolver o DNS de novo — é a
+  // janela do rebinding. Host header e SNI continuam sendo o hostname.
+  if (ips.length > 0) {
+    return requisicaoComIpFixo(validated, init, ips[0], timeoutMs);
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -211,4 +243,77 @@ export async function safeRequest(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Faz a requisição pelo `http(s)` nativo, fixando o destino TCP no IP aprovado.
+ *
+ * Por que não o `fetch`: ele não expõe o socket nem aceita `lookup` — o destino
+ * seria re-resolvido. O módulo nativo aceita, e o resultado volta como `Response`
+ * padrão (os chamadores usam `.ok`, `.status`, `.arrayBuffer()`, `.headers`).
+ * Nunca segue redirect: 302 pra IP interno é o mesmo ataque por outra porta.
+ */
+function requisicaoComIpFixo(
+  alvo: URL,
+  init: RequestInit,
+  ip: { address: string; family: number },
+  timeoutMs: number,
+): Promise<Response> {
+  const ehHttps = alvo.protocol === 'https:';
+  const requisitar = ehHttps ? httpsRequest : httpRequest;
+  const cabecalhos: Record<string, string> = {};
+  new Headers(init.headers ?? {}).forEach((v, k) => {
+    cabecalhos[k] = v;
+  });
+  const corpo =
+    typeof init.body === 'string' ? Buffer.from(init.body, 'utf8') : (init.body ?? undefined);
+  if (corpo && Buffer.isBuffer(corpo) && cabecalhos['content-length'] === undefined) {
+    cabecalhos['content-length'] = String(corpo.length);
+  }
+
+  return new Promise<Response>((resolve, reject) => {
+    const req = requisitar(
+      {
+        protocol: alvo.protocol,
+        hostname: alvo.hostname,
+        port: alvo.port || (ehHttps ? 443 : 80),
+        path: alvo.pathname + alvo.search,
+        method: (init.method ?? 'GET').toUpperCase(),
+        headers: cabecalhos,
+        // É ISTO que fecha o rebinding: o socket vai pro endereço aprovado.
+        lookup: (_h: string, _o: unknown, cb: LookupCb) => cb(null, ip.address, ip.family),
+        // TLS continua validando o certificado do HOSTNAME.
+        ...(ehHttps ? { servername: alvo.hostname } : {}),
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const pedacos: Buffer[] = [];
+        res.on('data', (d: Buffer) => pedacos.push(d));
+        res.on('end', () => {
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(res.headers)) {
+            if (Array.isArray(v)) v.forEach((x) => headers.append(k, x));
+            else if (typeof v === 'string') headers.set(k, v);
+          }
+          const status = res.statusCode ?? 502;
+          // 204/304 não podem ter corpo no construtor de Response.
+          const semCorpo = status === 204 || status === 304;
+          resolve(
+            new Response(semCorpo ? null : Buffer.concat(pedacos), {
+              status,
+              statusText: res.statusMessage ?? '',
+              headers,
+            }),
+          );
+        });
+        res.on('error', reject);
+      },
+    );
+    req.on('timeout', () =>
+      req.destroy(new Error('Tempo esgotado (' + timeoutMs + 'ms) em ' + alvo.host)),
+    );
+    req.on('error', reject);
+    if (corpo) req.write(corpo);
+    req.end();
+  });
 }
