@@ -28,6 +28,19 @@ import type {
 
 @Injectable()
 export class EmpresasService {
+  /**
+   * Chaves de `Empresa.config` que REP/SAC podem ver — as que as telas deles
+   * consomem (estoque, permissão de criar pedido, etapas do funil, marca).
+   * Chave nova entra aqui SÓ quando uma tela de rep passar a precisar dela.
+   */
+  private static readonly CONFIG_VISIVEL_OPERACAO = new Set([
+    'estoque',
+    'vendas',
+    'funilEtapas',
+    'marca',
+    'branding',
+  ]);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly knowledgeConfig: KnowledgeConfigService,
@@ -119,7 +132,16 @@ export class EmpresasService {
       where: { id: user.empresaIdAtiva },
       select: { config: true },
     });
-    return (emp?.config as Record<string, unknown> | null) ?? {};
+    const config = (emp?.config as Record<string, unknown> | null) ?? {};
+    // REP e SAC recebem SÓ o que as telas deles usam (decisão do Léo, 14/09;
+    // auditoria F-5). A config inteira levava a regra de comissão e o CPF/CNPJ
+    // de quem recebe originação pra quem não precisa deles.
+    if (user.role === 'REP' || user.role === 'SAC') {
+      return Object.fromEntries(
+        Object.entries(config).filter(([k]) => EmpresasService.CONFIG_VISIVEL_OPERACAO.has(k)),
+      );
+    }
+    return config;
   }
 
   /**
