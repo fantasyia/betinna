@@ -36,7 +36,12 @@ describe('CampanhaEnvioProcessor.onFailed — #erro-retry', () => {
       {} as never,
       deps.deadLetter as never,
       {} as never,
-      { suprimido: vi.fn(async () => false), emailSuprimido: vi.fn(async () => false) } as never, // supressao
+      {
+        suprimido: vi.fn(async () => false),
+        emailSuprimido: vi.fn(async () => false),
+        whatsappInvalido: vi.fn(async () => false),
+        marcarWhatsappInvalido: vi.fn(async () => 0),
+      } as never, // supressao
     );
   });
 
@@ -115,6 +120,8 @@ function makeProc(canal: string, esperaMs: number) {
   const supressao = {
     suprimido: vi.fn(async () => false),
     emailSuprimido: vi.fn(async () => false),
+    whatsappInvalido: vi.fn(async () => false),
+    marcarWhatsappInvalido: vi.fn(async () => 0),
   };
   const emailSvc = { enviarHtmlLivre: vi.fn().mockResolvedValue({ ok: true, id: 'em-1' }) };
   const proc = new CampanhaEnvioProcessor(

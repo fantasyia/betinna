@@ -50,7 +50,13 @@ export class SupressaoService {
    */
   async suprimido(
     empresaId: string,
-    alvo: { leadId?: string | null; clienteId?: string | null; telefone?: string | null },
+    alvo: {
+      leadId?: string | null;
+      clienteId?: string | null;
+      telefone?: string | null;
+      /** Casa Lead.contatoEmail / Cliente.email (C-10): LGPD por ENDEREÇO, não só por ficha. */
+      email?: string | null;
+    },
   ): Promise<boolean> {
     try {
       const tag = await this.acharTagLgpd(empresaId);
@@ -88,6 +94,24 @@ export class SupressaoService {
             (SELECT COUNT(*) FROM "ClienteTag" ct JOIN "Cliente" c ON c.id = ct."clienteId"
               WHERE ct."tagId" = ${tag.id} AND c."empresaId" = ${empresaId}
                 AND RIGHT(REGEXP_REPLACE(COALESCE(c.telefone,''),'[^0-9]','','g'), 8) = ${suf})
+          ) AS n`;
+        if ((rows[0]?.n ?? 0n) > 0n) return true;
+      }
+
+      // Por e-mail (auditoria 13/09, C-10): lead que pediu remoção e depois
+      // virou Cliente (ou existe nas duas fichas) recebia campanha — a tag
+      // estava na outra ficha. Endereço é identidade tanto quanto telefone.
+      const email = (alvo.email ?? '').trim().toLowerCase();
+      if (email) {
+        const rows = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
+          SELECT (
+            (SELECT COUNT(*) FROM "LeadTag" lt JOIN "Lead" l ON l.id = lt."leadId"
+              WHERE lt."tagId" = ${tag.id} AND l."empresaId" = ${empresaId}
+                AND LOWER(COALESCE(l."contatoEmail",'')) = ${email})
+            +
+            (SELECT COUNT(*) FROM "ClienteTag" ct JOIN "Cliente" c ON c.id = ct."clienteId"
+              WHERE ct."tagId" = ${tag.id} AND c."empresaId" = ${empresaId}
+                AND LOWER(COALESCE(c.email,'')) = ${email})
           ) AS n`;
         if ((rows[0]?.n ?? 0n) > 0n) return true;
       }
@@ -280,6 +304,40 @@ export class SupressaoService {
    * Best-effort de propósito — quem chama está no meio de tratar uma falha de
    * envio, e falhar aqui não pode piorar o erro que já está sendo tratado.
    */
+  /**
+   * O telefone já foi recusado pelo provedor como SEM WhatsApp?
+   *
+   * A tag era escrita e ninguém lia (auditoria 13/09, B-9): campanha insistia
+   * 3× no número inexistente e ainda entrava no "reenviar erros". FAIL-OPEN
+   * (false): é otimização de custo, não regra legal — erro aqui não pode
+   * segurar um envio legítimo.
+   */
+  async whatsappInvalido(empresaId: string, telefone: string | null | undefined): Promise<boolean> {
+    const suf = this.sufixoTelefone(telefone);
+    if (!suf) return false;
+    try {
+      const tag = await this.prisma.tag.findUnique({
+        where: { empresaId_nome: { empresaId, nome: SupressaoService.TAG_WHATSAPP_INVALIDO } },
+        select: { id: true },
+      });
+      if (!tag) return false;
+      const rows = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
+        SELECT (
+          (SELECT COUNT(*) FROM "LeadTag" lt JOIN "Lead" l ON l.id = lt."leadId"
+            WHERE lt."tagId" = ${tag.id} AND l."empresaId" = ${empresaId}
+              AND RIGHT(REGEXP_REPLACE(COALESCE(l."contatoTelefone",''),'[^0-9]','','g'), 8) = ${suf})
+          +
+          (SELECT COUNT(*) FROM "ClienteTag" ct JOIN "Cliente" c ON c.id = ct."clienteId"
+            WHERE ct."tagId" = ${tag.id} AND c."empresaId" = ${empresaId}
+              AND RIGHT(REGEXP_REPLACE(COALESCE(c.telefone,''),'[^0-9]','','g'), 8) = ${suf})
+        ) AS n`;
+      return (rows[0]?.n ?? 0n) > 0n;
+    } catch (err) {
+      this.logger.warn(`whatsappInvalido: falha ao checar ...${suf}: ${String(err)}`);
+      return false;
+    }
+  }
+
   async marcarWhatsappInvalido(empresaId: string, telefone: string): Promise<number> {
     const suf = this.sufixoTelefone(telefone);
     if (!suf) return 0;

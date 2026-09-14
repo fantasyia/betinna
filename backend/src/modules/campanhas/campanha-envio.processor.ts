@@ -3,7 +3,10 @@ import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullm
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
-import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
+import {
+  WhatsappIndisponivelError,
+  numeroInvalidoDoErro,
+} from '@integrations/evolution/whatsapp-indisponivel.error';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
 import { IdempotencyService } from '@shared/utils/idempotency.service';
@@ -170,6 +173,8 @@ export class CampanhaEnvioProcessor extends WorkerHost {
       await this.supressao.suprimido(dest.campanha.empresaId, {
         clienteId: dest.clienteId,
         telefone: dest.telefone,
+        // LGPD por ENDEREÇO (C-10): lead descadastrado que virou Cliente.
+        email: dest.email,
       })
     ) {
       await this.prisma.campanhaDestinatario.update({
@@ -244,6 +249,22 @@ export class CampanhaEnvioProcessor extends WorkerHost {
               if (!(await this.whatsapp.estaDisponivel(dest.campanha.empresaId))) {
                 throw new WhatsappIndisponivelError('WhatsApp da empresa não está conectado');
               }
+              // Número que o provedor JÁ recusou como sem WhatsApp: não insiste
+              // (era 3 tentativas + "reenviar erros" — auditoria 13/09, B-9).
+              if (await this.supressao.whatsappInvalido(dest.campanha.empresaId, dest.telefone)) {
+                await this.idempotency.release(idemKey);
+                await this.prisma.campanhaDestinatario.update({
+                  where: { id: destinatarioId },
+                  data: {
+                    status: 'SUPRIMIDO',
+                    erro: 'WhatsApp inexistente (recusado pelo provedor)',
+                  },
+                });
+                this.logger.log(
+                  `Campanha ${campanhaId}: destinatário ${destinatarioId} suprimido (sem WhatsApp) — não enviado`,
+                );
+                return;
+              }
               // Pacing global por empresa (mesmo ponto único de fluxos/bot).
               await this.pacing.aguardarSlot(dest.campanha.empresaId);
               const r = await this.whatsapp.enviarTexto(
@@ -256,6 +277,18 @@ export class CampanhaEnvioProcessor extends WorkerHost {
             } catch (sendErr) {
               // Falha no provider — libera claim pra próxima tentativa retry
               await this.idempotency.release(idemKey);
+              // Número inexistente: carimba o contato (B-9) — o retry cai no
+              // gate acima e fecha SUPRIMIDO em vez de insistir.
+              const numeroRuim = numeroInvalidoDoErro(sendErr);
+              if (numeroRuim) {
+                await this.supressao
+                  .marcarWhatsappInvalido(dest.campanha.empresaId, numeroRuim)
+                  .catch((e: unknown) =>
+                    this.logger.warn(
+                      `não consegui marcar ${numeroRuim} como sem WhatsApp: ${String(e)}`,
+                    ),
+                  );
+              }
               throw sendErr;
             }
           } else {
