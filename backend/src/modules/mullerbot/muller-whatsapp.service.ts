@@ -793,7 +793,7 @@ export class MullerWhatsappService implements OnModuleInit {
           status: 'FALLBACK',
         });
         this.logger.warn(
-          `[bot] FALLBACK conv=${convId} peer=${params.peerId} msg="${params.conteudo.slice(0, 60)}" tempo=${tempoMs}ms status=falha`,
+          `[bot] FALLBACK conv=${convId} msg_len=${params.conteudo.length} tempo=${tempoMs}ms status=falha`,
         );
         return;
       }
@@ -950,10 +950,10 @@ export class MullerWhatsappService implements OnModuleInit {
       // #32: `custo.registrarUso` saiu daqui pro `.then` da iaPromise (registra mesmo quando o timeout
       // vence o race — senão tokens faturados pós-timeout não entravam no teto).
       this.logger.log(
-        `[bot] OK conv=${convId} peer=${params.peerId} modelo=${resposta.modelo ?? '?'} ` +
+        `[bot] OK conv=${convId} modelo=${resposta.modelo ?? '?'} ` +
           `catalogo=${resposta.usouCatalogo ? `on(${resposta.produtosIncluidos ?? 0}prod)` : 'off'} ` +
           `quebra=${cfgBot.quebrarMensagens ? 'on' : 'off'} baloes=${baloesFinais.length} ` +
-          `msg="${params.conteudo.slice(0, 60)}" prompt_aprox=${resposta.promptTokensAprox ?? '?'}tok ` +
+          `msg_len=${params.conteudo.length} prompt_aprox=${resposta.promptTokensAprox ?? '?'}tok ` +
           `tokens_in=${resposta.tokensIn ?? '?'} tokens_out=${resposta.tokensOut ?? '?'} tempo=${tempoMs}ms`,
       );
     } catch (err) {
@@ -1254,17 +1254,31 @@ export class MullerWhatsappService implements OnModuleInit {
     }
   }
 
+  /** Execução PENDENTE/EM_EXECUCAO mais nova que isto ainda "está falando" (E-10). */
+  private static readonly EXECUCAO_RECENTE_MS = 5 * 60_000;
+
   private async fluxoConduzindoLead(empresaId: string, leadId: string): Promise<boolean> {
+    const EXECUCAO_RECENTE_MS = MullerWhatsappService.EXECUCAO_RECENTE_MS;
     try {
       // Espelha o guard por CONVERSA: só AGUARDANDO deixava uma janela em que o
       // fluxo estava rodando (PENDENTE/EM_EXECUCAO, ex.: entre o CRIAR_LEAD e o
       // opener da IA) e o bot geral respondia por cima — o lead recebia duas
       // mensagens diferentes, do fluxo e do bot.
+      // "Qualquer execução viva" era largo demais: lead frio numa régua com
+      // DELAY de 3 dias escrevia e ninguém respondia nem era avisado (auditoria
+      // 13/09, E-10). Conduzindo de verdade = AGUARDANDO num nó (a IA vai
+      // retomar) OU execução que acabou de nascer (o opener está a caminho).
       const aguardando = await this.prisma.fluxoExecucao.findFirst({
         where: {
           empresaId,
-          status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
           contexto: { path: ['leadId'], equals: leadId },
+          OR: [
+            { status: 'AGUARDANDO', aguardandoNoId: { not: null } },
+            {
+              status: { in: ['PENDENTE', 'EM_EXECUCAO'] },
+              criadoEm: { gte: new Date(Date.now() - EXECUCAO_RECENTE_MS) },
+            },
+          ],
         },
         select: { id: true },
       });
