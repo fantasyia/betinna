@@ -526,6 +526,35 @@ export function filtrarVariaveisGravaveis(
   return Object.fromEntries(semReservadas.filter(([k]) => permitidas.has(k)));
 }
 
+/** URLs http(s) de um texto — sem pontuação de fim de frase colada. */
+export function urlsDoTexto(texto: string): string[] {
+  const achadas = texto.match(/https?:\/\/[^\s<>"')]+/gi) ?? [];
+  return achadas.map((u) => u.replace(/[.,;:!?]+$/, ''));
+}
+
+/**
+ * O lead PEDIU o link de novo? ("manda de novo", "reenvia", "perdi o link"…)
+ *
+ * Quando pediu, reenviar é o certo — a guarda de repetição não vale.
+ */
+export function pediuOLinkDeNovo(textoLead: string): boolean {
+  const t = textoLead
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '');
+  return (
+    // "reenviar" já carrega a repetição — não precisa de "de novo" junto.
+    /\breenvi(a|ar|e|em)\b/.test(t) ||
+    /(manda|envia|reenvia|passa|mandar|enviar)\b[^.!?]{0,30}\b(de novo|novamente|outra vez|again)/.test(
+      t,
+    ) ||
+    /\b(perdi|sumiu|nao achei|nao recebi|nao chegou|apaguei)\b[^.!?]{0,30}\b(link|calculadora|mensagem)/.test(
+      t,
+    ) ||
+    /\b(qual|cade|onde)\b[^.!?]{0,20}\blink\b/.test(t)
+  );
+}
+
 export function mesclarHistorico(
   daConversa: HistoricoMsg[],
   doContexto: HistoricoMsg[],
@@ -2084,6 +2113,33 @@ export class ConversarIaService implements OnModuleDestroy {
     return true;
   }
 
+  /**
+   * Alguma URL desta resposta JÁ saiu nesta conversa? Devolve a primeira (P2).
+   *
+   * Olha as mensagens OUTBOUND da própria conversa — o registro do que o cliente
+   * de fato recebeu, que é mais confiável que o histórico em memória do nó (ele
+   * é cortado por tamanho e some entre execuções).
+   */
+  private async linkJaEntregue(conversationId: string, resposta: string): Promise<string | null> {
+    const urls = urlsDoTexto(resposta);
+    if (urls.length === 0) return null;
+    try {
+      for (const url of urls) {
+        const ja = await this.prisma.message.findFirst({
+          where: { conversationId, direction: 'OUTBOUND', conteudo: { contains: url } },
+          select: { id: true },
+        });
+        if (ja) return url;
+      }
+    } catch (err) {
+      // Best-effort: falha aqui não pode emudecer o bot.
+      this.logger.warn(
+        `CONVERSAR_IA: não consegui checar link repetido: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return null;
+  }
+
   /** Conversa de WhatsApp do lead — quando o contexto não traz a dele. */
   private async conversaDoLead(empresaId: string, ctx: ExecucaoContexto): Promise<string | null> {
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : null;
@@ -2537,7 +2593,62 @@ export class ConversarIaService implements OnModuleDestroy {
         .trim()
         .toLowerCase();
     const classificacaoFinalTurno = String(vTurno.classificacao_final ?? '').trim();
-    const respostaPersonalizada = personalizarNome(turno.resposta, lead.contatoNome);
+    let respostaPersonalizada = personalizarNome(turno.resposta, lead.contatoNome);
+
+    // ── P2 (Bateria 3, 14/09): não reentregar o MESMO link ──────────────────
+    //
+    // Medido no caso A8: o lead volta a falar, o C1 dispara de novo e entrega o
+    // link da calculadora com a URL IDÊNTICA. O estado que diz "já entreguei"
+    // existe (tag `calculadora-enviada`, etapa "Calculadora enviada",
+    // `desfecho_consultivo` preenchido) — a IA é que não o consulta.
+    //
+    // Decisão do Léo (14/09, opção A): em vez de reenviar, RETOMAR de onde
+    // parou — perguntar se conseguiu usar e ajudar no que travou. Repetir link
+    // é o que mais rápido faz o bot parecer quebrado, e acontece justamente com
+    // quem voltou: o lead mais quente.
+    //
+    // O motor não reescreve a fala da IA (isso seria pior): ele REGERA com a
+    // informação que faltava, pelo mesmo caminho que já existe pro
+    // `falaComOperador`. Se o lead PEDIU o link de novo, não há o que evitar.
+    if (conversationId && !pediuOLinkDeNovo(textoLead)) {
+      const repetido = await this.linkJaEntregue(conversationId, respostaPersonalizada);
+      if (repetido) {
+        this.logger.warn(
+          `CONVERSAR_IA: a resposta repetia um link já entregue (${repetido}) — ` +
+            `regerando pra RETOMAR em vez de reenviar (exec ${execucaoId})`,
+        );
+        const nova = await this.chamarIa(
+          ctx,
+          empresaId,
+          systemPrompt +
+            '\n\n[Contexto] Esta pessoa JÁ RECEBEU este link antes: ' +
+            repetido +
+            '. NÃO mande o link de novo. Retome de onde parou: pergunte se ela ' +
+            'conseguiu usar e ajude no que travou. Se ela pedir o link ' +
+            'explicitamente, aí sim reenvie.',
+          textoLead,
+          historico,
+          imagemDataUrl,
+          { responseFormat: montarSchemaDoTurno(declaradas) },
+        ).catch(() => null);
+        if (nova) {
+          await this.registrarUsoPrompt(cfg.promptId, (nova.tokensIn ?? 0) + (nova.tokensOut ?? 0));
+          await this.custo.registrarUso(empresaId, nova.tokensIn ?? 0, nova.tokensOut ?? 0);
+          const turnoNovo = parseTurnoIa(nova.texto);
+          const textoNovo = personalizarNome(turnoNovo.resposta, lead.contatoNome);
+          // Só troca se a regeração REALMENTE tirou o link; senão fica a
+          // original — falar demais é recuperável, emudecer no meio não.
+          if (!urlsDoTexto(textoNovo).includes(repetido)) {
+            respostaPersonalizada = textoNovo;
+            turno.variaveis = { ...(turno.variaveis ?? {}), ...(turnoNovo.variaveis ?? {}) };
+          } else {
+            this.logger.warn(
+              `CONVERSAR_IA: regeração ainda trouxe o link ${repetido} — seguindo com a resposta original (exec ${execucaoId})`,
+            );
+          }
+        }
+      }
+    }
 
     // `classificacao_final` SOZINHA não encerra mais a conversa. O modelo às
     // vezes preenche a variável no 1º turno (ex.: "Indefinido") só por estar no

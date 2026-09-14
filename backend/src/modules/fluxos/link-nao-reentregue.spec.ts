@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest';
+import { pediuOLinkDeNovo, urlsDoTexto } from './conversar-ia.service';
+
+/**
+ * P2 da Bateria 3 (14/09/2026) — o caso A8.
+ *
+ * O lead volta a falar, o C1 dispara de novo e entrega o link da calculadora
+ * com a URL IDÊNTICA. O estado que diz "já entreguei" existe (tag
+ * `calculadora-enviada`, etapa "Calculadora enviada", `desfecho_consultivo`
+ * preenchido) — a IA é que não o consulta.
+ *
+ * Decisão do Léo: em vez de reenviar, **retomar de onde parou** (opção A).
+ * O motor detecta a repetição olhando as mensagens OUTBOUND da conversa e
+ * REGERA com essa informação — não reescreve a fala da IA.
+ *
+ * Aqui ficam as duas peças puras da guarda. O caminho completo (regerar e
+ * trocar a resposta) é exercitado pelas specs do turno em
+ * `conversar-ia.service.spec.ts`.
+ */
+
+describe('urlsDoTexto — o que conta como "o mesmo link"', () => {
+  it('acha a URL da calculadora com query e âncora (o formato que reprovou)', () => {
+    const texto =
+      'Prontinho! Segue: https://somatecblocking.com.br/protecao-comercial' +
+      '?contexto=comercio&corrente=63&tensao=220V&origem=disjuntor#calculadora';
+    expect(urlsDoTexto(texto)).toEqual([
+      'https://somatecblocking.com.br/protecao-comercial?contexto=comercio&corrente=63&tensao=220V&origem=disjuntor#calculadora',
+    ]);
+  });
+
+  it('não engole a pontuação do fim da frase — senão a comparação nunca casa', () => {
+    expect(urlsDoTexto('olha aqui: https://site.com.br/x?a=1.')).toEqual([
+      'https://site.com.br/x?a=1',
+    ]);
+    expect(urlsDoTexto('é esse https://site.com.br/y, dá uma olhada')).toEqual([
+      'https://site.com.br/y',
+    ]);
+  });
+
+  it('acha mais de um link e ignora texto sem link', () => {
+    expect(urlsDoTexto('a https://a.com e b http://b.com')).toHaveLength(2);
+    expect(urlsDoTexto('sem link nenhum aqui')).toEqual([]);
+  });
+});
+
+describe('pediuOLinkDeNovo — quando REENVIAR é o certo', () => {
+  it('pedido explícito desliga a guarda', () => {
+    for (const frase of [
+      'manda de novo por favor',
+      'pode reenviar o link?',
+      'me envia novamente',
+      'perdi o link',
+      'não recebi o link',
+      'apaguei a mensagem com o link',
+      'qual era o link mesmo?',
+      'cadê o link',
+    ]) {
+      expect(pediuOLinkDeNovo(frase), frase).toBe(true);
+    }
+  });
+
+  it('conversa normal NÃO conta como pedido — aí a guarda vale', () => {
+    for (const frase of [
+      'consegui usar, obrigado',
+      'a corrente é 63A',
+      'vou ver com meu eletricista',
+      'esse produto protege o que?',
+    ]) {
+      expect(pediuOLinkDeNovo(frase), frase).toBe(false);
+    }
+  });
+
+  it('funciona sem acento (é como o lead digita no WhatsApp)', () => {
+    expect(pediuOLinkDeNovo('nao achei o link')).toBe(true);
+    expect(pediuOLinkDeNovo('cade o link')).toBe(true);
+  });
+});
