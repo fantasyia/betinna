@@ -334,7 +334,13 @@ export function correnteNaFrase(texto: string, aceitarSolto = false): Achado | n
 // ⚠️ Montadas de STRING com o escape explícito: a versão em literal nasceu com
 // byte de BACKSPACE no lugar do \\b — terceira vez neste arquivo. `od -c` pega;
 // editor e grep não.
-const rx = (fonte: string): RegExp => new RegExp(fonte, 'i');
+// `\b` do JS é ASCII: "\bárea comum\b" e "\bapê\b" NUNCA casavam ("á"/"ê" não
+// são "word") — falso negativo silencioso (auditoria 13/09, E-8, medido em
+// Node). O helper troca cada \b pela fronteira Unicode equivalente e liga a
+// flag `u`, como os `PISTA_*` deste arquivo já fazem.
+const FRONTEIRA_UNICODE =
+  '(?:(?<=[\\p{L}\\p{N}_])(?![\\p{L}\\p{N}_])|(?<![\\p{L}\\p{N}_])(?=[\\p{L}\\p{N}_]))';
+const rx = (fonte: string): RegExp => new RegExp(fonte.replace(/\\b/g, FRONTEIRA_UNICODE), 'iu');
 /** Sentinela: a frase é sobre um local, mas não dá pra dizer QUAL. Abstém. */
 const AMBIGUO = '__ambiguo__';
 const PERFIL_FRASES: Array<[RegExp, string]> = [
@@ -400,7 +406,7 @@ export function perfilNaFrase(texto: string): string | null {
     if (re.test(resto)) {
       categorias.add(cat);
       // mascara pra o 'casa' de 'casa de bolos' não contar como residência
-      resto = resto.replace(new RegExp(re.source, 'gi'), ' ');
+      resto = resto.replace(new RegExp(re.source, re.flags.includes('u') ? 'giu' : 'gi'), ' ');
     }
   }
   for (const [re, cat] of PERFIL_PALAVRAS) if (re.test(resto)) categorias.add(cat);

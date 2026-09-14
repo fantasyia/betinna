@@ -685,3 +685,10 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
     expect(perfilNaFrase('no meu consultorio')).toBe('comercio');
   });
 });
+
+describe('E-8 (auditoria 13/09): fronteira de palavra é UNICODE', () => {
+  it('"área comum" e "apê" casam mesmo com acento (\b ASCII nunca casava)', () => {
+    expect(perfilNaFrase('é pra área comum do prédio')).toBe('condominio');
+    expect(perfilNaFrase('é pro meu apê')).toBe('residencia');
+  });
+});
