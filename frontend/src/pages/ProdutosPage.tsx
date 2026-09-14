@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { PageLayout } from '@/components/PageLayout';
@@ -146,7 +146,7 @@ export default function ProdutosPage() {
     } catch (err) {
       toast.error(
         'Falha ao adicionar ao catálogo',
-        err instanceof ApiError ? err.message : undefined,
+        err instanceof ApiError ? apiErrorMessage(err) : undefined,
       );
     } finally {
       setAdicionando(false);

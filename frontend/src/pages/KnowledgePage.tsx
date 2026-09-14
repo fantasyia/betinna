@@ -12,7 +12,7 @@ import {
   AlertTriangle,
   Paperclip,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { useRole } from '@/hooks/usePermission';
@@ -131,7 +131,7 @@ export default function KnowledgePage() {
       setDocForm(null);
       docsQuery.refetch();
     } catch (err) {
-      toast.error('Falha ao anexar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao anexar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setEnviandoDoc(false);
     }
@@ -142,7 +142,7 @@ export default function KnowledgePage() {
       await api.patch(`/conhecimento/documento/${d.id}`, { podeEnviar: !d.podeEnviar });
       docsQuery.refetch();
     } catch (err) {
-      toast.error('Falha ao atualizar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao atualizar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -160,7 +160,7 @@ export default function KnowledgePage() {
       await api.patch(`/conhecimento/documento/${d.id}`, { usarComoFonte: !ativoHoje });
       docsQuery.refetch();
     } catch (err) {
-      toast.error('Falha ao atualizar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao atualizar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -171,7 +171,7 @@ export default function KnowledgePage() {
       await api.patch(`/conhecimento/${c.id}`, { ativo: !c.ativo });
       refetch();
     } catch (err) {
-      toast.error('Falha ao atualizar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao atualizar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -182,7 +182,7 @@ export default function KnowledgePage() {
       toast.success('Documento apagado');
       docsQuery.refetch();
     } catch (err) {
-      toast.error('Falha ao apagar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao apagar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -206,7 +206,7 @@ export default function KnowledgePage() {
       setForm(null);
       refetch();
     } catch (err) {
-      toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao salvar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setSaving(false);
     }
@@ -219,7 +219,7 @@ export default function KnowledgePage() {
       toast.success('Apagado');
       refetch();
     } catch (err) {
-      toast.error('Falha ao apagar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao apagar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

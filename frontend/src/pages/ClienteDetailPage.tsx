@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
@@ -1223,7 +1223,7 @@ function NotasTab({ clienteId }: { clienteId: string }) {
       toast.success('Nota excluída');
       refetch();
     } catch (err) {
-      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -1455,7 +1455,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
       );
       window.open(r.url, '_blank', 'noopener');
     } catch (err) {
-      toast.error('Falha ao gerar link', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao gerar link', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -1472,7 +1472,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
       toast.success('Documento excluído');
       refetch();
     } catch (err) {
-      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -1573,7 +1573,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
       toast.success('Preço especial removido');
       refetch();
     } catch (err) {
-      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao remover', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

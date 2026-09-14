@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
 import { CalendarCheck, CalendarPlus, RefreshCw } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
@@ -195,7 +195,7 @@ function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void })
       setBusy(false);
       toast.error(
         'Falha ao conectar o Google',
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined,
+        apiErrorMessage(err),
       );
     }
   }
@@ -223,7 +223,7 @@ function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void })
     } catch (err) {
       toast.error(
         'Falha ao sincronizar',
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined,
+        apiErrorMessage(err),
       );
     } finally {
       setBusy(false);

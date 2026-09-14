@@ -10,7 +10,7 @@ import {
   type NodeChange,
   type EdgeChange,
 } from '@xyflow/react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import {
   type TriggerTipo,
@@ -342,7 +342,7 @@ export function useFluxoEditor({
                 } catch (err) {
                   toast.error(
                     'Não deu pra reativar',
-                    err instanceof ApiError ? err.message : undefined,
+                    err instanceof ApiError ? apiErrorMessage(err) : undefined,
                   );
                 }
               },
@@ -355,7 +355,7 @@ export function useFluxoEditor({
       onSaved?.();
       return true;
     } catch (err) {
-      toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao salvar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
       return false;
     } finally {
       setSaving(false);
@@ -377,7 +377,7 @@ export function useFluxoEditor({
         `Execução ${r.execucaoId.slice(0, 8)}… — veja o resultado em Fluxos › "ver erros".`,
       );
     } catch (err) {
-      toast.error('Falha ao disparar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao disparar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setTestando(false);
     }
@@ -406,7 +406,7 @@ export function useFluxoEditor({
       );
       return true;
     } catch (err) {
-      toast.error('Falha ao testar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao testar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
       return false;
     } finally {
       setTestando(false);

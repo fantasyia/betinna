@@ -26,7 +26,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { marca } from '@/lib/marca';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
@@ -149,7 +149,7 @@ export default function FunisPage() {
       await api.put('/funis/reordenar', { funilIds: ids });
       refetch();
     } catch (err) {
-      toast.error('Falha ao reordenar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao reordenar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setReordenando(false);
     }
@@ -184,7 +184,7 @@ export default function FunisPage() {
       setSelectedId(null);
       refetch();
     } catch (err) {
-      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -387,7 +387,7 @@ function FunilEditor({
       });
       onChanged();
     } catch (err) {
-      toast.error('Falha ao reordenar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao reordenar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
       setOrderedEtapas(funil.etapas); // reverte
     }
   }
@@ -406,7 +406,7 @@ function FunilEditor({
       toast.success('Etapa removida');
       onChanged();
     } catch (err) {
-      toast.error('Falha ao remover etapa', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao remover etapa', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

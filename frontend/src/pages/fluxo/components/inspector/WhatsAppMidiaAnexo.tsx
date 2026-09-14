@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { BookText, Mic, Paperclip, Square, Trash2, X } from 'lucide-react';
 import { Button, Field } from '@/components/ui';
 import { useToast } from '@/components/toast';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useGravacaoVoz } from '@/pages/inbox/hooks/useGravacaoVoz';
 import type { NodePayload } from '@/pages/fluxo/lib/types';
 
@@ -77,7 +77,7 @@ export function WhatsAppMidiaAnexo({
       const docs = await api.get<DocEnviavel[]>('/conhecimento/documentos');
       setBiblioteca(docs.filter((d) => d.podeEnviar));
     } catch (err) {
-      toast.error('Falha ao carregar a base', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao carregar a base', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setCarregandoBib(false);
     }

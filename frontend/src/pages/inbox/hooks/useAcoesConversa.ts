@@ -1,4 +1,4 @@
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import type { ConversationStatus } from '../lib/types';
 
@@ -26,7 +26,7 @@ export function useAcoesConversa(
       await api.post(`/inbox/messages/${messageId}/reagir`, { emoji });
       refetchMsgs();
     } catch (err) {
-      toast.error('Falha ao reagir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao reagir', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -37,7 +37,7 @@ export function useAcoesConversa(
       refetchConv();
       onChanged();
     } catch (err) {
-      toast.error('Falha ao mudar status', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao mudar status', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -49,7 +49,7 @@ export function useAcoesConversa(
       refetchConv();
       onChanged();
     } catch (err) {
-      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao alterar o bot', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -70,7 +70,7 @@ export function useAcoesConversa(
       refetchConv();
       onChanged();
     } catch (err) {
-      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao alterar o bot', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -87,7 +87,7 @@ export function useAcoesConversa(
       refetchConv();
       onChanged();
     } catch (err) {
-      toast.error('Falha ao zerar conversa', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao zerar conversa', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

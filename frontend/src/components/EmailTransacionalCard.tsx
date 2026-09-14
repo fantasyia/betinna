@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Mail, Save, Send, XCircle } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
@@ -61,7 +61,7 @@ export function EmailTransacionalCard() {
       toast.success('Remetente salvo', 'Novos e-mails de campanhas e fluxos usam este nome.');
       refetch();
     } catch (err) {
-      toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao salvar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setSalvando(false);
     }
@@ -74,7 +74,7 @@ export function EmailTransacionalCard() {
       toast.success('E-mail de teste enviado', `Confira a caixa de ${r.para}.`);
       refetch();
     } catch (err) {
-      toast.error('Falha no envio de teste', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha no envio de teste', err instanceof ApiError ? apiErrorMessage(err) : undefined);
       refetch();
     } finally {
       setTestando(false);

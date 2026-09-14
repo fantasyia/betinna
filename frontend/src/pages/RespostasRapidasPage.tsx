@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MessageSquarePlus, Pencil, Trash2, Building2, User } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { useRole } from '@/hooks/usePermission';
@@ -63,7 +63,7 @@ export default function RespostasRapidasPage() {
       setForm(null);
       refetch();
     } catch (err) {
-      toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao salvar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setSaving(false);
     }
@@ -76,7 +76,7 @@ export default function RespostasRapidasPage() {
       toast.success('Template apagado');
       refetch();
     } catch (err) {
-      toast.error('Falha ao apagar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao apagar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

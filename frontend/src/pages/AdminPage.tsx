@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { Link } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
@@ -251,7 +251,7 @@ function DeadLetterSection() {
       toast.success('Job reenviado', `${jobId} voltou pra queue original`);
       refetch();
     } catch (err) {
-      toast.error('Falha ao reenviar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao reenviar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -523,7 +523,7 @@ function BackupSection() {
         toast.error('Falha no backup', res.erro);
       }
     } catch (err) {
-      toast.error('Falha no backup', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha no backup', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setRunning(false);
     }
@@ -542,7 +542,7 @@ function BackupSection() {
         toast.error('Backup com problema', res.erro);
       }
     } catch (err) {
-      toast.error('Backup com problema', err instanceof ApiError ? err.message : undefined);
+      toast.error('Backup com problema', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setVerifying(false);
     }

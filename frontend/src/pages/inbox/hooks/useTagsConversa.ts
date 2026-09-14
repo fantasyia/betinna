@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import type { Conversation } from '../lib/types';
 
@@ -34,7 +34,7 @@ export function useTagsConversa(
       onChanged();
       return resp.tagsInternas;
     } catch (err) {
-      toast.error('Falha ao salvar tags', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao salvar tags', err instanceof ApiError ? apiErrorMessage(err) : undefined);
       return null;
     } finally {
       setSalvando(false);

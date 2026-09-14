@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { Link } from 'react-router-dom';
 import { Download, ExternalLink, Flag } from 'lucide-react';
-import { ApiError, downloadFile } from '@/lib/api';
+import { ApiError, downloadFile, apiErrorMessage } from '@/lib/api';
 import { inicioDoDiaLocalISO, fimDoDiaLocalISO } from '@/lib/dates';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useNomeBot } from '@/hooks/useNomeBot';
@@ -86,7 +86,7 @@ export default function BotAuditoriaPage() {
         'auditoria-bot.csv',
       );
     } catch (err) {
-      toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao exportar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setExporting(false);
     }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useRole } from '@/hooks/usePermission';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
@@ -60,7 +60,7 @@ export default function PromptsBotPage() {
       toast.success(`"${p.nome}" agora é o prompt padrão`);
       refetch();
     } catch (err) {
-      toast.error('Falha ao definir padrão', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao definir padrão', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -79,7 +79,7 @@ export default function PromptsBotPage() {
       toast.success('Prompt excluído');
       refetch();
     } catch (err) {
-      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -274,7 +274,7 @@ function VersoesModal({
       toast.success(`Prompt restaurado para a versão ${v.versao}`);
       onRestored();
     } catch (err) {
-      toast.error('Falha ao restaurar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao restaurar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
       setRestoring(null);
     }
   }
@@ -376,7 +376,7 @@ function VariaveisCustomizadasSection() {
       setValor('');
       refetch();
     } catch (err) {
-      toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao salvar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setBusy(false);
     }
@@ -386,7 +386,7 @@ function VariaveisCustomizadasSection() {
       await api.delete(`/orquestracao/variaveis/${id}`);
       refetch();
     } catch (err) {
-      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao remover', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

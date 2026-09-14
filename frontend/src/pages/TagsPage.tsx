@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
@@ -71,7 +71,7 @@ export default function TagsPage() {
       toast.success('Tag excluída');
       refetch();
     } catch (err) {
-      toast.error('Falha ao excluir tag', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir tag', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

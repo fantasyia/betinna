@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { Button, Input, Select, Field } from '@/components/ui';
@@ -52,7 +52,7 @@ export function WebhookTriggerConfig({
       setNome('');
       refetch();
     } catch (err) {
-      toast.error('Falha ao criar webhook', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao criar webhook', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setBusy(false);
     }
@@ -66,7 +66,7 @@ export function WebhookTriggerConfig({
       setRevelado({ nome: w.nome, url: `${apiBase}/webhooks/fluxo/${w.token}`, secret: r.secret });
       toast.success('Novo secret gerado');
     } catch (err) {
-      toast.error('Falha ao rotacionar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao rotacionar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -75,7 +75,7 @@ export function WebhookTriggerConfig({
       await api.delete(`/orquestracao/webhooks/${id}`);
       refetch();
     } catch (err) {
-      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao remover', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

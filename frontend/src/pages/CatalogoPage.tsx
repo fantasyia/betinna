@@ -13,7 +13,7 @@ import {
   PackageCheck,
   RefreshCw,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { CatalogoTabs } from '@/components/CatalogoTabs';
@@ -199,7 +199,7 @@ export default function CatalogoPage() {
       await baixarCatalogoPdf(undefined, tabelaPrecos);
       toast.success('PDF do catálogo gerado');
     } catch (err) {
-      toast.error('Falha ao gerar o PDF', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao gerar o PDF', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setBaixandoPdf(false);
     }
@@ -211,7 +211,7 @@ export default function CatalogoPage() {
       toast.success('Produto removido do catálogo');
       refetch();
     } catch (err) {
-      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao remover', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 
@@ -644,7 +644,7 @@ function PreviewClienteDialog({
       await baixarCatalogoPdf(cliente?.id, tabela);
       toast.success('PDF gerado');
     } catch (err) {
-      toast.error('Falha ao gerar o PDF', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao gerar o PDF', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setBaixando(false);
     }

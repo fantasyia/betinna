@@ -19,7 +19,7 @@ import {
   Star,
   Users,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -233,7 +233,7 @@ export default function FluxosPage() {
       setFavoritoOtimista((m) => ({ ...m, [f.id]: !novo }));
       toast.error(
         'Não deu pra salvar o favorito',
-        err instanceof ApiError ? err.message : undefined,
+        err instanceof ApiError ? apiErrorMessage(err) : undefined,
       );
     }
   }
@@ -276,7 +276,7 @@ export default function FluxosPage() {
       }
       refetch();
     } catch (err) {
-      toast.error('Falha na operação', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha na operação', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       emAcaoRef.current.delete(id);
     }
@@ -306,7 +306,7 @@ export default function FluxosPage() {
     } catch (err) {
       toast.error(
         'Falha ao importar fluxo',
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined,
+        apiErrorMessage(err),
       );
     } finally {
       setImporting(false);
@@ -318,7 +318,7 @@ export default function FluxosPage() {
       const data = await api.get<unknown>(`/fluxos/${f.id}/exportar`);
       baixarJson(`${slugify(f.nome)}.fluxo.json`, data);
     } catch (err) {
-      toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao exportar', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     }
   }
 

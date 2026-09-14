@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bot, Save, AlertCircle, CheckCircle2, MessageCircle } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
@@ -286,7 +286,7 @@ export default function PersonaBotPage() {
       empresaQuery.refetch();
     } catch (err) {
       setBotWhatsappAtivo(!ativo); // reverte
-      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao alterar o bot', err instanceof ApiError ? apiErrorMessage(err) : undefined);
     } finally {
       setSavingBot(false);
     }
