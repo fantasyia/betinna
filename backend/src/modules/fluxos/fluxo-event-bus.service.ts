@@ -297,6 +297,9 @@ export class FluxoEventBusService {
       for (const fluxo of fluxos) {
         // #6: isola a falha por-fluxo — um fluxo problemático não aborta os demais.
         try {
+          // A-9: quando o guard do MENSAGEM_CANAL se aplica, a criação da execução
+          // roda atrás de um lock por conversa, com recheck — ver mais abaixo.
+          let guardaConversaId: string | undefined;
           const triggerNo = fluxo.nos[0];
           if (!triggerNo) {
             this.logger.warn(`Fluxo ${fluxo.id} (${fluxo.nome}) sem nó TRIGGER — ignorado`);
@@ -479,6 +482,11 @@ export class FluxoEventBusService {
                   })) > 0
                 : false;
             if (convIdChk && temNoIa) {
+              // Guardado pro recheck DENTRO do lock, na criação (A-9): a checagem
+              // aqui é só o atalho barato — ela e o create são passos separados, e
+              // três mensagens em rajada passavam as três por este ponto antes de
+              // qualquer execução existir (2-3 triagens pro mesmo contato).
+              guardaConversaId = convIdChk;
               const jaViva = await this.prisma.fluxoExecucao.findFirst({
                 where: {
                   fluxoId: fluxo.id,
@@ -733,19 +741,38 @@ export class FluxoEventBusService {
                 contexto: toJsonInput(contextoEnriquecido),
               },
             });
-          const execucao = supersedeDoLead
-            ? await this.prisma.$transaction(async (tx) => {
-                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fluxo-supersede:${fluxo.id}:${supersedeDoLead}`}))`;
-                {
-                  // Cancela as execuções-RAIZ de IA ativas do lead (re-entrada SUBSTITUI),
-                  // EXCETO a execução-FILHA do ramo "classificou" (_ramoFilha=true, que está
-                  // rodando ações terminais).
-                  // RAW de propósito: o filtro JSON do Prisma (`NOT path equals`) trata a chave
-                  // AUSENTE como NULL e EXCLUÍA as raízes (que não têm _ramoFilha) → reabria o
-                  // bug de 2 IAs em paralelo. `IS DISTINCT FROM` trata ausente/NULL como "!= true":
-                  // mantém a raiz e exclui a filha — e cobre execuções já em voo no deploy (sem
-                  // depender de backfill da chave).
-                  const count = await tx.$executeRaw`
+          const execucao =
+            supersedeDoLead || guardaConversaId
+              ? await this.prisma.$transaction(async (tx) => {
+                  // Ordem FIXA dos locks (lead antes de conversa) — dois caminhos
+                  // pegando os mesmos dois cadeados em ordens diferentes é deadlock.
+                  if (supersedeDoLead) {
+                    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fluxo-supersede:${fluxo.id}:${supersedeDoLead}`}))`;
+                  }
+                  if (guardaConversaId) {
+                    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fluxo-conversa:${fluxo.id}:${guardaConversaId}`}))`;
+                    // RECHECK dentro do lock (A-9): quem chegou primeiro já criou.
+                    const viva = await tx.fluxoExecucao.findFirst({
+                      where: {
+                        fluxoId: fluxo.id,
+                        empresaId,
+                        status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+                        contexto: { path: ['conversationId'], equals: guardaConversaId },
+                      },
+                      select: { id: true },
+                    });
+                    if (viva) return null;
+                  }
+                  if (supersedeDoLead) {
+                    // Cancela as execuções-RAIZ de IA ativas do lead (re-entrada SUBSTITUI),
+                    // EXCETO a execução-FILHA do ramo "classificou" (_ramoFilha=true, que está
+                    // rodando ações terminais).
+                    // RAW de propósito: o filtro JSON do Prisma (`NOT path equals`) trata a chave
+                    // AUSENTE como NULL e EXCLUÍA as raízes (que não têm _ramoFilha) → reabria o
+                    // bug de 2 IAs em paralelo. `IS DISTINCT FROM` trata ausente/NULL como "!= true":
+                    // mantém a raiz e exclui a filha — e cobre execuções já em voo no deploy (sem
+                    // depender de backfill da chave).
+                    const count = await tx.$executeRaw`
                 UPDATE "FluxoExecucao"
                 SET status = 'CANCELADO', "aguardandoNoId" = NULL, "timeoutEm" = NULL, "terminouEm" = now()
                 WHERE "fluxoId" = ${fluxo.id}
@@ -753,16 +780,24 @@ export class FluxoEventBusService {
                   AND status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
                   AND (contexto #>> '{leadId}') = ${supersedeDoLead}
                   AND (contexto #> '{_ramoFilha}') IS DISTINCT FROM 'true'::jsonb`;
-                  if (count > 0) {
-                    this.logger.log(
-                      `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${supersedeDoLead} ` +
-                        `encerrada(s) — re-entrada (${triggerTipo}) substitui (anti-duplicata IA)`,
-                    );
+                    if (count > 0) {
+                      this.logger.log(
+                        `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${supersedeDoLead} ` +
+                          `encerrada(s) — re-entrada (${triggerTipo}) substitui (anti-duplicata IA)`,
+                      );
+                    }
                   }
-                }
-                return criarExecucao(tx);
-              })
-            : await criarExecucao(this.prisma);
+                  return criarExecucao(tx);
+                })
+              : await criarExecucao(this.prisma);
+          if (!execucao) {
+            // Rajada: outra mensagem da MESMA conversa criou a execução enquanto
+            // esta esperava o lock. A resposta dela entra pelo retomar da IA (A-9).
+            this.logger.debug(
+              `Fluxo "${fluxo.nome}": MENSAGEM_CANAL suprimido no lock — execução da conversa ${guardaConversaId} já existe`,
+            );
+            continue;
+          }
 
           // Enfileira job para o nó trigger
           const job = await this.queue.add(
