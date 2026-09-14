@@ -12,7 +12,7 @@ const makeQueueMock = () => ({
   add: vi.fn().mockResolvedValue({ id: 'job-1' }),
 });
 
-const makePrismaMock = () => ({
+const makePrismaMockBase = () => ({
   fluxo: {
     findMany: vi.fn(),
   } satisfies MockModel,
@@ -77,6 +77,22 @@ const fakeExecucao = (overrides: Record<string, unknown> = {}) => ({
 const envMock = (iaAFrente = false) => ({
   get: (k: string) => (k === 'FLUXO_IA_A_FRENTE' ? iaAFrente : ''),
 });
+
+/**
+ * D-12 (auditoria 13/09): o supersede roda numa transação interativa com
+ * advisory lock. O mock só executa o callback com o próprio mock como `tx`.
+ */
+const makePrismaMock = () => {
+  const p = makePrismaMockBase() as ReturnType<typeof makePrismaMockBase> & {
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+  p.$transaction = vi.fn(async (arg: unknown) =>
+    typeof arg === 'function'
+      ? (arg as (tx: unknown) => unknown)(p)
+      : Promise.all(arg as Promise<unknown>[]),
+  );
+  return p;
+};
 
 describe('FluxoEventBusService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
@@ -216,10 +232,15 @@ describe('FluxoEventBusService', () => {
 
       await service.disparar('emp-1', 'LEAD_ETAPA_MUDOU' as FluxoTriggerTipo, { leadId: 'lead-1' });
 
-      // Encerrou a anterior (CANCELADO via $executeRaw com IS DISTINCT FROM) E criou a nova.
-      expect(prisma.$executeRaw).toHaveBeenCalledOnce();
+      // Encerrou a anterior (CANCELADO via $executeRaw com IS DISTINCT FROM) E criou a nova —
+      // dentro de UMA transação, atrás de um advisory lock por (fluxo, lead) (D-12).
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(2); // lock + UPDATE
+      const lockCall = prisma.$executeRaw.mock.calls[0];
+      expect((lockCall[0] as TemplateStringsArray).join('?')).toContain('pg_advisory_xact_lock');
+      expect(lockCall[1]).toBe('fluxo-supersede:fluxo-1:lead-1');
       // O leadId e o empresaId vão como parâmetros do template raw.
-      const rawCall = prisma.$executeRaw.mock.calls[0];
+      const rawCall = prisma.$executeRaw.mock.calls[1];
       expect(rawCall).toContain('lead-1');
       expect(rawCall).toContain('emp-1');
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();

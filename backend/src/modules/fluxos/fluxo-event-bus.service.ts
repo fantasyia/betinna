@@ -713,45 +713,56 @@ export class FluxoEventBusService {
           // re-entrar sempre dispara a abordagem, e nunca há duas em paralelo. Só vale pra
           // fluxos conversacionais (não mexe em fluxos comuns que rodam várias vezes/lead).
           const leadId = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : undefined;
+          let supersedeDoLead: string | null = null;
           if (leadId) {
             const nosIa = await this.prisma.fluxoNo.count({
               where: { fluxoId: fluxo.id, tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
             });
-            if (nosIa > 0) {
-              // Cancela as execuções-RAIZ de IA ativas do lead (re-entrada SUBSTITUI),
-              // EXCETO a execução-FILHA do ramo "classificou" (_ramoFilha=true, que está
-              // rodando ações terminais).
-              // RAW de propósito: o filtro JSON do Prisma (`NOT path equals`) trata a chave
-              // AUSENTE como NULL e EXCLUÍA as raízes (que não têm _ramoFilha) → reabria o
-              // bug de 2 IAs em paralelo. `IS DISTINCT FROM` trata ausente/NULL como "!= true":
-              // mantém a raiz e exclui a filha — e cobre execuções já em voo no deploy (sem
-              // depender de backfill da chave).
-              const count = await this.prisma.$executeRaw`
+            if (nosIa > 0) supersedeDoLead = leadId;
+          }
+          // Cancelar a anterior e criar a nova são UMA operação: duas re-entradas
+          // do mesmo lead no mesmo instante (rajada) passavam as duas pelo UPDATE
+          // antes de qualquer create → 2 IAs em paralelo (auditoria 13/09, D-12).
+          // Advisory lock por (fluxo, lead) na transação serializa.
+          const criarExecucao = (db: { fluxoExecucao: PrismaService['fluxoExecucao'] }) =>
+            db.fluxoExecucao.create({
+              data: {
+                fluxoId: fluxo.id,
+                empresaId,
+                status: 'PENDENTE',
+                contexto: toJsonInput(contextoEnriquecido),
+              },
+            });
+          const execucao = supersedeDoLead
+            ? await this.prisma.$transaction(async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fluxo-supersede:${fluxo.id}:${supersedeDoLead}`}))`;
+                {
+                  // Cancela as execuções-RAIZ de IA ativas do lead (re-entrada SUBSTITUI),
+                  // EXCETO a execução-FILHA do ramo "classificou" (_ramoFilha=true, que está
+                  // rodando ações terminais).
+                  // RAW de propósito: o filtro JSON do Prisma (`NOT path equals`) trata a chave
+                  // AUSENTE como NULL e EXCLUÍA as raízes (que não têm _ramoFilha) → reabria o
+                  // bug de 2 IAs em paralelo. `IS DISTINCT FROM` trata ausente/NULL como "!= true":
+                  // mantém a raiz e exclui a filha — e cobre execuções já em voo no deploy (sem
+                  // depender de backfill da chave).
+                  const count = await tx.$executeRaw`
                 UPDATE "FluxoExecucao"
                 SET status = 'CANCELADO', "aguardandoNoId" = NULL, "timeoutEm" = NULL, "terminouEm" = now()
                 WHERE "fluxoId" = ${fluxo.id}
                   AND "empresaId" = ${empresaId}
                   AND status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
-                  AND (contexto #>> '{leadId}') = ${leadId}
+                  AND (contexto #>> '{leadId}') = ${supersedeDoLead}
                   AND (contexto #> '{_ramoFilha}') IS DISTINCT FROM 'true'::jsonb`;
-              if (count > 0) {
-                this.logger.log(
-                  `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${leadId} ` +
-                    `encerrada(s) — re-entrada (${triggerTipo}) substitui (anti-duplicata IA)`,
-                );
-              }
-            }
-          }
-
-          // Cria registro da execução
-          const execucao = await this.prisma.fluxoExecucao.create({
-            data: {
-              fluxoId: fluxo.id,
-              empresaId,
-              status: 'PENDENTE',
-              contexto: toJsonInput(contextoEnriquecido),
-            },
-          });
+                  if (count > 0) {
+                    this.logger.log(
+                      `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${supersedeDoLead} ` +
+                        `encerrada(s) — re-entrada (${triggerTipo}) substitui (anti-duplicata IA)`,
+                    );
+                  }
+                }
+                return criarExecucao(tx);
+              })
+            : await criarExecucao(this.prisma);
 
           // Enfileira job para o nó trigger
           const job = await this.queue.add(

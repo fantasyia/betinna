@@ -41,6 +41,8 @@ const makePrisma = (turnoAberto: boolean) => ({
   tag: { findFirst: vi.fn().mockResolvedValue(null) },
   $executeRaw: vi.fn().mockResolvedValue(0),
   $queryRaw: vi.fn().mockResolvedValue(turnoAberto ? [{ id: 'exec-c1' }] : []),
+  // D-12: supersede roda em $transaction interativa — o mock executa o callback com ele mesmo.
+  $transaction: vi.fn(),
 });
 
 const CTX = { leadId: 'lead-1', conversationId: 'conv-1', tagNome: 'parado:qualificando' };
@@ -51,6 +53,7 @@ describe('Gatilho proativo x turno de IA aberto', () => {
 
   const build = (turnoAberto: boolean) => {
     prisma = makePrisma(turnoAberto);
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prisma));
     queue = makeQueue();
     return new FluxoEventBusService(prisma as never, queue as never);
   };
