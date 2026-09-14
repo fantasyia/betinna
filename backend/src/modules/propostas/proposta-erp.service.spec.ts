@@ -33,6 +33,10 @@ function build(
   } = {},
 ) {
   const prisma = {
+    // I-J: enviar() roda sob advisory lock em $transaction — o mock só executa o callback.
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) =>
+      fn({ $executeRaw: vi.fn().mockResolvedValue(0) }),
+    ),
     proposta: {
       findFirst: vi.fn().mockResolvedValue(opts.proposta === undefined ? PROPOSTA : opts.proposta),
       update: vi.fn().mockResolvedValue({}),

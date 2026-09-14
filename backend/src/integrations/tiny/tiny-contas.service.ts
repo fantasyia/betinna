@@ -118,6 +118,26 @@ export class TinyContasService {
   }
 
   async criarContaPagar(empresaId: string, l: LancamentoFinanceiro): Promise<number> {
+    // Se o POST passou e o `update` do app falhou, o retry criava a 2ª conta
+    // pro mesmo rep/mês (auditoria 13/09, I-K). numeroDocumento + idContato é a
+    // identidade do lançamento: acha a existente e devolve o id dela. GET que
+    // falhar (429 disfarçado de vazio) cai no POST — não fica pior que hoje.
+    if (l.numeroDocumento && l.idContato) {
+      const existente = await this.client
+        .get<{ itens?: Array<{ id: number; situacao?: string }> }>(empresaId, '/contas-pagar', {
+          numeroDocumento: l.numeroDocumento,
+          idContato: l.idContato,
+          limit: 5,
+        })
+        .then((r) => (r.itens ?? []).find((i) => (i.situacao ?? '') !== 'cancelada'))
+        .catch(() => undefined);
+      if (existente?.id) {
+        this.logger.warn(
+          `[tiny] conta a pagar "${l.numeroDocumento}" do contato ${l.idContato} já existe (id=${existente.id}) — reaproveitada`,
+        );
+        return existente.id;
+      }
+    }
     const r = await this.client.post<{ id: number }>(empresaId, '/contas-pagar', this.corpo(l));
     this.logger.log(
       `[tiny] conta a pagar criada id=${r?.id} valor=${l.valor} venc=${l.dataVencimento}`,

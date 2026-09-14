@@ -105,7 +105,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       // mensagem completa AQUI pra ela aparecer nos logs (Railway) e dar pra
       // debugar. Na UI: detalhe só fora de produção (a msg expõe nomes de schema).
       const detalhe = exception.message.replace(/\s+/g, ' ').trim();
-      this.logger.error(`${request.method} ${request.url} → PrismaValidationError: ${detalhe}`);
+      this.logger.error(
+        `${request.method} ${redigirCaminho(request.url)} → PrismaValidationError: ${detalhe}`,
+      );
       const ehProd = process.env.NODE_ENV === 'production';
       return {
         status: HttpStatus.BAD_REQUEST,

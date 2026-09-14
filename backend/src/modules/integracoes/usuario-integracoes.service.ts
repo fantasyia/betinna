@@ -185,6 +185,12 @@ export class UsuarioIntegracoesService {
     });
     if (!existing) throw new NotFoundException('Conexão', servico);
 
+    // Google: revoga o refresh_token no Google antes de desativar aqui —
+    // desconectar só no app deixava um token vivo com acesso à agenda da
+    // pessoa (auditoria 13/09, I-M). Best-effort: o objetivo do usuário é
+    // sair, e sair tem que funcionar mesmo com o Google fora.
+    if (servico === 'google_calendar') await this.revogarNoGoogle(user.id, servico);
+
     await this.prisma.usuarioIntegracao.update({
       where: { usuarioId_servico: { usuarioId: user.id, servico } },
       data: { ativo: false },
@@ -192,6 +198,27 @@ export class UsuarioIntegracoesService {
     this.invalidarCache(user.id, servico);
     this.logger.log(`[${servico}] conexão desativada para usuário ${user.id}`);
     return { ok: true };
+  }
+
+  private async revogarNoGoogle(usuarioId: string, servico: ServicoUsuario): Promise<void> {
+    try {
+      const conn = await this.obterCredenciaisInternas(usuarioId, servico);
+      const token =
+        (conn.credenciais.refreshToken as string | undefined) ??
+        (conn.credenciais.accessToken as string | undefined);
+      if (!token) return;
+      const res = await fetch(
+        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`,
+        { method: 'POST', signal: AbortSignal.timeout(5_000) },
+      );
+      this.logger.log(
+        `[google_calendar] token revogado no Google (HTTP ${res.status}) — usuário ${usuarioId}`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[google_calendar] não consegui revogar o token no Google: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**

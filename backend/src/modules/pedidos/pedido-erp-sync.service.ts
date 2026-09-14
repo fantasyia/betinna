@@ -1029,8 +1029,16 @@ export class PedidoErpSyncService {
     if (!opcoes.receber && !opcoes.comissao) return;
     try {
       const nota = await this.tiny.obterNota(empresaId, idNota).catch(() => null);
+      // Nota que NÃO VEIO (timeout, 429) era tratada como autorizada
+      // (`?? 6`) — e gerava conta a receber/comissão de uma NF que talvez
+      // esteja rejeitada (auditoria 13/09, I-G). Falha FECHADO: sem nota, sem
+      // conta; a rodada seguinte tenta de novo.
+      if (!nota) {
+        this.logger.warn(`[erp] nota ${idNota} do pedido ${pedidoId} não veio — contas adiadas`);
+        return;
+      }
       // Só nota que VALE gera conta: autorizada/emitida/registrada.
-      const sit = Number(nota?.situacao ?? 6);
+      const sit = Number(nota.situacao);
       if (![2, 6, 7, 8].includes(sit)) return;
       // Locação: a NF de COMODATO é o que dispara a cobrança mensal (regra do
       // Léo, 05/09) — antes dela o equipamento nem saiu. Fora do try dos outros

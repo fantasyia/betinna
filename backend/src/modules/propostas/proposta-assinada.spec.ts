@@ -52,6 +52,10 @@ describe('máquina de estados da proposta', () => {
 describe('gerar pedido no ERP', () => {
   const build = (status: string) => {
     const prisma = {
+      // I-J: enviar() roda sob advisory lock em $transaction — o mock só executa o callback.
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) =>
+        fn({ $executeRaw: vi.fn().mockResolvedValue(0) }),
+      ),
       proposta: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'p1',

@@ -48,6 +48,24 @@ export class PropostaErpService {
   ) {}
 
   async enviar(propostaId: string, empresaId: string): Promise<ResultadoPropostaErp> {
+    // Dois cliques (ou dois chamadores — 4 caminhos chegam aqui) no mesmo
+    // instante passavam os dois pelo "já está no ERP?" e criavam DOIS orçamentos
+    // (auditoria 13/09, I-J). Advisory lock por proposta na transação; o corpo
+    // roda fora dela (usa this.prisma) — o lock só serializa a entrada, e a
+    // re-leitura do orcamentoErpId no começo vê o que o primeiro gravou.
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`proposta-erp:${propostaId}`}))`;
+        return this.enviarSemLock(propostaId, empresaId);
+      },
+      { timeout: 120_000, maxWait: 15_000 },
+    );
+  }
+
+  private async enviarSemLock(
+    propostaId: string,
+    empresaId: string,
+  ): Promise<ResultadoPropostaErp> {
     const proposta = await this.prisma.proposta.findFirst({
       where: { id: propostaId, empresaId },
       include: {
