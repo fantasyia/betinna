@@ -214,7 +214,9 @@ export class BotPromptsService {
         where: { id },
         data: {
           texto: snap.texto,
-          modelo: snap.modelo,
+          // Snapshot antigo sem modelo (null) derrubava o prompt pro default do
+          // env (gpt-4o-mini) sem aviso (auditoria 13/09, E-11). Mantém o atual.
+          modelo: snap.modelo ?? existing.modelo,
           temperatura: snap.temperatura,
           versao: existing.versao + 1,
         },
