@@ -215,9 +215,48 @@ function resolveCampoFresco(nome: string, ctx: ExecucaoContexto): unknown {
  */
 export const OPERADORES_CONDICAO = new Set(['eq', 'neq', 'gt', 'lt', 'gte', 'lte', 'contains']);
 
+const logCondicao = new Logger('FluxoCondicao');
+/**
+ * Chaves que NUNCA podem vir de dado gravado pelo lead/IA pro topo do contexto
+ * (E-6): prefixo `_` (marcadores internos), ids de escopo e as três do protótipo.
+ * Fonte única com o nó de IA (`CHAVE_RESERVADA` em conversar-ia.service).
+ */
+export const CHAVE_RESERVADA_CTX =
+  /^(?:_|__proto__$|constructor$|prototype$|leadId$|conversationId$|proprietarioId$|empresaId$|execucaoId$|fluxoId$|clienteId$|pedidoId$|webhookId$|payload$)/;
+/** Fuso das variáveis {{sistema.*}} (D-14). Tenant único BR hoje. */
+export const FUSO_SISTEMA = 'America/Sao_Paulo';
+
+/** dd/mm/yyyy hh:min de um instante num fuso — sem depender do TZ do processo. */
+export function partesDeDataNoFuso(
+  instante: Date,
+  timeZone: string,
+): { dd: string; mm: string; yyyy: string; hh: string; min: string } {
+  const partes = new Intl.DateTimeFormat('pt-BR', {
+    timeZone,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instante);
+  const p = (t: Intl.DateTimeFormatPartTypes) => partes.find((x) => x.type === t)?.value ?? '';
+  return { dd: p('day'), mm: p('month'), yyyy: p('year'), hh: p('hour'), min: p('minute') };
+}
+/** Quanto esperar quando o pacing não responde (D-7): melhor 5 min a mais que 1 msg às 3h. */
+const PACING_INDISPONIVEL_ESPERA_MS = 5 * 60_000;
+
 function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
   if (config.modo === 'roteador') {
     const norm = normalizarValor;
+    // Variável que NÃO EXISTE no contexto (typo no nome, evento errado) caía em
+    // 'default' sem deixar rastro — mesma família do `equals` do E6. Não estoura
+    // (o 'default' é uma saída legítima), mas AVISA (auditoria 13/09, D-6).
+    if (config.variavel && resolveCampoFresco(config.variavel, ctx) === undefined) {
+      logCondicao.warn(
+        `CONDICAO (roteador): variável "${config.variavel}" não existe no contexto — caiu em 'default'`,
+      );
+    }
     const valor = norm(resolveVariavel(config.variavel ?? '', ctx));
     const match = (config.saidas ?? []).find((s) => norm(s) === valor);
     return match ?? 'default';
@@ -225,6 +264,15 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
   // Fresco (custom antes do topo) — mesma razão do roteador: o lgpd_c lia o
   // pedido_remocao VELHO do espelho achatado e roteava LGPD errado.
   const val = resolveCampoFresco(config.campo ?? '', ctx);
+  // Campo ausente = '' na comparação: `eq` responde "Não" pra sempre e `neq`
+  // "Sim" pra sempre, sem erro e sem log. Não dá pra estourar (campo pode
+  // legitimamente ainda não ter sido capturado), mas o silêncio some.
+  if (config.campo && val === undefined) {
+    logCondicao.warn(
+      `CONDICAO: campo "${config.campo}" não existe no contexto — comparado como vazio ` +
+        `(operador ${config.operador ?? '?'}, valor "${String(config.valor ?? '')}")`,
+    );
+  }
   const ref = config.valor;
   let resultado: boolean;
   // eq/neq/contains comparam TEXTO normalizado (mesma regra do roteador): a IA
@@ -479,9 +527,16 @@ export class FluxoExecutorService {
         where: { id: execucao.fluxoId },
         select: { triggerTipo: true },
       });
+      // O atalho do gatilho reativo vale só enquanto a resposta É recente: um
+      // LEAD_RESPONDEU → DELAY 10h → ENVIAR saía à meia-noite como "resposta"
+      // (auditoria 13/09, D-7). Depois da janela, o critério é a conversa viva.
+      const gatilhoReativo =
+        fluxo?.triggerTipo === 'MENSAGEM_CANAL' || fluxo?.triggerTipo === 'LEAD_RESPONDEU';
+      const inicio = execucao.iniciouEm ?? execucao.criadoEm;
+      const recemDisparado =
+        gatilhoReativo && (!inicio || Date.now() - inicio.getTime() <= INBOUND_RECENTE_MS);
       ehResposta =
-        fluxo?.triggerTipo === 'MENSAGEM_CANAL' ||
-        fluxo?.triggerTipo === 'LEAD_RESPONDEU' ||
+        recemDisparado ||
         (await this.conversaViva(
           execucao.empresaId,
           (execucao.contexto as ExecucaoContexto | null)?.['leadId'] as string | undefined,
@@ -493,7 +548,15 @@ export class FluxoExecutorService {
       const esperaJanela =
         ehResposta || this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
           ? 0
-          : await this.pacing.esperaAntesDoProativoMs(execucao.empresaId).catch(() => 0);
+          : await this.pacing.esperaAntesDoProativoMs(execucao.empresaId).catch((err) => {
+              // Falha FECHADO: Redis/DB soluçando não pode virar mensagem fora da
+              // janela (era `.catch(() => 0)` — auditoria 13/09, D-7). Reagenda.
+              this.logger.warn(
+                `Pacing indisponível — proativo reagendado em ${PACING_INDISPONIVEL_ESPERA_MS / 60000}min: ` +
+                  `${err instanceof Error ? err.message : String(err)}`,
+              );
+              return PACING_INDISPONIVEL_ESPERA_MS;
+            });
       if (esperaJanela > 0) {
         // Solta o claim ANTES de reenfileirar: o job novo tem jobId próprio, e
         // deixar este como EXECUTANDO só daria trabalho ao reaper depois.
@@ -1222,12 +1285,10 @@ export class FluxoExecutorService {
   ): Promise<ExecucaoContexto> {
     const ctx: Record<string, unknown> = { ...(contexto as Record<string, unknown>) };
 
-    const agora = new Date();
-    const dd = String(agora.getDate()).padStart(2, '0');
-    const mm = String(agora.getMonth() + 1).padStart(2, '0');
-    const yyyy = agora.getFullYear();
-    const hh = String(agora.getHours()).padStart(2, '0');
-    const min = String(agora.getMinutes()).padStart(2, '0');
+    // No fuso do BRASIL, não no do container (Railway roda em UTC; sem TZ no
+    // Dockerfile). `getHours()` local dava 03:00 pra uma mensagem das 00:00 BRT
+    // (auditoria 13/09, D-14). Fuso por tenant é decisão futura — hoje é um só.
+    const { dd, mm, yyyy, hh, min } = partesDeDataNoFuso(new Date(), FUSO_SISTEMA);
     // Lookups são best-effort: o enriquecimento é auxiliar e NUNCA derruba o fluxo.
     let empresaNome = '';
     let botDaEmpresa = false;
@@ -1386,8 +1447,13 @@ export class FluxoExecutorService {
     // contexto) mascarar o novo → o roteador lia classificacao_final="LGPD"
     // velho em vez do "Sem Sinergia" fresco. leadVars não colide com chaves de
     // evento (leadId/texto/…), então sobrescrever é seguro.
+    // Chave reservada (`_*`, leadId, conversationId…) gravada em Lead.variaveis
+    // — por nó sem allowlist ou por dado velho — envenenava o contexto: `_teste=true`
+    // calava o opener pra sempre, `leadId=x` mandava MOVER/TAREFA pra outro lead
+    // (auditoria 13/09, E-6). O nó de IA já não grava essas chaves; aqui é a
+    // segunda camada, pra lead que já estava sujo.
     for (const [k, v] of Object.entries(leadVars)) {
-      if (v != null) ctx[k] = v;
+      if (v != null && !CHAVE_RESERVADA_CTX.test(k)) ctx[k] = v;
     }
     // Cauda do espelho velho: sinal de roteamento LIMPO do lead (limparSinais-
     // Roteamento) some do leadVars — mas o atalho achatado numa execução ANTERIOR
@@ -1407,7 +1473,7 @@ export class FluxoExecutorService {
     for (const [k, v] of Object.entries(atalhos)) {
       // `v != null` deixa string vazia passar (campo vazio → renderiza em branco, não
       // o literal {{x}}); só pula null/undefined.
-      if (ctx[k] === undefined && v != null) ctx[k] = v;
+      if (ctx[k] === undefined && v != null && !CHAVE_RESERVADA_CTX.test(k)) ctx[k] = v;
     }
 
     if (ctx.lead == null) ctx.lead = {};
@@ -2967,12 +3033,19 @@ export class FluxoExecutorService {
       if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
       // `IS NOT DISTINCT FROM` porque `= NULL` não casa nada em SQL — e o caso
       // mais comum aqui é justamente o dono nulo (canal da empresa).
+      // Conversa @lid não tem o telefone no peerId — ele fica em metadata.telefone
+      // (é o que o inbox usa). Sem o segundo ramo, o "religar IA" do rastreio pra
+      // um contato LID achava 0 linhas e o passo fechava VERDE com o bot ainda
+      // pausado (auditoria 13/09, D-8).
       conversas = await this.prisma.$queryRaw<Array<{ id: string }>>`
         SELECT "id" FROM "Conversation"
         WHERE "empresaId" = ${empresaId} AND "canal" = 'WHATSAPP'
-          AND "peerId" LIKE '%@s.whatsapp.net'
           AND "proprietarioId" IS NOT DISTINCT FROM ${dono}::text
-          AND RIGHT(REGEXP_REPLACE(split_part("peerId", '@', 1), '[^0-9]', '', 'g'), 8) = ${sufixo}`;
+          AND (
+            ("peerId" LIKE '%@s.whatsapp.net'
+              AND RIGHT(REGEXP_REPLACE(split_part("peerId", '@', 1), '[^0-9]', '', 'g'), 8) = ${sufixo})
+            OR RIGHT(REGEXP_REPLACE(COALESCE("metadata"->>'telefone', ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
+          )`;
     }
     if (conversas.length === 0) {
       return {

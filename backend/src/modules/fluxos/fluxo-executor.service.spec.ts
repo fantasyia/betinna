@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { interpolate, FluxoExecutorService } from './fluxo-executor.service';
+import { CHAVE_RESERVADA_CTX, partesDeDataNoFuso } from './fluxo-executor.service';
 import {
   DestinatarioInvalidoError,
   WhatsappIndisponivelError,
@@ -2723,5 +2724,35 @@ describe('FluxoExecutorService — lead resolvido pelo cliente', () => {
     expect(prisma.lead.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'lead-do-evento', empresaId: 'emp-1' } }),
     );
+  });
+});
+
+describe('D-14 (auditoria 13/09): {{sistema.data_hoje}} no fuso do Brasil', () => {
+  it('00:30 UTC de 14/09 ainda é 13/09 21:30 em São Paulo', () => {
+    const p = partesDeDataNoFuso(new Date('2026-09-14T00:30:00Z'), 'America/Sao_Paulo');
+    expect(p).toEqual({ dd: '13', mm: '09', yyyy: '2026', hh: '21', min: '30' });
+  });
+
+  it('meia-noite sai como 00, não 24 (hourCycle h23)', () => {
+    const p = partesDeDataNoFuso(new Date('2026-09-14T03:00:00Z'), 'America/Sao_Paulo');
+    expect(p.hh).toBe('00');
+  });
+});
+
+describe('E-6 (auditoria 13/09): chave reservada não sobe do lead pro contexto', () => {
+  it('bloqueia _*, ids de escopo e as três do protótipo; deixa variável normal', () => {
+    for (const k of [
+      '_teste',
+      '_iaHistorico',
+      'leadId',
+      'conversationId',
+      '__proto__',
+      'payload',
+    ]) {
+      expect(CHAVE_RESERVADA_CTX.test(k)).toBe(true);
+    }
+    for (const k of ['tipo_local', 'classificacao_final', 'lead_nome', 'x_leadId']) {
+      expect(CHAVE_RESERVADA_CTX.test(k)).toBe(false);
+    }
   });
 });
