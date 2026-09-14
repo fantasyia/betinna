@@ -65,6 +65,8 @@ function setup(opts?: {
     mensagensRecentes: vi.fn().mockResolvedValue([]),
     baixarMidiaBase64: vi.fn().mockResolvedValue(undefined),
     nomeGrupo: vi.fn().mockResolvedValue('Time Comercial'),
+    // A-6: o inbound pergunta se o eco fromMe saiu do app.
+    enviadoPorNos: vi.fn().mockResolvedValue(false),
   };
   const instancias = { sincronizarConexao: vi.fn(), remover: vi.fn() };
   const svc = new EvolutionInboundService(

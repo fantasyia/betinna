@@ -267,6 +267,10 @@ export class EvolutionInboundService {
       const isGroup = peerId.endsWith('@g.us');
 
       const fromMe = !!m.key?.fromMe;
+      // Eco `fromMe` que NÃO saiu do app = alguém digitou no aparelho (o rep
+      // respondendo pelo celular). O inbox usa isso pra pausar o bot, como já
+      // faz quando a resposta sai pela tela (auditoria 13/09, A-6).
+      const digitadoNoAparelho = fromMe && !(await this.evolution.enviadoPorNos(m.key?.id));
       // Diagnóstico do cutover: variância de LID/fromMe que poderia re-disparar o
       // bot. Já estável → em `debug` (some do log de produção; reativável se preciso).
       this.logger.debug(
@@ -337,6 +341,7 @@ export class EvolutionInboundService {
           // O Evolution ora entrega `<id>@lid` COM remoteJidAlt, ora SEM — sem
           // esse mapeamento, a segunda variante abria uma conversa paralela
           // (peerId = LID opaco), sem telefone e sem cliente vinculado.
+          ...(digitadoNoAparelho ? { humanoNoAparelho: true } : {}),
           ...(rjid.endsWith('@lid') && rjidAlt ? { lid: rjid } : {}),
           // Click-to-WhatsApp: o referral do anúncio vem SÓ na 1ª mensagem da
           // conversa. Extraímos aqui (é onde o proto do Baileys chega inteiro) e

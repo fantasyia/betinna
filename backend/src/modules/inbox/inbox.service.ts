@@ -1525,6 +1525,21 @@ export class InboxService {
     // OUTBOUND: zera naoLidas — o dono mandou mensagem (pelo celular ou outro
     // dispositivo) = leu o que tinha pra responder. Sinaliza confiável de
     // leitura mesmo quando o evento chats.update do Baileys não chega.
+    // Eco do CELULAR = humano assumiu a conversa (auditoria 13/09, A-6). Até
+    // aqui só a resposta pela TELA pausava o bot; o rep respondendo pelo
+    // aparelho deixava o bot conversando em paralelo com ele. O adapter marca
+    // `humanoNoAparelho` só quando o envio NÃO saiu do app (campanha/fluxo/bot
+    // ficam de fora), e a saída registrada pelo próprio app (`enviadaPorBot`)
+    // nunca entra aqui.
+    const handoffDoAparelho =
+      !isInbound && params.meta?.humanoNoAparelho === true && params.enviadaPorBot !== true
+        ? await this.fragmentoHandoffHumano(conv)
+        : null;
+    if (handoffDoAparelho) {
+      this.logger.log(
+        `[${params.canal}] eco do aparelho em conv=${conv.id} — humano assumiu, bot pausado (A-6)`,
+      );
+    }
     await this.prisma.conversation.update({
       where: { id: conv.id },
       data: {
@@ -1533,6 +1548,7 @@ export class InboxService {
         ...(isInbound
           ? { naoLidas: { increment: 1 }, status: 'PENDENTE' as const }
           : { naoLidas: 0 }),
+        ...(handoffDoAparelho ?? {}),
       },
     });
 

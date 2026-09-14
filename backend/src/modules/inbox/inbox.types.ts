@@ -114,5 +114,10 @@ export interface MensagemEntranteParams {
    * Permite múltiplas conversas com o mesmo peer em sessões distintas.
    */
   proprietarioId?: string;
+  /**
+   * Metadados do adapter. Chaves conhecidas: `lid`, `telefone`, `avatarUrl`,
+   * `ctwaReferral`, `senderName` e `humanoNoAparelho` (eco `fromMe` que NÃO
+   * saiu do app = alguém digitou no celular — auditoria 13/09, A-6).
+   */
   meta?: Record<string, unknown>;
 }

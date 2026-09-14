@@ -53,6 +53,8 @@ const HTTP_TIMEOUT_MS = 30_000;
 const PENDING_TTL_S = Math.ceil((HTTP_TIMEOUT_MS / 1000) * 4);
 /** Intervalo de re-leitura da chave enquanto outra tentativa está em voo (B-2). */
 const PENDING_POLL_MS = 1000;
+/** Quanto tempo a marca "este envio foi nosso" vive — o eco chega em segundos (A-6). */
+const ECO_PROPRIO_TTL_S = 600;
 
 @Injectable()
 export class EvolutionService {
@@ -821,11 +823,34 @@ export class EvolutionService {
     return { tipo: 'em_voo' };
   }
 
+  /**
+   * Marca (Redis, 10 min) que ESTE externalId saiu de dentro do app.
+   *
+   * O eco `fromMe` volta pelo webhook sem dizer quem digitou: campanha, fluxo e
+   * bot chegam iguais a um rep respondendo pelo celular. Sem essa marca, fazer o
+   * eco pausar o bot (auditoria 13/09, A-6) desligaria o bot a cada disparo de
+   * campanha. Best-effort: sem Redis, o eco vira "humano" — pausa o bot, que é o
+   * lado seguro do erro (bot calado, nunca bot falando por cima de gente).
+   */
+  private async marcarEnvioNosso(externalId: string | undefined): Promise<void> {
+    if (!externalId) return;
+    await this.redis.setEx(`wa:out:${externalId}`, '1', ECO_PROPRIO_TTL_S).catch(() => undefined);
+  }
+
+  /** Este eco (`fromMe`) é de uma mensagem que NÓS enviamos? (A-6) */
+  async enviadoPorNos(externalId: string | undefined): Promise<boolean> {
+    if (!externalId) return false;
+    return (await this.redis.get(`wa:out:${externalId}`).catch(() => null)) !== null;
+  }
+
   /** POST de envio cru com erro enriquecido (sem gate). */
   private async postEnvio<T>(path: string, body: Record<string, unknown>): Promise<T> {
     try {
       // Envio NUNCA retenta: efeito colateral (mensagem no celular do cliente).
-      return await this.req<T>('post', path, body, { retries: 0 });
+      const r = await this.req<T>('post', path, body, { retries: 0 });
+      // Marca o id como NOSSO antes de devolver (A-6) — o eco chega em segundos.
+      await this.marcarEnvioNosso((r as { key?: { id?: string } })?.key?.id);
+      return r;
     } catch (err) {
       const detalhe = this.detalheErro(err);
       this.logger.warn(`Evolution envio falhou (${path}): ${detalhe}`);
