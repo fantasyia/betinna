@@ -1420,28 +1420,13 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      // Direct fetch porque api client é JSON-only
-      const sess = await import('@/lib/auth-store').then((m) => m.getSession());
-      const baseUrl =
-        (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
-      const res = await fetch(`${baseUrl}/api/v1/clientes/${clienteId}/documentos`, {
-        method: 'POST',
-        body: fd,
-        headers: {
-          ...(sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {}),
-          ...(sess?.user.empresaIdAtiva ? { 'X-Empresa-Id': sess.user.empresaIdAtiva } : {}),
-        },
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`,
-        );
-      }
+      // O comentário antigo aqui dizia "api client é JSON-only" — não é mais:
+      // `api.upload` manda FormData cru (o browser põe o boundary) e ainda traz
+      // refresh no 401 e timeout de upload (G-7, 14/09).
+      await api.upload(`/clientes/${clienteId}/documentos`, fd);
       refetch();
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Falha no upload');
+      setUploadError(apiErrorMessage(err));
     } finally {
       setUploading(false);
       e.target.value = ''; // reset input

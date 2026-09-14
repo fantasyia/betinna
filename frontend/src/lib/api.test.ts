@@ -568,3 +568,70 @@ describe('apiErrorMessage', () => {
     expect(apiErrorMessage('string solta')).toBe('Erro desconhecido');
   });
 });
+
+// ─── upload (multipart) ─────────────────────────────────────────────────────
+
+/**
+ * Os 5 uploads do app faziam `fetch` cru fora do client (G-7, 14/09). O
+ * `api.upload` já existia e ninguém usava — estes testes fixam o que a migração
+ * comprou, pra ninguém voltar pro fetch cru "porque o client é JSON-only".
+ */
+describe('upload', () => {
+  it('manda FormData CRU e NÃO põe Content-Type (o boundary é do browser)', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ success: true, data: { url: '/logo.png' } }),
+    );
+    const fd = new FormData();
+    fd.append('arquivo', new Blob(['x']), 'logo.png');
+
+    const out = await api.upload<{ url: string }>('/empresas/emp-1/logo', fd);
+
+    expect(out).toEqual({ url: '/logo.png' });
+    expect(lastFetchUrl()).toBe(`${BASE}/empresas/emp-1/logo`);
+    expect(lastFetchInit().method).toBe('POST');
+    expect(lastFetchInit().body).toBe(fd); // cru, não serializado
+    expect(lastFetchHeaders()['Content-Type']).toBeUndefined();
+  });
+
+  it('leva Authorization e X-Empresa-Id como o resto do app', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ success: true, data: null }),
+    );
+    await api.upload('/kanban/cards/c1/anexos', new FormData());
+
+    const h = lastFetchHeaders();
+    expect(h.Authorization).toBe('Bearer tok-123');
+    expect(h['X-Empresa-Id']).toBe('emp-1');
+  });
+
+  it('401 no meio do upload → refresh + retry (o fetch cru só devolvia erro)', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(jsonResponse({}, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: { ok: true } }));
+    refreshAccessTokenMock.mockResolvedValue(makeSession());
+
+    const fd = new FormData();
+    const out = await api.upload<{ ok: boolean }>('/clientes/c1/documentos', fd);
+
+    expect(out).toEqual({ ok: true });
+    expect(refreshAccessTokenMock).toHaveBeenCalledTimes(1);
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(2);
+    // o retry reenvia o MESMO FormData — arquivo não se perde no refresh
+    expect((calls[1][1] as RequestInit).body).toBe(fd);
+  });
+
+  it('erro da API vira ApiError com a mensagem tratada', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(
+        { success: false, error: { code: 'ARQUIVO_GRANDE', message: 'Arquivo acima de 10 MB' } },
+        { status: 413 },
+      ),
+    );
+    await expect(api.upload('/x', new FormData())).rejects.toMatchObject({
+      status: 413,
+      code: 'ARQUIVO_GRANDE',
+      message: 'Arquivo acima de 10 MB',
+    });
+  });
+});

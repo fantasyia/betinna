@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { ImageIcon, Trash2, Upload } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
-import { getSession, getStoredEmpresaId } from '@/lib/auth-store';
 import { useToast } from '@/components/toast';
 import { Button, Dialog, Field } from '@/components/ui';
 import { cn } from '@/lib/cn';
@@ -50,29 +49,12 @@ export function FundoDialog({
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const sess = getSession();
-      const empresaId = sess?.user.empresaIdAtiva ?? getStoredEmpresaId();
-      const baseUrl =
-        (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
-      const res = await fetch(`${baseUrl}/api/v1/kanban/boards/${board.id}/fundo`, {
-        method: 'POST',
-        body: fd,
-        headers: {
-          ...(sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {}),
-          ...(empresaId ? { 'X-Empresa-Id': empresaId } : {}),
-        },
-      });
-      const json = (await res.json()) as {
-        success: boolean;
-        error?: { message?: string };
-      };
-      if (!res.ok || !json.success) {
-        throw new Error(json.error?.message ?? `Falha no upload (${res.status})`);
-      }
+      // `api.upload` (G-7): refresh no 401 + timeout de upload + envelope tratado.
+      await api.upload(`/kanban/boards/${board.id}/fundo`, fd);
       toast.success('Fundo atualizado');
       onMudou();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Falha no upload');
+      toast.error(apiErrorMessage(err));
     } finally {
       setEnviando(false);
       if (fileRef.current) fileRef.current.value = '';

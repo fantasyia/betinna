@@ -18,7 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
-import { getSession, getStoredEmpresaId } from '@/lib/auth-store';
+import { getSession } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
@@ -971,22 +971,8 @@ function AnexosSection({
     await onMut(async () => {
       const fd = new FormData();
       fd.append('file', file);
-      const sess = getSession();
-      const empresaId = sess?.user.empresaIdAtiva ?? getStoredEmpresaId();
-      const baseUrl =
-        (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
-      const res = await fetch(`${baseUrl}/api/v1/kanban/cards/${card.id}/anexos`, {
-        method: 'POST',
-        body: fd,
-        headers: {
-          ...(sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {}),
-          ...(empresaId ? { 'X-Empresa-Id': empresaId } : {}),
-        },
-      });
-      const json = (await res.json()) as { success: boolean; error?: { message?: string } };
-      if (!res.ok || !json.success) {
-        throw new Error(json.error?.message ?? `Falha no upload (${res.status})`);
-      }
+      // `api.upload` (G-7): refresh no 401 + timeout de upload + envelope tratado.
+      await api.upload(`/kanban/cards/${card.id}/anexos`, fd);
     });
     setEnviando(false);
     if (fileRef.current) fileRef.current.value = '';

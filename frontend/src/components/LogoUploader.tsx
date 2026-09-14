@@ -3,7 +3,7 @@ import { Upload, Trash2, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import { getSession } from '@/lib/auth-store';
+import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
 const MAX_SIZE = 2 * 1024 * 1024;
@@ -97,30 +97,17 @@ export function LogoUploader({ empresaId, currentLogoUrl, onUploaded }: LogoUplo
     try {
       const fd = new FormData();
       fd.append('logo', selectedFile);
-      const sess = getSession();
-      const baseUrl =
-        (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
-      const res = await fetch(`${baseUrl}/api/v1/empresas/${empresaId}/logo`, {
-        method: 'POST',
-        body: fd,
-        headers: {
-          ...(sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {}),
-          ...(sess?.user?.empresaIdAtiva ? { 'X-Empresa-Id': sess.user.empresaIdAtiva } : {}),
-        },
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-      }
+      // `api.upload` e não `fetch` cru (G-7): traz refresh no 401, timeout de
+      // upload e o mesmo X-Empresa-Id do resto do app. Sessão expirando no meio
+      // do envio devolvia erro cru e o arquivo se perdia.
+      await api.upload(`/empresas/${empresaId}/logo`, fd);
       toast.success('Logo atualizado!');
       setSelectedFile(null);
       setPreviewUrl(null);
       setAspectWarning(false);
       onUploaded();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Falha ao subir logo';
-      toast.error('Erro no upload', msg);
+      toast.error('Erro no upload', apiErrorMessage(err));
     } finally {
       setUploading(false);
     }
@@ -137,26 +124,11 @@ export function LogoUploader({ empresaId, currentLogoUrl, onUploaded }: LogoUplo
 
     setRemoving(true);
     try {
-      const sess = getSession();
-      const baseUrl =
-        (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
-      const res = await fetch(`${baseUrl}/api/v1/empresas/${empresaId}/logo`, {
-        method: 'DELETE',
-        headers: {
-          ...(sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {}),
-          ...(sess?.user?.empresaIdAtiva ? { 'X-Empresa-Id': sess.user.empresaIdAtiva } : {}),
-        },
-        credentials: 'include',
-      });
-      if (!res.ok && res.status !== 204) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
-      }
+      await api.delete(`/empresas/${empresaId}/logo`);
       toast.success('Logo removido.');
       onUploaded();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Falha ao remover logo';
-      toast.error('Erro ao remover', msg);
+      toast.error('Erro ao remover', apiErrorMessage(err));
     } finally {
       setRemoving(false);
     }
