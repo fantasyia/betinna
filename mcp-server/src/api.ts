@@ -68,6 +68,10 @@ export class ApiError extends Error {
 }
 
 /** Interpreta a resposta (envelope + erros acionáveis). Compartilhado por JSON e multipart. */
+/** Teto por chamada (H-6). Upload leva mais: o arquivo sobe pro Storage do tenant. */
+const TIMEOUT_MS = 30_000;
+const TIMEOUT_UPLOAD_MS = 120_000;
+
 async function interpretar<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
 
@@ -126,6 +130,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    // Sem timeout, uma API pendurada travava a tool (e o agente) pra sempre
+    // (auditoria 13/09, H-6).
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   return interpretar<T>(res);
 }
@@ -136,6 +143,7 @@ async function postForm<T>(path: string, form: FormData): Promise<T> {
     method: 'POST',
     headers: { Authorization: `Bearer ${API_TOKEN}` },
     body: form,
+    signal: AbortSignal.timeout(TIMEOUT_UPLOAD_MS),
   });
   return interpretar<T>(res);
 }

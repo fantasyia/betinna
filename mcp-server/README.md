@@ -60,7 +60,9 @@ Exigem token com escopo **`fluxos`** (marque "Fluxos de automação" ao gerar em
 | `fluxos_metricas` | Total, taxa de sucesso, etc. |
 | `fluxos_cron_preview` | Valida cron e mostra próximas execuções |
 
-**Não expõe** `ativar`/`pausar`/`arquivar`/`excluir` — ativação = decisão humana no app.
+**Não expõe** `ativar` — ativação = decisão humana no app (e o token de API é barrado na rota).
+`fluxos_pausar`/`fluxos_arquivar`/`fluxos_deletar` existem; `deletar` é recusado pela API em
+fluxo ATIVO ou com execução em andamento (H-4).
 Import sempre cria **RASCUNHO**; disparo real de WhatsApp/e-mail só depois do Léo ativar.
 
 ## Funis + Contatos + CRM (base do e-mail marketing)

@@ -3786,10 +3786,17 @@ server.registerTool(
     inputSchema: {
       nome: z.string().describe("Nome exato, com acento/emoji se for o caso."),
       cor: z.string().optional().describe("Hex #RRGGBB. Default: #7c3aed."),
+      visivelParaRep: z
+        .boolean()
+        .optional()
+        .describe(
+          "true = o REP vê/usa esta etiqueta. Default false (só gestão) — tag de " +
+            "carteira sem isto some da tela do rep (H-12).",
+        ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
-  seguro(async (args: { nome: string; cor?: string }) => {
+  seguro(async (args: { nome: string; cor?: string; visivelParaRep?: boolean }) => {
     const t = await api.post<{ id: string; nome: string; cor?: string }>(
       "/tags",
       args,
@@ -4074,11 +4081,6 @@ server.registerTool(
   ),
 );
 
-// ─── Boot ───────────────────────────────────────────────────────────────
-
-const transport = new StdioServerTransport();
-await server.connect(transport);
-
 // ─── CAMPANHAS (e-mail marketing) ────────────────────────────────────────────
 //
 // O ciclo que isto destrava: o agente ESCREVE o e-mail aqui, SOBE pro app, e o
@@ -4329,6 +4331,12 @@ server.registerTool(
     return ok({ campanhaId, excluida: true });
   }),
 );
+
+// ─── Boot ───────────────────────────────────────────────────────────────
+// DEPOIS de todas as tools: as `campanha_*` eram registradas após o connect e
+// um cliente que lista tools no handshake não as via (auditoria 13/09, H-10).
+const transport = new StdioServerTransport();
+await server.connect(transport);
 
 console.error(
   "[betinna-kanban-mcp] conectado — kanban_* + fluxos_* + funis_/contatos_/crm + prompts_* + " +
