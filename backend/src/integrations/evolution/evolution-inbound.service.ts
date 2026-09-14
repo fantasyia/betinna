@@ -341,7 +341,10 @@ export class EvolutionInboundService {
           // Click-to-WhatsApp: o referral do anúncio vem SÓ na 1ª mensagem da
           // conversa. Extraímos aqui (é onde o proto do Baileys chega inteiro) e
           // o InboxService grava na Conversation com 1ª-vez-vence.
-          ...(ctwaReferral ? { ctwaReferral } : {}),
+          // Sem o `raw` (proto inteiro do anúncio) — ele só custa linha em
+          // TODA mensagem da conversa; a atribuição já fica na Conversation
+          // (auditoria 13/09, A-11).
+          ...(ctwaReferral ? { ctwaReferral: { ...ctwaReferral, raw: undefined } } : {}),
         },
       });
     }

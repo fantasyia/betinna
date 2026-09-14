@@ -114,8 +114,12 @@ export class InboxController {
     const empresaId = user.empresaIdAtiva;
     const eventos = this.eventos.stream$.pipe(
       filter(
+        // Espelha o where da lista (inbox.service): REP e GERENTE só veem o
+        // próprio WhatsApp — o SSE mandava ids de conversas que o GERENTE não
+        // enxerga (auditoria 13/09, A-10).
         (e: InboxEvento) =>
-          e.empresaId === empresaId && (user.role !== 'REP' || e.proprietarioId === user.id),
+          e.empresaId === empresaId &&
+          ((user.role !== 'REP' && user.role !== 'GERENTE') || e.proprietarioId === user.id),
       ),
       map((e: InboxEvento): MessageEvent => ({ data: e, type: 'inbox' })),
     );

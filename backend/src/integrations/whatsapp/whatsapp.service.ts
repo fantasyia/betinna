@@ -7,6 +7,7 @@ import { EnvService } from '@config/env.service';
 import { EvolutionService } from '@integrations/evolution/evolution.service';
 import { WhatsAppSessionService } from './whatsapp-session.service';
 import { WhatsAppMediaService } from './whatsapp-media.service';
+import { assertSafeUrl } from '@shared/utils/safe-request';
 
 type Owner = { type: 'EMPRESA' | 'USUARIO'; id: string };
 
@@ -174,6 +175,9 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
     if (this.viaEvolution) {
       const instance = EvolutionService.instanceName(owner);
       // Resolve a mídia em URL ou base64 (Evolution aceita os dois).
+      // URL vinda do DTO do inbox era repassada crua: o Evolution baixava
+      // qualquer endereço — SSRF por procuração (auditoria 13/09, B-12).
+      if (params.url) await assertSafeUrl(params.url);
       let media = params.url ?? '';
       if (!media && params.buffer) media = params.buffer.toString('base64');
       if (!media && params.storagePath) {
