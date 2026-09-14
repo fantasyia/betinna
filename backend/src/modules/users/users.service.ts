@@ -728,6 +728,16 @@ export class UsersService {
   }
 
   private serialize<T extends { empresas?: unknown[] }>(user: T): T {
-    return user;
+    // Linha crua do Prisma levava apiKeyOpenAI/googleCalendarToken (cifrados,
+    // mas ainda credencial) pra GERENTE e pro token de API (auditoria 13/09, F-4).
+    const {
+      apiKeyOpenAI: _k,
+      googleCalendarToken: _g,
+      ...resto
+    } = user as T & {
+      apiKeyOpenAI?: unknown;
+      googleCalendarToken?: unknown;
+    };
+    return resto as T;
   }
 }

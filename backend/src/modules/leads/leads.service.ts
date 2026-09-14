@@ -797,6 +797,12 @@ export class LeadsService {
     const lead = await this.findById(user, id);
     if (dto.representanteId) {
       await this.assertRepValido(lead.empresaId, dto.representanteId);
+      // GERENTE só atribui a rep do PRÓPRIO time (auditoria 13/09, F-2): a
+      // carteira que ele enxerga é a que ele pode movimentar.
+      const escopo = await this.repScope.getRepIds(user);
+      if (escopo && !escopo.includes(dto.representanteId)) {
+        throw new ForbiddenException('Representante fora da sua equipe');
+      }
     }
     await this.prisma.lead.updateMany({
       where: { id, empresaId: lead.empresaId },

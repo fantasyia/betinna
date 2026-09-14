@@ -213,9 +213,13 @@ export class PropostaAceiteService {
     if (!proposta) throw new NotFoundException('Proposta', propostaId);
     // Token salvo deve bater com o token apresentado (one-time / revogação).
     // Se a proposta já foi respondida, aceiteToken vira null → mostra "já respondida".
-    const jaRespondida =
-      proposta.aceiteToken !== token ||
-      ['ACEITA', 'RECUSADA', 'EXPIRADA'].includes(proposta.status);
+    const respondida = ['ACEITA', 'RECUSADA', 'EXPIRADA'].includes(proposta.status);
+    // Token que NÃO é o vigente numa proposta ainda aberta = link revogado
+    // (regenerado). Mostrava itens/valor mesmo assim (auditoria 13/09, F-6).
+    if (proposta.aceiteToken !== token && !respondida) {
+      throw new NotFoundException('Proposta', propostaId);
+    }
+    const jaRespondida = proposta.aceiteToken !== token || respondida;
 
     return {
       numero: proposta.numero,
@@ -229,19 +233,22 @@ export class PropostaAceiteService {
       subtotal: Number(proposta.subtotal),
       descontoGeral: proposta.descontoGeral, // %
       valor: Number(proposta.valor),
-      observacoes: proposta.observacoes,
+      observacoes: jaRespondida ? null : proposta.observacoes,
       jaRespondida,
-      itens: await anexarDescricaoDoProduto(
-        this.prisma,
-        proposta.itens.map((i) => ({
-          produtoId: i.produtoId,
-          produtoNome: i.produtoNome,
-          quantidade: i.quantidade,
-          precoUnitario: Number(i.precoUnitario), // #17 — Decimal→number
-          desconto: i.desconto, // %
-          total: Number(i.total), // #17 — Decimal→number
-        })),
-      ),
+      // Já respondida: a tela só diz isso — sem os itens (F-6).
+      itens: jaRespondida
+        ? []
+        : await anexarDescricaoDoProduto(
+            this.prisma,
+            proposta.itens.map((i) => ({
+              produtoId: i.produtoId,
+              produtoNome: i.produtoNome,
+              quantidade: i.quantidade,
+              precoUnitario: Number(i.precoUnitario), // #17 — Decimal→number
+              desconto: i.desconto, // %
+              total: Number(i.total), // #17 — Decimal→number
+            })),
+          ),
     };
   }
 

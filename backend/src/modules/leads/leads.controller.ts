@@ -130,6 +130,9 @@ export class LeadsController {
   }
 
   @Put(':id/representante')
+  // Mesmo gate do vizinho em clientes: REP transferia/orfanava o próprio lead
+  // só com kanban.edit (auditoria 13/09, F-2).
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'atribuir_rep', resource: 'lead', resourceIdFrom: 'params.id' })
   atribuirRep(
