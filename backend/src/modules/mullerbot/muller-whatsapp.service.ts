@@ -165,6 +165,9 @@ export interface EnvioBotCfg {
  * `whatsapp.enviarTexto` (eco do provider grava). Retorna os balões efetivamente
  * enviados (pra log/auditoria).
  */
+/** Quanto tempo a marca "tem mensagem esperando" sobrevive (A-7). */
+const PENDENCIA_TTL_S = 300;
+
 export async function enviarEmBaloes(
   texto: string,
   cfg: EnvioBotCfg,
@@ -509,7 +512,13 @@ export class MullerWhatsappService implements OnModuleInit {
         .setNxEx(lockKey, lockToken, LOCK_TTL_MS / 1000)
         .catch(() => true);
       if (!lockOk) {
-        this.logger.log(`[bot] conv=${convId} já em processamento — descarta msg concorrente`);
+        // Não descarta: marca pendência. Quem está com o lock varre no fim do
+        // turno e responde (auditoria 13/09, A-7 — antes a 2ª mensagem da
+        // rajada só era vista quando o cliente escrevia de novo).
+        this.logger.log(`[bot] conv=${convId} já em processamento — msg concorrente fica pendente`);
+        await Promise.resolve()
+          .then(() => this.redis.setEx(`bot:pend:${convId}`, '1', PENDENCIA_TTL_S))
+          .catch(() => undefined);
         return;
       }
       lockConv = lockKey;
@@ -970,6 +979,25 @@ export class MullerWhatsappService implements OnModuleInit {
             [lockTokenAtual],
           )
           .catch(() => undefined);
+        // Pendência deixada por uma mensagem que perdeu o lock (A-7): responde
+        // agora, com o lock já solto. `responderPendente` só fala se a ÚLTIMA
+        // mensagem da conversa ainda é do cliente — não duplica.
+        const chavePend = `bot:pend:${convId}`;
+        // try/catch (e não só .catch): mock/Redis sem o método estoura SÍNCRONO.
+        let pendente: string | null = null;
+        try {
+          pendente = await this.redis.get(chavePend);
+        } catch {
+          pendente = null;
+        }
+        if (pendente) {
+          await Promise.resolve()
+            .then(() => this.redis.del(chavePend))
+            .catch(() => undefined);
+          void this.responderPendente(params.empresaId, convId).catch((err) =>
+            this.logger.warn(`[bot] pendência da conv ${convId} falhou: ${String(err)}`),
+          );
+        }
       }
     }
   }

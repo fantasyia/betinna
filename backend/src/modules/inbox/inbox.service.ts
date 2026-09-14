@@ -1685,6 +1685,29 @@ export class InboxService {
         },
       });
     }
+    // Lookup INVERSO (auditoria 13/09, A-4): a 1ª mensagem veio SÓ com o LID
+    // (conversa nasceu com peerId `<id>@lid`, sem telefone) e agora chegou a
+    // variante com o telefone. Sem isto, o mesmo contato virava DUAS conversas
+    // — e a triagem, um lead fantasma sem telefone. Migra a órfã pro telefone.
+    if (!existente && !p.peerId.endsWith('@lid') && typeof p.meta?.lid === 'string') {
+      const orfa = await this.prisma.conversation.findFirst({
+        where: {
+          empresaId: p.empresaId,
+          canal: p.canal,
+          proprietarioId: propId,
+          peerId: p.meta.lid,
+        },
+      });
+      if (orfa) {
+        existente = await this.prisma.conversation.update({
+          where: { id: orfa.id },
+          data: { peerId: p.peerId },
+        });
+        this.logger.log(
+          `Conversa ${orfa.id} migrada de ${p.meta.lid} pro telefone ${p.peerId} (LID → telefone)`,
+        );
+      }
+    }
     if (existente) {
       // Mescla avatarUrl/telefone na metadata existente quando o adapter informa.
       const metaAtual = (existente.metadata as Record<string, unknown> | null) ?? {};

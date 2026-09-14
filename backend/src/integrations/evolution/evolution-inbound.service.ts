@@ -209,7 +209,7 @@ export class EvolutionInboundService {
       );
       return;
     }
-    const empresaId = await this.resolverEmpresaId(dono);
+    const empresaId = await this.resolverEmpresaId(dono, instance);
     if (!empresaId) {
       // Drop antes silencioso — difícil de diagnosticar "msg do rep não apareceu".
       this.logger.warn(
@@ -357,12 +357,29 @@ export class EvolutionInboundService {
     return { type: m[1] === 'emp' ? 'EMPRESA' : 'USUARIO', id: m[2] };
   }
 
-  private async resolverEmpresaId(dono: {
-    type: 'EMPRESA' | 'USUARIO';
-    id: string;
-  }): Promise<string | undefined> {
+  private async resolverEmpresaId(
+    dono: {
+      type: 'EMPRESA' | 'USUARIO';
+      id: string;
+    },
+    instance?: string,
+  ): Promise<string | undefined> {
     if (dono.type === 'EMPRESA') return dono.id;
-    // USUARIO: empresa vinculada (primeira).
+    // USUARIO: a empresa em que a instância foi PAREADA (EvolutionInstancia
+    // guarda) — usuário em duas empresas / ADMIN via seletor caía na primeira
+    // por ordem de id (auditoria 13/09, A-3). Sem registro, o fallback antigo.
+    if (instance) {
+      try {
+        const inst = await this.prisma.evolutionInstancia.findUnique({
+          where: { instanceName: instance },
+          select: { empresaId: true },
+        });
+        if (inst?.empresaId) return inst.empresaId;
+      } catch {
+        /* tabela indisponível no mock/teste → fallback */
+      }
+    }
+    // Fallback: empresa vinculada (primeira).
     const u = await this.prisma.usuario.findUnique({
       where: { id: dono.id },
       select: { empresas: { select: { empresaId: true }, orderBy: { empresaId: 'asc' }, take: 1 } },
