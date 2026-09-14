@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/api';
 import { initSentry } from '@/lib/sentry';
 import { bootstrapAuthFromBackend, onTrocaDeUsuario } from '@/lib/auth-store';
 import { registerPwa } from '@/lib/pwa';
+import { descartarRascunhos } from '@/lib/rascunhos';
 import { initI18n } from '@/lib/i18n';
 import { bootstrapTheme } from '@/hooks/useTheme';
 import { aplicarMarcaCacheada, carregarMarca } from '@/lib/marca';
@@ -187,7 +188,13 @@ const queryClient = new QueryClient({
 // isto, num PC compartilhado o próximo usuário via a Inbox/leads do anterior
 // por até 60s stale / 5min gc (auditoria 13/09/2026, G-2). O "Sair" já dava
 // reload; o caminho por router (401, outra aba) não.
-onTrocaDeUsuario(() => queryClient.clear());
+onTrocaDeUsuario(() => {
+  queryClient.clear();
+  // Outro usuário no mesmo navegador: rascunho guardado na queda de sessão de
+  // quem estava antes não fica pra trás (G-9). O `lerRascunho` já recusa dono
+  // diferente; isto é a limpeza do dado em si.
+  descartarRascunhos();
+});
 
 void bootstrapAuthFromBackend();
 

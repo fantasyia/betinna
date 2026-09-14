@@ -37,6 +37,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { clearSession } from '@/lib/auth-store';
+import { descartarRascunhos } from '@/lib/rascunhos';
 import { useRole, usePermission, type ModuloName } from '@/hooks/usePermission';
 import { getPermissoes, subscribePermissoes } from '@/lib/permissions-store';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
@@ -670,6 +671,10 @@ function Sidebar({
         type="button"
         data-testid="logout-btn"
         onClick={() => {
+          // Saiu de propósito: nada de guardar formulário (G-9). Quem clica em
+          // "Sair" não espera o rascunho de volta — e dado pessoal não fica no
+          // navegador depois que a pessoa saiu.
+          descartarRascunhos();
           clearSession();
           // Volta pra tela de login (a sessão já foi limpa).
           window.location.assign('/login');

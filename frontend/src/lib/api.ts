@@ -22,6 +22,7 @@ import {
   refreshAccessToken,
   refreshFoiTransitorio,
 } from './auth-store';
+import { salvarRascunhosAbertos } from './rascunhos';
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 const API_PREFIX = '/api/v1';
@@ -230,6 +231,11 @@ async function request<T>(
       // de novo e deslogava no meio do trabalho (auditoria 13/09, G-3).
       throw new ApiError(401, 'AUTH_REQUIRED', 'Sessão em renovação — tente de novo');
     }
+    // Sessão morreu de vez. Antes de desmontar tudo, guarda o que estava
+    // digitado (G-9) — o refresh já falhou, então ficar na tela não salvaria
+    // nada; o único jeito de não perder é levar o conteúdo pro outro lado do
+    // login. Best-effort: nunca impede o logout.
+    salvarRascunhosAbertos();
     clearSession();
     throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');
   }
@@ -249,6 +255,7 @@ async function request<T>(
         body?.error?.message ?? 'Não autenticado',
       );
     }
+    salvarRascunhosAbertos(); // G-9 — ver acima
     clearSession();
     throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');
   }

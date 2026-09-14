@@ -41,6 +41,8 @@ vi.mock('./auth-store', () => ({
 }));
 
 import { api, ApiError, apiErrorMessage } from './api';
+import { marcarSujo, limparMarcadores } from './dirty';
+import { lerRascunho } from './rascunhos';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -97,6 +99,8 @@ function lastFetchUrl(): string {
 }
 
 beforeEach(() => {
+  limparMarcadores();
+  window.localStorage.clear();
   // Sessão padrão: autenticada com empresa ativa.
   getSessionMock.mockReturnValue(makeSession());
   getStoredEmpresaIdMock.mockReturnValue(null);
@@ -633,5 +637,46 @@ describe('upload', () => {
       code: 'ARQUIVO_GRANDE',
       message: 'Arquivo acima de 10 MB',
     });
+  });
+});
+
+// ─── G-9: rascunho sobrevive à queda de sessão ──────────────────────────────
+
+describe('401 definitivo guarda o rascunho antes de deslogar', () => {
+  it('refresh falhou → o que estava na tela vai pro localStorage', async () => {
+    marcarSujo('fluxo-editor:f1', true, () => ({ nome: 'Régua fria' }));
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({}, { status: 401 }),
+    );
+    refreshAccessTokenMock.mockResolvedValue(null);
+
+    await expect(api.get('/protegido')).rejects.toMatchObject({ code: 'AUTH_REQUIRED' });
+
+    expect(lerRascunho('fluxo-editor:f1')?.dados).toEqual({ nome: 'Régua fria' });
+    expect(clearSessionMock).toHaveBeenCalled(); // e o logout aconteceu do mesmo jeito
+  });
+
+  it('401 num fluxo público (skipAuth) não guarda nada — não há tela logada atrás', async () => {
+    marcarSujo('fluxo-editor:f1', true, () => ({ nome: 'Régua fria' }));
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ error: { code: 'TOKEN_USADO', message: 'Link já usado' } }, { status: 401 }),
+    );
+
+    await expect(api.get('/welcome', { skipAuth: true })).rejects.toMatchObject({
+      code: 'TOKEN_USADO',
+    });
+    expect(lerRascunho('fluxo-editor:f1')).toBeNull();
+  });
+
+  it('401 que ainda tem refresh pela frente não guarda nada (a sessão não caiu)', async () => {
+    marcarSujo('fluxo-editor:f1', true, () => ({ nome: 'Régua fria' }));
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(jsonResponse({}, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: 'ok' }));
+    refreshAccessTokenMock.mockResolvedValue(makeSession());
+
+    await api.get('/protegido');
+
+    expect(lerRascunho('fluxo-editor:f1')).toBeNull();
   });
 });

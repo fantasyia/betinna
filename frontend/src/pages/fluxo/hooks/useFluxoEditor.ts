@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { marcarSujo } from '@/lib/dirty';
+import { lerRascunho, descartarRascunho, type RascunhoSalvo } from '@/lib/rascunhos';
 import {
   addEdge,
   useNodesState,
@@ -38,6 +39,15 @@ import { organizarNos } from '@/pages/fluxo/lib/layout';
  * em nodes E edges juntos preservam a atomicidade (poda de arestas órfãs no mesmo
  * tick), pushHistory em toda mutação estrutural, dirty em toda mutação.
  */
+/** O que o editor guarda quando a sessão cai (G-9). */
+export interface RascunhoEditor {
+  nodes: FlowNode[];
+  edges: Edge[];
+  name: string;
+  remetenteEmail: string;
+  triggerTipo: TriggerTipo | '';
+}
+
 export function useFluxoEditor({
   fluxoId,
   data,
@@ -58,13 +68,33 @@ export function useFluxoEditor({
   /** Instante da última remoção de NÓ — evita snapshot duplo na cascata de arestas. */
   const ultimaRemocaoRef = useRef(0);
 
+  /**
+   * Snapshot do editor, lido na hora da queda de sessão (G-9).
+   *
+   * Vive num ref porque quem o chama não é o React: é o `api.ts`, de dentro do
+   * 401, com a tela prestes a desmontar. Um closure preso ao render de quando o
+   * `dirty` virou true guardaria o grafo ERRADO — o de minutos atrás.
+   */
+  const snapshotRef = useRef<() => RascunhoEditor>(() => ({
+    nodes: [],
+    edges: [],
+    name: '',
+    remetenteEmail: '',
+    triggerTipo: '',
+  }));
+
   // Registro global de "não salvo" (#43): o reload automático do PWA consulta
   // isto antes de recarregar. Sem o registro, um deploy no meio da edição
   // levava o fluxo inteiro embora, sem aviso.
+  //
+  // O 2º argumento é o snapshot (G-9): o reload do PWA dá pra ADIAR, a sessão
+  // caindo não — o token morreu, ficar na tela não salva nada. Então o grafo
+  // viaja pro localStorage e volta como oferta depois do login.
+  const chaveRascunho = `fluxo-editor:${fluxoId}`;
   useEffect(() => {
-    marcarSujo('fluxo-editor', dirty);
-    return () => marcarSujo('fluxo-editor', false);
-  }, [dirty]);
+    marcarSujo(chaveRascunho, dirty, () => snapshotRef.current());
+    return () => marcarSujo(chaveRascunho, false);
+  }, [dirty, chaveRascunho]);
   const [name, setName] = useState('');
   /**
    * Endereço de envio DESTE fluxo (vazio = o do ambiente).
@@ -171,6 +201,47 @@ export function useFluxoEditor({
     historyIdxRef.current = 0;
     forceRender((v) => v + 1);
   }, [data, setNodes, setEdges]);
+
+  // O snapshot lê SEMPRE o render atual (ver snapshotRef acima).
+  snapshotRef.current = () => ({ nodes, edges, name, remetenteEmail, triggerTipo });
+
+  /**
+   * Rascunho da última queda de sessão (G-9) — OFERTA, nunca aplicação.
+   *
+   * Aplicar sozinho seria trocar uma perda por uma sobrescrita silenciosa: o
+   * fluxo pode ter sido salvo por outra pessoa no meio tempo, e aqui o save é
+   * full-replace (derruba execução em voo). Quem decide é quem está olhando.
+   */
+  const [rascunho, setRascunho] = useState<RascunhoSalvo<RascunhoEditor> | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    setRascunho(lerRascunho<RascunhoEditor>(chaveRascunho));
+  }, [data, chaveRascunho]);
+
+  const restaurarRascunho = useCallback(() => {
+    if (!rascunho) return;
+    const d = rascunho.dados;
+    setNodes(d.nodes ?? []);
+    setEdges(d.edges ?? []);
+    setName(d.name ?? '');
+    setRemetenteEmail(d.remetenteEmail ?? '');
+    setTriggerTipo(d.triggerTipo ?? '');
+    // Volta SUJO de propósito: o conteúdo está na tela, não no banco. Some da
+    // tela na hora que a pessoa salvar — ou se ela recarregar sem salvar, o que
+    // é a mesma escolha que ela já teria tomado.
+    setDirty(true);
+    historyRef.current = [{ nodes: d.nodes ?? [], edges: d.edges ?? [] }];
+    historyIdxRef.current = 0;
+    descartarRascunho(chaveRascunho);
+    setRascunho(null);
+    forceRender((v) => v + 1);
+    toast.success('Alterações não salvas restauradas — revise e salve.');
+  }, [rascunho, chaveRascunho, setNodes, setEdges, toast]);
+
+  const dispensarRascunho = useCallback(() => {
+    descartarRascunho(chaveRascunho);
+    setRascunho(null);
+  }, [chaveRascunho]);
 
   // Drop handler
   const onDrop = useCallback(
@@ -582,6 +653,9 @@ export function useFluxoEditor({
     dirty,
     saving,
     testando,
+    rascunho,
+    restaurarRascunho,
+    dispensarRascunho,
     reactFlowInstance,
     wrapperRef,
     canUndo,

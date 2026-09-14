@@ -107,6 +107,52 @@ function FluxoEditorInner({
         onMobilePanel={(p) => setMobilePanel((cur) => (cur === p ? null : p))}
       />
 
+      {/* Rascunho da última queda de sessão (G-9).
+
+          É OFERTA, não restauro automático: o fluxo pode ter sido salvo por
+          outra pessoa no meio tempo, e aqui o save é full-replace (cancela
+          execução em voo). Aplicar sozinho trocaria uma perda por uma
+          sobrescrita silenciosa — que é o tipo de erro que ninguém vê acontecer. */}
+      {editor.rascunho && (
+        <div
+          data-testid="rascunho-recuperado"
+          className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-warning/40 bg-warning/10 text-xs text-text"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0 text-warning" />
+          <span>
+            Sua sessão caiu em{' '}
+            <strong>
+              {new Date(editor.rascunho.quando).toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </strong>{' '}
+            com alterações não salvas neste fluxo. Restaurar substitui o que está na tela
+            agora.
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              data-testid="rascunho-restaurar"
+              onClick={editor.restaurarRascunho}
+              className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90"
+            >
+              Restaurar
+            </button>
+            <button
+              type="button"
+              data-testid="rascunho-dispensar"
+              onClick={editor.dispensarRascunho}
+              className="rounded-md border border-border px-2.5 py-1 text-[11px] text-muted hover:text-text"
+            >
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Aviso mobile: o editor de fluxo é arrastar-e-soltar (HTML5 DnD + handles
           pequenos), que não funciona no toque. Quem edita fluxo é gestor no desktop —
           no celular o fluxo dá pra visualizar, não pra montar. */}
