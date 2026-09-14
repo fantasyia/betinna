@@ -246,14 +246,14 @@ describe('CampanhaIaService', () => {
       });
     });
 
-    it('usa modelo padrão gpt-4o-mini quando não especificado', async () => {
+    it('usa o modelo padrão da casa (gpt-5.6-sol) quando não especificado', async () => {
       await service.gerarConteudo(
         fakeUser(),
         gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
       );
 
       const body = http.post.mock.calls[0][1].body;
-      expect(body.model).toBe('gpt-4o-mini');
+      expect(body.model).toBe('gpt-5.6-sol'); // E-11 (14/09): era gpt-4o-mini
     });
 
     it('usa modelo do DTO quando especificado', async () => {

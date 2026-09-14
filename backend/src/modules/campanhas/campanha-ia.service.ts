@@ -21,6 +21,36 @@ import type {
 
 // ─── Tipos de retorno ──────────────────────────────────────────────────────────
 
+/**
+ * Marcador opcional no template do e-mail onde a frase da IA entra (C-11).
+ * Sem ele no template, a personalização do e-mail simplesmente não acontece —
+ * e o e-mail sai exatamente como foi desenhado.
+ */
+export const SLOT_ABERTURA_IA = '{{ia.abertura}}';
+
+/** Escapa o que vai pro HTML do e-mail (o texto vem de um modelo de linguagem). */
+function escaparHtml(v: string): string {
+  return v
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Aplica a frase de abertura no template — ou devolve o template intacto.
+ * Nunca deixa o marcador cru chegar ao cliente.
+ */
+export function aplicarAberturaIa(template: string | null, abertura: string | null): string | null {
+  if (!template) return template;
+  if (!template.includes(SLOT_ABERTURA_IA)) return template;
+  const frase = (abertura ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  return template.split(SLOT_ABERTURA_IA).join(frase ? escaparHtml(frase) : '');
+}
+
 export interface ConteudoGerado {
   mensagemWa: string | null;
   mensagemEmail: string | null;
@@ -73,7 +103,8 @@ interface LlmCredenciais {
 export class CampanhaIaService {
   private readonly logger = new Logger(CampanhaIaService.name);
   private static readonly CHARS_PER_TOKEN = 4;
-  private static readonly DEFAULT_MODEL = 'gpt-4o-mini';
+  /** Modelo da casa (decisão do Léo, 14/09) — era gpt-4o-mini fixo aqui. */
+  private static readonly DEFAULT_MODEL = 'gpt-5.6-sol';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -356,7 +387,10 @@ Retorne JSON exato:
       this.logger.warn(
         `Campanha IA: teto de custo atingido (empresa ${params.empresaId}) — usando template sem IA`,
       );
-      return { mensagemWa: params.templateWa, mensagemEmail: params.templateEmail };
+      return {
+        mensagemWa: params.templateWa,
+        mensagemEmail: aplicarAberturaIa(params.templateEmail, null),
+      };
     }
     try {
       const creds = await this.resolverCredenciais(params.criadoPorId);
@@ -383,21 +417,30 @@ Retorne JSON: {"mensagemWa": "...", "mensagemEmail": "..."}`;
       void this.custo
         .registrarUso(params.empresaId, resultado.tokensIn ?? 0, resultado.tokensOut ?? 0)
         .catch(() => undefined);
-      const parsed = this.parseJson<{ mensagemWa: string | null; mensagemEmail: string | null }>(
+      const parsed = this.parseJson<{ mensagemWa: string | null; aberturaEmail: string | null }>(
         resultado.texto,
-        { mensagemWa: params.templateWa, mensagemEmail: params.templateEmail },
+        { mensagemWa: params.templateWa, aberturaEmail: null },
       );
 
       return {
         mensagemWa: parsed.mensagemWa ?? params.templateWa,
-        mensagemEmail: parsed.mensagemEmail ?? params.templateEmail,
+        // ⛔ A IA NÃO devolve mais o e-mail inteiro (decisão do Léo, 14/09; auditoria
+        // C-11). Ela lia só os 300 primeiros caracteres do template e o que voltava
+        // SUBSTITUÍA o HTML todo — sumiam layout, botão, cores e rodapé de
+        // descadastro, trocados por HTML improvisado. Agora ela escreve UMA frase de
+        // abertura, que entra no lugar do marcador SLOT_ABERTURA_IA se o template
+        // tiver um. Template sem marcador sai exatamente como foi desenhado.
+        mensagemEmail: aplicarAberturaIa(params.templateEmail, parsed.aberturaEmail),
       };
     } catch (err) {
       // Fail-safe: retorna template sem personalização
       this.logger.warn(
         `IA personalização falhou para ${params.cliente.nome}: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return { mensagemWa: params.templateWa, mensagemEmail: params.templateEmail };
+      return {
+        mensagemWa: params.templateWa,
+        mensagemEmail: aplicarAberturaIa(params.templateEmail, null),
+      };
     }
   }
 

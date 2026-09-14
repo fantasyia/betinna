@@ -69,11 +69,16 @@ export const envSchema = z
     // IA
     OPENAI_API_KEY: z.string().optional().default(''),
     /** Modelo padrão pro MullerBot. */
-    MULLERBOT_MODEL: z.string().default('gpt-4o-mini'),
+    // Default = o modelo da casa (decisão do Léo, 14/09). Ele só entra quando a
+    // persona/prompt não define um; antes caía em gpt-4o-mini e o tenant
+    // conversava com outro bot sem ninguém ter escolhido isso.
+    MULLERBOT_MODEL: z.string().default('gpt-5.6-sol'),
     /** Modelo de transcrição de áudio (voz→texto). whisper-1 é barato e estável. */
     MULLERBOT_TRANSCRIBE_MODEL: z.string().default('whisper-1'),
     /** Modelo de VISÃO pra analisar imagens. Precisa enxergar imagem (gpt-4o-mini serve). */
-    MULLERBOT_VISION_MODEL: z.string().default('gpt-4o-mini'),
+    // Imagem no WhatsApp ignorava a persona e ia SEMPRE no gpt-4o-mini. Conferido
+    // ao vivo em 14/09: o gpt-5.6-sol lê imagem (respondeu a cor corretamente).
+    MULLERBOT_VISION_MODEL: z.string().default('gpt-5.6-sol'),
     /** RAG — modelo de embedding (1536 dims). text-embedding-3-small é barato e estável. */
     EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
     /** RAG — liga a indexação semântica (reconciliador + enqueue). false = só keyword. */
