@@ -541,12 +541,33 @@ export class FluxosService {
    * como qualquer domínio verificado nela — relay pela marca do tenant.
    * Lista vazia = nenhum remetente customizado (vale o default do env).
    */
+  /**
+   * Guarda do remetente por fluxo — valida **o que muda**, não o que já existe.
+   *
+   * ⚠️ O `atual` não é detalhe de implementação, é o que impede a guarda de
+   * trancar o editor. Medido em 15/09, antes do push: a lista
+   * `emailTransacional.dominiosRemetente` está AUSENTE nesta empresa, e E1, E2 e
+   * E3 já têm `remetenteEmail` gravado de antes da guarda existir. Sem esta
+   * comparação, QUALQUER update que carregue o campo — inclusive um que só quer
+   * mexer no grafo e manda o remetente junto, que é o que o editor faz — cairia
+   * em "lista vazia" e o fluxo viraria somente-leitura.
+   *
+   * O erro seria péssimo de diagnosticar: a mensagem fala de domínio de e-mail
+   * e quem está tentando salvar mexeu num nó. Validar só a MUDANÇA mantém a
+   * allowlist fazendo o trabalho dela (barrar remetente novo não autorizado) sem
+   * transformar dado legado em bloqueio.
+   */
   private async assertRemetenteEmail(
     user: AuthenticatedUser,
     empresaId: string,
     remetenteEmail: string | null | undefined,
+    atual?: string | null,
   ): Promise<void> {
     if (!remetenteEmail) return;
+    // Mesmo valor que já está gravado: nada mudou, nada a autorizar.
+    if (atual != null && remetenteEmail.trim().toLowerCase() === atual.trim().toLowerCase()) {
+      return;
+    }
     if (user.role !== 'ADMIN' && user.role !== 'DIRECTOR') {
       throw new ForbiddenException(
         'Só DIRECTOR/ADMIN definem o remetente do e-mail de um fluxo.',
@@ -567,7 +588,11 @@ export class FluxosService {
     if (!dominio || !permitidos.includes(dominio)) {
       throw new BusinessRuleException(
         `Domínio "${dominio || '?'}" não está na lista de remetentes permitidos da empresa ` +
-          `(Configurações → E-mail transacional → domínios${permitidos.length ? `: ${permitidos.join(', ')}` : ' — lista vazia'}).`,
+          (permitidos.length
+            ? `(Configurações → E-mail transacional → domínios: ${permitidos.join(', ')}).`
+            : '— a lista `emailTransacional.dominiosRemetente` está VAZIA nesta empresa, ' +
+              'então nenhum remetente novo é aceito. Preencha os domínios verificados no ' +
+              'provedor de e-mail antes de definir remetente por fluxo.'),
         ErrorCode.FLUXO_INVALIDO,
       );
     }
@@ -900,7 +925,14 @@ export class FluxosService {
       if (dto.nome !== undefined) updateData.nome = dto.nome;
       if (dto.descricao !== undefined) updateData.descricao = dto.descricao;
       if (dto.remetenteEmail !== undefined) {
-        await this.assertRemetenteEmail(user, existing.empresaId, dto.remetenteEmail);
+        // `existing.remetenteEmail` entra pra guarda saber o que é MUDANÇA e o
+        // que é o mesmo valor vindo de carona no payload do editor.
+        await this.assertRemetenteEmail(
+          user,
+          existing.empresaId,
+          dto.remetenteEmail,
+          existing.remetenteEmail,
+        );
         updateData.remetenteEmail = dto.remetenteEmail;
       }
       if (dto.triggerTipo !== undefined) updateData.triggerTipo = dto.triggerTipo;

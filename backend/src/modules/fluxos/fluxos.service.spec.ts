@@ -1251,6 +1251,6 @@ describe('FluxosService — remetenteEmail: papel + allowlist de domínio', () =
     const { svc } = buildComAllowlist([]);
     await expect(
       svc.create(fakeUser({ role: 'DIRECTOR' as UserRole }), dto as never),
-    ).rejects.toThrow(/lista vazia/);
+    ).rejects.toThrow(/VAZIA nesta empresa/); // a mensagem passou a dizer o que fazer (15/09)
   });
 });
