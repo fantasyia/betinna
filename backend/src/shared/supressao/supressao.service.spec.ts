@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SupressaoService } from './supressao.service';
 
+// Barramento de fluxo: aplicar a LGPD tem que acender o E5 (ver
+// `lgpd-acende-o-e5.spec.ts`). Aqui basta não ser undefined — sem ele, o
+// try/catch do serviço engoliria a falha e o teste passaria por acidente.
+const makeRef = () => ({ get: () => ({ disparar: vi.fn().mockResolvedValue(undefined) }) });
+
 const makePrisma = () => ({
   tag: { findMany: vi.fn().mockResolvedValue([]) },
   leadTag: { count: vi.fn().mockResolvedValue(0) },
@@ -14,7 +19,7 @@ describe('SupressaoService', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new SupressaoService(prisma as never);
+    svc = new SupressaoService(prisma as never, makeRef() as never);
   });
 
   it('suprime pelo leadId quando o lead tem a tag canônica', async () => {
@@ -81,7 +86,7 @@ describe('SupressaoService.emailSuprimido — o ILIKE do Postgres não dobra ace
       async (args: { where: { nome: { contains: string } } }) =>
         tagsDoTenant.filter((t) => ilike(t.nome, args.where.nome.contains)),
     );
-    svc = new SupressaoService(prisma as never);
+    svc = new SupressaoService(prisma as never, makeRef() as never);
   });
 
   it('acha a tag "E-mail inválido ⛔" mesmo com o ILIKE sem dobrar acento', async () => {
@@ -134,7 +139,7 @@ describe('SupressaoService — e-mail queimado vale pro Cliente também', () => 
   it('marcarEmailInvalido carimba o Lead por MERGE jsonb (||), nunca read-modify-write (B-7)', async () => {
     const prisma = prismaC4();
     prisma.lead.findMany.mockResolvedValue([{ id: 'lead-1' }, { id: 'lead-2' }]);
-    const svc = new SupressaoService(prisma as never);
+    const svc = new SupressaoService(prisma as never, makeRef() as never);
 
     await svc.marcarEmailInvalido('emp-1', 'morta@x.com', 'bounce');
 
@@ -150,7 +155,7 @@ describe('SupressaoService — e-mail queimado vale pro Cliente também', () => 
   it('marcarEmailInvalido etiqueta o Cliente que usa o endereço (mesmo sem Lead)', async () => {
     const prisma = prismaC4();
     prisma.cliente.findMany.mockResolvedValue([{ id: 'cli-1' }]);
-    const svc = new SupressaoService(prisma as never);
+    const svc = new SupressaoService(prisma as never, makeRef() as never);
 
     const n = await svc.marcarEmailInvalido('emp-1', 'morta@x.com', 'reclamacao');
 
@@ -163,7 +168,7 @@ describe('SupressaoService — e-mail queimado vale pro Cliente também', () => 
   it('emailSuprimido é true quando só o CLIENTE carrega a tag', async () => {
     const prisma = prismaC4();
     prisma.clienteTag.count.mockResolvedValue(1);
-    const svc = new SupressaoService(prisma as never);
+    const svc = new SupressaoService(prisma as never, makeRef() as never);
 
     expect(await svc.emailSuprimido('emp-1', 'morta@x.com')).toBe(true);
   });

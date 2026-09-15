@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
+import { ModuleRef } from '@nestjs/core';
+import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 
 /**
  * Supressão GLOBAL de contatos (LGPD). Quem tem a tag "Não Reabordar - LGPD ⛔"
@@ -38,7 +40,69 @@ export class SupressaoService {
    */
   static readonly TAG_WHATSAPP_INVALIDO = 'WhatsApp inválido ⛔';
 
-  constructor(private readonly prisma: PrismaService) {}
+  /**
+   * ⚠️ O barramento vem por `ModuleRef`, não por injeção normal — e isso é
+   * deliberado.
+   *
+   * Este módulo é @Global (todo ponto de envio precisa do guard de supressão) e
+   * o `FluxosModule` consome o `SupressaoService` lá dentro. Fazer o global
+   * importar o pesado inverteria a dependência e criaria uma ordem de
+   * instanciação que só falharia NO BOOT, onde nenhum teste olha — e boot
+   * quebrado em produção é o pior desfecho possível. Resolver na hora da
+   * chamada tira a pergunta do caminho.
+   */
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly moduleRef: ModuleRef,
+  ) {}
+
+  /**
+   * Avisa os fluxos que a etiqueta chegou — o passo que faltava (A25, 15/09).
+   *
+   * ⚠️ Gravar a tag por `createMany` NÃO emite `LEAD_RECEBEU_TAG`; só a rota do
+   * app emitia. Medido em produção: a pessoa pedia pra parar no WhatsApp, o bot
+   * silenciava na hora e mandava "não vamos mais te procurar" — e o **E5 nunca
+   * rodava**, então a régua de E-MAIL seguia saindo. Com a confirmação na mão
+   * dizendo o contrário. Era metade de um direito legal funcionando.
+   *
+   * Emite só pra quem NÃO tinha a etiqueta: "recebeu" tem que significar que
+   * mudou, senão pedir opt-out duas vezes abre duas tarefas de confirmação.
+   *
+   * Best-effort de propósito — o `disparar` já engole a própria falha, e o
+   * try/catch aqui é a segunda rede: **a escrita da LGPD não pode falhar porque
+   * a fila está fora**. O ato legal acontece; o aviso é consequência dele.
+   */
+  private async avisarFluxos(
+    empresaId: string,
+    tagId: string,
+    tagNome: string,
+    leadIds: string[],
+  ): Promise<void> {
+    if (leadIds.length === 0) return;
+    try {
+      const bus = this.moduleRef.get(FluxoEventBusService, { strict: false });
+      for (const leadId of leadIds) {
+        await bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId, tagNome });
+      }
+    } catch (err) {
+      this.logger.error(
+        `LGPD aplicada mas o gatilho de fluxo NÃO saiu (${leadIds.length} lead(s), empresa ` +
+          `${empresaId}): ${err instanceof Error ? err.message : String(err)} — ` +
+          'a régua de e-mail pode seguir saindo pra quem pediu pra sair',
+      );
+    }
+  }
+
+  /** Quais destes leads AINDA não têm a etiqueta (os que a escrita vai criar). */
+  private async semAEtiqueta(tagId: string, leadIds: string[]): Promise<string[]> {
+    if (leadIds.length === 0) return [];
+    const jaTem = await this.prisma.leadTag.findMany({
+      where: { tagId, leadId: { in: leadIds } },
+      select: { leadId: true },
+    });
+    const tinha = new Set(jaTem.map((t) => t.leadId));
+    return leadIds.filter((id) => !tinha.has(id));
+  }
 
   /**
    * True se o contato deve ser SUPRIMIDO (tem a tag LGPD).
@@ -275,6 +339,10 @@ export class SupressaoService {
       for (const l of leads) leadIds.add(l.id);
       for (const c of clientes) clienteIds.add(c.id);
     }
+    // Quem ainda NÃO tinha a etiqueta — calculado ANTES da escrita, porque
+    // depois dela todos têm e não dá mais pra separar (o `createMany` devolve
+    // contagem, não ids).
+    const novos = await this.semAEtiqueta(tag.id, [...leadIds]);
     if (leadIds.size) {
       await this.prisma.leadTag.createMany({
         data: [...leadIds].map((leadId) => ({ leadId, tagId: tag.id, origem })),
@@ -287,6 +355,9 @@ export class SupressaoService {
         skipDuplicates: true,
       });
     }
+    // O E5 ("Pediu pra sair") acende por aqui: é ele que aplica `nutricao-parar`,
+    // tira de `em-nutricao` e abre a tarefa de confirmar a saída.
+    await this.avisarFluxos(empresaId, tag.id, SupressaoService.TAG_LGPD, novos);
     const total = leadIds.size + clienteIds.size;
     this.logger.warn(
       `LGPD aplicada (${origem}) em ${leadIds.size} lead(s) e ${clienteIds.size} cliente(s) da empresa ${empresaId}`,

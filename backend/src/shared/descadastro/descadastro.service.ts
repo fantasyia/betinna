@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { ModuleRef } from '@nestjs/core';
+import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { CryptoUtil } from '@shared/utils/crypto.util';
 import { SupressaoService } from '@shared/supressao/supressao.service';
 
@@ -53,6 +55,9 @@ export class DescadastroService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
+    // Barramento por ModuleRef, pelo mesmo motivo do SupressaoService: módulo
+    // @Global não importa o FluxosModule, senão a ordem de boot vira loteria.
+    private readonly moduleRef: ModuleRef,
   ) {
     this.crypto = new CryptoUtil(env.get('ENCRYPTION_KEY'));
   }
@@ -150,6 +155,34 @@ export class DescadastroService {
         });
         aplicou += r.count;
         if (r.count === 0) jaTinha = true;
+        // Acende o E5 (A25, 15/09). `createMany` é escrita direta e NÃO emite
+        // `LEAD_RECEBEU_TAG` — só a rota do app emitia. Sem isto, quem clicava
+        // em "descadastrar" no rodapé do e-mail ganhava a etiqueta e mais nada:
+        // o E5 não rodava, `nutricao-parar` não era aplicado, e **a régua
+        // seguia saindo pelo mesmo canal em que a pessoa acabou de pedir pra
+        // sair**. O clique é a manifestação do direito; parar de mandar é o que
+        // ele significa.
+        //
+        // Só quando a etiqueta é NOVA (`r.count > 0`): o one-click do provedor
+        // repete, e repetir não pode abrir duas tarefas de confirmação.
+        //
+        // Best-effort: fila fora do ar não pode fazer o descadastro falhar —
+        // devolver erro pra quem pediu pra sair seria o pior desfecho possível.
+        if (r.count > 0) {
+          await this.moduleRef
+            .get(FluxoEventBusService, { strict: false })
+            .disparar(alvo.e, 'LEAD_RECEBEU_TAG', {
+              leadId: lead.id,
+              tagId: tag.id,
+              tagNome: SupressaoService.TAG_LGPD,
+            })
+            .catch((err: unknown) =>
+              this.logger.error(
+                `descadastro aplicado mas o gatilho NÃO saiu (lead ${lead.id}): ` +
+                  `${err instanceof Error ? err.message : String(err)} — a régua pode seguir saindo`,
+              ),
+            );
+        }
       }
     }
     if (alvo.c) {

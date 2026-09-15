@@ -35,7 +35,11 @@ const build = (over: { lead?: unknown; cliente?: unknown; apiPublicUrl?: string 
             ? 'api/v1'
             : '',
   };
-  return { svc: new DescadastroService(prisma as never, env as never), prisma };
+  // O barramento acende o E5 (A25): sem ele o clique no rodapé aplicaria a
+  // etiqueta e a régua seguiria saindo pelo mesmo canal.
+  const bus = { disparar: vi.fn().mockResolvedValue(undefined) };
+  const ref = { get: () => bus };
+  return { svc: new DescadastroService(prisma as never, env as never, ref as never), prisma, bus };
 };
 
 describe('DescadastroService', () => {
@@ -216,5 +220,42 @@ describe('layout com a marca do tenant', () => {
     // (sem ele o botão some no Outlook), e o teste não pode brigar com isso.
     expect(html).toMatch(/bgcolor="#F39200"|background(-color)?:#F39200/);
     expect(html).toContain('logo-somatec-white.png');
+  });
+});
+
+describe('descadastrar acende o E5 (A25, 15/09)', () => {
+  it('🔴 clique NOVO no rodapé → LEAD_RECEBEU_TAG sai (é ele que para a régua)', async () => {
+    const { svc, prisma, bus } = build();
+    prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+    prisma.leadTag.createMany.mockResolvedValue({ count: 1 });
+
+    await svc.descadastrar(svc.gerarToken({ empresaId: 'emp-1', leadId: 'lead-1' }));
+
+    expect(bus.disparar).toHaveBeenCalledWith(
+      expect.any(String),
+      'LEAD_RECEBEU_TAG',
+      expect.objectContaining({ leadId: 'lead-1' }),
+    );
+  });
+
+  it('one-click repetido (etiqueta já existia) NÃO dispara de novo', async () => {
+    const { svc, prisma, bus } = build();
+    prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+    prisma.leadTag.createMany.mockResolvedValue({ count: 0 });
+
+    await svc.descadastrar(svc.gerarToken({ empresaId: 'emp-1', leadId: 'lead-1' }));
+
+    expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  it('⛔ fila fora do ar não faz o descadastro falhar', async () => {
+    const { svc, prisma, bus } = build();
+    prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+    prisma.leadTag.createMany.mockResolvedValue({ count: 1 });
+    bus.disparar.mockRejectedValue(new Error('redis fora'));
+
+    await expect(
+      svc.descadastrar(svc.gerarToken({ empresaId: 'emp-1', leadId: 'lead-1' })),
+    ).resolves.toMatchObject({ ok: true });
   });
 });
