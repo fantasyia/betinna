@@ -1973,7 +1973,14 @@ export class ConversarIaService implements OnModuleDestroy {
       // `finally`, e é assim que o lock some do radar. Com a corrida, o pior
       // caso vira "um turno perdido", não "a conversa muda".
       await Promise.race([
-        this.processarTurno(execucao, empresaId, conversationId, textoDoTurno, imagemDataUrl),
+        this.processarTurno(
+          execucao,
+          empresaId,
+          conversationId,
+          textoDoTurno,
+          imagemDataUrl,
+          rajada.ate,
+        ),
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error(`turno excedeu ${TIMEOUT_TURNO_MS / 1000}s`)),
@@ -2316,6 +2323,12 @@ export class ConversarIaService implements OnModuleDestroy {
     conversationId: string | null,
     textoLead: string,
     imagemDataUrl?: string,
+    /**
+     * Instante em que a janela de rajada fechou — tudo que chegou ATÉ aqui está
+     * no prompt deste turno. O que chegar DEPOIS o modelo não viu, e é por isso
+     * que a resposta pronta pode estar velha (ver `respostaFicouVelha`).
+     */
+    corteDaRajada?: Date,
   ): Promise<void> {
     const execucaoId = execucao.id;
     if (!execucao.aguardandoNoId) return;
@@ -2696,6 +2709,61 @@ export class ConversarIaService implements OnModuleDestroy {
     const respostaTexto =
       limpo || (docIds.length > 0 ? 'Segue o arquivo solicitado. 📎' : respostaPersonalizada);
     const idemTurno = `fx:${execucaoId}:${no.id}:t${(ctx._iaTurno as number) ?? 0}`;
+
+    // ── A RESPOSTA FICOU VELHA? (medido em 15/09, 11/11 reproduções) ──
+    //
+    // O turno leva 16-29s. Se a pessoa responde NESSE intervalo, o modelo não
+    // viu a mensagem dela — e a resposta pronta repergunta o que ela acabou de
+    // dizer:
+    //
+    //   cliente        "é 220V"
+    //   bot, 10s       "...E qual o padrão de energia aí, 110V, 220V ou 380V?"
+    //
+    // Reperguntar o que a pessoa acabou de responder é o que mais rápido faz o
+    // bot parecer quebrado — mesmo raciocínio do P2 (link reentregue). E a
+    // CONDIÇÃO é comum: em 164 conversas reais, 77 (47%) têm duas entrantes em
+    // menos de 20s. O sintoma é raro hoje só porque o C1 é novo.
+    //
+    // Aqui a gente NÃO manda a resposta velha: o `processarMensagensPerdidas`,
+    // que roda logo depois deste turno, dispara um turno novo com a mensagem
+    // nova JUNTO — e aí sai UMA resposta que cobre as duas. Descartar é seguro
+    // porque esse turno seguinte usa exatamente o mesmo corte de tempo.
+    //
+    // ⚠️ Só quando o nó CONTINUA esperando. Se o turno classificou, o nó avança
+    // e o `processarMensagensPerdidas` desiste (a execução não está mais
+    // AGUARDANDO) — descartar ali deixaria o cliente sem resposta nenhuma, que é
+    // pior que responder fora de hora.
+    //
+    // FAIL-OPEN: se a própria checagem falhar (banco fora, mock sem o método),
+    // a resposta SAI. Responder fora de hora é ruim; emudecer por causa de uma
+    // consulta auxiliar é pior — e seria um jeito novo de o bot calar sozinho,
+    // que é a família de defeito que mais custou nesta base.
+    if (conversationId && corteDaRajada && !classificouEfetivo) {
+      let novas = 0;
+      try {
+        novas = await this.prisma.message.count({
+          where: {
+            conversationId,
+            direction: 'INBOUND',
+            criadoEm: { gt: corteDaRajada },
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `CONVERSAR_IA: não consegui checar se a resposta ficou velha (exec ${execucaoId}): ` +
+            `${err instanceof Error ? err.message : String(err)} — enviando assim mesmo`,
+        );
+        novas = 0;
+      }
+      if (novas > 0) {
+        this.logger.log(
+          `CONVERSAR_IA: ${novas} mensagem(ns) do lead chegaram durante o turno — resposta ` +
+            `DESCARTADA por estar velha; o turno seguinte responde tudo junto (exec ${execucaoId})`,
+        );
+        return;
+      }
+    }
+
     let textoEnviado: string | null = null;
     try {
       textoEnviado = await this.enviarWhatsapp(

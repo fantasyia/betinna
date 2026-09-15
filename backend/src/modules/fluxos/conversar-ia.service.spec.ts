@@ -56,7 +56,14 @@ const makePrisma = () => {
       findUnique: vi.fn().mockResolvedValue(null),
     },
     fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
-    message: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
+    message: {
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
+      // Conta as entrantes que chegaram DEPOIS da janela de rajada — é por ela
+      // que o turno sabe se a resposta pronta ficou velha. Default 0 = ninguém
+      // escreveu durante a geração (o caso da maioria dos testes).
+      count: vi.fn().mockResolvedValue(0),
+    },
     // Gate do bot no retomar (default: bot LIGADO, sem escalação pra humano).
     empresa: { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: true }) },
     conversation: {
@@ -1663,6 +1670,89 @@ describe('ConversarIaService', () => {
       const upd = escritasDeEstado(prisma)[0];
       expect(upd.data.timeoutEm).toBeInstanceOf(Date);
       expect(upd.data.status).toBeUndefined();
+    });
+
+    // ── A RESPOSTA FICOU VELHA (medido 15/09, 11/11 reproduções) ──────────
+    //
+    // O turno leva 16-29s. Se a pessoa responde NESSE intervalo, o modelo não
+    // viu a mensagem — e a resposta pronta repergunta o que ela acabou de dizer
+    // ("é 220V" → "E qual o padrão de energia aí?"). A condição é comum: 47%
+    // das conversas reais têm duas entrantes em menos de 20s.
+    describe('resposta que ficou velha no meio do turno', () => {
+      const comRespostaPronta = () => {
+        prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+        prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: {} });
+        prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      };
+
+      it('🔴 lead escreveu DURANTE a geração → resposta é DESCARTADA (não repergunta)', async () => {
+        comRespostaPronta();
+        muller.gerarRespostaIa.mockResolvedValue({
+          texto: 'E qual o padrão de energia aí, 110V, 220V ou 380V?',
+          modelo: 'gpt',
+        });
+        prisma.message.count.mockResolvedValue(1); // "é 220V" chegou no meio
+
+        await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      });
+
+      it('…e o nó SEGUE aguardando — quem responde é o turno seguinte, com tudo junto', async () => {
+        comRespostaPronta();
+        muller.gerarRespostaIa.mockResolvedValue({ texto: 'E a tensão?', modelo: 'gpt' });
+        prisma.message.count.mockResolvedValue(2);
+
+        await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+        const saiuDeAguardando = escritasDeEstado(prisma).some(
+          (u) => u.data?.status && u.data.status !== 'AGUARDANDO',
+        );
+        expect(saiuDeAguardando).toBe(false);
+      });
+
+      it('⚠️ turno que CLASSIFICOU envia mesmo assim — descartar deixaria o cliente mudo', async () => {
+        // Se classificou, o nó avança e o reprocessamento pós-turno desiste (a
+        // execução não está mais AGUARDANDO). Responder fora de hora é ruim;
+        // não responder nada é pior.
+        comRespostaPronta();
+        // A classificação vem no JSON do turno, não em campo solto do mock.
+        muller.gerarRespostaIa.mockResolvedValue({
+          texto: JSON.stringify({
+            resposta: 'Perfeito, já te mando o link.',
+            classificou: true,
+            classificacao: 'calculadora entregue',
+          }),
+          modelo: 'gpt',
+        });
+        prisma.message.count.mockResolvedValue(1);
+
+        await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('ninguém escreveu no meio → envia normalmente', async () => {
+        comRespostaPronta();
+        muller.gerarRespostaIa.mockResolvedValue({ texto: 'E a tensão?', modelo: 'gpt' });
+        prisma.message.count.mockResolvedValue(0);
+
+        await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('⛔ FAIL-OPEN: se a própria checagem falhar, a resposta SAI', async () => {
+        // Emudecer por causa de uma consulta auxiliar seria um jeito NOVO de o
+        // bot calar sozinho — a família de defeito que mais custou nesta base.
+        comRespostaPronta();
+        muller.gerarRespostaIa.mockResolvedValue({ texto: 'E a tensão?', modelo: 'gpt' });
+        prisma.message.count.mockRejectedValue(new Error('banco fora'));
+
+        await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
     });
 
     // DEFESA EM PROFUNDIDADE: mesmo numa execução "amnésica" (sem _iaHistorico — ex:
