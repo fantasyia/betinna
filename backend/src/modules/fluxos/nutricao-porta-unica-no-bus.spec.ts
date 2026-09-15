@@ -136,6 +136,32 @@ describe('porta única de nutrição no barramento', () => {
     expect(prisma.fluxoExecucao.create).toHaveBeenCalledTimes(1);
   });
 
+  it('🔴 E2.3 · MESMA etiqueta reaplicada → NÃO cria a segunda execução do E2', async () => {
+    // O caso medido em 15/09: aplicar `nutrir:email` duas vezes, com 60s entre
+    // elas, criava DUAS execuções vivas do E2 no mesmo lead. O registro de
+    // LeadTag é UM só (o upsert não muda nada) e mesmo assim o evento sai.
+    prisma = makePrisma([
+      { execucaoId: 'exec-e2-viva', fluxoId: 'f-e2', fluxoNome: 'E2 · Primeiro contato frio' },
+    ]);
+    await disparar(prisma)(fluxo('f-e2', 'E2 · Primeiro contato frio'));
+
+    expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    const cancel = (prisma.fluxoExecucao as Record<string, ReturnType<typeof vi.fn>>).updateMany;
+    expect(cancel).not.toHaveBeenCalled(); // a que já roda continua viva
+  });
+
+  it('a consulta das réguas em curso IGNORA execução de teste', async () => {
+    // Execução de bancada não pode calar régua de produção — seria a testadora
+    // silenciando lead real sem saber.
+    prisma = makePrisma([]);
+    await disparar(prisma)(fluxo('f-e2', 'E2 · Primeiro contato frio'));
+
+    const sql = (prisma.$queryRaw as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => String(Array.isArray(c[0]) ? c[0].join(' ') : c[0]))
+      .find((q) => q.includes('fluxoNome'));
+    expect(sql).toMatch(/teste/);
+  });
+
   it('evento SEM lead não entra na disputa (nem consulta config)', async () => {
     prisma = makePrisma([]);
     const svc = new FluxoEventBusService(

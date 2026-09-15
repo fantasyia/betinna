@@ -108,17 +108,51 @@ export function decidirEntrada(
   if (posto < 0) {
     return { admitir: true, cancelar: [], motivo: 'fluxo fora da disputa de nutrição' };
   }
+  // ⚠️ A MESMA régua CONTA como concorrente (E2.3, medido em 15/09).
+  //
+  // Antes eu excluía o próprio fluxo daqui, com o argumento de que re-entrada é
+  // assunto do supersede. Não é — o supersede só existe pra fluxo com nó de IA
+  // (`nosIa > 0`), e régua de e-mail não tem nenhum. Resultado medido: aplicar a
+  // MESMA etiqueta duas vezes, com 60s de intervalo, criava DUAS execuções vivas
+  // do E2 no mesmo lead, prontas pra mandar a sequência fria duplicada.
+  //
+  // E o registro da etiqueta é UM só: o upsert não muda nada e mesmo assim
+  // `LEAD_RECEBEU_TAG` é emitido. Então a porta única precisa pegar aqui —
+  // a duplicata não chega por outra régua, chega pela mesma.
+  //
+  // 🔻 Por que isso importa mais do que parece: a etiquetagem é MANUAL e em LOTE
+  // (decisão do Léo, 14/09). Reetiquetar não é caso de borda, é o modo normal de
+  // errar — repetir um lote, sobrepor duas listas, aplicar a mesma planilha duas
+  // vezes. Cada repetição virava uma régua a mais na mesma pessoa.
   const concorrentes = emCurso
     .map((e) => ({ ...e, posto: postoNaDisputa({ id: e.fluxoId, nome: e.fluxoNome }, cfg) }))
-    .filter((e) => e.posto >= 0 && e.fluxoId !== candidato.id);
+    .filter((e) => e.posto >= 0);
   if (concorrentes.length === 0) {
     return { admitir: true, cancelar: [], motivo: 'nenhuma outra régua em curso' };
   }
   const nomes = concorrentes.map((c) => c.fluxoNome).join(', ');
+  const soAMesma = concorrentes.every((c) => c.fluxoId === candidato.id);
   // Posto MENOR = mais forte.
   const maisForteEmCurso = Math.min(...concorrentes.map((c) => c.posto));
   if (posto > maisForteEmCurso) {
     return { admitir: false, cancelar: [], motivo: `perde a vez para: ${nomes}` };
+  }
+  // Mesma régua já rodando e ela NÃO interrompe: recusa direto, com motivo
+  // próprio. "perde a vez para: E2" quando o candidato É o E2 leria como bug.
+  if (soAMesma) {
+    const podeReiniciar = cfg.interrompem.some(
+      (i) => i === candidato.id || i.toUpperCase() === codigoDoFluxo(candidato.nome),
+    );
+    if (!podeReiniciar) {
+      return { admitir: false, cancelar: [], motivo: 'o lead JÁ está nesta régua' };
+    }
+    // Quem interrompe (E6) reinicia a própria régua: abandono de checkout novo
+    // merece sequência nova, e cancelar a anterior evita as duas somadas.
+    return {
+      admitir: true,
+      cancelar: concorrentes.map((c) => c.execucaoId),
+      motivo: 'reinicia a própria régua (sinal novo)',
+    };
   }
   // Mais forte que tudo o que está rodando — mas só entra por cima se puder
   // INTERROMPER. Sem isso, a régua em curso continuaria e as duas se somariam,

@@ -800,6 +800,13 @@ export class FluxoEventBusService {
                   // pra manter ordem fixa de lock e não criar deadlock novo.
                   if (naDisputa && leadIdNutricao) {
                     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`nutricao:${empresaId}:${leadIdNutricao}`}))`;
+                    // `teste = false`: execução de BANCADA não pode barrar régua de
+                    // produção. O barramento já suprime evento de teste (`_teste`),
+                    // então o candidato aqui é sempre produção — deixar a de teste na
+                    // conta faria um caso da testadora calar o lead de verdade.
+                    //
+                    // O fluxo do próprio candidato ENTRA na consulta (E2.3): a
+                    // duplicata medida em 15/09 veio da MESMA régua, não de outra.
                     const emCurso = await tx.$queryRaw<
                       Array<{ execucaoId: string; fluxoId: string; fluxoNome: string }>
                     >`
@@ -809,7 +816,7 @@ export class FluxoEventBusService {
                        WHERE e."empresaId" = ${empresaId}
                          AND e."status" IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
                          AND (e.contexto #>> '{leadId}') = ${leadIdNutricao}
-                         AND e."fluxoId" <> ${fluxo.id}`;
+                         AND e."teste" = false`;
                     const decisao = decidirEntrada(
                       { id: fluxo.id, nome: fluxo.nome },
                       emCurso,

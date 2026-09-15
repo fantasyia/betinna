@@ -78,10 +78,30 @@ describe('a ordem, par a par', () => {
     }
   });
 
-  it('E6 em curso e o E6 dispara de novo → decisão é do supersede, não daqui', () => {
+  it('🔴 E2.3 · MESMA régua já rodando → recusa (a etiqueta reaplicada não duplica)', () => {
+    const d = decidirEntrada(E2, curso(E2), cfg);
+    expect(d.admitir).toBe(false);
+    expect(d.motivo).toMatch(/JÁ está nesta régua/);
+  });
+
+  it('E2.3 vale pras outras que não interrompem', () => {
+    for (const f of [E1, E3]) {
+      expect(decidirEntrada(f, curso(f), cfg).admitir).toBe(false);
+    }
+  });
+
+  it('E6 em curso e o E6 dispara de novo → REINICIA cancelando a anterior', () => {
+    // Abandono de checkout novo merece sequência nova; o cancelamento é o que
+    // impede as duas somadas.
     const d = decidirEntrada(E6, curso(E6), cfg);
     expect(d.admitir).toBe(true);
-    expect(d.cancelar).toEqual([]);
+    expect(d.cancelar).toEqual(['exec-f-e6']);
+  });
+
+  it('mesma régua + outra mais fraca em curso: o E6 cancela as duas', () => {
+    const d = decidirEntrada(E6, [...curso(E6), ...curso(E3)], cfg);
+    expect(d.admitir).toBe(true);
+    expect(d.cancelar.sort()).toEqual(['exec-f-e3', 'exec-f-e6']);
   });
 
   it('duas réguas em curso: o E6 cancela as DUAS ao entrar', () => {
