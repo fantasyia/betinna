@@ -401,3 +401,66 @@ describe('DashboardResumoService — teste fora do painel', () => {
     }
   });
 });
+
+/**
+ * 🔴 CARD ARQUIVADO NÃO É PENDÊNCIA.
+ *
+ * O Léo abriu o painel em 17/09 e viu CINCO cópias de "🔥 HOJE — lead industrial
+ * pediu contato", todas "atrasada há 12d". Fui ao banco: eram 11 cards de teste
+ * de 05-07/09, cada um de uma execução diferente do fluxo — a idempotência
+ * estava certa — e **todos com `arquivado = true`**.
+ *
+ * A consulta filtrava `lista.arquivada`, que é a LISTA, e nunca `arquivado`, que
+ * é o CARD. Dois campos parecidos, só um estava lá. Arquivar é o gesto de tirar
+ * da frente; um painel que ignora isso transforma a limpeza em nada — e quem
+ * olha conclui que o produto está quebrado, que foi exatamente o que aconteceu.
+ */
+describe('painel "Precisa de você" — arquivado sai da frente', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrisma();
+  });
+
+  it('a busca de tarefas atrasadas exige card NÃO arquivado', async () => {
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+
+    await svc.resumo(user());
+
+    const chamadas = prisma.kanbanCard.findMany.mock.calls as Array<
+      [{ where: Record<string, unknown> }]
+    >;
+    expect(chamadas.length).toBeGreaterThan(0);
+    for (const [args] of chamadas) {
+      expect(args.where.arquivado).toBe(false);
+    }
+  });
+
+  it('a contagem do Nutrir também ignora card arquivado', async () => {
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+
+    await svc.resumo(user());
+
+    const chamadas = prisma.kanbanCard.count.mock.calls as Array<
+      [{ where: Record<string, unknown> }]
+    >;
+    expect(chamadas.length).toBeGreaterThan(0);
+    for (const [args] of chamadas) {
+      expect(args.where.arquivado).toBe(false);
+    }
+  });
+
+  /** Comentário de card arquivado é histórico, não mensagem pendente. */
+  it('o feed de mensagens não ressuscita card arquivado', async () => {
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+
+    await svc.resumo(user());
+
+    const [args] = prisma.kanbanComentario.findMany.mock.calls[0] as [
+      { where: { card: { arquivado: boolean; lista: { arquivada: boolean } } } },
+    ];
+    expect(args.where.card.arquivado).toBe(false);
+    expect(args.where.card.lista.arquivada).toBe(false);
+  });
+});

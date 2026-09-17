@@ -379,7 +379,12 @@ export class DashboardResumoService {
       // com autor + card + quadro. "Menção" = heurística barata (cita meu nome).
       const nomeLower = (user.nome ?? '').trim().toLowerCase();
       const comentarios = await this.prisma.kanbanComentario.findMany({
-        where: { card: { lista: { board: { empresaId } } } },
+        // Comentário de card ARQUIVADO não é mensagem pendente — é histórico.
+        // Sem estes dois filtros o feed ressuscitava conversa de card que
+        // alguém já tinha tirado da frente.
+        where: {
+          card: { arquivado: false, lista: { arquivada: false, board: { empresaId } } },
+        },
         orderBy: { criadoEm: 'desc' },
         take: 12,
         select: {
@@ -406,6 +411,13 @@ export class DashboardResumoService {
           ? this.prisma.kanbanCard.findMany({
               where: {
                 lista: { boardId: boardDiretor.id, arquivada: false },
+                // 🔴 `arquivado` do CARD, além do `arquivada` da LISTA. Eram
+                // coisas diferentes e só a segunda estava aqui: 11 cards de
+                // teste de 05-07/09, TODOS arquivados, seguiam aparecendo em
+                // "Precisa de você" como tarefa atrasada há 12 dias — numa lista
+                // que não estava arquivada. Arquivar é o gesto de tirar da
+                // frente; um painel que ignora isso transforma limpeza em nada.
+                arquivado: false,
                 concluido: false,
                 dataEntrega: { lt: agora },
               },
@@ -423,6 +435,9 @@ export class DashboardResumoService {
           ? this.prisma.kanbanCard.count({
               where: {
                 concluido: false,
+                // Mesmo esquecimento do bloco acima: card arquivado continuava
+                // contando como "informação crua aguardando processamento".
+                arquivado: false,
                 lista: {
                   boardId: boardNutrir.id,
                   arquivada: false,
