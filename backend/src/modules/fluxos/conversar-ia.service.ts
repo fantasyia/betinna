@@ -2776,8 +2776,8 @@ export class ConversarIaService implements OnModuleDestroy {
         execucaoId,
         cfg.maxBaloes,
         ctx as Record<string, unknown>,
-        // Turno que CLASSIFICA não pode abortar o 1º balão: o nó avança de
-        // qualquer jeito e o cliente fica sem a resposta E sem o link.
+        // Turno que CLASSIFICA não é abortável: o nó avança de qualquer jeito, e
+        // qualquer balão cortado é conteúdo que o cliente nunca recebe.
         !classificouEfetivo,
       );
     } catch (err) {
@@ -3559,7 +3559,7 @@ export class ConversarIaService implements OnModuleDestroy {
      */
     ctxDaExecucao?: Record<string, unknown>,
     /**
-     * Este turno pode abortar o PRIMEIRO balão se o lead escrever na espera?
+     * Este turno pode ser ABORTADO se o lead escrever no meio do envio?
      *
      * ⛔ Só quando o nó CONTINUA aguardando. Se o turno CLASSIFICA, abortar aqui
      * é catastrófico e silencioso: medido em produção 17/09 pela Testadora —
@@ -3572,8 +3572,15 @@ export class ConversarIaService implements OnModuleDestroy {
      * `if (!aindaAguardando) return`. É a MESMA razão pela qual o descarte de
      * resposta velha (01e35c9) já exigia `!classificouEfetivo`; eu apliquei a
      * guarda lá e esqueci de aplicar aqui.
+     * ⚠️ Vale pro turno INTEIRO, não só pro 1º balão. Na primeira versão desta
+     * guarda eu desliguei só o `abortarPrimeiroBalao` e deixei o corte da cauda
+     * (`i > 0`) rodando — medido em 17/09: saiu de `0 de 4` balões pra `1 de 4`,
+     * e o link da calculadora vive nos balões 2–4. O cliente lia a frase de
+     * abertura e acabava, com o fluxo etiquetando como entregue do mesmo jeito.
+     * A justificativa de abortar a cauda ("o turno seguinte responde tudo
+     * junto") cai exatamente pelo mesmo motivo que caía no 1º balão.
      */
-    podeAbortarNoDelay = false,
+    podeAbortar = false,
   ): Promise<string | null> {
     // Devolve o texto que SAIU de fato (balões enviados, unidos por \n) — ou
     // null quando nem passou pelo envio (já entregue, execução encerrada). O
@@ -3696,31 +3703,36 @@ export class ConversarIaService implements OnModuleDestroy {
           // turno novo com a mensagem dela junto — ela recebe UMA resposta que
           // cobre tudo, em vez de uma velha seguida de uma certa. É a mesma
           // garantia em que o descarte de resposta velha (01e35c9) se apoia.
-          abortarPrimeiroBalao: podeAbortarNoDelay,
-          deveAbortar: convParaAbortar
-            ? async () => {
-                try {
-                  const novas = await this.prisma.message.count({
-                    where: {
-                      conversationId: convParaAbortar,
-                      direction: 'INBOUND',
-                      criadoEm: { gt: inicioDoEnvio },
-                    },
-                  });
-                  if (novas > 0) {
-                    this.logger.log(
-                      `CONVERSAR_IA: cliente escreveu durante o envio — resto dos balões ` +
-                        `ABORTADO (conversa ${convParaAbortar}, ${novas} mensagem(ns) nova(s))`,
-                    );
+          abortarPrimeiroBalao: podeAbortar,
+          // Turno que FECHA o nó não é abortável em ponto nenhum: a última fala
+          // sai inteira. Por isso a guarda DESINSTALA o `deveAbortar`, em vez de
+          // só desligar o aborto do primeiro balão — senão a cauda continua
+          // cortando, e é nela que mora o link.
+          deveAbortar:
+            convParaAbortar && podeAbortar
+              ? async () => {
+                  try {
+                    const novas = await this.prisma.message.count({
+                      where: {
+                        conversationId: convParaAbortar,
+                        direction: 'INBOUND',
+                        criadoEm: { gt: inicioDoEnvio },
+                      },
+                    });
+                    if (novas > 0) {
+                      this.logger.log(
+                        `CONVERSAR_IA: cliente escreveu durante o envio — resto dos balões ` +
+                          `ABORTADO (conversa ${convParaAbortar}, ${novas} mensagem(ns) nova(s))`,
+                      );
+                    }
+                    return novas > 0;
+                  } catch {
+                    // Fail-open: um hiccup de banco não pode engolir a resposta.
+                    // Falar demais é recuperável; emudecer no meio de uma frase não.
+                    return false;
                   }
-                  return novas > 0;
-                } catch {
-                  // Fail-open: um hiccup de banco não pode engolir a resposta.
-                  // Falar demais é recuperável; emudecer no meio de uma frase não.
-                  return false;
                 }
-              }
-            : undefined,
+              : undefined,
           // Chave de idempotência por balão = TURNO + POSIÇÃO, sem o conteúdo. Havia um
           // hash do texto aqui, com a ideia de "se a resposta re-gerada for diferente, o
           // balão certo sai". Em campo foi o contrário: o modelo NUNCA re-gera igual, então

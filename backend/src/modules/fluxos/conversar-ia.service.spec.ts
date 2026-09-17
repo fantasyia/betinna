@@ -1746,24 +1746,39 @@ describe('ConversarIaService', () => {
           comRespostaPronta();
         };
 
-        it('🔴 turno que CLASSIFICA envia MESMO com mensagem na janela', async () => {
+        it('🔴 turno que CLASSIFICA envia a fala INTEIRA, não só o 1º balão', async () => {
           comConversa();
+          // Vários balões DE PROPÓSITO: a 1ª versão da guarda desligava só o
+          // aborto do primeiro e deixava a cauda cortando — medido em produção,
+          // saía `1 de 4`, e o link mora nos balões 2-4. Asserção de "enviou
+          // alguma coisa" passava com o defeito em pé; a asserção certa é
+          // quantos balões saíram.
+          persona.obterConfigBot.mockResolvedValue({
+            historicoMensagens: 10,
+            delayRespostaSegundos: 0,
+            mostrarDigitando: false,
+            quebrarMensagens: true,
+            maxMensagens: 3,
+            transcreverAudio: false,
+            analisarImagem: false,
+          });
           muller.gerarRespostaIa.mockResolvedValue({
             texto: JSON.stringify({
-              resposta: 'Perfeito, segue o link da calculadora.',
+              resposta:
+                'Perfeito! ||| Segue o link da calculadora. ||| Qualquer dúvida é só chamar.',
               classificou: true,
               classificacao: 'calculadora entregue',
             }),
             modelo: 'gpt',
           });
-          // 0 no descarte (não é resposta velha) e 1 no aborto (chegou durante o envio)
+          // 0 no descarte (não é resposta velha) e 1 depois (chegou durante o envio)
           prisma.message.count.mockResolvedValueOnce(0).mockResolvedValue(1);
 
           await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
 
-          // O nó avança de qualquer jeito — se não enviar aqui, o cliente fica
-          // sem resposta e sem link, e NADA acusa erro.
-          expect(whatsapp.enviarTexto).toHaveBeenCalled();
+          // Os TRÊS balões. O nó avança de qualquer jeito: balão cortado aqui é
+          // conteúdo que o cliente nunca recebe, e nada acusa erro.
+          expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(3);
         });
 
         it('turno que NÃO classifica aborta na janela — o seguinte responde tudo junto', async () => {
