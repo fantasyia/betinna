@@ -77,7 +77,20 @@ function makeService(opts: {
     enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }),
     enviarMidia: vi.fn().mockResolvedValue({ externalId: 'wa-2' }),
     estaDisponivel: vi.fn().mockResolvedValue(opts.instanciaOk !== false),
-    enviarPresenca: vi.fn().mockResolvedValue(undefined),
+    /**
+     * 🔴 O mock IMITA o Evolution de verdade: o `composing` com `delay` só
+     * responde no FIM do intervalo — é assim que ele mantém o "digitando" na
+     * tela. Um mock que resolvesse na hora esconderia exatamente o defeito que
+     * a Testadora mediu em campo (3s configurados, 6s cobrados do cliente).
+     */
+    enviarPresenca: vi.fn((_e: string, _p: string, estado: string, delayMs?: number) =>
+      // Só o `composing` bloqueia — o `paused` vai com delay 0 e responde na
+      // hora. (Um `setTimeout(0)` aqui não resolveria sob timers falsos depois
+      // que o relógio já avançou, e isso seria artefato do mock, não defeito.)
+      estado === 'composing' && delayMs
+        ? new Promise<void>((r) => setTimeout(r, delayMs))
+        : Promise.resolve(),
+    ),
   };
 
   const persona = {
@@ -233,6 +246,37 @@ describe('ritmo do TEXTO FIXO', () => {
     await rodar(service);
 
     expect(persona.obterConfigBot).toHaveBeenCalledWith('emp-1', 'rep-1');
+  });
+
+  /**
+   * 🔴 O DEFEITO QUE A TESTADORA MEDIU EM CAMPO (17/09).
+   *
+   * Configurado 3s, o cliente esperava ~10s — incremento de ~6s sobre a linha de
+   * base de ~4s, com 0,3s de dispersão em três rodadas. Não era ruído.
+   *
+   * Causa: o `composing` leva no `delay` a duração do "digitando", e o Evolution
+   * só responde no fim desse intervalo. Aguardar a chamada cobrava a espera DUAS
+   * vezes — uma no provider, outra no `setTimeout`.
+   *
+   * ⚠️ O que torna isso pior que lentidão: o número que o operador ajusta na
+   * tela deixa de ser o que o cliente sente. Mesma família do `_iaUltimoEnvio` —
+   * o painel diz uma coisa, o campo faz outra.
+   */
+  it('o "digitando" ANUNCIA a espera, não SOMA a ela', async () => {
+    const { service, whatsapp } = makeService({
+      config: LEAD,
+      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+    });
+
+    const p = service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    // Exatamente a espera configurada. Com o `composing` aguardado, aqui ainda
+    // faltariam 3s — o provider estaria segurando a resposta.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+
+    await vi.runAllTimersAsync();
+    await p;
   });
 
   /**

@@ -1810,9 +1810,25 @@ export class FluxoExecutorService {
       const esperaFixa = ritmo.delayTextoFixoSegundos * 1000;
       if (esperaFixa > 0) {
         if (ritmo.mostrarDigitando) {
-          // Best-effort: presença é enfeite, e falha dela não pode derrubar um
-          // envio que já passou por pacing e disponibilidade.
-          await this.whatsapp
+          // 🔴 NÃO se espera o `composing` — e isto é o conserto de um defeito
+          // REAL, medido pela Testadora em campo (17/09): configurado 3s, o
+          // cliente esperava ~10s, incremento de 6s sobre a linha de base.
+          //
+          // O `delay` que vai no `composing` é o que mantém o "digitando" na
+          // tela pela duração — e o Evolution só responde no fim desse
+          // intervalo. Aguardar a chamada cobra a espera DUAS VEZES: uma no
+          // provider, outra no `setTimeout` logo abaixo. Com 3s configurados o
+          // cliente esperava 6.
+          //
+          // É por isso que o laço dos balões chama `handlers.digitando?.(ms)`
+          // sem `await` e o handler é `void …` — a presença ANUNCIA a espera,
+          // ela não É a espera. Eu tinha copiado a intenção e não o mecanismo.
+          //
+          // ⚠️ Fica `void` de propósito: se um dia alguém puser `await` aqui de
+          // volta "pra tratar o erro", o número da tela deixa de ser o que o
+          // cliente sente — e é o pior tipo de defeito, porque o painel continua
+          // dizendo 3.
+          void this.whatsapp
             .enviarPresenca(empresaId, peerId, 'composing', esperaFixa, donoEnvio ?? undefined)
             .catch(() => undefined);
         }
