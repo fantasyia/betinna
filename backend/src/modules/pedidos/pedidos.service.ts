@@ -1140,7 +1140,14 @@ export class PedidosService {
     // produtoId de outra empresa no pedido.
     const produtos = await this.prisma.produto.findMany({
       where: { id: { in: produtoIds }, empresaId },
-      select: { id: true, nome: true, ativo: true, precoTabela: true, pesoPorUnidade: true },
+      select: {
+        id: true,
+        nome: true,
+        ativo: true,
+        vendavel: true,
+        precoTabela: true,
+        pesoPorUnidade: true,
+      },
     });
     const produtosMap = new Map(produtos.map((p) => [p.id, p]));
     if (produtos.length !== new Set(produtoIds).size) {
@@ -1154,16 +1161,38 @@ export class PedidosService {
 
     const priceMapPre = await this.pricing.priceForClientBatch(empresaId, clienteId, produtoIds);
     for (const p of produtos) {
-      // Produto de LOCAÇÃO (Master Block com IoT) entra no ERP com preço de
-      // venda ZERO — é o que "não tem valor de venda" significa lá. Sem esta
-      // trava o pedido sairia a R$ 0,00, sem erro e sem chamar atenção.
+      // ── 1) A decisão EXPLÍCITA de não vender ──────────────────────────────
       //
-      // Preço negociado do cliente vale: se alguém acordou um valor, existe
-      // venda. Mesma regra do espelho em propostas.
+      // Produto de LOCAÇÃO (Master Block com IoT) não entra em pedido de venda.
+      // Isto era inferido de `precoTabela == 0`, e a inferência quebrou: a API
+      // v2 do Tiny recusa alterar produto com `preco` 0, então dar NCM às 24
+      // variantes obrigou a dar preço a elas — e o sync traz esse preço pro
+      // `precoTabela`. A trava antiga cairia sozinha, sem erro nenhum.
+      //
+      // ⚠️ `=== false` de propósito: só um "não" explícito bloqueia. A coluna é
+      // NOT NULL DEFAULT true, então ausente/undefined = vende — que é o caso da
+      // esmagadora maioria dos produtos.
+      //
+      // Nem o preço negociado fura esta: se a empresa decidiu que o item não se
+      // vende, um valor acordado no cliente não transforma locação em venda.
+      if (p.vendavel === false) {
+        throw new BusinessRuleException(
+          `"${p.nome}" é produto de LOCAÇÃO e não pode entrar em pedido de venda.`,
+        );
+      }
+
+      // ── 2) A rede de segurança do preço ───────────────────────────────────
+      //
+      // Continua valendo mesmo com `vendavel: true`: produto vendável mas ainda
+      // sem preço (recém-importado do ERP, por exemplo) sairia a R$ 0,00 — sem
+      // erro, sem chamar atenção, e vira nota fiscal.
+      //
+      // Preço negociado do cliente vale AQUI: se alguém acordou um valor, o
+      // pedido tem preço. Mesma regra do espelho em propostas.
       const negociado = priceMapPre.get(p.id)?.precoFinal;
       if (!negociado && !Number(p.precoTabela ?? 0)) {
         throw new BusinessRuleException(
-          `"${p.nome}" não tem preço de venda — é produto de LOCAÇÃO e não pode entrar em pedido de venda.`,
+          `"${p.nome}" não tem preço de venda cadastrado — defina o preço antes de vender.`,
         );
       }
     }

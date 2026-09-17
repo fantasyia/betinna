@@ -708,6 +708,23 @@ model Produto {
   /// a tela mostra "—" e ninguém negocia com o número errado.
   /// Vem da lista de preços "Locação mensal" do ERP.
   precoLocacaoMensal    Decimal?                     @db.Decimal(14, 2)
+  /// Este produto pode ser VENDIDO? `false` = só locação.
+  ///
+  /// Antes isto era inferido de `precoTabela == 0` ("sem preço de venda logo não
+  /// se vende"). Esse acoplamento custou caro em 15/09: a API v2 do Tiny RECUSA
+  /// qualquer alteração em produto com `preco` 0 — então gravar o NCM das 24
+  /// variantes de locação exigiu dar preço a elas, e o sync espelha `preco` do
+  /// ERP em `precoTabela`. Ou seja: cumprir a exigência fiscal DESARMAVA a trava
+  /// comercial, calado, sem erro em lugar nenhum.
+  ///
+  /// Com um campo próprio as duas coisas param de brigar: o ERP pode ter o preço
+  /// que a nota exige, e quem decide se vende é isto aqui. O sync do Tiny NÃO
+  /// toca neste campo (só precoTabela, precoFabrica, ativo, precoLocacaoMensal
+  /// e descricao) — a decisão é do app e sobrevive a qualquer rodada.
+  ///
+  /// ⚠️ Só `false` bloqueia. Ausente/true = vende, que é o caso da esmagadora
+  /// maioria e o default da coluna.
+  vendavel              Boolean                      @default(true)
   /// Quanto o equipamento VALE (≠ aluguel): é o valor que vai na NF de comodato.
   /// Vazio até a contabilidade definir — sem ele o app RECUSA emitir a remessa.
   valorBem              Decimal?             @db.Decimal(14, 2)

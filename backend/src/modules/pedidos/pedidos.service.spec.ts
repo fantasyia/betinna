@@ -182,6 +182,54 @@ describe('PedidosService', () => {
     ).rejects.toThrow(/não tem preço de venda/i);
   });
 
+  it('produto vendavel:false NÃO entra em pedido NEM COM preço cadastrado', async () => {
+    // Este é o buraco que a trava antiga tinha. Ela lia `precoTabela == 0`, e as
+    // 24 variantes de locação PRECISARAM ganhar preço no ERP pra aceitar o NCM
+    // (a API v2 do Tiny recusa alterar produto com preço 0). O sync traz esse
+    // preço pro app — e a partir daí a trava de preço deixava a locação passar
+    // como venda, sem erro em lugar nenhum.
+    prisma.cliente.findFirst.mockResolvedValue({
+      id: 'cli-1',
+      empresaId: 'emp-1',
+      nome: 'X',
+      erpStatus: 'ATIVO',
+      representanteId: 'rep-1',
+    });
+    prisma.produto.findMany.mockResolvedValue([
+      { id: 'p1', nome: 'MB-01 + Data Sense', ativo: true, vendavel: false, precoTabela: 4350 },
+    ]);
+
+    await expect(
+      svc.create(fakeUser(), {
+        clienteId: 'cli-1',
+        itens: [{ produtoId: 'p1', quantidade: 1 }],
+      } as never),
+    ).rejects.toThrow(/LOCAÇÃO e não pode entrar em pedido de venda/i);
+  });
+
+  it('nem o preço NEGOCIADO fura o vendavel:false — locação não vira venda por acordo', async () => {
+    prisma.cliente.findFirst.mockResolvedValue({
+      id: 'cli-1',
+      empresaId: 'emp-1',
+      nome: 'X',
+      erpStatus: 'ATIVO',
+      representanteId: 'rep-1',
+    });
+    prisma.produto.findMany.mockResolvedValue([
+      { id: 'p1', nome: 'MB-01 + Data Sense', ativo: true, vendavel: false, precoTabela: 4350 },
+    ]);
+    pricingService.priceForClientBatch.mockResolvedValue(
+      new Map([['p1', { precoFinal: 900, negociado: true, vigente: true }]]),
+    );
+
+    await expect(
+      svc.create(fakeUser(), {
+        clienteId: 'cli-1',
+        itens: [{ produtoId: 'p1', quantidade: 1 }],
+      } as never),
+    ).rejects.toThrow(/LOCAÇÃO/i);
+  });
+
   it('preço NEGOCIADO destrava — se alguém acordou um valor, existe venda', async () => {
     prisma.cliente.findFirst.mockResolvedValue({
       id: 'cli-1',

@@ -456,6 +456,33 @@ describe('PropostasService', () => {
       await expect(service.create(fakeUser(), baseDto)).rejects.toThrow(/não tem preço de venda/i);
     });
 
+    it('produto vendavel:false recusa a proposta de VENDA MESMO com preço cadastrado', async () => {
+      // O buraco da trava antiga. Ela lia `precoTabela == 0`; as 24 variantes de
+      // locação precisaram ganhar preço no ERP pra aceitar o NCM (a v2 do Tiny
+      // recusa alterar produto com preço 0), e o sync traz esse preço pro app.
+      // Dali em diante a locação passava como venda, calada.
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-77',
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        {
+          id: 'p-1',
+          nome: 'MB-01 + Data Sense',
+          ativo: true,
+          vendavel: false,
+          precoTabela: 4350,
+          precoLocacaoMensal: 564,
+        },
+      ]);
+
+      await expect(service.create(fakeUser(), baseDto)).rejects.toThrow(
+        /LOCAÇÃO e não pode entrar em proposta de venda/i,
+      );
+    });
+
     it('o erro DIZ o caminho: trocar a modalidade pra locação', async () => {
       prisma.cliente.findFirst.mockResolvedValue({
         id: 'cli-1',

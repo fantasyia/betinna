@@ -566,6 +566,7 @@ export class PropostasService {
         id: true,
         nome: true,
         ativo: true,
+        vendavel: true,
         precoTabela: true,
         precoLocacaoMensal: true,
       },
@@ -646,15 +647,45 @@ export class PropostasService {
    * Preço negociado do cliente vale: se alguém acordou um valor, existe venda.
    */
   private precoVendaObrigatorio(
-    p: { nome: string; precoTabela: unknown },
+    p: {
+      nome: string;
+      precoTabela: unknown;
+      vendavel?: boolean;
+      precoLocacaoMensal?: unknown;
+    },
     negociado: number | undefined,
   ): number {
+    // A decisão de não vender é um DADO agora (`Produto.vendavel`), não mais uma
+    // inferência de "preço zero". O motivo está no schema: gravar NCM no ERP
+    // obriga a pôr preço, e o sync traz esse preço pro app — a inferência caía
+    // sozinha. Vem ANTES do negociado: preço acordado não converte locação em
+    // venda.
+    //
+    // ⚠️ `=== false` de propósito — só um "não" explícito bloqueia.
+    if (p.vendavel === false) {
+      throw new BusinessRuleException(
+        `"${p.nome}" é produto de LOCAÇÃO e não pode entrar em proposta de venda. ` +
+          'Troque a modalidade da proposta para locação.',
+      );
+    }
     if (negociado) return negociado;
+    // Rede de segurança: vendável, mas ainda sem preço. Sairia R$ 0,00 no PDF
+    // que vai pro cliente — número plausível-e-errado, que é o pior tipo.
     const valor = Number(p.precoTabela ?? 0);
     if (!valor) {
+      // Duas causas possíveis, e o erro tem que dizer QUAL — quem lê "faltou
+      // preço" num produto que é de locação vai cadastrar um preço de venda que
+      // não deveria existir, e aí a trava some de vez.
+      //
+      // Ter mensalidade é a pista: produto alugável sem preço de venda quase
+      // sempre é locação cujo `vendavel` ainda não foi marcado (dado antigo,
+      // importação nova do ERP).
+      const pareceLocacao = Number(p.precoLocacaoMensal ?? 0) > 0;
       throw new BusinessRuleException(
-        `"${p.nome}" não tem preço de venda — é produto de LOCAÇÃO. ` +
-          'Troque a modalidade da proposta para locação.',
+        pareceLocacao
+          ? `"${p.nome}" não tem preço de venda — parece ser produto de LOCAÇÃO. ` +
+              'Troque a modalidade da proposta para locação (ou marque o produto como vendável e defina o preço).'
+          : `"${p.nome}" não tem preço de venda cadastrado — defina o preço antes de vender.`,
       );
     }
     return valor;
