@@ -1732,6 +1732,51 @@ describe('ConversarIaService', () => {
         expect(whatsapp.enviarTexto).toHaveBeenCalled();
       });
 
+      // ── A JANELA DO 1º BALÃO (36fc241) ──────────────────────────────
+      //
+      // Os testes acima NÃO exercitavam isto: sem `conversationId` no contexto,
+      // o `deveAbortar` nem é montado, então o aborto nunca rodava. Foi essa
+      // brecha que deixou subir o defeito que a Testadora achou em produção em
+      // 17/09 — turno que CLASSIFICA abortando o 1º balão, execução seguindo em
+      // frente (roteia, etiqueta, abre tarefa, estaciona) e o cliente sem a
+      // resposta E sem o link, com `_iaEntregue` carimbado em cima de zero envio.
+      describe('aborto do 1º balão na espera do delay', () => {
+        const comConversa = () => {
+          execAguardando.contexto = { leadId: 'lead-1', conversationId: 'conv-1' };
+          comRespostaPronta();
+        };
+
+        it('🔴 turno que CLASSIFICA envia MESMO com mensagem na janela', async () => {
+          comConversa();
+          muller.gerarRespostaIa.mockResolvedValue({
+            texto: JSON.stringify({
+              resposta: 'Perfeito, segue o link da calculadora.',
+              classificou: true,
+              classificacao: 'calculadora entregue',
+            }),
+            modelo: 'gpt',
+          });
+          // 0 no descarte (não é resposta velha) e 1 no aborto (chegou durante o envio)
+          prisma.message.count.mockResolvedValueOnce(0).mockResolvedValue(1);
+
+          await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+          // O nó avança de qualquer jeito — se não enviar aqui, o cliente fica
+          // sem resposta e sem link, e NADA acusa erro.
+          expect(whatsapp.enviarTexto).toHaveBeenCalled();
+        });
+
+        it('turno que NÃO classifica aborta na janela — o seguinte responde tudo junto', async () => {
+          comConversa();
+          muller.gerarRespostaIa.mockResolvedValue({ texto: 'E a tensão?', modelo: 'gpt' });
+          prisma.message.count.mockResolvedValueOnce(0).mockResolvedValue(1);
+
+          await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+          expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+        });
+      });
+
       it('ninguém escreveu no meio → envia normalmente', async () => {
         comRespostaPronta();
         muller.gerarRespostaIa.mockResolvedValue({ texto: 'E a tensão?', modelo: 'gpt' });

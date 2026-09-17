@@ -2776,6 +2776,9 @@ export class ConversarIaService implements OnModuleDestroy {
         execucaoId,
         cfg.maxBaloes,
         ctx as Record<string, unknown>,
+        // Turno que CLASSIFICA não pode abortar o 1º balão: o nó avança de
+        // qualquer jeito e o cliente fica sem a resposta E sem o link.
+        !classificouEfetivo,
       );
     } catch (err) {
       // Mesma regra do opener: porta fechada sobe pro executor (retry +
@@ -3555,6 +3558,22 @@ export class ConversarIaService implements OnModuleDestroy {
      * CONCLUIDO ele sumia sempre, e a 2ª defesa não existia na prática.
      */
     ctxDaExecucao?: Record<string, unknown>,
+    /**
+     * Este turno pode abortar o PRIMEIRO balão se o lead escrever na espera?
+     *
+     * ⛔ Só quando o nó CONTINUA aguardando. Se o turno CLASSIFICA, abortar aqui
+     * é catastrófico e silencioso: medido em produção 17/09 pela Testadora —
+     * zero balões, e mesmo assim a execução sai do nó, roteia por
+     * `desfecho_consultivo`, move o lead pra "Calculadora enviada", aplica as
+     * etiquetas, abre a tarefa e estaciona no espera-3-dias. **O cliente nunca
+     * recebeu a resposta nem o link**, e nada acusa erro.
+     *
+     * O `processarMensagensPerdidas` não cobre esse caso — ele desiste com
+     * `if (!aindaAguardando) return`. É a MESMA razão pela qual o descarte de
+     * resposta velha (01e35c9) já exigia `!classificouEfetivo`; eu apliquei a
+     * guarda lá e esqueci de aplicar aqui.
+     */
+    podeAbortarNoDelay = false,
   ): Promise<string | null> {
     // Devolve o texto que SAIU de fato (balões enviados, unidos por \n) — ou
     // null quando nem passou pelo envio (já entregue, execução encerrada). O
@@ -3671,12 +3690,13 @@ export class ConversarIaService implements OnModuleDestroy {
             if (!ctxDaExecucao) return;
             ctxDaExecucao._iaUltimoEnvio = { ...r, em: new Date().toISOString() };
           },
-          // O nó de IA PODE abortar o primeiro balão: se a pessoa escrever na
+          // O nó de IA pode abortar o primeiro balão — SÓ quando o turno não
+          // classifica (ver `podeAbortarNoDelay`): se a pessoa escrever na
           // janela, o `processarMensagensPerdidas` roda logo depois e dispara um
           // turno novo com a mensagem dela junto — ela recebe UMA resposta que
           // cobre tudo, em vez de uma velha seguida de uma certa. É a mesma
           // garantia em que o descarte de resposta velha (01e35c9) se apoia.
-          abortarPrimeiroBalao: true,
+          abortarPrimeiroBalao: podeAbortarNoDelay,
           deveAbortar: convParaAbortar
             ? async () => {
                 try {
@@ -3771,7 +3791,11 @@ export class ConversarIaService implements OnModuleDestroy {
       }
       throw err;
     }
-    if (execucaoId && idemKey) {
+    // ⛔ NADA SAIU = NADA ENTREGUE. Carimbar "entregue" com zero balões faz o
+    // turno parecer cumprido e suprime a reentrega — foi o que a Testadora viu
+    // em 17/09: `_iaEntregue` gravado junto com `enviados: 0`. O marcador existe
+    // pra impedir envio DUPLICADO; sem envio não há o que duplicar.
+    if (execucaoId && idemKey && enviados.length > 0) {
       await this.marcarTurnoEntregue(execucaoId, idemKey);
       // Banco E memória: quem persistir o contexto depois leva o marcador junto.
       if (ctxDaExecucao) ctxDaExecucao._iaEntregue = idemKey;
