@@ -69,6 +69,12 @@ export function resumoNo(data: NodePayload): string | null {
       return c.atendenteId ? 'transfere pro atendente escolhido' : 'joga na fila de atendimento';
     case 'CRIAR_LEAD':
       return c.funilEtapaId ? 'cria lead na etapa escolhida' : 'cria lead da conversa';
+    case 'EXTRAIR_VARIAVEIS': {
+      const vars = Array.isArray(c.variaveis) ? (c.variaveis as string[]) : [];
+      if (vars.length === 0) return '⚠️ nenhuma variável declarada — o nó vai falhar';
+      const nomes = vars.map((v) => String(v).split(':')[0].trim()).filter(Boolean);
+      return `lê o que o lead escreveu e preenche: ${nomes.join(', ')}`;
+    }
     default:
       return null;
   }
@@ -90,6 +96,7 @@ export const BLOCO_DESC: Partial<Record<AcaoTipo, string>> & Record<string, stri
   // Chave por ID do item da paleta: o mesmo acaoTipo tem dois blocos.
   'a-religa-ia': 'Religa a IA naquela conversa (bot volta a responder)',
   TRANSFERIR_ATENDIMENTO: 'Passa a conversa pro humano (pausa o bot + notifica)',
+  EXTRAIR_VARIAVEIS: 'Lê o que o lead escreveu e preenche as variáveis (sem falar, sem IA)',
   CONDICAO: 'Bifurca o fluxo por uma condição',
   DELAY: 'Espera um tempo antes do próximo passo',
   TRIGGER: 'Quando o fluxo começa',

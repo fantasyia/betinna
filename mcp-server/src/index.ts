@@ -1602,6 +1602,16 @@ const FLUXO_ACAO_TIPO = z.enum([
   "PAUSAR_IA",
   "CRIAR_LEAD", // promove a conversa a Lead (triagem CTWA), herdando a atribuição
   "TRANSFERIR_ATENDIMENTO", // handoff pro humano: atribui + pausa o bot + notifica
+  // EXTRAIR_VARIAVEIS lê o que o LEAD escreveu e preenche variáveis do fluxo —
+  // sem falar e sem chamar modelo (rede determinística: "220V" é 220V).
+  //   { variaveis: ["tensao_rede: 127V | 220V | 380V", "corrente_quadro"], mensagens: 3 }
+  // Mesma sintaxe do `variaveisGravadas` do CONVERSAR_IA. Só preenche LACUNA,
+  // nunca sobrescreve. Use ANTES de uma CONDICAO num caminho do grafo que NÃO
+  // passa por nó de IA — é o caso do lead que VOLTA e já diz tudo na 1ª
+  // mensagem: sem este nó, o portão lê vazio e o TEXTO FIXO repergunta.
+  // Nó sem `variaveis` FALHA de propósito (nó que não faz nada fechando verde
+  // esconde justamente o defeito que ele existe pra evitar).
+  "EXTRAIR_VARIAVEIS",
 ]);
 const FLUXO_TRIGGER_TIPO = z.enum([
   "LEAD_CRIADO",

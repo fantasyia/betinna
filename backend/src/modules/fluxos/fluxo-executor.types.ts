@@ -202,6 +202,32 @@ export interface TransferirAtendimentoConfig {
   notificarRoles?: Array<'SAC' | 'GERENTE' | 'DIRECTOR' | 'ADMIN'>;
 }
 
+/**
+ * Config da ação EXTRAIR_VARIAVEIS — preenche variáveis lendo o que o lead
+ * ESCREVEU, sem falar e sem chamar modelo.
+ *
+ * Existe porque, até 17/09, o único nó que extraía era o CONVERSAR_IA — e ele só
+ * extrai quando FALA. Todo caminho de grafo que chega a um portão sem ter
+ * passado por um nó de IA lê o campo vazio e repergunta o que a pessoa acabou de
+ * dizer. Ver `ExtrairVariaveisService` pro caso concreto do C1.
+ */
+export interface ExtrairVariaveisConfig {
+  /**
+   * Mesma sintaxe do `variaveisGravadas` do CONVERSAR_IA — inclusive os valores
+   * aceitos, que aqui não são enum do modelo e sim a régua que a rede
+   * determinística usa pra decidir o que pode gravar:
+   *   `tensao_rede: 127V | 220V | 380V | 440V | nao sei`
+   *   `corrente_quadro`            ← sem `:` = valor livre
+   */
+  variaveis: string[];
+  /**
+   * Quantas mensagens do lead ler (1..10, default 3). Mais que isso não melhora:
+   * a rede é conservadora e mensagem velha quase nunca é a resposta — só alarga
+   * a janela por onde entra número de outro assunto.
+   */
+  mensagens?: number;
+}
+
 /** Config da ação WEBHOOK_EXTERNO. */
 export interface WebhookExternoConfig {
   url: string;

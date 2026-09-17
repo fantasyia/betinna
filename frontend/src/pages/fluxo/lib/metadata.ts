@@ -16,6 +16,7 @@ import {
   PowerOff,
   UserPlus,
   Headset,
+  ScanText,
 } from 'lucide-react';
 import type { AcaoTipo, FluxoNoTipo, NodePayload, PaletteItem, TriggerTipo } from './types';
 
@@ -60,6 +61,7 @@ export const ACAO_LABEL: Record<AcaoTipo, string> = {
   PAUSAR_IA: 'Pausar/Religar IA na conversa',
   CRIAR_LEAD: 'Criar lead da conversa',
   TRANSFERIR_ATENDIMENTO: 'Transferir pro atendimento',
+  EXTRAIR_VARIAVEIS: 'Extrair variáveis do que o lead escreveu',
 };
 
 /**
@@ -100,6 +102,7 @@ export const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
   PAUSAR_IA: PowerOff,
   CRIAR_LEAD: UserPlus,
   TRANSFERIR_ATENDIMENTO: Headset,
+  EXTRAIR_VARIAVEIS: ScanText,
 };
 
 export const TIPO_LABEL: Record<FluxoNoTipo, string> = {
@@ -195,6 +198,12 @@ export const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> 
       },
       { id: 'a-lead', label: 'Criar lead da conversa', tipo: 'ACAO', acaoTipo: 'CRIAR_LEAD' },
       { id: 'a-transf', label: 'Transferir pro atendimento', tipo: 'ACAO', acaoTipo: 'TRANSFERIR_ATENDIMENTO' },
+      {
+        id: 'a-extrai',
+        label: 'Extrair variáveis',
+        tipo: 'ACAO',
+        acaoTipo: 'EXTRAIR_VARIAVEIS',
+      },
     ],
   },
   {

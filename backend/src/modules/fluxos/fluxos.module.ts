@@ -19,6 +19,7 @@ import { FluxosController } from './fluxos.controller';
 import { FluxosService } from './fluxos.service';
 import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.service';
 import { ConversarIaService } from './conversar-ia.service';
+import { ExtrairVariaveisService } from './extrair-variaveis.service';
 import { MonitorController } from './monitor.controller';
 import { MonitorService } from './monitor.service';
 import { WebhookEntradaController } from './webhook-entrada.controller';
@@ -65,6 +66,7 @@ import { DEAD_LETTER_QUEUE } from '@modules/dead-letter/dead-letter.types';
     ExtracaoDiagnosticoService,
     OrquestracaoLeadEventsService,
     ConversarIaService,
+    ExtrairVariaveisService,
     MonitorService,
     WebhookEntradaService,
   ],

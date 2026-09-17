@@ -21,6 +21,7 @@ import { EmailActionForm } from './EmailActionForm';
 import { MoverLeadEtapaForm } from './MoverLeadEtapaForm';
 import { CriarLeadForm } from './CriarLeadForm';
 import { TransferirAtendimentoForm } from './TransferirAtendimentoForm';
+import { ExtrairVariaveisForm } from './ExtrairVariaveisForm';
 import { AtribuirRepForm } from './AtribuirRepForm';
 import { CriarTarefaForm } from './CriarTarefaForm';
 import { WebhookExternoForm } from './WebhookExternoForm';
@@ -249,6 +250,10 @@ export function NodeInspector({
 
         {data.acaoTipo === 'TRANSFERIR_ATENDIMENTO' && (
           <TransferirAtendimentoForm data={data} onUpdate={onUpdate} usuarios={usuarios} />
+        )}
+
+        {data.acaoTipo === 'EXTRAIR_VARIAVEIS' && (
+          <ExtrairVariaveisForm data={data} onUpdate={onUpdate} />
         )}
 
         {data.acaoTipo === 'ATRIBUIR_REP' && (

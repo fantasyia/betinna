@@ -36,6 +36,7 @@ import {
   campanhaDoReferral,
 } from '@integrations/evolution/ctwa-referral.util';
 import { ConversarIaService } from './conversar-ia.service';
+import { ExtrairVariaveisService } from './extrair-variaveis.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 // Mesma normalização usada pelo match de etiqueta no bus — mora num util pra
 // os dois caminhos não divergirem (a IA solta "Nao e lead"/"Não é lead"
@@ -56,6 +57,7 @@ import {
   type MoverLeadEtapaConfig,
   type CriarLeadConfig,
   type TransferirAtendimentoConfig,
+  type ExtrairVariaveisConfig,
   type PausarIaConfig,
   type AtribuirRepConfig,
   type WebhookExternoConfig,
@@ -396,6 +398,7 @@ export class FluxoExecutorService {
     private readonly supressao: SupressaoService,
     private readonly notificacoes: NotificacoesService,
     private readonly inbox: InboxService,
+    private readonly extrairVariaveis: ExtrairVariaveisService,
   ) {}
 
   /**
@@ -1685,6 +1688,9 @@ export class FluxoExecutorService {
 
       case 'TRANSFERIR_ATENDIMENTO':
         return this.acaoTransferirAtendimento(cfg as TransferirAtendimentoConfig, ctx, empresaId);
+
+      case 'EXTRAIR_VARIAVEIS':
+        return this.extrairVariaveis.executar(cfg as ExtrairVariaveisConfig, ctx, empresaId);
 
       default:
         throw new Error(`Tipo de ação desconhecido: ${acaoTipo}`);

@@ -1,0 +1,11 @@
+-- EXTRAIR_VARIAVEIS — nó de fluxo que lê o que o lead ESCREVEU e preenche as
+-- variáveis, sem falar e sem chamar modelo.
+--
+-- Até aqui o único nó que extraía era o CONVERSAR_IA, e ele só extrai quando
+-- FALA (com `naoFalarPrimeiro` ele sai antes da geração). Todo caminho do grafo
+-- que chega a um portão sem ter passado por um nó de IA lê o campo vazio e
+-- repergunta o que a pessoa acabou de dizer — é o que acontece hoje no C1 com
+-- quem VOLTA e já informa a tensão na primeira mensagem.
+--
+-- Sem migração de dado: nenhum nó existente vira EXTRAIR_VARIAVEIS.
+ALTER TYPE "FluxoAcaoTipo" ADD VALUE IF NOT EXISTS 'EXTRAIR_VARIAVEIS';
