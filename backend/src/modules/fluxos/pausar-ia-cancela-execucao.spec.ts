@@ -39,6 +39,12 @@ function build() {
     {} as never,
     {} as never,
     {} as never,
+    { executar: vi.fn() } as never,
+    {
+      obterConfigBot: vi
+        .fn()
+        .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
+    } as never,
   );
   const pausar = (cfg: Record<string, unknown>) =>
     (

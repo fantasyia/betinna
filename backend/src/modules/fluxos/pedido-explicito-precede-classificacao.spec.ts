@@ -123,6 +123,12 @@ function setup(leadVars: Record<string, unknown>) {
     {} as never,
     {} as never,
     {} as never,
+    { executar: vi.fn() } as never,
+    {
+      obterConfigBot: vi
+        .fn()
+        .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
+    } as never,
   );
   return { service, prisma, queue };
 }

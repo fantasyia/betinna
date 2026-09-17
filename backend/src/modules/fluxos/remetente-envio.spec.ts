@@ -88,6 +88,12 @@ function makeService(opts: {
     { criar: vi.fn() } as never,
     // inbox: a saída do ENVIAR_WHATSAPP passa a ser gravada na conversa.
     { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+    { executar: vi.fn() } as never,
+    {
+      obterConfigBot: vi
+        .fn()
+        .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
+    } as never,
   );
   return { service, prisma, whatsapp };
 }

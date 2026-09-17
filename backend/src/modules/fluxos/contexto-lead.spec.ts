@@ -39,7 +39,7 @@ const makeSvc = (lead: unknown) => {
     empresa: { findUnique: vi.fn().mockResolvedValue({ config: {} }) },
     variavelCustomizada: { findMany: vi.fn().mockResolvedValue([]) },
   };
-  const svc = new FluxoExecutorService(prisma as never, ...(Array(12).fill({}) as never[]));
+  const svc = new FluxoExecutorService(prisma as never, ...(Array(14).fill({}) as never[]));
   return { svc, prisma };
 };
 

@@ -92,7 +92,13 @@ function makeService() {
     { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
     { suprimido: vi.fn(async () => false) } as never, // supressao
     { criarParaUsuario: vi.fn(), criarParaRole: vi.fn() } as never, // notificacoes
-    { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never, // inbox
+    { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never, // inbox,
+    { executar: vi.fn() } as never,
+    {
+      obterConfigBot: vi
+        .fn()
+        .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
+    } as never,
   );
   return { service, prisma, claim, whatsapp, conversarIa, queue };
 }

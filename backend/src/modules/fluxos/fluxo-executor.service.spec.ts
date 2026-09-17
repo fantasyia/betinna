@@ -258,6 +258,12 @@ describe('FluxoExecutorService', () => {
       supressao as never,
       notificacoes as never,
       inbox as never,
+      { executar: vi.fn() } as never,
+      {
+        obterConfigBot: vi
+          .fn()
+          .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
+      } as never,
     );
   });
 
@@ -2639,6 +2645,12 @@ describe('FluxoExecutorService — lead resolvido pelo cliente', () => {
       } as never,
       { criarParaUsuario: vi.fn(), criarParaRole: vi.fn() } as never,
       { processarMensagemEntrante: vi.fn() } as never,
+      { executar: vi.fn() } as never,
+      {
+        obterConfigBot: vi
+          .fn()
+          .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
+      } as never,
     );
   });
 

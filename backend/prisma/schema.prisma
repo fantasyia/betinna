@@ -3015,6 +3015,23 @@ model MullerBotPersona {
   delayRespostaSegundos Int     @default(0)
   /// Mostrar "digitando…" no WhatsApp durante o delay antes de responder.
   mostrarDigitando      Boolean @default(false)
+  /// Segundos de espera antes de um TEXTO FIXO do fluxo (`ENVIAR_WHATSAPP`) sair.
+  ///
+  /// 🔴 Existe porque o `delayRespostaSegundos` vale SÓ pros nós de IA. Medido em
+  /// 17/09 numa rajada real: a IA leva 5–13s só pra compor, mais o delay; o texto
+  /// fixo vai direto pro `enviarTexto` e responde em ~1s. No caminho do cliente
+  /// que VOLTA (`triado` + `mb-explicado`) o texto fixo é a PRIMEIRA voz, então
+  /// todo retorno era atendido instantaneamente enquanto o resto da conversa
+  /// andava no ritmo da persona.
+  ///
+  /// Campo PRÓPRIO, e não o mesmo do bot, porque as duas esperas medem coisas
+  /// diferentes: a da IA soma em cima de uma composição que já é lenta; a do
+  /// texto fixo é a espera inteira. Cada tenant escolhe a sua.
+  ///
+  /// `0` = comportamento de sempre (sai na hora). Default 0 de propósito: ligar
+  /// isto muda o ritmo de TODO nó `ENVIAR_WHATSAPP` do tenant, e essa é escolha
+  /// de quem configura — não pode chegar por migration.
+  delayTextoFixoSegundos Int    @default(0)
   /// Quebrar a resposta da IA em vários balões curtos (mais humano). A IA decide
   /// onde cortar pelo contexto; respeita o teto `maxMensagens`. (default off)
   quebrarMensagens      Boolean @default(false)

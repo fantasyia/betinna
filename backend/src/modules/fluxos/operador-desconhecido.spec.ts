@@ -217,6 +217,12 @@ describe('o FALHOU diz o que aconteceu', () => {
       { suprimido: vi.fn(async () => false) } as never,
       { criar: vi.fn() } as never,
       { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+      { executar: vi.fn() } as never,
+      {
+        obterConfigBot: vi
+          .fn()
+          .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
+      } as never,
     );
     return { service, prisma };
   };

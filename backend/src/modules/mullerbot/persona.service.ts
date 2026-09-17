@@ -76,6 +76,7 @@ export interface PersonaResult {
   historicoMensagens: number;
   delayRespostaSegundos: number;
   mostrarDigitando: boolean;
+  delayTextoFixoSegundos: number;
   quebrarMensagens: boolean;
   maxMensagens: number;
   pausaEntreBaloesMs: number;
@@ -176,6 +177,9 @@ export class MullerBotPersonaService {
         ? { delayRespostaSegundos: dto.delayRespostaSegundos }
         : {}),
       ...(dto.mostrarDigitando !== undefined ? { mostrarDigitando: dto.mostrarDigitando } : {}),
+      ...(dto.delayTextoFixoSegundos !== undefined
+        ? { delayTextoFixoSegundos: dto.delayTextoFixoSegundos }
+        : {}),
       ...(dto.quebrarMensagens !== undefined ? { quebrarMensagens: dto.quebrarMensagens } : {}),
       ...(dto.maxMensagens !== undefined ? { maxMensagens: dto.maxMensagens } : {}),
       ...(dto.pausaEntreBaloesMs !== undefined
@@ -230,6 +234,8 @@ export class MullerBotPersonaService {
     if (dto.delayRespostaSegundos !== undefined)
       patch.delayRespostaSegundos = dto.delayRespostaSegundos;
     if (dto.mostrarDigitando !== undefined) patch.mostrarDigitando = dto.mostrarDigitando;
+    if (dto.delayTextoFixoSegundos !== undefined)
+      patch.delayTextoFixoSegundos = dto.delayTextoFixoSegundos;
     if (dto.quebrarMensagens !== undefined) patch.quebrarMensagens = dto.quebrarMensagens;
     if (dto.maxMensagens !== undefined) patch.maxMensagens = dto.maxMensagens;
     if (dto.pausaEntreBaloesMs !== undefined) patch.pausaEntreBaloesMs = dto.pausaEntreBaloesMs;
@@ -386,6 +392,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     historicoMensagens?: number;
     delayRespostaSegundos?: number;
     mostrarDigitando?: boolean;
+    delayTextoFixoSegundos?: number;
     quebrarMensagens?: boolean;
     maxMensagens?: number;
     pausaEntreBaloesMs?: number;
@@ -411,6 +418,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       historicoMensagens: row.historicoMensagens ?? 10,
       delayRespostaSegundos: row.delayRespostaSegundos ?? 0,
       mostrarDigitando: row.mostrarDigitando ?? false,
+      delayTextoFixoSegundos: row.delayTextoFixoSegundos ?? 0,
       quebrarMensagens: row.quebrarMensagens ?? false,
       maxMensagens: row.maxMensagens ?? 3,
       pausaEntreBaloesMs: row.pausaEntreBaloesMs ?? 4000,
@@ -435,6 +443,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     historicoMensagens: number;
     delayRespostaSegundos: number;
     mostrarDigitando: boolean;
+    delayTextoFixoSegundos: number;
     quebrarMensagens: boolean;
     maxMensagens: number;
     pausaEntreBaloesMs: number;
@@ -446,6 +455,10 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       historicoMensagens: Math.max(1, row?.historicoMensagens ?? 10),
       delayRespostaSegundos: Math.max(0, row?.delayRespostaSegundos ?? 0),
       mostrarDigitando: row?.mostrarDigitando ?? false,
+      // Teto de 60s. Espera de fluxo nao e delay de digitacao: passou de um
+      // minuto, quem esta do outro lado ja foi embora, e o passo fica segurando
+      // um job da fila sem motivo.
+      delayTextoFixoSegundos: Math.min(60, Math.max(0, row?.delayTextoFixoSegundos ?? 0)),
       quebrarMensagens: row?.quebrarMensagens ?? false,
       // Teto entre 2 e 6 balões — abaixo de 2 não faz sentido "quebrar".
       maxMensagens: Math.min(6, Math.max(2, row?.maxMensagens ?? 3)),
@@ -484,6 +497,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       historicoMensagens: 10,
       delayRespostaSegundos: 0,
       mostrarDigitando: false,
+      delayTextoFixoSegundos: 0,
       quebrarMensagens: false,
       maxMensagens: 3,
       pausaEntreBaloesMs: 4000,

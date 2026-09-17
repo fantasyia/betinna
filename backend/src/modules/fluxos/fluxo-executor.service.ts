@@ -37,6 +37,7 @@ import {
 } from '@integrations/evolution/ctwa-referral.util';
 import { ConversarIaService } from './conversar-ia.service';
 import { ExtrairVariaveisService } from './extrair-variaveis.service';
+import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 // Mesma normalização usada pelo match de etiqueta no bus — mora num util pra
 // os dois caminhos não divergirem (a IA solta "Nao e lead"/"Não é lead"
@@ -399,6 +400,7 @@ export class FluxoExecutorService {
     private readonly notificacoes: NotificacoesService,
     private readonly inbox: InboxService,
     private readonly extrairVariaveis: ExtrairVariaveisService,
+    private readonly persona: MullerBotPersonaService,
   ) {}
 
   /**
@@ -1759,6 +1761,13 @@ export class FluxoExecutorService {
       ...(remetente.proprietarioId ? { proprietarioId: remetente.proprietarioId } : {}),
     };
 
+    // Ritmo do TEXTO FIXO — a persona do DONO do envio. Quando quem manda é o
+    // WhatsApp pessoal de um rep, o ritmo é o do bot DELE: o número é dele, e a
+    // conversa tem que soar igual venha do fluxo ou do bot.
+    const ritmo = await this.persona
+      .obterConfigBot(empresaId, remetente.proprietarioId ?? '')
+      .catch(() => ({ delayTextoFixoSegundos: 0, mostrarDigitando: false }));
+
     // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
     await this.pacing.aguardarSlot(empresaId, reativo);
 
@@ -1781,6 +1790,38 @@ export class FluxoExecutorService {
             ? 'WhatsApp pessoal do remetente não está conectado'
             : 'WhatsApp da empresa não está conectado',
         );
+      }
+      // ── RITMO DO TEXTO FIXO ──
+      //
+      // 🔴 Medido em 17/09 numa rajada real: a IA leva 5–13s só pra compor, mais
+      // o delay da persona; este nó ia direto pro `enviarTexto` e respondia em
+      // ~1s. E no caminho do cliente que VOLTA (`triado` + `mb-explicado`) o
+      // texto fixo é a PRIMEIRA voz — então TODO retorno era atendido
+      // instantaneamente enquanto o resto da conversa andava no ritmo da persona.
+      //
+      // 📌 DEPOIS do gate de disponibilidade, de propósito: com a instância fora
+      // do ar o passo tem que falhar rápido e cair no reagendamento, não segurar
+      // um job da fila esperando pra descobrir isso no fim.
+      //
+      // ⚠️ O "digitando" NÃO é decisão nova deste nó — ele segue o
+      // `mostrarDigitando` que o tenant já configurou pro bot. Espera muda sem
+      // presença é silêncio, que é exatamente a reclamação que isto resolve.
+      // Quem deixou o "digitando" desligado continua sem ele.
+      const esperaFixa = ritmo.delayTextoFixoSegundos * 1000;
+      if (esperaFixa > 0) {
+        if (ritmo.mostrarDigitando) {
+          // Best-effort: presença é enfeite, e falha dela não pode derrubar um
+          // envio que já passou por pacing e disponibilidade.
+          await this.whatsapp
+            .enviarPresenca(empresaId, peerId, 'composing', esperaFixa, donoEnvio ?? undefined)
+            .catch(() => undefined);
+        }
+        await new Promise((r) => setTimeout(r, esperaFixa));
+        if (ritmo.mostrarDigitando) {
+          await this.whatsapp
+            .enviarPresenca(empresaId, peerId, 'paused', undefined, donoEnvio ?? undefined)
+            .catch(() => undefined);
+        }
       }
       try {
         if (cfg.midia?.storagePath) {
