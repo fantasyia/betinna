@@ -119,6 +119,20 @@ enum ContratoStatus {
   CANCELADO
 }
 
+/// Em qual tabela da PROPOSTA TÉCNICA (Anexo II) o item entra.
+///
+/// O doc tem duas listas com as mesmas colunas: "3.1. Supressores de Surtos
+/// (Master Block)" e "3.2. Hardwares" (Data Sense / End Point). O MESMO quadro
+/// costuma aparecer nas duas — leva um supressor e um hardware de monitoramento.
+///
+/// É campo EXPLÍCITO e não derivado do SKU de propósito: o catálogo não
+/// distingue os dois (categoria/linha/marca estão nulos nos 39 produtos), e
+/// adivinhar por convenção de nome quebraria no primeiro produto que fugir dela.
+enum PropostaSecaoTecnica {
+  SUPRESSOR
+  HARDWARE
+}
+
 enum PropostaStatus {
   RASCUNHO
   ENVIADA
@@ -1090,6 +1104,9 @@ model PedidoItem {
   /// Null = item que não veio de levantamento (proposta de venda comum).
   /// Tag do quadro/painel como o cliente o chama ("QGBT", "Painel 3").
   quadroPainel  String?
+  /// Em qual das duas tabelas do Anexo II este item entra. Null = item que não
+  /// é de proposta técnica (venda comum).
+  secaoTecnica  PropostaSecaoTecnica?
   /// Tensão medida no quadro, em volts.
   tensaoV       Int?
   /// 🔴 Corrente de carga medida, em ampères — é ela que SELECIONA o modelo.
@@ -1168,6 +1185,22 @@ model Proposta {
   formaPagamento    PagamentoForma @default(PIX)
   condicaoPagamento String?
   prazoEntrega      DateTime?
+
+  /// ── PRAZOS DO ANEXO II (item 04), em DIAS ──
+  ///
+  /// O doc escreve "em até __ (____) dias, contados da aceitação da proposta" —
+  /// prazo RELATIVO ao aceite, não data no calendário. É diferente do
+  /// `prazoEntrega` acima (DateTime), que é a data combinada de um pedido; os
+  /// dois convivem porque respondem perguntas diferentes.
+  ///
+  /// Null = não preenchido ainda (o doc vem com a lacuna em branco).
+  prazoEntregaDias     Int?
+  /// "IV - Instalação dos produtos: em até __ dias" — condicionado à autorização
+  /// do cliente pra o início das obras.
+  prazoInstalacaoDias  Int?
+  /// "VI - Habilitação do software e de seu acesso: em até __ dias", contados do
+  /// TÉRMINO das obras (não do aceite, como os outros dois).
+  prazoSoftwareDias    Int?
 
   /// LOCAÇÃO vira CONTRATO recorrente no ERP, e contrato precisa de três coisas
   /// que a proposta não tinha: por quantos meses, em que dia cobra, e quando a
