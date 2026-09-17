@@ -514,6 +514,96 @@ describe('preço do pedido do site é conferido com o catálogo', () => {
     expect(prisma.pedido.create).not.toHaveBeenCalled();
   });
 
+  /**
+   * 🔴 O DIA EM QUE A TABELA SOBE NO ERP.
+   *
+   * Decisão do Léo (17/09): o preço de tabela do MB-01/02/03 sobe no Tiny e o
+   * valor de hoje vira PROMOÇÃO. O sync grava `precoTabela = 4999` e
+   * `precoPromocional = 4350`; a loja continua cobrando 4.350, que é o preço
+   * promocional.
+   *
+   * Se a trava conferisse só contra o `precoTabela`, TODO pedido do site
+   * passaria a ser recusado naquele dia — e sem bug aparente, porque a trava
+   * estaria "funcionando". A loja simplesmente pararia de vender.
+   *
+   * Ela existe pra impedir preço ARBITRÁRIO vindo do caller, não pra impedir
+   * promoção: os dois valores do catálogo são legítimos.
+   */
+  it('com promoção, o preço PROMOCIONAL é aceito', async () => {
+    const { svc, prisma } = build({
+      produtos: [
+        {
+          id: 'prod-1',
+          sku: 'MB-01',
+          nome: 'Master Block',
+          precoTabela: 4999,
+          precoPromocional: 4350,
+        },
+      ],
+    });
+
+    await expect(
+      svc.receber('emp-1', {
+        ...PEDIDO,
+        itens: [{ sku: 'MB-01', quantidade: 1, valorUnitario: 4350 }],
+      } as never),
+    ).resolves.toBeTruthy();
+
+    expect(prisma.pedido.create).toHaveBeenCalled();
+  });
+
+  /** O de tabela continua valendo — quem paga o cheio não é recusado. */
+  it('com promoção, o preço de TABELA também é aceito', async () => {
+    const { svc, prisma } = build({
+      produtos: [
+        {
+          id: 'prod-1',
+          sku: 'MB-01',
+          nome: 'Master Block',
+          precoTabela: 4999,
+          precoPromocional: 4350,
+        },
+      ],
+    });
+
+    await expect(
+      svc.receber('emp-1', {
+        ...PEDIDO,
+        itens: [{ sku: 'MB-01', quantidade: 1, valorUnitario: 4999 }],
+      } as never),
+    ).resolves.toBeTruthy();
+
+    expect(prisma.pedido.create).toHaveBeenCalled();
+  });
+
+  /**
+   * ⚠️ E a trava continua fechada: aceitar a promoção não pode virar "aceita
+   * qualquer coisa". Um valor que não é NENHUM dos dois segue recusado — era a
+   * razão de a trava existir (auditoria F-3).
+   */
+  it('valor que não é nem tabela nem promocional segue RECUSADO', async () => {
+    const { svc, prisma } = build({
+      produtos: [
+        {
+          id: 'prod-1',
+          sku: 'MB-01',
+          nome: 'Master Block',
+          precoTabela: 4999,
+          precoPromocional: 4350,
+        },
+      ],
+    });
+
+    await expect(
+      svc.receber('emp-1', {
+        ...PEDIDO,
+        itens: [{ sku: 'MB-01', quantidade: 1, valorUnitario: 10 }],
+      } as never),
+    ).rejects.toThrow(/Preço divergente do catálogo/);
+
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+
   it('produto de LOCAÇÃO (vendavel:false) NÃO vira pedido do site, mesmo com o preço certo', async () => {
     // Este caminho cria o pedido direto, sem passar pelo resolverItens do
     // PedidosService — a trava de `vendavel` de lá não alcança aqui.

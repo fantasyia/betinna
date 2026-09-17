@@ -80,7 +80,16 @@ export class PedidoSiteService {
 
     const produtos = await this.prisma.produto.findMany({
       where: { empresaId, sku: { in: dto.itens.map((i) => i.sku) } },
-      select: { id: true, sku: true, nome: true, vendavel: true, precoTabela: true },
+      select: {
+        id: true,
+        sku: true,
+        nome: true,
+        vendavel: true,
+        precoTabela: true,
+        // Sem trazer o promocional aqui, a trava abaixo o leria como `undefined`
+        // e voltaria a conferir só contra a tabela — o conserto viraria enfeite.
+        precoPromocional: true,
+      },
     });
     const porSku = new Map(produtos.map((p) => [p.sku, p]));
     const faltando = dto.itens.filter((i) => !porSku.get(i.sku));
@@ -126,17 +135,29 @@ export class PedidoSiteService {
     // conferir custa nada e fecha a porta. Produto sem preço de tabela não é
     // conferido (o site também não teria de onde tirar).
     const divergentes = dto.itens.filter((i) => {
-      const tabela = porSku.get(i.sku)?.precoTabela;
-      if (tabela == null) return false;
-      const esperado = Number(tabela);
-      return Number.isFinite(esperado) && Math.abs(i.valorUnitario - esperado) > 0.005;
+      const p = porSku.get(i.sku);
+      // 🔴 Com PROMOÇÃO, o preço cobrado é o promocional — e é ele que a loja
+      // manda. Conferir só contra o `precoTabela` faria a trava recusar todo
+      // pedido do site no dia em que a tabela subir no ERP (17/09: MB-01 vai a
+      // 4.999 com promoção de 4.350). O site manda 4.350, a tabela vira 4.999, e
+      // a venda PARA — sem bug aparente, porque a trava estaria "funcionando".
+      //
+      // A trava existe pra impedir preço ARBITRÁRIO vindo do caller, não pra
+      // impedir promoção. Os dois valores do catálogo são legítimos.
+      const aceitos = [p?.precoPromocional, p?.precoTabela]
+        .filter((v) => v != null)
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v));
+      if (aceitos.length === 0) return false;
+      return !aceitos.some((esperado) => Math.abs(i.valorUnitario - esperado) <= 0.005);
     });
     if (divergentes.length > 0) {
       throw new BusinessRuleException(
         `Preço divergente do catálogo: ${divergentes
           .map(
             (i) =>
-              `${i.sku} (enviado ${i.valorUnitario}, tabela ${Number(porSku.get(i.sku)?.precoTabela)})`,
+              `${i.sku} (enviado ${i.valorUnitario}, tabela ${Number(porSku.get(i.sku)?.precoTabela)}` +
+              `${porSku.get(i.sku)?.precoPromocional != null ? `, promocional ${Number(porSku.get(i.sku)?.precoPromocional)}` : ''})`,
           )
           .join(', ')}`,
         ErrorCode.BUSINESS_RULE_VIOLATION,
