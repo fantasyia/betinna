@@ -131,6 +131,54 @@ describe('(b) a cauda PARA quando a pessoa volta a escrever', () => {
   });
 
   /**
+   * A JANELA CEGA DO 1º BALÃO (medida em 17/09).
+   *
+   * A espera do balão 0 é o `delayRespostaSegundos` inteiro — a maior da
+   * sequência. Com a persona em 10s, quem escrever aí recebia o primeiro balão
+   * com o retrato velho. Abortar é opt-in porque só é seguro com turno seguinte
+   * garantido; sem a flag, o comportamento antigo tem que continuar EXATAMENTE
+   * igual, e é o que os dois testes abaixo fixam.
+   */
+  describe('janela cega do 1º balão', () => {
+    it('SEM a flag: o 1º balão sai mesmo com mensagem nova (garantia antiga)', async () => {
+      const enviar = vi.fn().mockResolvedValue(undefined);
+
+      const saiu = await enviarEmBaloes(
+        TRES_BALOES,
+        { ...CFG, pausaEntreBaloesMs: 0 },
+        { enviar, deveAbortar: () => Promise.resolve(true) },
+      );
+
+      expect(saiu).toEqual(['primeiro']);
+    });
+
+    it('COM a flag: o 1º balão é abortado — nada velho sai', async () => {
+      const enviar = vi.fn().mockResolvedValue(undefined);
+
+      const saiu = await enviarEmBaloes(
+        TRES_BALOES,
+        { ...CFG, pausaEntreBaloesMs: 0 },
+        { enviar, deveAbortar: () => Promise.resolve(true), abortarPrimeiroBalao: true },
+      );
+
+      expect(saiu).toEqual([]);
+      expect(enviar).not.toHaveBeenCalled();
+    });
+
+    it('COM a flag e ninguém escrevendo: sai tudo, como sempre', async () => {
+      const enviar = vi.fn().mockResolvedValue(undefined);
+
+      const saiu = await enviarEmBaloes(
+        TRES_BALOES,
+        { ...CFG, pausaEntreBaloesMs: 0 },
+        { enviar, deveAbortar: () => Promise.resolve(false), abortarPrimeiroBalao: true },
+      );
+
+      expect(saiu).toHaveLength(3);
+    });
+  });
+
+  /**
    * Resposta de UM balão não tem cauda — e a guarda não pode transformar isso
    * em silêncio.
    */

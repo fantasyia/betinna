@@ -3660,6 +3660,12 @@ export class ConversarIaService implements OnModuleDestroy {
           pausaEntreBaloesMs: cfg?.pausaEntreBaloesMs,
         },
         {
+          // O nó de IA PODE abortar o primeiro balão: se a pessoa escrever na
+          // janela, o `processarMensagensPerdidas` roda logo depois e dispara um
+          // turno novo com a mensagem dela junto — ela recebe UMA resposta que
+          // cobre tudo, em vez de uma velha seguida de uma certa. É a mesma
+          // garantia em que o descarte de resposta velha (01e35c9) se apoia.
+          abortarPrimeiroBalao: true,
           deveAbortar: convParaAbortar
             ? async () => {
                 try {

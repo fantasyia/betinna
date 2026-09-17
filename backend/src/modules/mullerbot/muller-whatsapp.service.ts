@@ -200,6 +200,22 @@ export async function enviarEmBaloes(
      * — disparado pela mensagem dela — responde ao conjunto.
      */
     deveAbortar?: () => Promise<boolean>;
+    /**
+     * Deixa o PRIMEIRO balão ser abortado também. Padrão: não.
+     *
+     * A espera do balão 0 é o `delayRespostaSegundos` inteiro — a MAIOR da
+     * sequência (os outros esperam uma pausa curta de digitação). Com a persona
+     * em 10s isso é uma janela cega de 10 segundos: quem escrever aí recebe o
+     * primeiro balão com o retrato velho, que é exatamente o defeito que o
+     * descarte de resposta velha existe pra evitar. Medido em 17/09.
+     *
+     * ⛔ É opt-in, e não o padrão, por uma razão que os testes já fixavam antes
+     * de mim: abortar o primeiro balão só é seguro se houver TURNO SEGUINTE
+     * garantido. Sem isso, a pessoa escreve e não recebe NADA — e emudecer é
+     * pior que responder fora de hora. Quem liga isto está afirmando que a
+     * mensagem que provocou o aborto vai gerar uma resposta nova.
+     */
+    abortarPrimeiroBalao?: boolean;
   },
 ): Promise<string[]> {
   const limpo = texto.trim();
@@ -227,7 +243,17 @@ export async function enviarEmBaloes(
     if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
     // Segunda checagem, depois da espera: a pausa é justamente onde a pessoa
     // escreve. Sem esta, uma pausa de 4s seria uma janela cega.
-    if (i > 0 && handlers.deveAbortar && (await handlers.deveAbortar())) break;
+    //
+    // No balão 0 ela só roda com `abortarPrimeiroBalao` — a espera dele é o
+    // `delayRespostaSegundos` inteiro (a maior de todas), mas abortá-lo sem
+    // turno seguinte garantido deixaria a pessoa sem resposta nenhuma.
+    if (
+      (i > 0 || handlers.abortarPrimeiroBalao) &&
+      handlers.deveAbortar &&
+      (await handlers.deveAbortar())
+    ) {
+      break;
+    }
     await handlers.enviar(balao);
     enviados.push(balao);
     if (cfg.mostrarDigitando && handlers.pausado) await handlers.pausado();
