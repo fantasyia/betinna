@@ -234,4 +234,50 @@ describe('ritmo do TEXTO FIXO', () => {
 
     expect(persona.obterConfigBot).toHaveBeenCalledWith('emp-1', 'rep-1');
   });
+
+  /**
+   * 🔴 A presença tem que sair pela MESMA instância do envio.
+   *
+   * Sem o `proprietarioId`, o "digitando…" iria pela instância da EMPRESA numa
+   * conversa que é do WhatsApp PESSOAL do rep — a empresa nem conhece esse peer.
+   * O envio já resolvia isso pelo `ctxEnvio`; a presença é uma porta NOVA, e
+   * essa é a única coisa que ela pode errar sozinha.
+   */
+  it('a presença sai pela instância do DONO do envio, igual à mensagem', async () => {
+    const { service, whatsapp } = makeService({
+      config: { ...LEAD, remetenteUsuarioId: 'rep-1' },
+      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+    });
+
+    await rodar(service);
+
+    // 5º argumento de `enviarPresenca` = proprietarioId. Nos DOIS estados.
+    for (const chamada of whatsapp.enviarPresenca.mock.calls) {
+      expect(chamada[4]).toBe('rep-1');
+    }
+    expect(
+      (whatsapp.enviarTexto.mock.calls[0][3] as { proprietarioId?: string }).proprietarioId,
+    ).toBe('rep-1');
+  });
+
+  /**
+   * ⚠️ O `paused` NÃO manda duração — e é justamente aí que mora o defeito de
+   * 24/08: omitir o campo `delay` devolvia 400 do Evolution e, um segundo
+   * depois, LOGOUT da instância. Quem garante o `delay: 0` é o
+   * `EvolutionService.enviarPresenca`; este teste fixa que a camada de cima
+   * passa `undefined` (e não, digamos, um número errado), pra o contrato entre
+   * as duas continuar sendo o que aquele conserto assumiu.
+   */
+  it('o "paused" não inventa duração — quem põe o delay 0 é a camada do Evolution', async () => {
+    const { service, whatsapp } = makeService({
+      config: LEAD,
+      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+    });
+
+    await rodar(service);
+
+    const paused = whatsapp.enviarPresenca.mock.calls.find((c) => c[2] === 'paused');
+    expect(paused).toBeDefined();
+    expect(paused?.[3]).toBeUndefined();
+  });
 });
