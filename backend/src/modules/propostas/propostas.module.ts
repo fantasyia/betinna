@@ -15,6 +15,7 @@ import { PropostaAnexosService } from './proposta-anexos.service';
 import { PropostaErpService } from './proposta-erp.service';
 import { PropostaExportService } from './proposta-export.service';
 import { PropostasController } from './propostas.controller';
+import { SelecaoModeloService } from './selecao-modelo.service';
 import { PropostasService } from './propostas.service';
 
 @Module({
@@ -32,6 +33,7 @@ import { PropostasService } from './propostas.service';
   ],
   controllers: [PropostasController, PropostaAnexosController],
   providers: [
+    SelecaoModeloService,
     PropostasService,
     PropostaExportService,
     PropostaAceiteService,
@@ -44,6 +46,6 @@ import { PropostasService } from './propostas.service';
   ],
   // PropostaErpService sai porque quem sobe a proposta pro ERP agora é o
   // retorno da assinatura — o contrato assinado é que autoriza o envio.
-  exports: [PropostasService, PropostaErpService],
+  exports: [SelecaoModeloService, PropostasService, PropostaErpService],
 })
 export class PropostasModule {}

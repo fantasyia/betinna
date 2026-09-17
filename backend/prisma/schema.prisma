@@ -730,6 +730,21 @@ model Produto {
   /// BRT espelharia o preço novo em `precoTabela` e a loja passaria a vender por
   /// ele — sem erro em lugar nenhum.
   precoPromocional      Decimal?                     @db.Decimal(14, 2)
+  /// FAIXA DE CORRENTE DE CARGA (A) que este modelo atende — é o que SELECIONA
+  /// o Master Block no levantamento de campo: MB-01 vai de 1A a 125A, MB-02 de
+  /// 126A a 250A, e assim por diante (tabela oficial do Leandro, 2026).
+  ///
+  /// 📌 Mora no PRODUTO, e não numa tabela no código, de propósito: a regra é
+  /// dado de catálogo e muda quando o Leandro revisa a linha. Com ela aqui, a
+  /// revisão é uma edição — e existe UMA fonte, em vez de uma cópia no app e
+  /// outra na calculadora do site (essa duplicação já divergiu antes: o site
+  /// mostra 220–690V e a tabela 2026 diz 110–1100V, aberto desde julho).
+  ///
+  /// Null nos dois = produto que não é dimensionado por corrente (o Data Sense
+  /// e o End Point herdam a faixa do MB que acompanham; qualquer outro produto
+  /// simplesmente não entra no seletor).
+  correnteMinA          Int?
+  correnteMaxA          Int?
   imagem                String? // emoji ou URL
   /// Mensalidade de LOCAÇÃO do equipamento. Null = este produto não é locado
   /// (ou o preço ainda não foi definido) — e null NÃO cai pro preço de venda:
@@ -1065,6 +1080,26 @@ model PedidoItem {
   desconto      Float   @default(0) // %
   total         Decimal @db.Decimal(14, 2)
   negociado     Boolean @default(false)
+
+  /// ── LEVANTAMENTO DE CAMPO (proposta técnica, Anexo II) ──
+  ///
+  /// O rep mede o quadro do cliente e é isto que vira a tabela "ITEM /
+  /// QUADRO-PAINEL / TENSÃO / CORRENTE / MODELO" da proposta técnica. Um item
+  /// por quadro: a mesma proposta cobre vários painéis, cada um com seu modelo.
+  ///
+  /// Null = item que não veio de levantamento (proposta de venda comum).
+  /// Tag do quadro/painel como o cliente o chama ("QGBT", "Painel 3").
+  quadroPainel  String?
+  /// Tensão medida no quadro, em volts.
+  tensaoV       Int?
+  /// 🔴 Corrente de carga medida, em ampères — é ela que SELECIONA o modelo.
+  ///
+  /// ⚠️ O modelo de proposta técnica que o Léo mandou (17/09) tem as colunas
+  /// ITEM / QUADRO-PAINEL / TENSÃO / MODELO e **não tem a corrente** — mas é a
+  /// corrente que decide qual MB entra. Sem registrar o que foi medido, ninguém
+  /// consegue conferir depois por que aquele modelo foi escolhido, e um modelo
+  /// menor que o necessário não protege a instalação.
+  correnteA     Int?
 
   pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   produto Produto @relation(fields: [produtoId], references: [id])
