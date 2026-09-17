@@ -22,6 +22,7 @@ import {
   refreshAccessToken,
   refreshFoiTransitorio,
 } from './auth-store';
+import { capturarRascunhos } from './dirty';
 import { salvarRascunhosAbertos } from './rascunhos';
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
@@ -220,6 +221,16 @@ async function request<T>(
   // 401 → tenta refresh via cookie httpOnly (D47); se ok, retry da request
   // original; se não, limpa sessão e propaga erro pra router redirecionar.
   if (response.status === 401 && retryWithRefresh && !opts.skipAuth) {
+    // ⚠️ CAPTURA ANTES DO AWAIT. `refreshAccessToken()` chama `setSession(null)`
+    // quando o refresh é rejeitado — e isso avisa os assinantes, o router manda
+    // pro login e as telas DESMONTAM ainda dentro deste await. O cleanup do
+    // `useEffect` de cada tela tira ela do registro de "não salvo", então lá
+    // embaixo não sobra nada pra salvar.
+    //
+    // Medido em produção em 17/09: editor de fluxo comprovadamente sujo, sessão
+    // derrubada, e `betinna:rascunho:*` nunca escrito. Capturar aqui em cima é
+    // barato (só lê um Map) e é o único instante em que a tela ainda existe.
+    const rascunhosAntesDoRefresh = capturarRascunhos();
     const refreshed = await refreshAccessToken();
     if (refreshed && !refreshFoiTransitorio()) {
       // Token NOVO: retry sem refresh-loop (retryWithRefresh=false na recursão)
@@ -235,7 +246,7 @@ async function request<T>(
     // digitado (G-9) — o refresh já falhou, então ficar na tela não salvaria
     // nada; o único jeito de não perder é levar o conteúdo pro outro lado do
     // login. Best-effort: nunca impede o logout.
-    salvarRascunhosAbertos();
+    salvarRascunhosAbertos(rascunhosAntesDoRefresh);
     clearSession();
     throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');
   }

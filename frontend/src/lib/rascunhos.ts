@@ -61,10 +61,26 @@ function donoAtual(): string | null {
  * Best-effort de propósito: um rascunho que não serializa (ou que não cabe) não
  * pode impedir o logout. Devolve os ids salvos, pra teste e diagnóstico.
  */
-export function salvarRascunhosAbertos(): string[] {
+export function salvarRascunhosAbertos(
+  /**
+   * Registro capturado ANTES — para quando o momento de gravar já é tarde.
+   *
+   * Medido em produção 17/09: no 401 de sessão morta, quem chama faz
+   * `await refreshAccessToken()` primeiro, e é DENTRO desse await que o
+   * auth-store executa `setSession(null)`. Isso avisa os assinantes, o React
+   * redireciona pro login e o editor DESMONTA — e o cleanup do `useEffect`
+   * tira a tela do registro. Quando a execução volta pra cá, o registro está
+   * vazio e o resgate salva zero.
+   *
+   * O teste unitário não pegava porque mocka o `refreshAccessToken`: o mock não
+   * derruba sessão nenhuma, então nada desmonta e o registro sobrevive. O mock
+   * escondia exatamente o passo que quebra.
+   */
+  capturados?: ReturnType<typeof capturarRascunhos>,
+): string[] {
   const dono = donoAtual();
   const salvos: string[] = [];
-  for (const [id, ler] of capturarRascunhos()) {
+  for (const [id, ler] of capturados ?? capturarRascunhos()) {
     try {
       const dados = ler();
       if (dados === undefined || dados === null) continue;

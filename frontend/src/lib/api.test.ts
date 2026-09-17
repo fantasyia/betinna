@@ -656,6 +656,32 @@ describe('401 definitivo guarda o rascunho antes de deslogar', () => {
     expect(clearSessionMock).toHaveBeenCalled(); // e o logout aconteceu do mesmo jeito
   });
 
+  it('a tela DESMONTA durante o refresh e o rascunho é salvo mesmo assim', async () => {
+    // ESTE é o caso real, medido em produção em 17/09 — e o que o mock escondia.
+    //
+    // `refreshAccessToken()` chama `setSession(null)` quando o refresh é
+    // rejeitado. Isso avisa os assinantes, o router manda pro login e as telas
+    // desmontam AINDA DENTRO deste await — e o cleanup do `useEffect` de cada
+    // uma tira a tela do registro de "não salvo".
+    //
+    // O teste que existia mockava o refresh com um `mockResolvedValue(null)`
+    // puro: nada desmontava, o registro sobrevivia, e ele passava verde com o
+    // defeito em pé. Aqui o mock FAZ o que a implementação real faz — limpa o
+    // registro no meio do caminho.
+    marcarSujo('fluxo-editor:f1', true, () => ({ nome: 'Régua fria' }));
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({}, { status: 401 }),
+    );
+    refreshAccessTokenMock.mockImplementation(async () => {
+      limparMarcadores(); // = o desmonte das telas ao cair a sessão
+      return null;
+    });
+
+    await expect(api.get('/protegido')).rejects.toMatchObject({ code: 'AUTH_REQUIRED' });
+
+    expect(lerRascunho('fluxo-editor:f1')?.dados).toEqual({ nome: 'Régua fria' });
+  });
+
   it('401 num fluxo público (skipAuth) não guarda nada — não há tela logada atrás', async () => {
     marcarSujo('fluxo-editor:f1', true, () => ({ nome: 'Régua fria' }));
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
