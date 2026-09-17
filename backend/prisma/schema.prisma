@@ -351,6 +351,7 @@ model Empresa {
   atualizadoEm DateTime @updatedAt
 
   usuarios              UsuarioEmpresa[]
+  permissoesDeUsuario   UsuarioPermissao[]
   clientes              Cliente[]
   produtos              Produto[]
   pedidos               Pedido[]
@@ -523,8 +524,21 @@ model Permissao {
 /// sem linha → vale a matriz do papel (Permissao). Usuário é criado sem overrides
 /// (herda o padrão do papel); ADMIN/DIRECTOR ajustam individualmente depois.
 model UsuarioPermissao {
-  id           String   @id @default(cuid())
-  usuarioId    String
+  id        String @id @default(cuid())
+  usuarioId String
+  /// A empresa em que este override vale — e SÓ ela.
+  ///
+  /// Sem esta coluna a unicidade era `(usuarioId, modulo)`, então um override
+  /// dado numa empresa valia em TODAS as empresas daquele usuário: liberar o
+  /// financeiro pra alguém aqui liberava o financeiro de outro tenant junto,
+  /// sem ninguém ter autorizado. Era o F-7 da auditoria de 14/09.
+  ///
+  /// Consertado em 17/09 **enquanto a tabela estava vazia** (0 linhas, 1 empresa,
+  /// sistema ainda fora do ar) — decisão do Léo: depois do go-live seria
+  /// migration na chave única de uma tabela de permissões com cliente sendo
+  /// atendido, e cada linha existente precisaria de um `empresaId` adivinhado
+  /// justamente no caso que motiva o conserto (usuário em duas empresas).
+  empresaId    String
   modulo       String
   podeVer      Boolean  @default(true)
   podeEditar   Boolean  @default(false)
@@ -532,9 +546,11 @@ model UsuarioPermissao {
   atualizadoEm DateTime @updatedAt
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
-  @@unique([usuarioId, modulo])
+  @@unique([usuarioId, empresaId, modulo])
   @@index([usuarioId])
+  @@index([empresaId])
 }
 
 // ─── CLIENTES (CRM) ───────────────────────────────────────────────────

@@ -238,14 +238,66 @@ describe('PermissionsService', () => {
         { usuarioId: 'rep-1', modulo: 'catalogo', podeVer: true, podeEditar: true },
       ]);
 
-      await service.upsertUserOverride('rep-1', 'catalogo', true, true);
+      await service.upsertUserOverride('rep-1', 'catalogo', true, true, 'emp-1');
 
       expect(prisma.usuarioPermissao.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { usuarioId_modulo: { usuarioId: 'rep-1', modulo: 'catalogo' } },
+          where: {
+            usuarioId_empresaId_modulo: {
+              usuarioId: 'rep-1',
+              empresaId: 'emp-1',
+              modulo: 'catalogo',
+            },
+          },
         }),
       );
       expect(service.userCanFor('rep-1', 'REP', 'catalogo', 'edit')).toBe(true);
+    });
+
+    it('override de UMA empresa NÃO vale na outra — era o F-7', async () => {
+      // O defeito: a unicidade era (usuarioId, modulo), sem empresa, então um
+      // override dado aqui valia em qualquer empresa do mesmo usuário. Este
+      // teste é o que separa "consertado" de "parece consertado".
+      prisma.permissao.findMany.mockResolvedValue([
+        fakePerm({ modulo: 'financeiro', podeVer: false, podeEditar: false }),
+      ]);
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        {
+          usuarioId: 'ger-1',
+          empresaId: 'emp-A',
+          modulo: 'financeiro',
+          podeVer: true,
+          podeEditar: true,
+        },
+      ]);
+      await service.reloadCache();
+
+      // na empresa onde foi concedido, vê
+      expect(service.userCanFor('ger-1', 'GERENTE', 'financeiro', 'view', 'emp-A')).toBe(true);
+      // na OUTRA empresa, NÃO — o papel nega e o override de lá não alcança aqui
+      expect(service.userCanFor('ger-1', 'GERENTE', 'financeiro', 'view', 'emp-B')).toBe(false);
+    });
+
+    it('sem empresa no contexto, a NEGAÇÃO ainda vale (não vira acesso liberado)', async () => {
+      // A 1ª versão deste conserto ignorava o override quando não havia empresa,
+      // "porque cair pro papel erra pra menos permissão". Vale só pra override
+      // que CONCEDE — o que NEGA, ignorado, LIBERA. Os testes do ContatosService
+      // pegaram isso; este fixa a regra pra não voltar.
+      prisma.permissao.findMany.mockResolvedValue([
+        fakePerm({ modulo: 'clientes', podeVer: true, podeEditar: true }),
+      ]);
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        {
+          usuarioId: 'rep-9',
+          empresaId: 'emp-A',
+          modulo: 'clientes',
+          podeVer: false,
+          podeEditar: false,
+        },
+      ]);
+      await service.reloadCache();
+
+      expect(service.userCanFor('rep-9', 'REP', 'clientes', 'view')).toBe(false);
     });
 
     it('removeUserOverride apaga e volta ao padrão do papel', async () => {

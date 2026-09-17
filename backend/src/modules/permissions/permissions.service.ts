@@ -41,6 +41,19 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
   private cache: Map<string, boolean> = new Map();
   /** Cache override por usuário: `${usuarioId}:${modulo}` -> { podeVer, podeEditar } */
   private userCache: Map<string, { podeVer: boolean; podeEditar: boolean }> = new Map();
+  /**
+   * O override MAIS RESTRITIVO de cada (usuário, módulo), ignorando a empresa.
+   *
+   * Existe para o caso em que a pergunta chega sem empresa no contexto. A
+   * primeira versão deste conserto simplesmente ignorava o override nesse caso,
+   * "porque cair pro papel erra para menos permissão" — e isso está errado: só
+   * vale para override que CONCEDE. Um override que NEGA, ignorado, vira acesso
+   * concedido em silêncio, que é o oposto do que este conserto existe pra fazer.
+   * Os testes do ContatosService pegaram isso.
+   *
+   * Então, sem empresa, qualquer negação em qualquer empresa vale.
+   */
+  private userCacheRestritivo: Map<string, { podeVer: boolean; podeEditar: boolean }> = new Map();
   /** Re-sync entre réplicas — relê o banco a cada intervalo (convergência). */
   private static readonly REFRESH_MS = 60_000;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -100,8 +113,19 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
       }
     }
     this.userCache.clear();
+    this.userCacheRestritivo.clear();
     for (const row of userRows) {
-      this.userCache.set(`${row.usuarioId}:${row.modulo}`, {
+      const semEmpresa = `${row.usuarioId}:${row.modulo}`;
+      const atual = this.userCacheRestritivo.get(semEmpresa);
+      this.userCacheRestritivo.set(semEmpresa, {
+        podeVer: (atual?.podeVer ?? true) && row.podeVer,
+        podeEditar: (atual?.podeEditar ?? true) && row.podeEditar,
+      });
+      // ⚠️ A EMPRESA ENTRA NA CHAVE. Sem ela o cache reproduz em memória o
+      // mesmo furo que a coluna nova conserta no banco: dois overrides do mesmo
+      // usuário em empresas diferentes colidiriam aqui, e o último a carregar
+      // valeria nas duas. Consertar só o schema teria deixado o defeito vivo.
+      this.userCache.set(`${row.usuarioId}:${row.empresaId}:${row.modulo}`, {
         podeVer: row.podeVer,
         podeEditar: row.podeEditar,
       });
@@ -121,10 +145,29 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
    * Permissão EFETIVA de um usuário: override individual quando existir,
    * senão a matriz do papel. É o que o PermissionsGuard usa.
    */
-  userCanFor(usuarioId: string, role: UserRole, module: string, action: ActionName): boolean {
+  userCanFor(
+    usuarioId: string,
+    role: UserRole,
+    module: string,
+    action: ActionName,
+    /**
+     * Empresa em que a pergunta está sendo feita (`user.empresaIdAtiva`).
+     *
+     * `null`/ausente NÃO ignora o override: cai no índice restritivo, onde vale
+     * a negação mais forte que o usuário tenha em qualquer empresa. Ignorar
+     * seria seguro só para override que CONCEDE — para o que NEGA, viraria
+     * acesso liberado em silêncio.
+     *
+     * Conceder por engano entre empresas é o furo que este conserto fecha;
+     * negar por engano é chato e visível. Os dois erros não têm o mesmo peso.
+     */
+    empresaId?: string | null,
+  ): boolean {
     if (role === 'ADMIN') return true;
     const doPapel = this.cache.get(this.key(role, module as ModuleName, action)) ?? false;
-    const override = this.userCache.get(`${usuarioId}:${module}`);
+    const override = empresaId
+      ? this.userCache.get(`${usuarioId}:${empresaId}:${module}`)
+      : this.userCacheRestritivo.get(`${usuarioId}:${module}`);
     if (override) {
       // O override do usuário só controla DIRETAMENTE ver e editar (é o que a UI
       // expõe). Ações críticas (create/delete/approve/export) NÃO são concedidas
@@ -185,13 +228,17 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
    * por módulo. Usado pelo painel "por usuário" e pelo GET /permissions/me.
    * ADMIN → tudo true (bypass).
    */
-  async listEffectiveForUser(usuarioId: string, role: UserRole): Promise<PermissaoEfetivaRow[]> {
+  async listEffectiveForUser(
+    usuarioId: string,
+    role: UserRole,
+    empresaId: string,
+  ): Promise<PermissaoEfetivaRow[]> {
     if (role === 'ADMIN') {
       return MODULES.map((m) => ({ modulo: m, podeVer: true, podeEditar: true, override: false }));
     }
     const [base, overrides] = await Promise.all([
       this.listForRoleRows(role),
-      this.prisma.usuarioPermissao.findMany({ where: { usuarioId } }),
+      this.prisma.usuarioPermissao.findMany({ where: { usuarioId, empresaId } }),
     ]);
     const ovMap = new Map(overrides.map((o) => [o.modulo, o]));
     return base.map((row) => {
@@ -227,18 +274,21 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
     modulo: string,
     podeVer: boolean,
     podeEditar: boolean,
+    empresaId: string,
   ): Promise<void> {
     await this.prisma.usuarioPermissao.upsert({
-      where: { usuarioId_modulo: { usuarioId, modulo } },
+      where: { usuarioId_empresaId_modulo: { usuarioId, empresaId, modulo } },
       update: { podeVer, podeEditar },
-      create: { usuarioId, modulo, podeVer, podeEditar },
+      create: { usuarioId, empresaId, modulo, podeVer, podeEditar },
     });
     await this.reloadCache();
   }
 
   /** Remove o override individual — o módulo volta ao padrão do papel. */
-  async removeUserOverride(usuarioId: string, modulo: string): Promise<void> {
-    await this.prisma.usuarioPermissao.deleteMany({ where: { usuarioId, modulo } });
+  async removeUserOverride(usuarioId: string, modulo: string, empresaId: string): Promise<void> {
+    // `empresaId` no where NÃO é decoração: sem ele, remover o override de um
+    // usuário aqui apagaria o dele em todas as outras empresas junto.
+    await this.prisma.usuarioPermissao.deleteMany({ where: { usuarioId, empresaId, modulo } });
     await this.reloadCache();
   }
 

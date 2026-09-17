@@ -5,7 +5,12 @@ import { z } from 'zod';
 import { PrismaService } from '@database/prisma.service';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
-import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
+import {
+  BusinessRuleException,
+  ForbiddenException,
+  NotFoundException,
+} from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { PermissionsService } from './permissions.service';
@@ -32,7 +37,11 @@ export class PermissionsController {
   @Get('me')
   @ApiOperation({ summary: 'Permissões efetivas do usuário logado' })
   async me(@CurrentUser() user: AuthenticatedUser) {
-    const permissoes = await this.permissions.listEffectiveForUser(user.id, user.role);
+    const permissoes = await this.permissions.listEffectiveForUser(
+      user.id,
+      user.role,
+      this.empresaDoContexto(user),
+    );
     return { role: user.role, permissoes };
   }
 
@@ -41,7 +50,13 @@ export class PermissionsController {
   @ApiOperation({ summary: 'Permissões efetivas de um usuário (com flag de override)' })
   async listForUser(@CurrentUser() user: AuthenticatedUser, @Param('usuarioId') usuarioId: string) {
     const alvo = await this.assertAlvoGerenciavel(user, usuarioId);
-    const permissoes = await this.permissions.listEffectiveForUser(alvo.id, alvo.role);
+    // A empresa é a de QUEM PERGUNTA, não a do alvo: o override é do par
+    // (usuário, empresa), e quem administra só enxerga a empresa em que está.
+    const permissoes = await this.permissions.listEffectiveForUser(
+      alvo.id,
+      alvo.role,
+      this.empresaDoContexto(user),
+    );
     return { usuarioId: alvo.id, role: alvo.role, permissoes };
   }
 
@@ -60,6 +75,7 @@ export class PermissionsController {
       body.modulo,
       body.podeVer,
       body.podeEditar,
+      this.empresaDoContexto(user),
     );
     return { ok: true };
   }
@@ -73,8 +89,26 @@ export class PermissionsController {
     @Param('modulo') modulo: string,
   ) {
     await this.assertAlvoGerenciavel(user, usuarioId);
-    await this.permissions.removeUserOverride(usuarioId, modulo);
+    await this.permissions.removeUserOverride(usuarioId, modulo, this.empresaDoContexto(user));
     return { ok: true };
+  }
+
+  /**
+   * Empresa em que a operação vale. Sem ela, RECUSA.
+   *
+   * Override de permissão é do par (usuário, empresa) desde 17/09. Deixar
+   * passar sem empresa seria voltar ao defeito: escrever uma linha que não
+   * sabe onde vale, ou ler a de outra empresa. Recusar é chato uma vez;
+   * adivinhar é um vazamento que ninguém vê.
+   */
+  private empresaDoContexto(user: AuthenticatedUser): string {
+    if (!user.empresaIdAtiva) {
+      throw new BusinessRuleException(
+        'Selecione a empresa antes de mexer em permissões — o override vale por empresa.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    return user.empresaIdAtiva;
   }
 
   @Get(':role')

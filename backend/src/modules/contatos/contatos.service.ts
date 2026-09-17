@@ -919,7 +919,10 @@ export class ContatosService {
       ];
       for (const g of gates) {
         // userCanFor: respeita override individual (UsuarioPermissao) além do papel.
-        if (g.aplica && !this.permissions.userCanFor(user.id, user.role, g.module, g.action)) {
+        if (
+          g.aplica &&
+          !this.permissions.userCanFor(user.id, user.role, g.module, g.action, user.empresaIdAtiva)
+        ) {
           throw new ForbiddenException(
             `Sem permissão para excluir: requer ${g.module}.${g.action}`,
             ErrorCode.INSUFFICIENT_PERMISSIONS,

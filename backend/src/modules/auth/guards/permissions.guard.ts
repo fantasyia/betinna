@@ -34,11 +34,15 @@ export class PermissionsGuard implements CanActivate {
 
     for (const req of required) {
       // Efetiva = override individual (UsuarioPermissao) quando existe, senão papel.
+      // `empresaIdAtiva` é obrigatório aqui desde 17/09: override de permissão
+      // passou a valer POR EMPRESA, e sem ela o serviço ignora o override e
+      // aplica só o papel. Passar é o que mantém a tela de permissões viva.
       const allowed = this.permissions.userCanFor(
         request.user.id,
         request.user.role,
         req.module,
         req.action,
+        request.user.empresaIdAtiva,
       );
       if (!allowed) {
         throw new ForbiddenException(

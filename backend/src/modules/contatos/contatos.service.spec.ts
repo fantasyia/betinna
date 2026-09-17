@@ -189,7 +189,13 @@ describe('ContatosService', () => {
         }),
       ).rejects.toThrow(/permiss/i);
 
-      expect(permissions.userCanFor).toHaveBeenCalledWith('ger-1', 'GERENTE', 'clientes', 'delete');
+      expect(permissions.userCanFor).toHaveBeenCalledWith(
+        'ger-1',
+        'GERENTE',
+        'clientes',
+        'delete',
+        'emp-1',
+      );
       expect(prisma.cliente.deleteMany).not.toHaveBeenCalled();
     });
   });
@@ -492,7 +498,13 @@ describe('ContatosService', () => {
         }),
       ).rejects.toThrow(/permiss/i);
 
-      expect(permissions.userCanFor).toHaveBeenCalledWith('sac-1', 'SAC', 'inbox', 'delete');
+      expect(permissions.userCanFor).toHaveBeenCalledWith(
+        'sac-1',
+        'SAC',
+        'inbox',
+        'delete',
+        'emp-1',
+      );
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.conversation.deleteMany).not.toHaveBeenCalled();
     });
@@ -508,7 +520,13 @@ describe('ContatosService', () => {
         svc.acaoMassa(ger, { acao: 'excluir', leadIds: ['l1'], clienteIds: [], conversaIds: [] }),
       ).rejects.toThrow(/permiss/i);
 
-      expect(permissions.userCanFor).toHaveBeenCalledWith('ger-1', 'GERENTE', 'kanban', 'delete');
+      expect(permissions.userCanFor).toHaveBeenCalledWith(
+        'ger-1',
+        'GERENTE',
+        'kanban',
+        'delete',
+        'emp-1',
+      );
       expect(prisma.lead.deleteMany).not.toHaveBeenCalled();
     });
   });
