@@ -717,6 +717,19 @@ model Produto {
   /// pede pra definir o custo antes de calcular markup. Preenchido à mão ou
   /// pelo ERP. No Tiny isso deixa de ser chute: `precos.precoCusto` vem na API.
   precoFabrica          Decimal?                     @db.Decimal(14, 2)
+  /// Preço PROMOCIONAL vindo do ERP (`precos.precoPromocional` do Tiny). É o
+  /// "por" do de/por: quando existe, é ele que o cliente paga; `precoTabela`
+  /// vira o "de", riscado.
+  ///
+  /// 🔴 `null` = SEM promoção, e isso não pode virar zero. "Sem promoção" e
+  /// "promoção de R$ 0" são fatos diferentes, e confundi-los faz a loja anunciar
+  /// de graça. Por isso ausente/0 do ERP grava null, nunca `Decimal(0)`.
+  ///
+  /// ⚠️ Nasceu porque o preço de tabela do MB-01/02/03 vai SUBIR no ERP e o
+  /// valor de hoje vira promoção (Léo, 17/09). Sem este campo, o sync das 13:00
+  /// BRT espelharia o preço novo em `precoTabela` e a loja passaria a vender por
+  /// ele — sem erro em lugar nenhum.
+  precoPromocional      Decimal?                     @db.Decimal(14, 2)
   imagem                String? // emoji ou URL
   /// Mensalidade de LOCAÇÃO do equipamento. Null = este produto não é locado
   /// (ou o preço ainda não foi definido) — e null NÃO cai pro preço de venda:

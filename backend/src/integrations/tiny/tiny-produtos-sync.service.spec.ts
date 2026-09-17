@@ -68,6 +68,42 @@ describe('sync de produtos do Tiny', () => {
     expect(prisma.produto.create.mock.calls[0][0].data.precoFabrica).toBeNull();
   });
 
+  /**
+   * 🔴 O preço de tabela do MB-01/02/03 SOBE no ERP e o valor de hoje vira
+   * promoção (Léo, 17/09). Sem ler este campo, o sync das 13:00 BRT espelharia
+   * só o preço novo e a loja passaria a vender por ele — sem erro nenhum.
+   *
+   * ⚠️ O campo do Tiny é `precoPromocional`, camelCase — é o mesmo objeto
+   * `precos` de onde já sai o `precoCusto`, confirmado no
+   * `PrecoProdutoResponseModel` do OpenAPI. O card pedia `preco_promocional`
+   * (snake_case): escrito assim, a leitura daria `undefined` SEMPRE e este
+   * teste é o que impede alguém de "corrigir" pro nome do card.
+   */
+  it('lê o preço PROMOCIONAL do ERP junto com o de tabela', async () => {
+    const { svc, prisma } = build([
+      { ...MB, precos: { preco: 4999, precoPromocional: 3150, precoCusto: 1800 } },
+    ]);
+
+    await svc.sync('emp-1');
+
+    const dados = prisma.produto.create.mock.calls[0][0].data;
+    expect(Number(dados.precoTabela)).toBe(4999);
+    expect(Number(dados.precoPromocional)).toBe(3150);
+  });
+
+  /**
+   * "Sem promoção" e "promoção de R$ 0" são fatos diferentes, e confundi-los faz
+   * a loja anunciar de graça. Por isso ausente e 0 gravam NULL, nunca Decimal(0).
+   */
+  it.each([
+    ['ausente', { preco: 3150, precoCusto: 1800 }],
+    ['zero', { preco: 3150, precoPromocional: 0, precoCusto: 1800 }],
+  ])('promoção %s grava NULL, nunca 0', async (_nome, precos) => {
+    const { svc, prisma } = build([{ ...MB, precos }]);
+    await svc.sync('emp-1');
+    expect(prisma.produto.create.mock.calls[0][0].data.precoPromocional).toBeNull();
+  });
+
   it('produto que já existe é atualizado, não duplicado', async () => {
     const { svc, prisma } = build([MB], { id: 'p-existente' });
     const r = await svc.sync('emp-1');

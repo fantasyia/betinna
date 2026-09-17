@@ -82,6 +82,37 @@ describe('preços que o representante vê', () => {
     expect(r.precoFabrica).toBeNull();
   });
 
+  /**
+   * 🔴 O PROMOCIONAL é preço de venda igual ao de tabela — é o "por" do de/por.
+   *
+   * Este teste existe porque o campo nasceu DEPOIS desta função: zerar o de
+   * tabela e esquecer o promocional entregaria pelo campo novo exatamente o que
+   * ela existe pra esconder. E, como diz o docblock, vazamento de preço não dá
+   * erro em lugar nenhum — só aparece numa negociação, meses depois.
+   */
+  it('REP também não vê o preço PROMOCIONAL', () => {
+    const r = precosParaRep(como('REP'), {
+      precoTabela: 4999,
+      precoPromocional: 3150,
+      precoFabrica: 1800,
+      precoLocacaoMensal: 300,
+    });
+    expect(r.precoPromocional).toBeNull();
+    expect(r.precoTabela).toBeNull();
+    expect(r.precoLocacaoMensal).toBe(300);
+  });
+
+  it('quem NÃO é rep continua vendo os dois preços de venda', () => {
+    const r = precosParaRep(como('DIRECTOR'), {
+      precoTabela: 4999,
+      precoPromocional: 3150,
+      precoFabrica: 1800,
+      precoLocacaoMensal: 300,
+    });
+    expect(r.precoPromocional).toBe(3150);
+    expect(r.precoTabela).toBe(4999);
+  });
+
   it('sem preço de locação, fica NULL — NÃO cai pro preço de venda', () => {
     // O fallback silencioso seria o jeito exato de a regra falhar sem ninguém
     // notar: o rep veria 3150 achando que é mensalidade.

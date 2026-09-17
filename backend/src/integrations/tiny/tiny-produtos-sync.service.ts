@@ -41,7 +41,7 @@ interface ProdutoTiny {
   situacao?: string;
   unidade?: string;
   dataAlteracao?: string;
-  precos?: { preco?: number; precoCusto?: number };
+  precos?: { preco?: number; precoPromocional?: number; precoCusto?: number };
 }
 
 interface EstoqueTiny {
@@ -284,6 +284,22 @@ export class TinyProdutosSyncService {
       precoFabrica:
         typeof p.precos?.precoCusto === 'number' && p.precos.precoCusto > 0
           ? new Prisma.Decimal(p.precos.precoCusto)
+          : null,
+      // Preço PROMOCIONAL do ERP — o "por" do de/por.
+      //
+      // 🔴 Ausente ou 0 grava NULL, nunca `Decimal(0)`: "sem promoção" e
+      // "promoção de R$ 0" são fatos diferentes, e confundi-los faz a loja
+      // anunciar de graça. Mesma régua do `precoFabrica` logo acima.
+      //
+      // ⚠️ O campo do Tiny é `precoPromocional`, camelCase — confirmado no
+      // `PrecoProdutoResponseModel` do OpenAPI (`docs/tiny/openapi.json`), que é
+      // o mesmo objeto `precos` de onde já sai o `precoCusto`. O card pedia
+      // `preco_promocional` (snake_case); escrito assim a leitura daria
+      // `undefined` SEMPRE e o campo ficaria null em silêncio — justamente o
+      // desfecho que este card existe pra evitar.
+      precoPromocional:
+        typeof p.precos?.precoPromocional === 'number' && p.precos.precoPromocional > 0
+          ? new Prisma.Decimal(p.precos.precoPromocional)
           : null,
       ativo: (p.situacao ?? 'A') === 'A',
       // Null quando o produto não está na lista de locação. NÃO cai pro preço de

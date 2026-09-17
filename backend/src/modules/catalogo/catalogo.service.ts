@@ -38,6 +38,8 @@ export interface CatalogoItem {
     imagem: string | null;
     /** Preço de VENDA. `null` quando quem lê é REP — ele loca, não vende. */
     precoTabela: number | null;
+    /** Preço PROMOCIONAL do ERP — o "por" do de/por. `null` = sem promoção. */
+    precoPromocional: number | null;
     /** Custo. `null` quando não informado (não inventamos mais o chute de 70%). */
     precoFabrica: number | null;
     /** Mensalidade de locação. É o ÚNICO preço que o REP enxerga. */
@@ -143,6 +145,7 @@ export class CatalogoService {
             unidade: true,
             imagem: true,
             precoTabela: true,
+            precoPromocional: true,
             precoFabrica: true,
             precoLocacaoMensal: true,
             popularidade: true,
@@ -161,6 +164,8 @@ export class CatalogoService {
       produto: {
         ...it.produto,
         precoTabela: Number(it.produto.precoTabela),
+        precoPromocional:
+          it.produto.precoPromocional == null ? null : Number(it.produto.precoPromocional),
         precoFabrica: it.produto.precoFabrica == null ? null : Number(it.produto.precoFabrica),
         precoLocacaoMensal:
           it.produto.precoLocacaoMensal == null ? null : Number(it.produto.precoLocacaoMensal),
@@ -192,6 +197,7 @@ export class CatalogoService {
             unidade: true,
             imagem: true,
             precoTabela: true,
+            precoPromocional: true,
             precoFabrica: true,
             precoLocacaoMensal: true,
             popularidade: true,
@@ -211,6 +217,8 @@ export class CatalogoService {
       produto: precosParaRep(user, {
         ...item.produto,
         precoTabela: Number(item.produto.precoTabela),
+        precoPromocional:
+          item.produto.precoPromocional == null ? null : Number(item.produto.precoPromocional),
         precoFabrica: item.produto.precoFabrica == null ? null : Number(item.produto.precoFabrica),
         precoLocacaoMensal:
           item.produto.precoLocacaoMensal == null ? null : Number(item.produto.precoLocacaoMensal),

@@ -32,7 +32,12 @@ export function ocultaCusto(user: Pick<AuthenticatedUser, 'role'>): boolean {
  * exatamente o jeito de a regra falhar sem ninguém notar.
  */
 export function precosParaRep<
-  T extends { precoTabela?: unknown; precoFabrica?: unknown; precoLocacaoMensal?: unknown },
+  T extends {
+    precoTabela?: unknown;
+    precoPromocional?: unknown;
+    precoFabrica?: unknown;
+    precoLocacaoMensal?: unknown;
+  },
 >(user: Pick<AuthenticatedUser, 'role'>, produto: T): T {
   if (!ocultaCusto(user)) return produto;
   return {
@@ -40,13 +45,22 @@ export function precosParaRep<
     precoFabrica: null,
     // Zera o preço de VENDA: o rep enxerga locação e só.
     precoTabela: null,
+    // O PROMOCIONAL é preço de venda igual ao de tabela — é o "por" do de/por.
+    // Zerar um e esquecer o outro entregaria pelo campo novo exatamente o que
+    // esta função existe pra esconder, e sem erro em lugar nenhum.
+    precoPromocional: null,
     precoLocacaoMensal: produto.precoLocacaoMensal ?? null,
   };
 }
 
 /** Versão em lote de `precosParaRep`. */
 export function precosParaRepLista<
-  T extends { precoTabela?: unknown; precoFabrica?: unknown; precoLocacaoMensal?: unknown },
+  T extends {
+    precoTabela?: unknown;
+    precoPromocional?: unknown;
+    precoFabrica?: unknown;
+    precoLocacaoMensal?: unknown;
+  },
 >(user: Pick<AuthenticatedUser, 'role'>, produtos: T[]): T[] {
   if (!ocultaCusto(user)) return produtos;
   return produtos.map((p) => precosParaRep(user, p));
