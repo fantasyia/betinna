@@ -3695,7 +3695,20 @@ export class ConversarIaService implements OnModuleDestroy {
           // Aqui vira dado de BANCO, lido na hora.
           aoConcluir: (r) => {
             if (!ctxDaExecucao) return;
-            ctxDaExecucao._iaUltimoEnvio = { ...r, em: new Date().toISOString() };
+            // ⚠️ HISTÓRICO CURTO, não "último". Nasceu como um campo só e a
+            // Testadora tropeçou nisso em 17/09: no braço em que o turno aborta
+            // (`{0,"delay"}`) e a varredura responde em seguida, o carimbo da
+            // varredura OCUPAVA o lugar do abortado — e o desfecho certo
+            // aparecia como "não interrompeu". O campo que existe pra explicar
+            // o silêncio apagava justamente o envio silencioso.
+            //
+            // Três basta: quem depura um silêncio olha o turno e o seguinte.
+            const anteriores = Array.isArray(ctxDaExecucao._iaEnvios)
+              ? (ctxDaExecucao._iaEnvios as unknown[])
+              : [];
+            ctxDaExecucao._iaEnvios = [...anteriores, { ...r, em: new Date().toISOString() }].slice(
+              -3,
+            );
           },
           // O nó de IA pode abortar o primeiro balão — SÓ quando o turno não
           // classifica (ver `podeAbortarNoDelay`): se a pessoa escrever na

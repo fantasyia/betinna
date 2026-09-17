@@ -1781,6 +1781,23 @@ describe('ConversarIaService', () => {
           expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(3);
         });
 
+        it('o carimbo do envio é HISTÓRICO — o envio seguinte não apaga o anterior', async () => {
+          // Nasceu como campo único (`_iaUltimoEnvio`) e enganava exatamente
+          // quem ia usá-lo: no braço em que o turno aborta e a varredura
+          // responde logo depois, o carimbo da varredura ocupava o lugar do
+          // abortado — e o desfecho CERTO aparecia como "não interrompeu".
+          comConversa();
+          muller.gerarRespostaIa.mockResolvedValue({ texto: 'E a tensão?', modelo: 'gpt' });
+          prisma.message.count.mockResolvedValue(0); // ninguém escreveu: sai tudo
+
+          await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 50A');
+
+          const envios = execAguardando.contexto._iaEnvios as Array<Record<string, unknown>>;
+          expect(Array.isArray(envios)).toBe(true);
+          expect(envios).toHaveLength(1);
+          expect(envios[0]).toMatchObject({ enviados: 1, planejados: 1, interrompidoEm: null });
+        });
+
         it('turno que NÃO classifica aborta na janela — o seguinte responde tudo junto', async () => {
           comConversa();
           muller.gerarRespostaIa.mockResolvedValue({ texto: 'E a tensão?', modelo: 'gpt' });
