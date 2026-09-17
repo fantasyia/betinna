@@ -77,6 +77,7 @@ function montar(contrato: unknown = CONTRATO) {
   // diferentes) — é ela que monta a URL quando a ClickSign devolve o arquivo
   // como caminho relativo.
   const clicksign = { baseDaEmpresa: vi.fn(async () => 'https://sandbox.clicksign.com') };
+  const esteira = { entrarNaEsteira: vi.fn().mockResolvedValue('criado') };
   const svc = new ClickSignAssinaturaService(
     prisma as never,
     env as never,
@@ -87,8 +88,11 @@ function montar(contrato: unknown = CONTRATO) {
     // dispara o recálculo, mas não depende dele pra concluir.
     comissoesContrato as never,
     clicksign as never,
+    // Esteira pós-assinatura: o card do Leandro nasce aqui, best-effort — a
+    // assinatura não pode depender dele.
+    esteira as never,
   );
-  return { svc, prisma, notificacoes, etapa, propostaErp, comissoesContrato, clicksign };
+  return { svc, prisma, notificacoes, etapa, propostaErp, comissoesContrato, clicksign, esteira };
 }
 
 beforeEach(() => {
@@ -128,6 +132,32 @@ describe('ClickSignAssinaturaService.registrarAssinado', () => {
     expect(etapa.mover).toHaveBeenCalledWith(
       expect.objectContaining({ marco: 'contratoAssinado', clienteId: 'cli-1' }),
     );
+  });
+
+  /**
+   * O card do Leandro é o que faz a esteira existir — sem ele o contrato assina
+   * e ninguém sabe que tem produção pra começar.
+   */
+  it('contrato assinado ENTRA na esteira pós-assinatura', async () => {
+    const { svc, esteira } = montar();
+
+    await svc.registrarAssinado(corpo());
+
+    expect(esteira.entrarNaEsteira).toHaveBeenCalledWith('ct-1');
+  });
+
+  /**
+   * ⚠️ E a recíproca, que é a que importa mais: falhar em criar o card NÃO pode
+   * desfazer a assinatura nem derrubar o webhook. O contrato já está assinado e
+   * o PDF guardado quando isto roda; a ClickSign reentregaria, e reentrega com
+   * efeito colateral pela metade é pior que a ausência do card.
+   */
+  it('esteira fora do ar NÃO derruba a assinatura', async () => {
+    const { svc, esteira, prisma } = montar();
+    esteira.entrarNaEsteira.mockRejectedValue(new Error('kanban fora'));
+
+    await expect(svc.registrarAssinado(corpo())).resolves.toBe('aplicado');
+    expect(prisma.contrato.update).toHaveBeenCalled();
   });
 
   it('ERP fora do ar NÃO desfaz a assinatura — avisa e segue', async () => {

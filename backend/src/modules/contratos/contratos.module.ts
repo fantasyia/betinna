@@ -7,6 +7,7 @@ import { ContratoComodatoService } from './contrato-comodato.service';
 import { ContratoComodatoErpService } from './contrato-comodato-erp.service';
 import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
+import { ContratoEsteiraService } from './contrato-esteira.service';
 import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 
@@ -23,6 +24,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
     ContratoComodatoErpService,
     ContratoComodatoService,
     ContratoErpService,
+    ContratoEsteiraService,
     ContratoMensalidadeSyncService,
     ContratoAprovacaoJob,
   ],
@@ -32,6 +34,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
     ContratoComodatoErpService,
     ContratoComodatoService,
     ContratoErpService,
+    ContratoEsteiraService,
     ContratoMensalidadeSyncService,
     ContratoAprovacaoJob,
   ],

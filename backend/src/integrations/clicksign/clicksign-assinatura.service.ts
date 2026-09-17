@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ContratoEsteiraService } from '@modules/contratos/contrato-esteira.service';
 import { ContratoComissoesService } from '@modules/comissoes/contrato-comissoes.service';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { EnvService } from '@config/env.service';
@@ -46,6 +47,7 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     private readonly propostaErp: PropostaErpService,
     private readonly comissoesContrato: ContratoComissoesService,
     private readonly clicksign: ClickSignService,
+    private readonly esteira: ContratoEsteiraService,
   ) {
     this.storage = createClient(
       this.env.get('SUPABASE_URL'),
@@ -135,6 +137,23 @@ export class ClickSignAssinaturaService implements OnModuleInit {
     // E o contrato assinado sobe pro ERP como PROPOSTA (orçamento): é ali que o
     // Leandro revisa, põe o rep como vendedor e transforma em pedido de venda.
     await this.subirParaErp(contrato.empresaId, contrato.proposta, contrato.representanteId);
+
+    // ESTEIRA PÓS-ASSINATURA: a partir daqui quem toca é o Leandro (Serasa →
+    // produção → NF de comodato → envio → instalação). O card nasce na primeira
+    // etapa com os dados que ele precisa pra agir.
+    //
+    // ⚠️ Best-effort, igual ao resto deste bloco: o contrato JÁ está assinado e o
+    // PDF guardado. Falhar em criar um card não pode desfazer isso nem derrubar
+    // o webhook — a ClickSign reentregaria, e reentrega com efeito colateral pela
+    // metade é pior que a ausência do card.
+    await this.esteira
+      .entrarNaEsteira(contrato.id)
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Contrato ${contrato.id} assinado, mas não entrou na esteira: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
 
     await this.avisar(
       contrato.empresaId,

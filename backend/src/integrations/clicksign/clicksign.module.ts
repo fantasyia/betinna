@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
+import { ContratosModule } from '@modules/contratos/contratos.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { PropostasModule } from '@modules/propostas/propostas.module';
@@ -18,7 +19,16 @@ import { ClickSignService } from './clicksign.service';
  */
 @Global()
 @Module({
-  imports: [ComissoesModule, IntegracoesModule, NotificacoesModule, LeadsModule, PropostasModule],
+  imports: [
+    ComissoesModule,
+    // A esteira pós-assinatura mora no domínio de contratos; quem a dispara é o
+    // webhook daqui.
+    ContratosModule,
+    IntegracoesModule,
+    NotificacoesModule,
+    LeadsModule,
+    PropostasModule,
+  ],
   controllers: [ClickSignWebhookController],
   providers: [ClickSignService, ClickSignAssinaturaService],
   exports: [ClickSignService],
