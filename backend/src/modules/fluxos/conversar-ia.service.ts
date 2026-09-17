@@ -3660,6 +3660,17 @@ export class ConversarIaService implements OnModuleDestroy {
           pausaEntreBaloesMs: cfg?.pausaEntreBaloesMs,
         },
         {
+          // Relatório do envio no CONTEXTO da execução — vai pro banco junto com
+          // a escrita que o turno já faz. Existe porque a Testadora mediu a
+          // janela cega em 17/09 e NÃO conseguiu fechar o item: zero balões
+          // podia ser o aborto novo, o aborto da cauda ou o descarte de resposta
+          // velha, e os três calam igual. O log não separava, e o stream do
+          // Railway atrasa — ausência de linha não prova ausência de evento.
+          // Aqui vira dado de BANCO, lido na hora.
+          aoConcluir: (r) => {
+            if (!ctxDaExecucao) return;
+            ctxDaExecucao._iaUltimoEnvio = { ...r, em: new Date().toISOString() };
+          },
           // O nó de IA PODE abortar o primeiro balão: se a pessoa escrever na
           // janela, o `processarMensagensPerdidas` roda logo depois e dispara um
           // turno novo com a mensagem dela junto — ela recebe UMA resposta que

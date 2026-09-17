@@ -179,6 +179,60 @@ describe('(b) a cauda PARA quando a pessoa volta a escrever', () => {
   });
 
   /**
+   * O RELATÓRIO DO ENVIO (`aoConcluir`) — pedido da Testadora em 17/09.
+   *
+   * Sem ele, zero balões é indistinguível entre aborto do 1º, aborto da cauda e
+   * descarte de resposta velha: os três calam igual, e o log não separa.
+   * `interrompidoEm` é o que dá nome ao silêncio.
+   */
+  describe('relatório do envio', () => {
+    const relatar = () => {
+      const visto: Array<{ planejados: number; enviados: number; interrompidoEm: string | null }> =
+        [];
+      return { visto, aoConcluir: (r: (typeof visto)[number]) => visto.push(r) };
+    };
+
+    it('saiu tudo → interrompidoEm null', async () => {
+      const { visto, aoConcluir } = relatar();
+      await enviarEmBaloes(
+        TRES_BALOES,
+        { ...CFG, pausaEntreBaloesMs: 0 },
+        { enviar: vi.fn().mockResolvedValue(undefined), aoConcluir },
+      );
+      expect(visto).toEqual([{ planejados: 3, enviados: 3, interrompidoEm: null }]);
+    });
+
+    it('cauda abortada → interrompidoEm "cauda"', async () => {
+      const { visto, aoConcluir } = relatar();
+      await enviarEmBaloes(
+        TRES_BALOES,
+        { ...CFG, pausaEntreBaloesMs: 0 },
+        {
+          enviar: vi.fn().mockResolvedValue(undefined),
+          deveAbortar: () => Promise.resolve(true),
+          aoConcluir,
+        },
+      );
+      expect(visto).toEqual([{ planejados: 3, enviados: 1, interrompidoEm: 'cauda' }]);
+    });
+
+    it('janela do delay → interrompidoEm "delay" e ZERO enviados', async () => {
+      const { visto, aoConcluir } = relatar();
+      await enviarEmBaloes(
+        TRES_BALOES,
+        { ...CFG, pausaEntreBaloesMs: 0 },
+        {
+          enviar: vi.fn().mockResolvedValue(undefined),
+          deveAbortar: () => Promise.resolve(true),
+          abortarPrimeiroBalao: true,
+          aoConcluir,
+        },
+      );
+      expect(visto).toEqual([{ planejados: 3, enviados: 0, interrompidoEm: 'delay' }]);
+    });
+  });
+
+  /**
    * Resposta de UM balão não tem cauda — e a guarda não pode transformar isso
    * em silêncio.
    */

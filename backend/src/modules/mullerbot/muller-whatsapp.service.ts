@@ -216,6 +216,25 @@ export async function enviarEmBaloes(
      * mensagem que provocou o aborto vai gerar uma resposta nova.
      */
     abortarPrimeiroBalao?: boolean;
+    /**
+     * Relatório do envio, pra quem AUDITA o ritmo do bot.
+     *
+     * A função já devolve os balões que saíram — mas quem chama só enxerga o
+     * texto final, e no banco não sobra nada. A Testadora mediu a janela cega em
+     * 17/09 e não conseguiu FECHAR o item: os zero balões que ela observou
+     * podiam vir do aborto do 1º balão (novo), do aborto da cauda (antigo) ou do
+     * descarte de resposta velha — os três produzem o mesmo silêncio, e o log
+     * não os distingue (fora que o stream do Railway atrasa, então ausência de
+     * linha não é ausência de evento).
+     *
+     * `interrompidoEm` é o que separa: 'delay' = parou na espera do 1º balão,
+     * 'cauda' = parou do 2º em diante, null = saiu tudo.
+     */
+    aoConcluir?: (r: {
+      planejados: number;
+      enviados: number;
+      interrompidoEm: 'delay' | 'cauda' | null;
+    }) => void;
   },
 ): Promise<string[]> {
   const limpo = texto.trim();
@@ -229,11 +248,15 @@ export async function enviarEmBaloes(
   const teto = cfg.pausaEntreBaloesMs ?? PAUSA_BALAO_MAX_PADRAO;
   const enviados: string[] = [];
 
+  let interrompidoEm: 'delay' | 'cauda' | null = null;
   for (let i = 0; i < finais.length; i++) {
     const balao = finais[i];
     // A checagem vem ANTES da pausa, não depois: esperar 4s pra então descobrir
     // que não devia mandar é o pior dos dois mundos — atrasa E fala por cima.
-    if (i > 0 && handlers.deveAbortar && (await handlers.deveAbortar())) break;
+    if (i > 0 && handlers.deveAbortar && (await handlers.deveAbortar())) {
+      interrompidoEm = 'cauda';
+      break;
+    }
     await handlers.aoProgredir?.();
     // 1º balão respeita o delay configurado (tempo de "pensar"); os próximos levam
     // uma pausa curta proporcional ao tamanho (≈ digitação) e preservam a ordem.
@@ -252,12 +275,19 @@ export async function enviarEmBaloes(
       handlers.deveAbortar &&
       (await handlers.deveAbortar())
     ) {
+      // i === 0 só chega aqui com a flag ligada: é a janela do delay.
+      interrompidoEm = i === 0 ? 'delay' : 'cauda';
       break;
     }
     await handlers.enviar(balao);
     enviados.push(balao);
     if (cfg.mostrarDigitando && handlers.pausado) await handlers.pausado();
   }
+  handlers.aoConcluir?.({
+    planejados: finais.length,
+    enviados: enviados.length,
+    interrompidoEm,
+  });
   // Retorna o que SAIU, não o que foi planejado: quem loga/audita precisa do
   // fato, e a diferença entre os dois é exatamente a interrupção.
   return enviados;
