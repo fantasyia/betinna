@@ -132,6 +132,69 @@ export function WhatsAppActionForm({
           ))}
         </Select>
       </Field>
+
+      <Field
+        label="Espera antes de enviar (s)"
+        hint={
+          'Vazio = herda a Persona Bot (o mesmo ritmo do bot). Preencha só pra este nó ' +
+          'destoar: a espera da persona foi calibrada pra IA, que leva 5–13s só pra escrever — ' +
+          'aqui ela é a espera inteira. Use 0 pra mandar na hora (aviso interno, por exemplo).'
+        }
+      >
+        <Input
+          type="number"
+          min={0}
+          max={60}
+          placeholder="herda da persona"
+          value={
+            typeof data.config.delaySegundos === 'number' ? String(data.config.delaySegundos) : ''
+          }
+          onChange={(e) =>
+            onUpdate((d) => ({
+              ...d,
+              config: {
+                ...d.config,
+                // Vazio vira `undefined` (= herda). `0` é valor válido e
+                // PRECISA sobreviver — é "manda na hora" escolhido de propósito.
+                delaySegundos:
+                  e.target.value === ''
+                    ? undefined
+                    : Math.min(60, Math.max(0, Number(e.target.value))),
+              },
+            }))
+          }
+          onWheel={(e) => e.currentTarget.blur()}
+          data-testid="wa-delay-segundos"
+        />
+      </Field>
+
+      <Field
+        label='Mostrar "digitando…"'
+        hint="Vazio = herda a Persona Bot."
+      >
+        <Select
+          size="sm"
+          data-testid="wa-mostrar-digitando"
+          value={
+            typeof data.config.mostrarDigitando === 'boolean'
+              ? String(data.config.mostrarDigitando)
+              : ''
+          }
+          onChange={(e) =>
+            onUpdate((d) => ({
+              ...d,
+              config: {
+                ...d.config,
+                mostrarDigitando: e.target.value === '' ? undefined : e.target.value === 'true',
+              },
+            }))
+          }
+        >
+          <option value="">Herda da persona</option>
+          <option value="true">Sim</option>
+          <option value="false">Não (espera calada)</option>
+        </Select>
+      </Field>
     </>
   );
 }

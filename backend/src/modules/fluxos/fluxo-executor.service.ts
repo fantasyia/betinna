@@ -1761,12 +1761,26 @@ export class FluxoExecutorService {
       ...(remetente.proprietarioId ? { proprietarioId: remetente.proprietarioId } : {}),
     };
 
-    // Ritmo do TEXTO FIXO — a persona do DONO do envio. Quando quem manda é o
-    // WhatsApp pessoal de um rep, o ritmo é o do bot DELE: o número é dele, e a
-    // conversa tem que soar igual venha do fluxo ou do bot.
-    const ritmo = await this.persona
+    // ── RITMO: herda a persona, o NÓ sobrescreve ──
+    //
+    // Padrão: a Persona Bot do DONO do envio. Quando quem manda é o WhatsApp
+    // pessoal de um rep, o ritmo é o do bot DELE — o número é dele, e a conversa
+    // tem que soar igual venha do fluxo ou do bot.
+    //
+    // ⚠️ `??` e NÃO `||`: `delaySegundos: 0` é "manda na hora" escolhido pelo
+    // operador, e com `||` ele viraria o delay da persona em silêncio. É a mesma
+    // classe do default silencioso que fez um operador de condição desconhecido
+    // responder "Não" sem erro — valor do operador que o código ignora.
+    const daPersona = await this.persona
       .obterConfigBot(empresaId, remetente.proprietarioId ?? '')
-      .catch(() => ({ delayTextoFixoSegundos: 0, mostrarDigitando: false }));
+      .catch(() => ({ delayRespostaSegundos: 0, mostrarDigitando: false }));
+    const ritmo = {
+      delaySegundos: Math.min(
+        60,
+        Math.max(0, cfg.delaySegundos ?? daPersona.delayRespostaSegundos),
+      ),
+      mostrarDigitando: cfg.mostrarDigitando ?? daPersona.mostrarDigitando,
+    };
 
     // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
     await this.pacing.aguardarSlot(empresaId, reativo);
@@ -1807,7 +1821,7 @@ export class FluxoExecutorService {
       // `mostrarDigitando` que o tenant já configurou pro bot. Espera muda sem
       // presença é silêncio, que é exatamente a reclamação que isto resolve.
       // Quem deixou o "digitando" desligado continua sem ele.
-      const esperaFixa = ritmo.delayTextoFixoSegundos * 1000;
+      const esperaFixa = ritmo.delaySegundos * 1000;
       if (esperaFixa > 0) {
         if (ritmo.mostrarDigitando) {
           // 🔴 NÃO se espera o `composing` — e isto é o conserto de um defeito

@@ -7,21 +7,26 @@ vi.mock('@shared/utils/safe-request', () => ({
 }));
 
 /**
- * O TEXTO FIXO do fluxo (`ENVIAR_WHATSAPP`) ganhou ritmo PRÓPRIO.
+ * O TEXTO FIXO do fluxo (`ENVIAR_WHATSAPP`) HERDA o ritmo da Persona Bot, e o
+ * NÓ pode sobrescrever.
  *
- * 🔴 O que isto conserta, medido em 17/09 numa rajada real: o
- * `delayRespostaSegundos` da persona vale só pros nós de IA. A IA leva 5–13s só
- * pra compor, mais o delay; este nó ia direto pro `enviarTexto` e respondia em
- * ~1s. E no caminho do cliente que VOLTA (`triado` + `mb-explicado`) o texto
- * fixo é a PRIMEIRA voz — então todo retorno era atendido instantaneamente
- * enquanto o resto da conversa andava no ritmo da persona.
+ * 🔴 O que isto conserta, medido em 17/09 numa rajada real: a persona valia só
+ * pros nós de IA. A IA leva 5–13s só pra compor, mais o delay; este nó ia direto
+ * pro `enviarTexto` e respondia em ~1s. E no caminho do cliente que VOLTA
+ * (`triado` + `mb-explicado`) o texto fixo é a PRIMEIRA voz — então todo retorno
+ * era atendido instantaneamente enquanto o resto da conversa andava no ritmo da
+ * persona.
+ *
+ * 📌 O override é POR NÓ, não por tenant: dentro do mesmo fluxo os nós não têm o
+ * mesmo papel — a pergunta da tensão conversa com o cliente e merece ritmo; o
+ * aviso interno pra diretoria não deve esperar nada.
  *
  * ⏱️ Os testes usam timers FALSOS. Com timer real, "espera 3s" viraria 3
  * segundos de suíte por caso — e um teste lento é um teste que alguém desliga.
  */
 function makeService(opts: {
   config: Record<string, unknown>;
-  ritmo?: { delayTextoFixoSegundos?: number; mostrarDigitando?: boolean };
+  ritmo?: { delayRespostaSegundos?: number; mostrarDigitando?: boolean };
   personaQuebra?: boolean;
   instanciaOk?: boolean;
 }) {
@@ -97,7 +102,7 @@ function makeService(opts: {
     obterConfigBot: opts.personaQuebra
       ? vi.fn().mockRejectedValue(new Error('persona fora do ar'))
       : vi.fn().mockResolvedValue({
-          delayTextoFixoSegundos: opts.ritmo?.delayTextoFixoSegundos ?? 0,
+          delayRespostaSegundos: opts.ritmo?.delayRespostaSegundos ?? 0,
           mostrarDigitando: opts.ritmo?.mostrarDigitando ?? false,
         }),
   };
@@ -138,10 +143,77 @@ describe('ritmo do TEXTO FIXO', () => {
     vi.useFakeTimers();
   });
 
+  it('sem nada no nó, HERDA o delay da persona', async () => {
+    const { service, whatsapp, persona } = makeService({
+      config: LEAD,
+      ritmo: { delayRespostaSegundos: 3 },
+    });
+
+    const p = service.executarPasso('exec-1', 'no-1', 'job-1');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+
+    await vi.runAllTimersAsync();
+    await p;
+    expect(persona.obterConfigBot).toHaveBeenCalled();
+    expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+  });
+
+  it('o NÓ sobrescreve a persona quando preenchido', async () => {
+    const { service, whatsapp } = makeService({
+      config: { ...LEAD, delaySegundos: 10 },
+      ritmo: { delayRespostaSegundos: 3 },
+    });
+
+    const p = service.executarPasso('exec-1', 'no-1', 'job-1');
+    // Passou o delay da PERSONA e ainda não saiu: quem manda é o nó.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+
+    await vi.runAllTimersAsync();
+    await p;
+    expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * 🔴 `0` no nó NÃO é "vazio". É "manda na hora", escolhido pelo operador —
+   * típico do aviso interno pra diretoria, que não tem por que esperar.
+   *
+   * Com `||` em vez de `??`, esse zero viraria o delay da persona em silêncio:
+   * o operador põe 0, o nó espera 3s, e nada no painel denuncia. É a mesma
+   * classe do operador de condição desconhecido que respondia "Não" sem erro —
+   * valor que a pessoa escolheu e o código ignora.
+   */
+  it('`0` no nó é "manda na hora", NÃO "herda"', async () => {
+    const { service, whatsapp } = makeService({
+      config: { ...LEAD, delaySegundos: 0 },
+      ritmo: { delayRespostaSegundos: 30 },
+    });
+
+    const p = service.executarPasso('exec-1', 'no-1', 'job-1');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+
+    await vi.runAllTimersAsync();
+    await p;
+  });
+
+  it('`false` no nó cala o "digitando" que a persona liga', async () => {
+    const { service, whatsapp } = makeService({
+      config: { ...LEAD, mostrarDigitando: false },
+      ritmo: { delayRespostaSegundos: 3, mostrarDigitando: true },
+    });
+
+    await rodar(service);
+
+    expect(whatsapp.enviarPresenca).not.toHaveBeenCalled();
+    expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(1);
+  });
+
   it('com delay configurado, ESPERA antes de mandar', async () => {
     const { service, whatsapp } = makeService({
       config: LEAD,
-      ritmo: { delayTextoFixoSegundos: 3 },
+      ritmo: { delayRespostaSegundos: 3 },
     });
 
     const p = service.executarPasso('exec-1', 'no-1', 'job-1');
@@ -158,7 +230,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('sem delay (0 = o de sempre) manda na hora', async () => {
     const { service, whatsapp } = makeService({
       config: LEAD,
-      ritmo: { delayTextoFixoSegundos: 0 },
+      ritmo: { delayRespostaSegundos: 0 },
     });
 
     const p = service.executarPasso('exec-1', 'no-1', 'job-1');
@@ -172,7 +244,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('com "digitando" ligado, mostra composing pela duração da espera e depois paused', async () => {
     const { service, whatsapp } = makeService({
       config: LEAD,
-      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+      ritmo: { delayRespostaSegundos: 3, mostrarDigitando: true },
     });
 
     await rodar(service);
@@ -187,7 +259,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('sem "digitando", espera calada — nenhuma presença é enviada', async () => {
     const { service, whatsapp } = makeService({
       config: LEAD,
-      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: false },
+      ritmo: { delayRespostaSegundos: 3, mostrarDigitando: false },
     });
 
     await rodar(service);
@@ -204,7 +276,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('instância fora do ar: falha sem gastar a espera', async () => {
     const { service, whatsapp } = makeService({
       config: LEAD,
-      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+      ritmo: { delayRespostaSegundos: 3, mostrarDigitando: true },
       instanciaOk: false,
     });
 
@@ -240,7 +312,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('remetente pessoal usa a persona do REP, não a da empresa', async () => {
     const { service, persona } = makeService({
       config: { ...LEAD, remetenteUsuarioId: 'rep-1' },
-      ritmo: { delayTextoFixoSegundos: 3 },
+      ritmo: { delayRespostaSegundos: 3 },
     });
 
     await rodar(service);
@@ -265,7 +337,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('o "digitando" ANUNCIA a espera, não SOMA a ela', async () => {
     const { service, whatsapp } = makeService({
       config: LEAD,
-      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+      ritmo: { delayRespostaSegundos: 3, mostrarDigitando: true },
     });
 
     const p = service.executarPasso('exec-1', 'no-1', 'job-1');
@@ -290,7 +362,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('a presença sai pela instância do DONO do envio, igual à mensagem', async () => {
     const { service, whatsapp } = makeService({
       config: { ...LEAD, remetenteUsuarioId: 'rep-1' },
-      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+      ritmo: { delayRespostaSegundos: 3, mostrarDigitando: true },
     });
 
     await rodar(service);
@@ -315,7 +387,7 @@ describe('ritmo do TEXTO FIXO', () => {
   it('o "paused" não inventa duração — quem põe o delay 0 é a camada do Evolution', async () => {
     const { service, whatsapp } = makeService({
       config: LEAD,
-      ritmo: { delayTextoFixoSegundos: 3, mostrarDigitando: true },
+      ritmo: { delayRespostaSegundos: 3, mostrarDigitando: true },
     });
 
     await rodar(service);

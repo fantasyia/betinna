@@ -40,10 +40,6 @@ export const upsertPersonaSchema = z.object({
   historicoMensagens: z.number().int().min(1).max(50).optional(),
   delayRespostaSegundos: z.number().int().min(0).max(60).optional(),
   mostrarDigitando: z.boolean().optional(),
-  // Espera do TEXTO FIXO do fluxo (ENVIAR_WHATSAPP). Campo SEPARADO do delay da
-  // IA de proposito: a espera da IA soma em cima de uma composicao que ja leva
-  // 5-13s; a do texto fixo e a espera inteira. 0 = sai na hora (o de sempre).
-  delayTextoFixoSegundos: z.number().int().min(0).max(60).optional(),
   // Quebra da resposta em vários balões (mais humano) + teto de balões.
   quebrarMensagens: z.boolean().optional(),
   maxMensagens: z.number().int().min(2).max(6).optional(),
@@ -76,7 +72,6 @@ export const patchPersonaSchema = z
     historicoMensagens: z.number().int().min(1).max(50),
     delayRespostaSegundos: z.number().int().min(0).max(60),
     mostrarDigitando: z.boolean(),
-    delayTextoFixoSegundos: z.number().int().min(0).max(60),
     quebrarMensagens: z.boolean(),
     maxMensagens: z.number().int().min(2).max(6),
     pausaEntreBaloesMs: z.number().int().min(0).max(10000),

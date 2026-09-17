@@ -1,0 +1,14 @@
+-- O ritmo do TEXTO FIXO passou a HERDAR a Persona Bot, com override POR NÓ.
+--
+-- O `delayTextoFixoSegundos` durou algumas horas (migration 20260917200000) e
+-- sai porque virou um SEGUNDO jeito de dizer a mesma coisa: agora o
+-- `ENVIAR_WHATSAPP` lê `delayRespostaSegundos`/`mostrarDigitando` da persona por
+-- padrão, e quem quiser diferente põe `delaySegundos`/`mostrarDigitando` na
+-- config do próprio nó — que é mais granular que por tenant (dentro do mesmo
+-- fluxo, a pergunta da tensão merece ritmo e o aviso interno não).
+--
+-- ⚠️ DROP de coluna é irreversível, e isto só é seguro por dois motivos
+-- concretos: ela nasceu hoje, e o único tenant que a preencheu (Somatec, com 3s)
+-- tem `delayRespostaSegundos = 3` — então herdar a persona entrega exatamente o
+-- mesmo ritmo que estava configurado. Nenhum comportamento muda com este DROP.
+ALTER TABLE "MullerBotPersona" DROP COLUMN IF EXISTS "delayTextoFixoSegundos";

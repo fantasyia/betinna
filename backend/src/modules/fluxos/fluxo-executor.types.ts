@@ -83,6 +83,26 @@ export interface EnviarWhatsappConfig {
    */
   remetenteUsuarioId?: string;
   /**
+   * RITMO deste nó. Vazio (`undefined`) = **herda a Persona Bot** do dono do
+   * envio (`delayRespostaSegundos` / `mostrarDigitando`), que é o padrão.
+   *
+   * 🔴 Por que existe o override: a espera da persona foi calibrada pra IA, que
+   * leva 5–13s só pra compor — nela o delay SOMA. Aqui ele é a espera inteira.
+   * Com o mesmo "3", a IA entrega em ~16s e o texto fixo em ~6,6s (medido em
+   * 17/09). Quem quiser os dois parecidos precisa de números diferentes.
+   *
+   * 📌 E é POR NÓ, não por tenant, porque dentro do mesmo fluxo os nós não têm
+   * o mesmo papel: a pergunta da tensão conversa com o cliente e merece ritmo;
+   * o aviso interno pra diretoria não deve esperar nada.
+   *
+   * ⚠️ `0` NÃO é o mesmo que vazio: `0` é "manda na hora" explícito, vazio é
+   * "herda". Quem tratar os dois igual (`|| persona`) faz o zero do operador
+   * virar o delay da persona em silêncio.
+   */
+  delaySegundos?: number;
+  /** Idem: vazio = herda a persona; `false` = espera calada neste nó. */
+  mostrarDigitando?: boolean;
+  /**
    * Anexo OPCIONAL (subido pro Storage no editor → guarda só o storagePath, não base64). Quando
    * presente, envia mídia em vez de texto e a `mensagem` (interpolada) vira a legenda.
    */

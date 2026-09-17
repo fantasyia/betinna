@@ -42,7 +42,6 @@ interface Persona {
   historicoMensagens: number;
   delayRespostaSegundos: number;
   mostrarDigitando: boolean;
-  delayTextoFixoSegundos: number;
   quebrarMensagens: boolean;
   maxMensagens: number;
   pausaEntreBaloesMs: number;
@@ -138,8 +137,6 @@ export default function PersonaBotPage() {
   const [histMsgs, setHistMsgs] = useState(10); // mensagens de contexto passadas pra IA
   const [delaySeg, setDelaySeg] = useState(0); // espera antes de responder (segundos)
   const [mostrarDigitando, setMostrarDigitando] = useState(false); // mostra "digitando…" no WhatsApp
-  // Espera do TEXTO FIXO dos fluxos (ENVIAR_WHATSAPP) — separada da espera da IA.
-  const [delayTextoFixo, setDelayTextoFixo] = useState(0);
   const [quebrarMsgs, setQuebrarMsgs] = useState(false); // quebra a resposta em vários balões
   const [maxMsgs, setMaxMsgs] = useState(3); // teto de balões quando quebra está ligado
   // Teto da pausa entre balões. Guardado em SEGUNDOS na tela (é como a pessoa
@@ -164,7 +161,6 @@ export default function PersonaBotPage() {
     setHistMsgs(data.historicoMensagens ?? 10);
     setDelaySeg(data.delayRespostaSegundos ?? 0);
     setMostrarDigitando(data.mostrarDigitando ?? false);
-    setDelayTextoFixo(data.delayTextoFixoSegundos ?? 0);
     setQuebrarMsgs(data.quebrarMensagens ?? false);
     setMaxMsgs(data.maxMensagens ?? 3);
     setPausaBalaoSeg((data.pausaEntreBaloesMs ?? 4000) / 1000);
@@ -317,7 +313,6 @@ export default function PersonaBotPage() {
         historicoMensagens: histMsgs,
         delayRespostaSegundos: delaySeg,
         mostrarDigitando,
-        delayTextoFixoSegundos: delayTextoFixo,
         // Quebra da resposta em vários balões + teto
         quebrarMensagens: quebrarMsgs,
         maxMensagens: maxMsgs,
@@ -536,28 +531,6 @@ export default function PersonaBotPage() {
                   </p>
                 </div>
               </Field>
-              <Field label="Delay do texto fixo (s)" className="mb-0">
-                <div>
-                  <input
-                    type="number"
-                    min={0}
-                    max={60}
-                    value={delayTextoFixo}
-                    onChange={(e) => {
-                      setDelayTextoFixo(Math.min(60, Math.max(0, Number(e.target.value))));
-                      setDirty(true);
-                    }}
-                    onWheel={(e) => e.currentTarget.blur()}
-                    className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm tabular"
-                    data-testid="persona-delay-texto-fixo"
-                  />
-                  <p className="text-[10px] text-muted-light mt-1">
-                    Espera das mensagens FIXAS dos fluxos. Elas não passam pela IA, então saem na
-                    hora enquanto a IA leva 5–13s só pra escrever — e quem volta recebe a primeira
-                    pergunta instantaneamente. 0 = sai na hora (0–60).
-                  </p>
-                </div>
-              </Field>
               <div className="col-span-2">
                 <Switch
                   checked={mostrarDigitando}
@@ -568,7 +541,7 @@ export default function PersonaBotPage() {
                   label={'Mostrar "digitando…" no WhatsApp antes de responder'}
                 />
                 <p className="text-[10px] text-muted-light mt-1 ml-1">
-                  Vale para os dois delays acima — o da IA e o do texto fixo.
+                  Vale também para as mensagens fixas dos fluxos, que herdam este ritmo.
                 </p>
               </div>
               {/* Quebrar a resposta em vários balões (mais humano) */}
