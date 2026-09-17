@@ -80,7 +80,7 @@ export class PedidoSiteService {
 
     const produtos = await this.prisma.produto.findMany({
       where: { empresaId, sku: { in: dto.itens.map((i) => i.sku) } },
-      select: { id: true, sku: true, nome: true, precoTabela: true },
+      select: { id: true, sku: true, nome: true, vendavel: true, precoTabela: true },
     });
     const porSku = new Map(produtos.map((p) => [p.sku, p]));
     const faltando = dto.itens.filter((i) => !porSku.get(i.sku));
@@ -92,6 +92,33 @@ export class PedidoSiteService {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
+    // PRODUTO DE LOCAÇÃO NÃO ENTRA POR AQUI.
+    //
+    // Este caminho cria o pedido direto, sem passar pelo `resolverItens` do
+    // PedidosService — então a trava de `vendavel` de lá NÃO alcança ele. Achado
+    // em 17/09 conferindo o conserto do `Produto.vendavel`.
+    //
+    // Até agora isso não vazava por ACIDENTE: a conferência de preço logo abaixo
+    // compara com `precoTabela`, que nas 24 variantes era 0 — qualquer valor real
+    // batia como divergente e o pedido caía. Mas as variantes ganharam preço no
+    // ERP em 15/09 (a v2 do Tiny recusa gravar NCM em produto com preço 0), e o
+    // sync traz esse preço pro `precoTabela`. A partir daí um pedido com
+    // `MB-01_D.S.` no valor "certo" passaria na conferência e viraria VENDA de um
+    // equipamento que só existe em locação.
+    //
+    // O catálogo do site só oferece os 12 modelos, mas isso é regra do OUTRO
+    // repositório. Aqui é a fronteira da API, e quem tem a chave `blc_` manda o
+    // SKU que quiser.
+    const naoVendaveis = dto.itens.filter((i) => porSku.get(i.sku)?.vendavel === false);
+    if (naoVendaveis.length > 0) {
+      throw new BusinessRuleException(
+        `Produto de LOCAÇÃO não pode ser vendido: ${naoVendaveis
+          .map((i) => `${i.sku} (${porSku.get(i.sku)?.nome})`)
+          .join(', ')}`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+
     // PREÇO vem do CATÁLOGO, não do caller (decisão do Léo 13/09/2026, auditoria
     // F-3): o endpoint aceitava `valorUnitario` arbitrário atrás da mesma chave
     // `blc_` que o próprio código documenta como "escopo mínimo (só criar lead)",

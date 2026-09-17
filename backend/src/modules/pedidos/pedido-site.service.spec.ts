@@ -12,7 +12,13 @@ import { PedidoSiteService } from './pedido-site.service';
 function build(
   opts: {
     pedidoExistente?: Record<string, unknown> | null;
-    produtos?: Array<{ id: string; sku: string; nome: string }>;
+    produtos?: Array<{
+      id: string;
+      sku: string;
+      nome: string;
+      precoTabela?: number;
+      vendavel?: boolean;
+    }>;
     clientePorDoc?: Array<{ id: string }>;
     /** Como o cadastro já está no banco, pra testar o que o pedido novo sobrescreve. */
     clienteAtual?: Record<string, unknown> | null;
@@ -504,6 +510,39 @@ describe('preço do pedido do site é conferido com o catálogo', () => {
         itens: [{ sku: 'MB-01', quantidade: 1, valorUnitario: 10 }],
       } as never),
     ).rejects.toThrow(/Preço divergente do catálogo/);
+
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+
+  it('produto de LOCAÇÃO (vendavel:false) NÃO vira pedido do site, mesmo com o preço certo', async () => {
+    // Este caminho cria o pedido direto, sem passar pelo resolverItens do
+    // PedidosService — a trava de `vendavel` de lá não alcança aqui.
+    //
+    // Até 15/09 isso não vazava por ACIDENTE: as 24 variantes tinham
+    // precoTabela 0, então qualquer valor real caía na conferência de preço.
+    // Elas ganharam preço no ERP pra aceitar o NCM, o sync espelha, e a partir
+    // daí o valor "certo" passaria — virando VENDA de equipamento de locação.
+    //
+    // O catálogo do site só oferece os 12 modelos, mas isso é regra do OUTRO
+    // repo. Aqui é a fronteira da API: quem tem a chave manda o SKU que quiser.
+    const { svc, prisma } = build({
+      produtos: [
+        {
+          id: 'prod-9',
+          sku: 'MB-01_D.S.',
+          nome: 'Master Block MB-01 + Data Sense',
+          vendavel: false,
+          precoTabela: 4350,
+        },
+      ],
+    });
+
+    await expect(
+      svc.receber('emp-1', {
+        ...PEDIDO,
+        itens: [{ sku: 'MB-01_D.S.', quantidade: 1, valorUnitario: 4350 }],
+      } as never),
+    ).rejects.toThrow(/LOCAÇÃO não pode ser vendido/i);
 
     expect(prisma.pedido.create).not.toHaveBeenCalled();
   });
