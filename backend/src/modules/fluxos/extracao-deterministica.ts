@@ -370,6 +370,23 @@ const PERFIL_FRASES: Array<[RegExp, string]> = [
     ),
     'condominio',
   ],
+  // 'síndico' é a TERCEIRA instância da classe 'casa de máquinas'/'morador de
+  // rua': palavra cujo sentido depende do que vem junto. O CARGO não diz o
+  // lugar — **síndico também tem apartamento**, e em 17/09 "sou sindico aqui,
+  // queimou a geladeira da minha cozinha" virou condomínio e mandou a página
+  // comercial pra quem falava da própria cozinha. Acompanhado do LUGAR resolve;
+  // sozinho ele saiu de PERFIL_PALAVRAS e abstém. Mesma adjacência de UMA
+  // palavra do 'morador' ('síndico AQUI do prédio' é o registro falado).
+  [
+    rx('\\bs[íi]ndic[oa]( \\S+)? d[oa]s? (pr[ée]dio|condom[íi]nio|edif[íi]cio|bloco|conjunto)\\b'),
+    'condominio',
+  ],
+  // Equipamento que NÃO existe em casa — decide o lugar sem depender de cargo
+  // nenhum, igual 'área comum'. Lista deliberadamente curta e só com o
+  // inequívoco: 'bomba' e 'portão' ficaram DE FORA de propósito (bomba de
+  // piscina e portão de garagem de casa existem, e cravar errado aqui manda a
+  // pessoa pro produto errado — na dúvida, quem pergunta é o nó consultivo).
+  [rx('\\b(elevador(es)?|portaria|interfone)\\b'), 'condominio'],
 ];
 const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
   [
@@ -384,7 +401,9 @@ const PERFIL_PALAVRAS: Array<[RegExp, string]> = [
     rx('\\b(casa|apartamento|ap[êe]|s[íi]tio|ch[áa]cara|resid[êe]ncia|residencial)\\b'),
     'residencia',
   ],
-  [rx('\\b(condom[íi]nio|s[íi]ndic[oa])\\b'), 'condominio'],
+  // Só o SUBSTANTIVO. Quem escreve "é pro condomínio" está dizendo o LUGAR; o
+  // cargo ('síndico') saiu daqui — ver o bloco dele em PERFIL_FRASES.
+  [rx('\\bcondom[íi]nio\\b'), 'condominio'],
   [rx('\\b(carregador(es)?|eletroposto|wallbox|recarga)\\b'), 'carro_eletrico'],
 ];
 /**

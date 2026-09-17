@@ -621,10 +621,28 @@ describe('perfilNaFrase — o que a varredura de 12/09 pegou', () => {
      */
     it.each([
       ['moro num condominio', 'condominio'],
-      ['moro num predio com sindico', 'condominio'],
       ['moro e o carregador fica na garagem', 'carro_eletrico'],
     ])('compatível, não conflito: "%s" → %s', (f, esperado) => {
       expect(perfilNaFrase(f)).toBe(esperado);
+    });
+
+    /**
+     * ⚠️ MUDOU em 17/09, e de propósito. Esta linha vivia no `it.each` acima
+     * esperando `condominio`, porque o CARGO ('síndico') cravava sozinho.
+     *
+     * A decisão do Léo de 17/09 inverteu a régua: *"condomínio não é restrição,
+     * é ambiguidade — morar em prédio não impede nada, e síndico também tem
+     * apartamento. Na dúvida, perguntar antes de mandar calculadora errada."*
+     *
+     * Quem "mora num prédio com síndico" quase sempre está falando do PRÓPRIO
+     * apartamento. Cravar condomínio aqui é o mesmo defeito que mandou a página
+     * comercial pra quem falou da geladeira da cozinha dele.
+     *
+     * 📌 O que a varredura 2 protegia continua de pé: 'moro num condomínio', com
+     * o SUBSTANTIVO, segue preenchendo (linha acima). O que saiu foi o cargo.
+     */
+    it('"moro num predio com sindico" agora ABSTÉM — o cargo não diz o lugar', () => {
+      expect(perfilNaFrase('moro num predio com sindico')).toBeNull();
     });
 
     it('com substantivo de residência continua preenchendo', () => {
