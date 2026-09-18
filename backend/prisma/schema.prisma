@@ -1095,27 +1095,24 @@ model PedidoItem {
   total         Decimal @db.Decimal(14, 2)
   negociado     Boolean @default(false)
 
-  /// ── LEVANTAMENTO DE CAMPO (proposta técnica, Anexo II) ──
+  /// ── LEVANTAMENTO DE CAMPO, herdado da proposta ──
   ///
-  /// O rep mede o quadro do cliente e é isto que vira a tabela "ITEM /
-  /// QUADRO-PAINEL / TENSÃO / CORRENTE / MODELO" da proposta técnica. Um item
-  /// por quadro: a mesma proposta cobre vários painéis, cada um com seu modelo.
+  /// Cópia do que foi medido no `PropostaItem` quando a proposta virou pedido.
+  /// Quem produz e instala precisa saber a que QUADRO cada equipamento se
+  /// destina — o pedido é o que chega na produção, e mandar o instalador voltar
+  /// à proposta pra descobrir onde vai o MB é como perder a informação.
   ///
-  /// Null = item que não veio de levantamento (proposta de venda comum).
-  /// Tag do quadro/painel como o cliente o chama ("QGBT", "Painel 3").
+  /// 📌 A ORIGEM é o `PropostaItem`; aqui é snapshot, igual ao `produtoNome`.
+  /// (Estes campos chegaram neste model por engano em 17/09 — ver a nota lá.
+  /// Ficam porque carregar o levantamento pro pedido é útil de verdade, mas
+  /// agora é de propósito.)
+  ///
+  /// Null = pedido que não veio de levantamento (venda comum).
   quadroPainel  String?
-  /// Em qual das duas tabelas do Anexo II este item entra. Null = item que não
-  /// é de proposta técnica (venda comum).
   secaoTecnica  PropostaSecaoTecnica?
   /// Tensão medida no quadro, em volts.
   tensaoV       Int?
-  /// 🔴 Corrente de carga medida, em ampères — é ela que SELECIONA o modelo.
-  ///
-  /// ⚠️ O modelo de proposta técnica que o Léo mandou (17/09) tem as colunas
-  /// ITEM / QUADRO-PAINEL / TENSÃO / MODELO e **não tem a corrente** — mas é a
-  /// corrente que decide qual MB entra. Sem registrar o que foi medido, ninguém
-  /// consegue conferir depois por que aquele modelo foi escolhido, e um modelo
-  /// menor que o necessário não protege a instalação.
+  /// Corrente de carga medida, em ampères — foi ela que selecionou o modelo.
   correnteA     Int?
 
   pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
@@ -1380,6 +1377,34 @@ model PropostaItem {
   desconto      Float   @default(0) // %
   total         Decimal @db.Decimal(14, 2)
   negociado     Boolean @default(false)
+
+  /// ── LEVANTAMENTO DE CAMPO (proposta técnica, Anexo II) ──
+  ///
+  /// 🔴 É AQUI que o levantamento vive. O rep mede o quadro do cliente e isto
+  /// vira a tabela "ITEM / QUADRO-PAINEL / TENSÃO / CORRENTE / MODELO" da
+  /// proposta técnica — o documento que o cliente assina. Um item por quadro: a
+  /// mesma proposta cobre vários painéis, cada um com seu modelo.
+  ///
+  /// ⚠️ Em 17/09 estes campos foram declarados por engano no `PedidoItem`,
+  /// embora a migration os criasse aqui. O `db push` de reconciliação do deploy
+  /// obedeceu ao schema: APAGOU as colunas daqui e criou lá, com exit 0 e log de
+  /// sucesso, deixando o `_prisma_migrations` dizendo "aplicada". Se alguém
+  /// mover de novo, o mesmo acontece de novo — e em silêncio.
+  ///
+  /// Null = item que não veio de levantamento (proposta de venda comum).
+  /// Tag do quadro/painel como o cliente o chama ("QGBT", "Painel 3").
+  quadroPainel  String?
+  /// Em qual das duas tabelas do Anexo II este item entra.
+  secaoTecnica  PropostaSecaoTecnica?
+  /// Tensão medida no quadro, em volts.
+  tensaoV       Int?
+  /// 🔴 Corrente de carga medida, em ampères — é ela que SELECIONA o modelo.
+  ///
+  /// O modelo de proposta técnica (17/09) tem as colunas ITEM / QUADRO-PAINEL /
+  /// TENSÃO / MODELO e **não tem a corrente** — mas é a corrente que decide qual
+  /// MB entra. Sem registrar o medido, ninguém confere depois por que aquele
+  /// modelo foi escolhido, e um modelo menor que o necessário não protege.
+  correnteA     Int?
 
   proposta Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
 
