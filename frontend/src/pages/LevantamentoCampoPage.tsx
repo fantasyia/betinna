@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowRight, Plus, Trash2, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AlertCircle, ArrowRight, Check, Plus, RotateCcw, Trash2, Zap } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -15,17 +15,20 @@ import { Badge, Button, Card, Checkbox, Field, Input } from '@/components/ui';
  * entra. Cada quadro vira um item da proposta — é essa lista que sai como a
  * tabela do Anexo II.
  *
- * 📌 Não existe entidade "levantamento": isto monta a PROPOSTA direto, em
- * rascunho. Uma peça a menos pra sincronizar, e a tabela do documento sai da
- * mesma fonte que o valor.
+ * 🔴 SALVA A CADA QUADRO, não no fim. O primeiro quadro CRIA a proposta em
+ * rascunho; os seguintes entram por `POST /propostas/:id/itens`. Antes disso o
+ * levantamento vivia só na memória do navegador: o rep media cinco quadros
+ * dentro do cliente, fechava a aba e perdia tudo — em campo, onde a bateria
+ * acaba e a rede cai.
  *
- * 🔴 A tela NUNCA escolhe modelo sozinha. Quem escolhe é o backend, pela
- * corrente medida; quando ele recusa, a tela mostra o motivo em vez de um
- * modelo. Preencher "o maior que eu tenho" seria vender equipamento que não
- * protege a instalação.
+ * 📌 Não existe entidade "levantamento": isto É a proposta, desde o primeiro
+ * quadro. Uma peça a menos pra sincronizar, e a tabela do documento sai da mesma
+ * fonte que o valor.
+ *
+ * 🔴 A tela NUNCA escolhe modelo. Quem escolhe é o backend, pela corrente
+ * medida; quando ele recusa, a tela mostra o motivo em vez de um modelo.
  */
 
-/** O acompanhamento e o papel do quadro decidem a variante do equipamento. */
 type Variante = 'BASE' | 'DATA_SENSE' | 'END_POINT';
 
 interface ModeloEscolhido {
@@ -47,10 +50,7 @@ type RespostaSelecao =
         | 'variante-indisponivel';
     };
 
-/**
- * O motivo da recusa vira uma frase que diz O QUE FAZER — são consertos
- * diferentes, e um "não achei" genérico mandaria o rep pro lugar errado.
- */
+/** Cada motivo tem um conserto diferente; um "não achei" mandaria o rep pro lugar errado. */
 const RECUSA: Record<string, string> = {
   'acima-da-linha':
     'Corrente acima da linha Master Block. É projeto especial — fale com a diretoria antes de prometer prazo.',
@@ -61,15 +61,23 @@ const RECUSA: Record<string, string> = {
   'corrente-invalida': 'Informe a corrente medida no quadro.',
 };
 
-interface QuadroMedido {
-  /** Chave só de UI — nada disso vai pro backend. */
-  uid: string;
-  quadroPainel: string;
-  tensaoV: number;
-  correnteA: number;
-  acompanhamento: boolean;
-  principal: boolean;
-  modelo: ModeloEscolhido;
+interface ItemProposta {
+  id: string;
+  produtoNome: string;
+  quadroPainel: string | null;
+  tensaoV: number | null;
+  correnteA: number | null;
+}
+
+interface Proposta {
+  id: string;
+  numero: string;
+  status: string;
+  itens: ItemProposta[];
+  cliente?: { id: string; nome: string; cnpj?: string | null };
+  prazoEntregaDias?: number | null;
+  prazoInstalacaoDias?: number | null;
+  prazoSoftwareDias?: number | null;
 }
 
 interface ClienteOpt {
@@ -83,14 +91,14 @@ interface ClienteOpt {
  * qualidade da energia que entra pela rede; os End Points são a comunicação
  * dele até os outros quadros (Léo, 18/09).
  *
- * O backend recusa proposta que viole isso. Aqui a checagem existe pra o rep
- * ver o problema ENQUANTO monta, em vez de descobrir no botão de gerar.
+ * O backend recusa proposta que viole isso. Aqui a checagem existe pra o rep ver
+ * o problema ENQUANTO monta, e não só no fim.
  */
-function problemaDeTopologia(quadros: QuadroMedido[]): string | null {
-  const ds = quadros.filter((q) => q.modelo.sku.endsWith('_D.S.')).length;
-  const ep = quadros.filter((q) => q.modelo.sku.endsWith('_E.P.')).length;
+function problemaDeTopologia(itens: ItemProposta[]): string | null {
+  const ds = itens.filter((i) => i.produtoNome.includes('Data Sense')).length;
+  const ep = itens.filter((i) => i.produtoNome.includes('End Point')).length;
   if (ds > 1) {
-    return 'Há mais de um Data Sense. Ele é um por instalação — marque só o quadro principal.';
+    return 'Há mais de um Data Sense. Ele é um por instalação — deixe só o quadro principal.';
   }
   if (ep > 0 && ds === 0) {
     return 'Há End Point sem Data Sense. Marque qual quadro é o principal: é ele que concentra os dados.';
@@ -106,9 +114,12 @@ function varianteDe(acompanhamento: boolean, principal: boolean): Variante {
 export default function LevantamentoCampoPage() {
   const toast = useToast();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const propostaIdUrl = params.get('proposta');
 
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
-  const [quadros, setQuadros] = useState<QuadroMedido[]>([]);
+  const [proposta, setProposta] = useState<Proposta | null>(null);
+  const [rascunhos, setRascunhos] = useState<Proposta[]>([]);
 
   const [quadroPainel, setQuadroPainel] = useState('');
   const [tensao, setTensao] = useState('');
@@ -116,19 +127,49 @@ export default function LevantamentoCampoPage() {
   const [acompanhamento, setAcompanhamento] = useState(false);
   const [principal, setPrincipal] = useState(false);
 
+  const [prazoEntrega, setPrazoEntrega] = useState('');
+  const [prazoInstalacao, setPrazoInstalacao] = useState('');
+  const [prazoSoftware, setPrazoSoftware] = useState('');
+  const [salvandoPrazos, setSalvandoPrazos] = useState(false);
+
   const [previa, setPrevia] = useState<RespostaSelecao | null>(null);
   const [consultando, setConsultando] = useState(false);
-  const [gerando, setGerando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const topologia = problemaDeTopologia(quadros);
+  const itens = proposta?.itens ?? [];
+  const topologia = problemaDeTopologia(itens);
+
+  /** Levantamentos pela metade, pra retomar de onde parou. */
+  useEffect(() => {
+    if (propostaIdUrl) return;
+    api
+      .get<{ data: Proposta[] }>('/propostas?status=RASCUNHO&limit=20')
+      .then((r) => setRascunhos(r.data ?? []))
+      .catch(() => setRascunhos([]));
+  }, [propostaIdUrl]);
+
+  /** Retomar: carrega o rascunho com os quadros que já foram medidos. */
+  useEffect(() => {
+    if (!propostaIdUrl) return;
+    api
+      .get<Proposta>(`/propostas/${propostaIdUrl}`)
+      .then((p) => {
+        setProposta(p);
+        if (p.cliente) setCliente({ id: p.cliente.id, nome: p.cliente.nome, cnpj: null });
+        setPrazoEntrega(p.prazoEntregaDias ? String(p.prazoEntregaDias) : '');
+        setPrazoInstalacao(p.prazoInstalacaoDias ? String(p.prazoInstalacaoDias) : '');
+        setPrazoSoftware(p.prazoSoftwareDias ? String(p.prazoSoftwareDias) : '');
+      })
+      .catch((e) => setErro(apiErrorMessage(e)));
+  }, [propostaIdUrl]);
 
   /**
    * Consulta o modelo pra corrente digitada.
    *
-   * Sai do `onBlur` e do botão, não de cada tecla: a cada dígito de "420" o
-   * usuário passa por 4 e por 42, que são correntes válidas de OUTROS modelos —
-   * a tela ficaria piscando modelo errado enquanto ele digita.
+   * Sai do blur e do botão, não de cada tecla: digitando "420" o usuário passa
+   * por 4 e por 42, que são correntes válidas de OUTROS modelos — a tela ficaria
+   * piscando modelo errado enquanto ele digita.
    */
   async function consultarModelo() {
     const correnteA = Number(corrente);
@@ -151,68 +192,100 @@ export default function LevantamentoCampoPage() {
     }
   }
 
-  function adicionarQuadro() {
+  /**
+   * Grava o quadro NA HORA.
+   *
+   * O primeiro cria a proposta; os seguintes entram na que já existe. É o que
+   * faz o levantamento sobreviver a fechar a aba.
+   */
+  async function adicionarQuadro() {
     if (!previa?.ok) return;
+    if (!cliente) {
+      setErro('Escolha o cliente antes de medir o primeiro quadro.');
+      return;
+    }
     const nome = quadroPainel.trim();
     if (!nome) {
       setErro('Dê um nome ao quadro — é como ele aparece no documento do cliente.');
       return;
     }
+    setSalvando(true);
     setErro(null);
-    setQuadros((atual) => [
-      ...atual,
-      {
-        uid: `${Date.now()}-${atual.length}`,
-        quadroPainel: nome,
-        tensaoV: Number(tensao) || 0,
-        correnteA: Number(corrente),
-        acompanhamento,
-        principal,
-        modelo: previa.modelo,
-      },
-    ]);
-    setQuadroPainel('');
-    setTensao('');
-    setCorrente('');
-    setPrincipal(false);
-    setPrevia(null);
-  }
-
-  function removerQuadro(uid: string) {
-    setQuadros((atual) => atual.filter((q) => q.uid !== uid));
-  }
-
-  async function gerarProposta() {
-    if (!cliente || quadros.length === 0 || topologia) return;
-    setGerando(true);
-    setErro(null);
+    const item = {
+      produtoId: previa.modelo.produtoId,
+      quantidade: 1,
+      desconto: 0,
+      quadroPainel: nome,
+      tensaoV: Number(tensao) || undefined,
+      correnteA: Number(corrente),
+      secaoTecnica: 'SUPRESSOR' as const,
+    };
     try {
-      const proposta = await api.post<{ id: string; numero: string }>('/propostas', {
-        clienteId: cliente.id,
-        modalidade: 'LOCACAO',
-        itens: quadros.map((q) => ({
-          produtoId: q.modelo.produtoId,
-          quantidade: 1,
-          desconto: 0,
-          quadroPainel: q.quadroPainel,
-          tensaoV: q.tensaoV || undefined,
-          correnteA: q.correnteA,
-          secaoTecnica: 'SUPRESSOR' as const,
-        })),
-      });
-      toast.success(`Proposta ${proposta.numero} criada a partir do levantamento`);
-      navigate(`/propostas?id=${proposta.id}`);
+      let atualizada: Proposta;
+      if (proposta) {
+        atualizada = await api.post<Proposta>(`/propostas/${proposta.id}/itens`, item);
+      } else {
+        atualizada = await api.post<Proposta>('/propostas', {
+          clienteId: cliente.id,
+          modalidade: 'LOCACAO',
+          itens: [item],
+        });
+        // A URL passa a apontar pro rascunho: recarregar a página não perde nada.
+        setParams({ proposta: atualizada.id }, { replace: true });
+      }
+      setProposta(atualizada);
+      setQuadroPainel('');
+      setTensao('');
+      setCorrente('');
+      setPrincipal(false);
+      setPrevia(null);
     } catch (e) {
-      // O backend tem as guardas de verdade (topologia, produto inativo, preço
-      // de locação ausente). A mensagem dele é mais específica que qualquer
-      // coisa que a tela saiba dizer — então ela vai inteira pra tela.
       setErro(apiErrorMessage(e));
     } finally {
-      setGerando(false);
+      setSalvando(false);
     }
   }
 
-  const podeGerar = !!cliente && quadros.length > 0 && !topologia && !gerando;
+  async function removerQuadro(itemId: string) {
+    if (!proposta) return;
+    try {
+      const atualizada = await api.delete<Proposta>(`/propostas/${proposta.id}/itens/${itemId}`);
+      setProposta(atualizada);
+    } catch (e) {
+      setErro(apiErrorMessage(e));
+    }
+  }
+
+  /**
+   * Os prazos do item 04 do Anexo II — o rep coleta com o cliente depois da
+   * medição, e é daqui que sai o texto do documento.
+   */
+  async function salvarPrazos() {
+    if (!proposta) return;
+    setSalvandoPrazos(true);
+    setErro(null);
+    try {
+      const atualizada = await api.patch<Proposta>(`/propostas/${proposta.id}`, {
+        prazoEntregaDias: Number(prazoEntrega) || undefined,
+        prazoInstalacaoDias: Number(prazoInstalacao) || undefined,
+        prazoSoftwareDias: Number(prazoSoftware) || undefined,
+      });
+      setProposta((p) => (p ? { ...p, ...atualizada } : atualizada));
+      toast.success('Prazos salvos');
+    } catch (e) {
+      setErro(apiErrorMessage(e));
+    } finally {
+      setSalvandoPrazos(false);
+    }
+  }
+
+  function concluir() {
+    if (!proposta) return;
+    toast.success(`Levantamento salvo na proposta ${proposta.numero}`);
+    navigate(`/propostas?id=${proposta.id}`);
+  }
+
+  const semPrazo = !prazoEntrega || !prazoInstalacao || !prazoSoftware;
 
   return (
     <PageLayout
@@ -221,18 +294,51 @@ export default function LevantamentoCampoPage() {
     >
       <VendasTabs />
       <div className="flex flex-col gap-4">
+        {/* Retomar o que ficou pela metade. Some assim que há proposta aberta. */}
+        {!proposta && rascunhos.length > 0 && (
+          <Card className="p-4" data-testid="levantamento-rascunhos">
+            <p className="mb-2 text-sm font-medium">Levantamentos em aberto</p>
+            <div className="flex flex-col gap-1">
+              {rascunhos.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setParams({ proposta: r.id })}
+                  data-testid={`retomar-${r.id}`}
+                  className="flex items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-surface-hover"
+                >
+                  <span>
+                    {r.numero} · {r.cliente?.nome ?? 'sem cliente'}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-text-subtle">
+                    <RotateCcw size={13} aria-hidden="true" />
+                    {r.itens?.length ?? 0} quadro(s)
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Card>
+        )}
+
         <Card className="p-4">
           <Field label="Cliente" required>
-            <AsyncCombobox<ClienteOpt>
-              testId="levantamento-cliente"
-              endpoint="/clientes"
-              placeholder="Buscar cliente por nome ou CNPJ…"
-              getLabel={(c) => c.nome}
-              getSubLabel={(c) => c.cnpj ?? null}
-              getId={(c) => c.id}
-              value={cliente}
-              onChange={setCliente}
-            />
+            {proposta ? (
+              <p className="text-sm" data-testid="levantamento-cliente-fixo">
+                {cliente?.nome ?? proposta.cliente?.nome} ·{' '}
+                <span className="text-text-subtle">{proposta.numero}</span>
+              </p>
+            ) : (
+              <AsyncCombobox<ClienteOpt>
+                testId="levantamento-cliente"
+                endpoint="/clientes"
+                placeholder="Buscar cliente por nome ou CNPJ…"
+                getLabel={(c) => c.nome}
+                getSubLabel={(c) => c.cnpj ?? null}
+                getId={(c) => c.id}
+                value={cliente}
+                onChange={setCliente}
+              />
+            )}
           </Field>
         </Card>
 
@@ -277,9 +383,8 @@ export default function LevantamentoCampoPage() {
               checked={acompanhamento}
               onChange={(e) => {
                 setAcompanhamento(e.target.checked);
-                // Desmarcar o acompanhamento zera o "principal": quadro sem
-                // software não tem papel na topologia, e deixar a marca ali
-                // faria o próximo quadro herdar um estado que não existe mais.
+                // Sem software não há papel na topologia; deixar a marca faria o
+                // próximo quadro herdar um estado que não existe mais.
                 if (!e.target.checked) setPrincipal(false);
                 setPrevia(null);
               }}
@@ -330,15 +435,16 @@ export default function LevantamentoCampoPage() {
           <div className="mt-3">
             <Button
               onClick={adicionarQuadro}
-              disabled={!previa?.ok}
+              disabled={!previa?.ok || salvando}
               data-testid="levantamento-adicionar"
             >
-              <Plus size={16} aria-hidden="true" /> Adicionar quadro
+              <Plus size={16} aria-hidden="true" />
+              {salvando ? 'Salvando…' : 'Adicionar quadro'}
             </Button>
           </div>
         </Card>
 
-        {quadros.length > 0 && (
+        {itens.length > 0 && (
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
               <thead>
@@ -351,22 +457,24 @@ export default function LevantamentoCampoPage() {
                 </tr>
               </thead>
               <tbody data-testid="levantamento-lista">
-                {quadros.map((q) => (
-                  <tr key={q.uid} className="border-t border-border">
+                {itens.map((i) => (
+                  <tr key={i.id} className="border-t border-border">
                     <td className="px-4 py-2">
                       <span className="inline-flex items-center gap-2">
-                        {q.quadroPainel}
-                        {q.principal && <Badge variant="primary">principal</Badge>}
+                        {i.quadroPainel ?? '—'}
+                        {i.produtoNome.includes('Data Sense') && (
+                          <Badge variant="primary">principal</Badge>
+                        )}
                       </span>
                     </td>
-                    <td className="px-2 py-2">{q.tensaoV ? `${q.tensaoV} V` : '—'}</td>
-                    <td className="px-2 py-2">{q.correnteA} A</td>
-                    <td className="px-4 py-2 font-medium">{q.modelo.sku}</td>
+                    <td className="px-2 py-2">{i.tensaoV ? `${i.tensaoV} V` : '—'}</td>
+                    <td className="px-2 py-2">{i.correnteA ? `${i.correnteA} A` : '—'}</td>
+                    <td className="px-4 py-2 font-medium">{i.produtoNome}</td>
                     <td className="px-2 py-2">
                       <button
                         type="button"
-                        aria-label={`Remover ${q.quadroPainel}`}
-                        onClick={() => removerQuadro(q.uid)}
+                        aria-label={`Remover ${i.quadroPainel ?? 'quadro'}`}
+                        onClick={() => removerQuadro(i.id)}
                         className="text-text-subtle hover:text-danger"
                       >
                         <Trash2 size={16} aria-hidden="true" />
@@ -376,6 +484,57 @@ export default function LevantamentoCampoPage() {
                 ))}
               </tbody>
             </table>
+          </Card>
+        )}
+
+        {/* Os prazos do item 04 do Anexo II. Só depois de haver proposta: são
+            combinados com o cliente, e antes do levantamento não há conversa. */}
+        {proposta && (
+          <Card className="p-4" data-testid="levantamento-prazos">
+            <p className="mb-1 text-sm font-medium">Prazos combinados com o cliente</p>
+            <p className="mb-3 text-xs text-text-subtle">
+              Vão impressos no documento como &quot;em até __ (____) dias&quot;. Em branco, a lacuna
+              fica em branco no papel.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Entrega (dias)">
+                <Input
+                  data-testid="prazo-entrega"
+                  inputMode="numeric"
+                  value={prazoEntrega}
+                  onChange={(e) => setPrazoEntrega(e.target.value.replace(/\D/g, ''))}
+                  placeholder="45"
+                />
+              </Field>
+              <Field label="Instalação (dias)">
+                <Input
+                  data-testid="prazo-instalacao"
+                  inputMode="numeric"
+                  value={prazoInstalacao}
+                  onChange={(e) => setPrazoInstalacao(e.target.value.replace(/\D/g, ''))}
+                  placeholder="15"
+                />
+              </Field>
+              <Field label="Software (dias)">
+                <Input
+                  data-testid="prazo-software"
+                  inputMode="numeric"
+                  value={prazoSoftware}
+                  onChange={(e) => setPrazoSoftware(e.target.value.replace(/\D/g, ''))}
+                  placeholder="7"
+                />
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Button
+                variant="secondary"
+                onClick={salvarPrazos}
+                disabled={salvandoPrazos}
+                data-testid="salvar-prazos"
+              >
+                {salvandoPrazos ? 'Salvando…' : 'Salvar prazos'}
+              </Button>
+            </div>
           </Card>
         )}
 
@@ -399,28 +558,16 @@ export default function LevantamentoCampoPage() {
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          <Button
-            onClick={gerarProposta}
-            disabled={!podeGerar}
-            data-testid="levantamento-gerar"
-            title={
-              !cliente
-                ? 'Escolha o cliente'
-                : quadros.length === 0
-                  ? 'Adicione ao menos um quadro'
-                  : undefined
-            }
-          >
-            {gerando ? 'Gerando…' : 'Gerar proposta'}
-          </Button>
-        </div>
-
-        {quadros.length > 0 && (
-          <p className="text-right text-xs text-text-subtle">
-            {quadros.length} {quadros.length === 1 ? 'quadro' : 'quadros'} · os valores saem na
-            proposta, pela tabela de locação
-          </p>
+        {proposta && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-text-subtle">
+              {itens.length} quadro(s) salvos em {proposta.numero}
+              {semPrazo && ' · prazos pendentes'}
+            </p>
+            <Button onClick={concluir} disabled={!!topologia} data-testid="levantamento-concluir">
+              <Check size={16} aria-hidden="true" /> Ver proposta
+            </Button>
+          </div>
         )}
       </div>
     </PageLayout>
