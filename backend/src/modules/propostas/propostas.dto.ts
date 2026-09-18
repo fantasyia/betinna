@@ -1,4 +1,4 @@
-import { PropostaModalidade, PropostaStatus } from '@prisma/client';
+import { PropostaModalidade, PropostaSecaoTecnica, PropostaStatus } from '@prisma/client';
 import { z } from 'zod';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
@@ -7,6 +7,25 @@ export const propostaItemInputSchema = z.object({
   quantidade: z.number().int().min(1).max(100_000),
   desconto: z.number().min(0).max(80).default(0),
   precoUnitarioOverride: z.number().positive().optional(),
+
+  /**
+   * ── LEVANTAMENTO DE CAMPO (Anexo II) ──
+   *
+   * O rep mede o quadro do cliente e cada quadro vira um item. Opcionais porque
+   * a maior parte das propostas é venda comum, sem levantamento.
+   */
+  /** Como o cliente chama o quadro: "QGBT", "Painel 3". */
+  quadroPainel: z.string().trim().min(1).max(80).optional(),
+  /** Tensão medida, em volts. */
+  tensaoV: z.number().int().min(1).max(100_000).optional(),
+  /**
+   * 🔴 Corrente de carga medida, em ampères — foi ela que selecionou o modelo.
+   *
+   * Vai junto de propósito, mesmo não aparecendo no documento: sem o medido,
+   * ninguém confere depois por que aquele MB foi escolhido.
+   */
+  correnteA: z.number().int().min(1).max(100_000).optional(),
+  secaoTecnica: z.nativeEnum(PropostaSecaoTecnica).optional(),
 });
 export type PropostaItemInputDto = z.infer<typeof propostaItemInputSchema>;
 
@@ -86,3 +105,24 @@ export const listPropostasSchema = z.object({
   representanteId: usuarioIdSchema.optional(),
 });
 export type ListPropostasDto = z.infer<typeof listPropostasSchema>;
+
+/**
+ * A corrente medida no quadro, pra descobrir o modelo.
+ *
+ * `coerce` porque vem de query string. O piso é 1 A: corrente zero ou negativa
+ * não é medição, é campo em branco — e o seletor precisa distinguir "não medi"
+ * de "medi e não tem modelo".
+ */
+export const selecaoModeloSchema = z.object({
+  correnteA: z.coerce.number().int().min(1).max(100_000),
+  /**
+   * O acompanhamento é opcional e escolhido POR QUADRO (Léo, 18/09): sem ele é
+   * o Master Block puro; com ele, o quadro principal leva o Data Sense e os
+   * demais o End Point.
+   *
+   * Default `BASE` de propósito: é a venda mais simples, e errar pra cima
+   * colocaria no contrato um equipamento mais caro que ninguém pediu.
+   */
+  variante: z.enum(['BASE', 'DATA_SENSE', 'END_POINT']).default('BASE'),
+});
+export type SelecaoModeloDto = z.infer<typeof selecaoModeloSchema>;

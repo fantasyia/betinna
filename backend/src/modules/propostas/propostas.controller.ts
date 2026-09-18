@@ -13,10 +13,12 @@ import {
   type ChangeStatusDto,
   type CreatePropostaDto,
   type ListPropostasDto,
+  type SelecaoModeloDto,
   type UpdatePropostaDto,
   changeStatusSchema,
   createPropostaSchema,
   listPropostasSchema,
+  selecaoModeloSchema,
   updatePropostaSchema,
 } from './propostas.dto';
 import { PropostaAceiteService } from './proposta-aceite.service';
@@ -67,6 +69,28 @@ export class PropostasController {
     @Query(new ZodValidationPipe(listPropostasSchema)) query: ListPropostasDto,
   ) {
     return this.propostas.list(user, query);
+  }
+
+  /**
+   * LEVANTAMENTO DE CAMPO: qual Master Block atende esta corrente.
+   *
+   * O rep está no cliente, mede o quadro e digita a corrente; a tela mostra o
+   * modelo na hora. Fica antes de `@Get(':id')` porque rota fixa depois de rota
+   * com parâmetro é lida como id.
+   *
+   * ⛔ NÃO chuta. Corrente fora de toda faixa volta `ok: false` com o motivo, e
+   * a tela mostra o motivo em vez de um modelo. Devolver "o maior que eu tenho"
+   * seria vender equipamento que não protege a instalação — e o prejuízo só
+   * aparece quando queima.
+   */
+  @Get('selecao-modelo')
+  @RequirePermissions({ module: 'propostas', action: 'create' })
+  @ApiOperation({ summary: 'O Master Block para a corrente medida no quadro.' })
+  selecaoModelo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(selecaoModeloSchema)) query: SelecaoModeloDto,
+  ) {
+    return this.propostas.selecionarModelo(user, query.correnteA, query.variante);
   }
 
   // ─── C2 — Exportação (declaradas antes de @Get(':id') por especificidade) ──

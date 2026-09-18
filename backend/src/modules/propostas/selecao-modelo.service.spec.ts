@@ -94,3 +94,79 @@ describe('seleção do modelo pela corrente', () => {
     );
   });
 });
+
+/**
+ * O CATÁLOGO REAL tem três produtos por faixa — o base, o `_D.S.` e o `_E.P.`
+ * dividem a mesma corrente (conferido nos 36 cadastrados: 12 faixas, 3 SKUs
+ * cada). O `LINHA` acima é uma simplificação e não exercita o desempate.
+ *
+ * 🔴 Antes da variante existir, o seletor fazia `find` e ficava com o primeiro
+ * que o banco devolvesse. Os três são equipamentos legítimos pra aquela
+ * corrente, com preços bem diferentes (MB-04 R$425, _E.P. R$729, _D.S. R$874
+ * por mês) — então o rep podia receber o errado e nada acusava.
+ */
+const FAIXA_COMPLETA = [
+  { id: 'b4', sku: 'MB-04', nome: 'Master Block MB-04', correnteMinA: 401, correnteMaxA: 500 },
+  { id: 'd4', sku: 'MB-04_D.S.', nome: 'MB-04 Data Sense', correnteMinA: 401, correnteMaxA: 500 },
+  { id: 'e4', sku: 'MB-04_E.P.', nome: 'MB-04 End Point', correnteMinA: 401, correnteMaxA: 500 },
+];
+
+describe('acompanhamento opcional — variante por quadro', () => {
+  it.each([
+    ['BASE', 'MB-04'],
+    ['DATA_SENSE', 'MB-04_D.S.'],
+    ['END_POINT', 'MB-04_E.P.'],
+  ] as const)('420A + %s → %s', async (variante, sku) => {
+    const { svc } = build(FAIXA_COMPLETA);
+    const r = await svc.paraCorrente('emp-1', { correnteA: 420, variante });
+    expect(r.ok && r.modelo.sku).toBe(sku);
+  });
+
+  it('sem pedir variante, vem o Master Block PURO', async () => {
+    // Default seguro: errar pra cima poria no contrato um equipamento mais caro
+    // que ninguém pediu.
+    const { svc } = build(FAIXA_COMPLETA);
+    const r = await svc.paraCorrente('emp-1', { correnteA: 420 });
+    expect(r.ok && r.modelo.sku).toBe('MB-04');
+  });
+
+  it('a ORDEM do banco não decide a variante', async () => {
+    // O mesmo catálogo embaralhado tem que dar o mesmo resultado. É o teste que
+    // pega a volta do `find` arbitrário.
+    const invertido = [...FAIXA_COMPLETA].reverse();
+    const { svc } = build(invertido);
+    const r = await svc.paraCorrente('emp-1', { correnteA: 420, variante: 'BASE' });
+    expect(r.ok && r.modelo.sku).toBe('MB-04');
+  });
+
+  it('variante que não existe no catálogo RECUSA, não cai pro base', async () => {
+    // Cair pro base entregaria um equipamento SEM acompanhamento a um cliente
+    // que pediu acompanhamento — e ele só descobriria na instalação.
+    const { svc } = build([FAIXA_COMPLETA[0]]);
+    const r = await svc.paraCorrente('emp-1', { correnteA: 420, variante: 'DATA_SENSE' });
+    expect(r).toEqual({ ok: false, motivo: 'variante-indisponivel' });
+  });
+
+  it('BASE é por exclusão: sufixo desconhecido não passa por Master Block puro', async () => {
+    // Se amanhã entrar uma variante nova no catálogo, ela não pode ser servida
+    // calada como se fosse o equipamento puro.
+    const { svc } = build([
+      {
+        id: 'x4',
+        sku: 'MB-04_X.Y.',
+        nome: 'MB-04 variante nova',
+        correnteMinA: 401,
+        correnteMaxA: 500,
+      },
+      FAIXA_COMPLETA[1],
+    ]);
+    const r = await svc.paraCorrente('emp-1', { correnteA: 420, variante: 'BASE' });
+    expect(r).toEqual({ ok: false, motivo: 'variante-indisponivel' });
+  });
+
+  it('acima da linha continua acima da linha, com ou sem acompanhamento', async () => {
+    const { svc } = build(FAIXA_COMPLETA);
+    const r = await svc.paraCorrente('emp-1', { correnteA: 7200, variante: 'DATA_SENSE' });
+    expect(r).toEqual({ ok: false, motivo: 'acima-da-linha' });
+  });
+});

@@ -1,10 +1,42 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 
+/**
+ * O acompanhamento (software) é OPCIONAL, e a escolha é por quadro — regra do
+ * Léo, 18/09.
+ *
+ * Quando o cliente quer, o hardware muda conforme o papel do quadro:
+ *
+ * | quer acompanhamento? | qual quadro | variante  |
+ * |---|---|---|
+ * | não | qualquer | `BASE` — o Master Block puro |
+ * | sim | o PRINCIPAL | `DATA_SENSE` — o concentrador, um por instalação |
+ * | sim | os demais | `END_POINT` |
+ */
+export type VarianteAcompanhamento = 'BASE' | 'DATA_SENSE' | 'END_POINT';
+
+/**
+ * A convenção vive no SKU do catálogo: `MB-04`, `MB-04_D.S.`, `MB-04_E.P.`.
+ *
+ * 📌 É o catálogo que manda, não uma tabela aqui — os 36 produtos já existem
+ * com essa nomenclatura, e inventar um campo novo criaria uma segunda fonte pra
+ * mesma verdade.
+ */
+const SUFIXO: Record<VarianteAcompanhamento, string> = {
+  BASE: '',
+  DATA_SENSE: '_D.S.',
+  END_POINT: '_E.P.',
+};
+
 /** O que o levantamento de campo mediu num quadro. */
 export interface Medicao {
   /** Corrente de carga, em ampères. É ela que decide o modelo. */
   correnteA: number;
+  /**
+   * Com ou sem acompanhamento, e em que papel. Default `BASE`: sem o software,
+   * que é a venda mais simples e a que não surpreende no preço.
+   */
+  variante?: VarianteAcompanhamento;
 }
 
 export interface ModeloEscolhido {
@@ -51,12 +83,20 @@ export class SelecaoModeloService {
     medicao: Medicao,
   ): Promise<
     | { ok: true; modelo: ModeloEscolhido }
-    | { ok: false; motivo: 'corrente-invalida' | 'acima-da-linha' | 'sem-faixa-cadastrada' }
+    | {
+        ok: false;
+        motivo:
+          | 'corrente-invalida'
+          | 'acima-da-linha'
+          | 'sem-faixa-cadastrada'
+          | 'variante-indisponivel';
+      }
   > {
     const corrente = Math.trunc(Number(medicao.correnteA));
     if (!Number.isFinite(corrente) || corrente <= 0) {
       return { ok: false, motivo: 'corrente-invalida' };
     }
+    const variante = medicao.variante ?? 'BASE';
 
     const candidatos = await this.prisma.produto.findMany({
       where: {
@@ -77,21 +117,37 @@ export class SelecaoModeloService {
 
     if (candidatos.length === 0) return { ok: false, motivo: 'sem-faixa-cadastrada' };
 
-    // A faixa que CONTÉM a corrente. Ordenado por `correnteMinA`, o primeiro que
-    // contém é o menor que atende — e o menor que atende é o certo: subir de
+    // A faixa que CONTÉM a corrente. Ordenado por `correnteMinA`, a primeira que
+    // contém é a menor que atende — e a menor que atende é a certa: subir de
     // modelo sem necessidade é vender caro, descer é não proteger.
-    const dentro = candidatos.find(
+    const naFaixa = candidatos.filter(
       (c) => corrente >= (c.correnteMinA ?? 0) && corrente <= (c.correnteMaxA ?? 0),
     );
-    if (dentro) {
+    if (naFaixa.length > 0) {
+      // 🔴 TODA faixa tem TRÊS produtos — o base, o `_D.S.` e o `_E.P.` dividem a
+      // mesma corrente (conferido nos 36 do catálogo: 12 faixas, 3 SKUs cada).
+      //
+      // Antes daqui existir, o seletor fazia `find` e ficava com o primeiro que
+      // o Postgres devolvesse: o rep podia receber `MB-04_E.P.` tendo pedido o
+      // Master Block puro, ou o contrário, e nada acusava — os três são
+      // equipamentos legítimos para aquela corrente, com preços bem diferentes
+      // (MB-04 425, _E.P. 729, _D.S. 874 por mês).
+      const escolhido = this.daVariante(naFaixa, variante);
+      if (!escolhido) {
+        this.logger.warn(
+          `Corrente ${corrente}A: faixa existe, mas não há produto da variante ${variante} ` +
+            `(candidatos: ${naFaixa.map((c) => c.sku).join(', ')}) — empresa ${empresaId}`,
+        );
+        return { ok: false, motivo: 'variante-indisponivel' };
+      }
       return {
         ok: true,
         modelo: {
-          produtoId: dentro.id,
-          sku: dentro.sku ?? '',
-          nome: dentro.nome,
-          correnteMinA: dentro.correnteMinA ?? 0,
-          correnteMaxA: dentro.correnteMaxA ?? 0,
+          produtoId: escolhido.id,
+          sku: escolhido.sku ?? '',
+          nome: escolhido.nome,
+          correnteMinA: escolhido.correnteMinA ?? 0,
+          correnteMaxA: escolhido.correnteMaxA ?? 0,
         },
       };
     }
@@ -112,5 +168,25 @@ export class SelecaoModeloService {
         `(${teto}A) — há LACUNA no cadastro de faixas da empresa ${empresaId}`,
     );
     return { ok: false, motivo: 'sem-faixa-cadastrada' };
+  }
+
+  /**
+   * Entre os produtos da MESMA faixa, o da variante pedida.
+   *
+   * ⚠️ `BASE` exige SKU sem sufixo NENHUM (`MB-04`), não "sem os sufixos que eu
+   * conheço". A diferença aparece no dia em que entrar uma variante nova no
+   * catálogo: com a regra fraca, `MB-04_X.Y.` seria servido calado como se
+   * fosse o Master Block puro. Com esta, ele não casa com nada e o seletor
+   * devolve `variante-indisponivel` — um erro visível, em vez de um
+   * equipamento errado dentro de um contrato assinado.
+   */
+  private daVariante<T extends { sku: string | null }>(
+    naFaixa: T[],
+    variante: VarianteAcompanhamento,
+  ): T | undefined {
+    if (variante === 'BASE') {
+      return naFaixa.find((c) => !!c.sku && !c.sku.includes('_'));
+    }
+    return naFaixa.find((c) => (c.sku ?? '').endsWith(SUFIXO[variante]));
   }
 }

@@ -186,6 +186,8 @@ describe('PropostasService', () => {
       { repPodeCriarPedido: vi.fn(async () => false) } as never,
       // Marca do tenant (logo/cores) — não muda os números do PDF.
       { resolver: vi.fn(async () => ({ primaria: '#201554', secundaria: '#2bcae5' })) } as never,
+      // Seletor de modelo por corrente — exercitado no spec próprio dele.
+      { paraCorrente: vi.fn() } as never,
     );
   });
 
@@ -322,6 +324,52 @@ describe('PropostasService', () => {
       ]);
       prisma.proposta.create.mockResolvedValue(fakeProposta({ status: 'RASCUNHO' }));
     };
+
+    /**
+     * 🔴 O LEVANTAMENTO DE CAMPO tem que chegar no item.
+     *
+     * Sem este teste, parar de propagar quadro/tensão/corrente passa despercebido:
+     * a proposta é criada, o valor sai certo, o PDF sai — e o Anexo II sai com a
+     * tabela vazia. Nada quebra, ninguém é avisado, e o documento que o cliente
+     * assina não diz a qual quadro cada equipamento se destina.
+     */
+    it('grava o levantamento de campo no item (quadro, tensão, corrente)', async () => {
+      prepararCliente();
+
+      await service.create(fakeUser(), {
+        ...baseDto,
+        itens: [
+          {
+            produtoId: 'p-1',
+            quantidade: 1,
+            desconto: 0,
+            quadroPainel: 'QGBT',
+            tensaoV: 380,
+            correnteA: 420,
+            secaoTecnica: 'SUPRESSOR' as const,
+          },
+        ],
+      });
+
+      const item = prisma.proposta.create.mock.calls[0][0].data.itens.create[0];
+      expect(item.quadroPainel).toBe('QGBT');
+      expect(item.tensaoV).toBe(380);
+      // A corrente vai junto mesmo não aparecendo no documento: é ela que
+      // explica por que aquele modelo foi escolhido.
+      expect(item.correnteA).toBe(420);
+      expect(item.secaoTecnica).toBe('SUPRESSOR');
+    });
+
+    it('venda comum não inventa levantamento — os campos ficam nulos', async () => {
+      prepararCliente();
+
+      await service.create(fakeUser(), baseDto);
+
+      const item = prisma.proposta.create.mock.calls[0][0].data.itens.create[0];
+      expect(item.quadroPainel).toBeNull();
+      expect(item.tensaoV).toBeNull();
+      expect(item.correnteA).toBeNull();
+    });
 
     it('LOCACAO grava prazo, dia de vencimento e carência', async () => {
       prepararCliente();

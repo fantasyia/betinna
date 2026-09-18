@@ -1,10 +1,11 @@
 import { escapeHtml } from '@shared/utils/interpolate';
 import { Injectable, Logger } from '@nestjs/common';
 import { anexarDescricaoDoProduto } from './descricao-do-produto.util';
-import { Prisma, type PropostaModalidade } from '@prisma/client';
+import { Prisma, type PropostaModalidade, type PropostaSecaoTecnica } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
+import { SelecaoModeloService, type VarianteAcompanhamento } from './selecao-modelo.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import {
   BusinessRuleException,
@@ -53,6 +54,7 @@ export class PropostasService {
     private readonly aceiteSvc: PropostaAceiteService,
     private readonly pedidosSvc: PedidosService,
     private readonly marca: MarcaTenantService,
+    private readonly selecaoModelo: SelecaoModeloService,
   ) {}
 
   /**
@@ -66,6 +68,21 @@ export class PropostasService {
   ): Promise<{ token: string; url: string; expiraEm: Date }> {
     const proposta = await this.findById(user, id); // valida tenant + scope
     return this.aceiteSvc.gerarLink(proposta.id, proposta.empresaId, proposta.status);
+  }
+
+  /**
+   * LEVANTAMENTO DE CAMPO: qual Master Block atende a corrente medida.
+   *
+   * Fachada fina sobre o `SelecaoModeloService` — existe pra resolver o tenant
+   * pelo mesmo caminho do resto do módulo (`requireEmpresa`), em vez de o
+   * controller repetir a checagem.
+   */
+  async selecionarModelo(
+    user: AuthenticatedUser,
+    correnteA: number,
+    variante: VarianteAcompanhamento = 'BASE',
+  ) {
+    return this.selecaoModelo.paraCorrente(this.requireEmpresa(user), { correnteA, variante });
   }
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -202,6 +219,10 @@ export class PropostasService {
             desconto: i.desconto,
             total: i.total,
             negociado: i.negociado,
+            quadroPainel: i.quadroPainel,
+            tensaoV: i.tensaoV,
+            correnteA: i.correnteA,
+            secaoTecnica: i.secaoTecnica,
           })),
         },
       },
@@ -556,6 +577,10 @@ export class PropostasService {
       desconto: number;
       total: number;
       negociado: boolean;
+      quadroPainel: string | null;
+      tensaoV: number | null;
+      correnteA: number | null;
+      secaoTecnica: PropostaSecaoTecnica | null;
     }>
   > {
     const produtoIds = itens.map((i) => i.produtoId);
@@ -611,6 +636,12 @@ export class PropostasService {
         desconto: calc.desconto,
         total: t.total,
         negociado: modalidade === 'VENDA' && !!resolved?.negociado && resolved.vigente,
+        // O levantamento passa INTACTO pelo cálculo de preço: quadro, tensão e
+        // corrente são medição de campo, não têm o que recalcular.
+        quadroPainel: i.quadroPainel ?? null,
+        tensaoV: i.tensaoV ?? null,
+        correnteA: i.correnteA ?? null,
+        secaoTecnica: i.secaoTecnica ?? null,
       };
     });
   }
