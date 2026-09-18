@@ -30,13 +30,43 @@ const videoSchema = z
     return id;
   });
 
-export const createTreinamentoSchema = z.object({
-  titulo: z.string().trim().min(2).max(160),
-  descricao: z.string().trim().max(2000).optional(),
-  video: videoSchema,
-  categoria: z.string().trim().max(80).optional(),
-  ordem: z.number().int().min(0).max(9999).default(0),
-});
+/**
+ * Um treinamento é OU um vídeo do YouTube OU um arquivo nosso — nunca os dois,
+ * nunca nenhum.
+ *
+ * O `superRefine` recusa as duas combinações inválidas em vez de deixar o banco
+ * ou o serviço decidirem: erro de forma tem que aparecer na borda, com uma frase
+ * que diz o que fazer.
+ */
+export const createTreinamentoSchema = z
+  .object({
+    titulo: z.string().trim().min(2).max(160),
+    descricao: z.string().trim().max(2000).optional(),
+    /** Preencha quando a fonte for YouTube. Aceita o link em qualquer forma. */
+    video: videoSchema.optional(),
+    /** Caminho devolvido por `POST /treinamentos/upload-url`, já com o arquivo enviado. */
+    arquivoPath: z.string().trim().min(3).max(500).optional(),
+    arquivoTamanho: z.number().int().positive().optional(),
+    arquivoTipo: z.string().trim().max(120).optional(),
+    categoria: z.string().trim().max(80).optional(),
+    ordem: z.number().int().min(0).max(9999).default(0),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.video && !v.arquivoPath) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Informe o link do YouTube ou envie um arquivo de vídeo.',
+      });
+    }
+    if (v.video && v.arquivoPath) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Escolha UMA fonte: link do YouTube ou arquivo próprio. Com as duas, não dá pra ' +
+          'saber qual o funcionário deve assistir.',
+      });
+    }
+  });
 export type CreateTreinamentoDto = z.infer<typeof createTreinamentoSchema>;
 
 /**
@@ -59,3 +89,16 @@ export const listTreinamentosSchema = z.object({
   categoria: z.string().trim().max(80).optional(),
 });
 export type ListTreinamentosDto = z.infer<typeof listTreinamentosSchema>;
+
+/**
+ * Pedido de permissão pra subir o arquivo.
+ *
+ * O backend valida tamanho e tipo ANTES de assinar — descobrir depois
+ * significaria 500 MB enviados pra então recusar.
+ */
+export const uploadUrlSchema = z.object({
+  nomeArquivo: z.string().trim().min(1).max(200),
+  tamanho: z.number().int().positive(),
+  tipo: z.string().trim().min(1).max(120),
+});
+export type UploadUrlDto = z.infer<typeof uploadUrlSchema>;

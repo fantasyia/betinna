@@ -9,9 +9,11 @@ import {
   type CreateTreinamentoDto,
   type ListTreinamentosDto,
   type UpdateTreinamentoDto,
+  type UploadUrlDto,
   createTreinamentoSchema,
   listTreinamentosSchema,
   updateTreinamentoSchema,
+  uploadUrlSchema,
 } from './treinamentos.dto';
 import { TreinamentosService } from './treinamentos.service';
 
@@ -58,6 +60,26 @@ export class TreinamentosController {
     @Body(new ZodValidationPipe(createTreinamentoSchema)) dto: CreateTreinamentoDto,
   ) {
     return this.treinamentos.create(user, dto);
+  }
+
+  /**
+   * Permissão pro navegador subir o vídeo DIRETO no Storage.
+   *
+   * 🔴 O arquivo não passa por aqui de propósito. Fazer 500 MB atravessarem o
+   * Nest daria timeout, comeria memória e produziria uma requisição que não dá
+   * pra retomar quando a rede oscila — que é o cenário do rep em campo.
+   *
+   * Depois do upload, o cliente chama `POST /treinamentos` mandando o `caminho`
+   * que este endpoint devolveu.
+   */
+  @Post('upload-url')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'URL assinada pra enviar o vídeo ao Storage. **DIRETOR/ADMIN**.' })
+  uploadUrl(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(uploadUrlSchema)) dto: UploadUrlDto,
+  ) {
+    return this.treinamentos.permitirUpload(user, dto);
   }
 
   @Patch(':id')

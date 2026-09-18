@@ -65,12 +65,28 @@ const VIDEO = {
   id: 't1',
   titulo: 'Como apresentar o Master Block',
   descricao: 'Roteiro da visita',
+  fonte: 'YOUTUBE' as const,
   youtubeId: 'dQw4w9WgXcQ',
+  arquivoTamanho: null,
   categoria: 'Comercial',
   ordem: 1,
   ativo: true,
   urlEmbed: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
   urlMiniatura: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',
+  urlArquivo: null,
+};
+
+/** A segunda fonte: hospedado por nós, servido por link assinado que expira. */
+const INTERNO = {
+  ...VIDEO,
+  id: 't2',
+  titulo: 'Margem por faixa',
+  fonte: 'ARQUIVO' as const,
+  youtubeId: null,
+  urlEmbed: null,
+  urlMiniatura: null,
+  urlArquivo: 'https://storage.supabase/assinada/emp-1/aula.mp4?token=abc',
+  arquivoTamanho: 42_000_000,
 };
 
 afterEach(() => {
@@ -186,6 +202,128 @@ describe('TreinamentosPage', () => {
     fireEvent.click(screen.getByTestId('treinamento-novo'));
     fireEvent.click(screen.getByTestId('treinamento-salvar'));
     expect(apiPost).not.toHaveBeenCalled();
-    expect(screen.getByTestId('treinamento-erro').textContent).toContain('obrigatórios');
+    expect(screen.getByTestId('treinamento-erro').textContent).toContain('título');
+  });
+});
+
+/**
+ * A SEGUNDA FONTE (Léo, 18/09): vídeo hospedado por nós.
+ *
+ * O YouTube continua padrão porque a banda é deles. O arquivo interno existe
+ * para o conteúdo que não pode circular — e a diferença que importa na tela é
+ * que ele NÃO é um embed do YouTube.
+ */
+describe('TreinamentosPage — arquivo interno', () => {
+  it('usa <video> com o link assinado, não iframe', async () => {
+    lista = [INTERNO];
+    render(<TreinamentosPage />);
+
+    fireEvent.click(screen.getByTestId('treinamento-abrir-t2'));
+
+    await waitFor(() => expect(screen.getByTestId('treinamento-player-arquivo')).toBeTruthy());
+    // 🔴 Nada de YouTube aqui: se caísse no iframe, o vídeo que deveria exigir
+    // login estaria sendo pedido a um servidor de terceiro.
+    expect(screen.queryByTestId('treinamento-player')).toBeNull();
+    expect(screen.getByTestId('treinamento-player-arquivo').getAttribute('src')).toContain(
+      'assinada',
+    );
+  });
+
+  it('marca na lista o que é interno', () => {
+    lista = [INTERNO];
+    render(<TreinamentosPage />);
+    // Quem cadastra precisa ver de relance o que está exposto por link e o que não.
+    expect(screen.getByText('interno')).toBeTruthy();
+  });
+
+  it('as duas fontes convivem', () => {
+    lista = [VIDEO, INTERNO];
+    render(<TreinamentosPage />);
+    expect(screen.getByTestId('treinamento-abrir-t1')).toBeTruthy();
+    expect(screen.getByTestId('treinamento-abrir-t2')).toBeTruthy();
+  });
+
+  it('avisa quando o link assinado falhou, em vez de mostrar tela preta', async () => {
+    lista = [{ ...INTERNO, urlArquivo: null }];
+    render(<TreinamentosPage />);
+
+    fireEvent.click(screen.getByTestId('treinamento-abrir-t2'));
+
+    await waitFor(() => expect(screen.getByTestId('treinamento-indisponivel')).toBeTruthy());
+  });
+
+  /**
+   * 🔴 O arquivo vai DIRETO pro Storage. Se passasse pelo backend, 500 MB
+   * dariam timeout e não poderiam ser retomados.
+   */
+  it('pede URL assinada e envia o arquivo direto, sem passar pela nossa API', async () => {
+    papel = 'DIRECTOR';
+    apiPost
+      .mockResolvedValueOnce({ caminho: 'emp-1/123_aula.mp4', url: 'https://storage/upload?tok=1' })
+      .mockResolvedValueOnce({ id: 'novo' });
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<TreinamentosPage />);
+    fireEvent.click(screen.getByTestId('treinamento-novo'));
+    fireEvent.click(screen.getByTestId('fonte-arquivo'));
+    fireEvent.change(screen.getByTestId('treinamento-titulo'), { target: { value: 'Margem' } });
+
+    const arquivo = new File(['x'], 'aula.mp4', { type: 'video/mp4' });
+    fireEvent.change(screen.getByTestId('treinamento-arquivo'), { target: { files: [arquivo] } });
+
+    fireEvent.click(screen.getByTestId('treinamento-salvar'));
+
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(2));
+    expect(apiPost.mock.calls[0][0]).toBe('/treinamentos/upload-url');
+    // O PUT do arquivo vai pro Storage, não pra nós.
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://storage/upload?tok=1',
+      expect.objectContaining({ method: 'PUT' }),
+    );
+    // E o cadastro manda o CAMINHO, não o arquivo.
+    const corpo = apiPost.mock.calls[1][1] as Record<string, unknown>;
+    expect(corpo.arquivoPath).toBe('emp-1/123_aula.mp4');
+    expect(corpo.video).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it('não cadastra nada se o envio do arquivo falhar', async () => {
+    papel = 'DIRECTOR';
+    apiPost.mockResolvedValueOnce({ caminho: 'emp-1/a.mp4', url: 'https://storage/upload' });
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 413 })));
+
+    render(<TreinamentosPage />);
+    fireEvent.click(screen.getByTestId('treinamento-novo'));
+    fireEvent.click(screen.getByTestId('fonte-arquivo'));
+    fireEvent.change(screen.getByTestId('treinamento-titulo'), { target: { value: 'Margem' } });
+    fireEvent.change(screen.getByTestId('treinamento-arquivo'), {
+      target: { files: [new File(['x'], 'a.mp4', { type: 'video/mp4' })] },
+    });
+    fireEvent.click(screen.getByTestId('treinamento-salvar'));
+
+    await waitFor(() => expect(screen.getByTestId('treinamento-erro')).toBeTruthy());
+    // Um treinamento cadastrado apontando pra um arquivo que não subiu seria um
+    // card que abre em erro pro funcionário.
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('recusa arquivo acima do teto antes de subir nada', async () => {
+    papel = 'DIRECTOR';
+    render(<TreinamentosPage />);
+    fireEvent.click(screen.getByTestId('treinamento-novo'));
+    fireEvent.click(screen.getByTestId('fonte-arquivo'));
+    fireEvent.change(screen.getByTestId('treinamento-titulo'), { target: { value: 'Grande' } });
+
+    const enorme = new File(['x'], 'enorme.mp4', { type: 'video/mp4' });
+    Object.defineProperty(enorme, 'size', { value: 600 * 1024 * 1024 });
+    fireEvent.change(screen.getByTestId('treinamento-arquivo'), { target: { files: [enorme] } });
+
+    fireEvent.click(screen.getByTestId('treinamento-salvar'));
+
+    // Barrar aqui evita 600 MB de upload que terminariam em recusa.
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(screen.getByTestId('treinamento-erro').textContent).toContain('limite');
   });
 });

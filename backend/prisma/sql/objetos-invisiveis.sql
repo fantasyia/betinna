@@ -58,3 +58,14 @@ CREATE INDEX IF NOT EXISTS "Conversation_alertaEsquecidaEm_idx"
 CREATE INDEX IF NOT EXISTS "FluxoExecucao_empresaId_vivas_idx"
   ON "FluxoExecucao" ("empresaId")
   WHERE status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO');
+
+-- ── Coerência fonte × conteúdo do treinamento (20260918060000) ───────
+-- CHECK constraint não existe no schema.prisma, então o fallback `db push` do
+-- deploy o REMOVE ao reconciliar — em silêncio, com exit 0. Sem ele, um bug no
+-- serviço grava treinamento YOUTUBE sem `youtubeId` e o defeito só aparece na
+-- frente do funcionário, como um player em branco.
+ALTER TABLE "Treinamento" DROP CONSTRAINT IF EXISTS "Treinamento_fonte_conteudo_check";
+ALTER TABLE "Treinamento" ADD CONSTRAINT "Treinamento_fonte_conteudo_check" CHECK (
+  ("fonte" = 'YOUTUBE' AND "youtubeId"   IS NOT NULL) OR
+  ("fonte" = 'ARQUIVO' AND "arquivoPath" IS NOT NULL)
+);

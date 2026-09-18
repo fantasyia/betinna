@@ -1435,10 +1435,31 @@ model Treinamento {
 
   titulo    String
   descricao String?
+
+  /// De ONDE o vídeo é servido. São escolhas com contrapartidas diferentes, e a
+  /// decisão é por vídeo (Léo, 18/09):
+  ///
+  /// - `YOUTUBE`: banda e transcodificação por conta deles, custo zero pra nós —
+  ///   mas "não listado" NÃO é controle de acesso: quem tiver o link assiste.
+  /// - `ARQUIVO`: exige login de verdade (link assinado que expira), ao custo de
+  ///   banda nossa a cada exibição e sem troca automática de qualidade.
+  ///
+  /// 🔴 O critério não é "é sensível?" no abstrato: é se o vídeo vazar pra um
+  /// concorrente, isso custa alguma coisa. Pitch, margem e processo custam;
+  /// "como instalar" normalmente não.
+  fonte     TreinamentoFonte @default(YOUTUBE)
+
   /// O ID do vídeo (11 caracteres), NUNCA a URL colada: cada forma de link
   /// monta um embed diferente, e a de `watch?v=` nem embeda. Quem normaliza é o
-  /// `youtube-id.util`.
-  youtubeId String
+  /// `youtube-id.util`. Preenchido só quando `fonte = YOUTUBE`.
+  youtubeId String?
+  /// Caminho no bucket `treinamentos`. Guardamos o PATH, nunca uma URL: a URL de
+  /// leitura é assinada e expira, então gravá-la criaria um link permanente pra
+  /// um arquivo que deveria exigir login.
+  arquivoPath    String?
+  /// Bytes. Serve pra mostrar o tamanho e pra enxergar o custo de banda crescer.
+  arquivoTamanho Int?
+  arquivoTipo    String?
   /// Agrupa na tela ("Comercial", "Instalação"). Livre de propósito: a operação
   /// é pequena e uma tabela de categorias seria cadastro pra manter sem ganho.
   categoria String?
@@ -1457,6 +1478,12 @@ model Treinamento {
   criadoPor Usuario? @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
 
   @@index([empresaId, ativo, ordem])
+}
+
+/// De onde o vídeo de treinamento é servido.
+enum TreinamentoFonte {
+  YOUTUBE
+  ARQUIVO
 }
 
 // ─── KANBAN / LEADS ───────────────────────────────────────────────────

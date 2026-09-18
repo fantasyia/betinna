@@ -8,8 +8,10 @@ import type {
   CreateTreinamentoDto,
   ListTreinamentosDto,
   UpdateTreinamentoDto,
+  UploadUrlDto,
 } from './treinamentos.dto';
 import { urlDaMiniatura, urlDeEmbed } from './youtube-id.util';
+import { TreinamentoArquivoService } from './treinamento-arquivo.service';
 
 /**
  * Treinamentos internos — os vídeos que a empresa deixa pro funcionário.
@@ -22,7 +24,10 @@ import { urlDaMiniatura, urlDeEmbed } from './youtube-id.util';
 export class TreinamentosService {
   private readonly logger = new Logger(TreinamentosService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly arquivos: TreinamentoArquivoService,
+  ) {}
 
   private empresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
@@ -52,7 +57,10 @@ export class TreinamentosService {
         id: true,
         titulo: true,
         descricao: true,
+        fonte: true,
         youtubeId: true,
+        arquivoPath: true,
+        arquivoTamanho: true,
         categoria: true,
         ordem: true,
         ativo: true,
@@ -60,29 +68,53 @@ export class TreinamentosService {
       },
     });
 
-    return itens.map((t) => ({
-      ...t,
-      urlEmbed: urlDeEmbed(t.youtubeId),
-      urlMiniatura: urlDaMiniatura(t.youtubeId),
-    }));
+    // O link do arquivo é assinado e expira, então precisa ser gerado a cada
+    // listagem — não dá pra guardar pronto no banco sem desfazer o motivo de a
+    // fonte ARQUIVO existir.
+    return Promise.all(
+      itens.map(async (t) => ({
+        ...t,
+        urlEmbed: t.youtubeId ? urlDeEmbed(t.youtubeId) : null,
+        // Arquivo próprio não tem miniatura: gerar uma exigiria decodificar o
+        // vídeo no servidor, que é justamente o trabalho que não queremos.
+        urlMiniatura: t.youtubeId ? urlDaMiniatura(t.youtubeId) : null,
+        urlArquivo: t.arquivoPath ? await this.arquivos.urlParaAssistir(t.arquivoPath) : null,
+      })),
+    );
+  }
+
+  /** A permissão pro navegador subir o arquivo direto no Storage. */
+  async permitirUpload(user: AuthenticatedUser, dados: UploadUrlDto) {
+    return this.arquivos.permitirUpload(this.empresa(user), dados);
   }
 
   async create(user: AuthenticatedUser, dto: CreateTreinamentoDto) {
     const empresaId = this.empresa(user);
+    // O DTO já garantiu que vem UMA das duas fontes, nunca as duas nem nenhuma.
+    const doYoutube = !!dto.video;
     const criado = await this.prisma.treinamento.create({
       data: {
         empresaId,
         titulo: dto.titulo,
         descricao: dto.descricao,
+        fonte: doYoutube ? 'YOUTUBE' : 'ARQUIVO',
         // O DTO já normalizou o link colado pro ID de 11 caracteres.
-        youtubeId: dto.video,
+        youtubeId: dto.video ?? null,
+        arquivoPath: dto.arquivoPath ?? null,
+        arquivoTamanho: dto.arquivoTamanho ?? null,
+        arquivoTipo: dto.arquivoTipo ?? null,
         categoria: dto.categoria,
         ordem: dto.ordem,
         criadoPorId: user.id,
       },
     });
-    this.logger.log(`Treinamento "${criado.titulo}" cadastrado (${criado.youtubeId})`);
-    return { ...criado, urlEmbed: urlDeEmbed(criado.youtubeId) };
+    this.logger.log(
+      `Treinamento "${criado.titulo}" cadastrado (${criado.fonte}: ${criado.youtubeId ?? criado.arquivoPath})`,
+    );
+    return {
+      ...criado,
+      urlEmbed: criado.youtubeId ? urlDeEmbed(criado.youtubeId) : null,
+    };
   }
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateTreinamentoDto) {
@@ -98,7 +130,10 @@ export class TreinamentosService {
     if (dto.ativo !== undefined) data.ativo = dto.ativo;
 
     const atualizado = await this.prisma.treinamento.update({ where: { id }, data });
-    return { ...atualizado, urlEmbed: urlDeEmbed(atualizado.youtubeId) };
+    return {
+      ...atualizado,
+      urlEmbed: atualizado.youtubeId ? urlDeEmbed(atualizado.youtubeId) : null,
+    };
   }
 
   /**
@@ -110,8 +145,11 @@ export class TreinamentosService {
    */
   async remove(user: AuthenticatedUser, id: string) {
     const empresaId = this.empresa(user);
-    await this.acharOuFalhar(empresaId, id);
+    const alvo = await this.acharOuFalhar(empresaId, id);
     await this.prisma.treinamento.delete({ where: { id } });
+    // O registro sai primeiro: o arquivo é best-effort, e um órfão no bucket é
+    // melhor que um treinamento que não some porque o Storage está fora do ar.
+    if (alvo.arquivoPath) await this.arquivos.remover(alvo.arquivoPath);
     return { ok: true };
   }
 
@@ -119,7 +157,7 @@ export class TreinamentosService {
   private async acharOuFalhar(empresaId: string, id: string) {
     const t = await this.prisma.treinamento.findFirst({
       where: { id, empresaId },
-      select: { id: true },
+      select: { id: true, arquivoPath: true },
     });
     if (!t) throw new NotFoundException('Treinamento não encontrado', ErrorCode.NOT_FOUND);
     return t;
