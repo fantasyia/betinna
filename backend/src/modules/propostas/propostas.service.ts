@@ -85,6 +85,48 @@ export class PropostasService {
     return this.selecaoModelo.paraCorrente(this.requireEmpresa(user), { correnteA, variante });
   }
 
+  /**
+   * O ACOMPANHAMENTO tem uma topologia, e ela não é opcional (Léo, 18/09).
+   *
+   * O **Data Sense** é UM por instalação: fica no quadro principal e computa a
+   * qualidade da energia que entra pela rede. Os **End Points** são a
+   * comunicação dele até os outros quadros.
+   *
+   * Daí as duas invariantes:
+   *
+   * 1. no máximo um Data Sense — dois concentradores numa instalação é
+   *    contradição, e significaria cobrar do cliente um equipamento a mais;
+   * 2. End Point exige Data Sense — sem o concentrador, os End Points não têm
+   *    com quem falar. Isso não é regra comercial, é funcional: a proposta
+   *    passaria, o cliente pagaria, e o acompanhamento simplesmente não
+   *    funcionaria depois de instalado.
+   *
+   * ⚠️ Mora no SERVIÇO, não na tela: proposta montada pela API ou por uma
+   * integração não passa pelo formulário, e é justamente aí que o erro não teria
+   * quem o pegasse.
+   */
+  private assertAcompanhamentoCoerente(itens: Array<{ sku: string | null }>): void {
+    const conta = (sufixo: string) => itens.filter((i) => (i.sku ?? '').endsWith(sufixo)).length;
+    const dataSense = conta('_D.S.');
+    const endPoints = conta('_E.P.');
+
+    if (dataSense > 1) {
+      throw new BusinessRuleException(
+        `A proposta tem ${dataSense} Data Sense. É UM por instalação — ele fica no quadro ` +
+          'principal e concentra os dados; os outros quadros levam End Point.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    if (endPoints > 0 && dataSense === 0) {
+      throw new BusinessRuleException(
+        `A proposta tem ${endPoints} End Point e nenhum Data Sense. O End Point é a comunicação ` +
+          'até o Data Sense — sem o concentrador no quadro principal, o acompanhamento não ' +
+          'funciona depois de instalado.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+  }
+
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
@@ -148,6 +190,7 @@ export class PropostasService {
     const modalidade: PropostaModalidade =
       user.role === 'REP' ? 'LOCACAO' : (dto.modalidade ?? 'VENDA');
     const items = await this.resolveItens(empresaId, cliente.id, dto.itens, modalidade);
+    this.assertAcompanhamentoCoerente(items);
     // B1 — desconto à vista automático conforme forma/condição + config da empresa
     const empresaCfg = await this.prisma.empresa.findUnique({
       where: { id: empresaId },
@@ -577,6 +620,7 @@ export class PropostasService {
       desconto: number;
       total: number;
       negociado: boolean;
+      sku: string | null;
       quadroPainel: string | null;
       tensaoV: number | null;
       correnteA: number | null;
@@ -590,6 +634,9 @@ export class PropostasService {
       select: {
         id: true,
         nome: true,
+        // O SKU é o que diz a VARIANTE (`_D.S.` / `_E.P.`) — a guarda de
+        // acompanhamento lê ele.
+        sku: true,
         ativo: true,
         vendavel: true,
         precoTabela: true,
@@ -636,6 +683,7 @@ export class PropostasService {
         desconto: calc.desconto,
         total: t.total,
         negociado: modalidade === 'VENDA' && !!resolved?.negociado && resolved.vigente,
+        sku: p.sku,
         // O levantamento passa INTACTO pelo cálculo de preço: quadro, tensão e
         // corrente são medição de campo, não têm o que recalcular.
         quadroPainel: i.quadroPainel ?? null,

@@ -371,6 +371,72 @@ describe('PropostasService', () => {
       expect(item.correnteA).toBeNull();
     });
 
+    /**
+     * 🔴 TOPOLOGIA DO ACOMPANHAMENTO (Léo, 18/09).
+     *
+     * O Data Sense é UM por instalação — fica no quadro principal e computa a
+     * qualidade da energia que entra pela rede. Os End Points são a comunicação
+     * dele até os outros quadros.
+     *
+     * Testado no SERVIÇO de propósito: a tela também vai barrar, mas proposta
+     * montada pela API não passa por formulário nenhum.
+     */
+    const comSkus = (skus: string[]) => {
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: null,
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue(
+        skus.map((sku, n) => ({
+          id: `p-${n}`,
+          sku,
+          nome: sku,
+          ativo: true,
+          precoTabela: 50,
+          precoLocacaoMensal: 9,
+        })),
+      );
+      prisma.proposta.create.mockResolvedValue(fakeProposta({ status: 'RASCUNHO' }));
+      return {
+        ...baseDto,
+        itens: skus.map((_, n) => ({ produtoId: `p-${n}`, quantidade: 1, desconto: 0 })),
+      };
+    };
+
+    it('RECUSA dois Data Sense — é um por instalação', async () => {
+      const dto = comSkus(['MB-04_D.S.', 'MB-01_D.S.']);
+      await expect(service.create(fakeUser(), dto)).rejects.toThrow(/UM por instalação/);
+      expect(prisma.proposta.create).not.toHaveBeenCalled();
+    });
+
+    it('RECUSA End Point sem Data Sense — ficaria sem concentrador', async () => {
+      // Passaria batido: a proposta sairia, o cliente pagaria, e o
+      // acompanhamento não funcionaria depois de instalado.
+      const dto = comSkus(['MB-01_E.P.', 'MB-03_E.P.']);
+      await expect(service.create(fakeUser(), dto)).rejects.toThrow(/End Point/);
+      expect(prisma.proposta.create).not.toHaveBeenCalled();
+    });
+
+    it('aceita um Data Sense com vários End Points', async () => {
+      const dto = comSkus(['MB-04_D.S.', 'MB-01_E.P.', 'MB-03_E.P.']);
+      await service.create(fakeUser(), dto);
+      expect(prisma.proposta.create).toHaveBeenCalled();
+    });
+
+    it('aceita Data Sense sozinho — acompanha só a entrada', async () => {
+      const dto = comSkus(['MB-04_D.S.']);
+      await service.create(fakeUser(), dto);
+      expect(prisma.proposta.create).toHaveBeenCalled();
+    });
+
+    it('proposta sem acompanhamento nenhum passa limpo', async () => {
+      const dto = comSkus(['MB-04', 'MB-01', 'MB-03']);
+      await service.create(fakeUser(), dto);
+      expect(prisma.proposta.create).toHaveBeenCalled();
+    });
+
     it('LOCACAO grava prazo, dia de vencimento e carência', async () => {
       prepararCliente();
 
