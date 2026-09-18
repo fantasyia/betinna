@@ -5,7 +5,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { ClickSignService } from '@integrations/clicksign/clicksign.service';
-import { variaveisDoContrato } from './contrato-variaveis.util';
+import { SELECT_PROPOSTA_CONTRATO, montarContratoParaAssinar } from './contrato-envio.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { PedidoComissoesService } from '@modules/pedidos/pedido-comissoes.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
@@ -498,98 +498,28 @@ export class PropostaAceiteService {
     try {
       const p = await this.prisma.proposta.findFirst({
         where: { id: propostaId, empresaId },
-        select: {
-          id: true,
-          numero: true,
-          valor: true,
-          criadoEm: true,
-          validoAte: true,
-          modalidade: true,
-          prazoMeses: true,
-          diaVencimento: true,
-          signatarioNome: true,
-          signatarioEmail: true,
-          signatarioTelefone: true,
-          clienteId: true,
-          representanteId: true,
-          cliente: {
-            select: {
-              nome: true,
-              email: true,
-              cnpj: true,
-              telefone: true,
-              endereco: true,
-              numero: true,
-              complemento: true,
-              bairro: true,
-              cidade: true,
-              uf: true,
-            },
-          },
-        },
+        select: { ...SELECT_PROPOSTA_CONTRATO, clienteId: true, representanteId: true },
       });
-      if (!p || p.modalidade !== 'LOCACAO') return;
+      if (!p) return;
 
-      // Signatário é PESSOA. A assinatura eletrônica recusa razão social como
-      // nome ("formato inválido"), e o cadastro de Cliente só guarda a empresa —
-      // por isso o nome vem da proposta, preenchido por quem montou o negócio.
-      const nome = p.signatarioNome?.trim();
-      const email = p.signatarioEmail?.trim() || p.cliente.email?.trim();
-      // A autenticação por SMS/WhatsApp exige o número em dígitos com DDI. Cai
-      // pro telefone do cliente quando a proposta não informou um específico;
-      // sem nenhum, a assinatura usa token por e-mail.
-      const telefoneBruto = p.signatarioTelefone?.trim() || p.cliente.telefone?.trim() || '';
-      const so = telefoneBruto.replace(/\D/g, '');
-      const telefoneAssinatura = so.length >= 12 ? so : so.length >= 10 ? `55${so}` : undefined;
-      // Prazo e dia de vencimento são TERMO COMERCIAL, não detalhe técnico —
-      // quem decide é quem fecha o negócio. Um valor padrão aqui sairia impresso
-      // num contrato que alguém vai assinar, e ninguém saberia que o número foi
-      // do sistema. Melhor não mandar o contrato e avisar.
-      if (!p.prazoMeses || !p.diaVencimento) {
+      // A montagem é COMPARTILHADA com o reenvio do diretor (17/09): as duas
+      // rodadas do mesmo contrato têm que sair idênticas no que ninguém pediu
+      // pra mudar. Ela também é quem recusa — prazo e dia de vencimento são
+      // termo comercial, e um default sairia impresso num documento que alguém
+      // assina sem ninguém saber que o número veio do sistema.
+      const montagem = montarContratoParaAssinar(p);
+      if (!montagem.ok) {
+        // Não é de locação: venda avulsa não gera contrato recorrente, e isso
+        // não é falha — sai calado, como antes.
+        if (p.modalidade !== 'LOCACAO') return;
         this.logger.warn(
-          `Proposta ${p.numero} aceita, mas sem prazo/dia de vencimento — contrato não enviado.`,
+          `Proposta ${p.numero} aceita, mas ${montagem.motivo} — contrato não enviado.`,
         );
-        await this.avisarFalhaContrato(
-          empresaId,
-          p.representanteId,
-          p.numero,
-          'faltam o prazo em meses e/ou o dia de vencimento na proposta',
-        );
-        return;
-      }
-      if (!nome || !email) {
-        this.logger.warn(
-          `Proposta ${p.numero} aceita, mas sem signatário (nome/e-mail) — contrato não enviado.`,
-        );
-        await this.avisarFalhaContrato(
-          empresaId,
-          p.representanteId,
-          p.numero,
-          'sem signatário definido',
-        );
+        await this.avisarFalhaContrato(empresaId, p.representanteId, p.numero, montagem.motivo);
         return;
       }
 
-      const envelope = await this.clicksign.enviarParaAssinatura(empresaId, {
-        titulo: `Proposta-Contrato ${p.numero} — ${p.cliente.nome}`,
-        cliente: { nome, email, telefone: telefoneAssinatura },
-        // Volta no webhook de assinatura — rastro que não depende de id.
-        metadata: { proposta: p.numero, proposta_id: p.id },
-        variaveis: variaveisDoContrato({
-          valor: p.valor,
-          criadoEm: new Date(),
-          clienteNome: p.cliente.nome,
-          cnpj: p.cliente.cnpj,
-          endereco: {
-            logradouro: p.cliente.endereco,
-            numero: p.cliente.numero,
-            complemento: p.cliente.complemento,
-            bairro: p.cliente.bairro,
-            cidade: p.cliente.cidade,
-            uf: p.cliente.uf,
-          },
-        }),
-      });
+      const envelope = await this.clicksign.enviarParaAssinatura(empresaId, montagem.dados);
 
       await this.prisma.contrato.create({
         data: {
@@ -599,10 +529,23 @@ export class PropostaAceiteService {
           representanteId: p.representanteId,
           status: 'AGUARDANDO_ASSINATURA',
           valorMensal: p.valor,
-          prazoMeses: p.prazoMeses,
-          diaVencimento: p.diaVencimento,
+          // A montagem já garantiu que os dois existem — sem eles ela recusa.
+          prazoMeses: p.prazoMeses as number,
+          diaVencimento: p.diaVencimento as number,
           assinaturaId: envelope.envelopeId,
           assinaturaDocumentoId: envelope.documentoId,
+          enviosAssinatura: [
+            {
+              envelopeId: envelope.envelopeId,
+              documentoId: envelope.documentoId,
+              url: null,
+              enviadoEm: new Date().toISOString(),
+              // Ninguém "mandou": saiu do aceite do cliente, automático.
+              porUsuarioId: null,
+              motivo: 'envio inicial (aceite da proposta)',
+              desfecho: 'enviado',
+            },
+          ],
         },
       });
       this.logger.log(

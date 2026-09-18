@@ -10,3 +10,15 @@ export const listContratosSchema = z.object({
   search: z.string().max(120).optional(),
 });
 export type ListContratosDto = z.infer<typeof listContratosSchema>;
+
+/**
+ * Reenvio do contrato pro cliente assinar de novo (cláusula alterada).
+ *
+ * O `motivo` é obrigatório e não é burocracia: ele é o ÚNICO registro de por que
+ * existiu uma segunda rodada. O envelope anterior é expirado na ClickSign, e sem
+ * esta linha o histórico mostraria dois envios sem explicação nenhuma.
+ */
+export const reenviarContratoSchema = z.object({
+  motivo: z.string().trim().min(10, 'Diga em uma frase o que mudou no contrato').max(500),
+});
+export type ReenviarContratoDto = z.infer<typeof reenviarContratoSchema>;

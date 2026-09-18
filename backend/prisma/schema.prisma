@@ -1321,6 +1321,24 @@ model Contrato {
   assinadoEm            DateTime?
   /// PDF assinado guardado no Storage.
   documentoUrl          String?
+  /// HISTÓRICO dos envios pra assinatura — um item por envelope disparado.
+  ///
+  /// Nasceu do adendo do card de 17/09: o cliente pode pedir alteração de
+  /// cláusula, o diretor alinha e manda o contrato NOVO pra mesma proposta.
+  ///
+  /// 📌 Guarda o PONTEIRO, não o documento. O Léo decidiu (17/09) que "o link
+  /// pro ClickSign basta": cada envelope já vive lá com o documento e os eventos
+  /// de assinatura. O que se perdia ao reenviar era o ENDEREÇO do envelope
+  /// anterior — os campos `assinaturaId`/`assinaturaDocumentoId` são um só e
+  /// eram sobrescritos, então a versão recusada continuava existindo na
+  /// ClickSign e ninguém conseguia chegar nela.
+  ///
+  /// ⚠️ Contrato não assinado não vincula ninguém, então isto NÃO é versão
+  /// jurídica — é rastro operacional: quantas rodadas teve, quando, quem mandou
+  /// e por quê.
+  ///
+  /// Formato: [{ envelopeId, documentoId, url, enviadoEm, porUsuarioId, motivo, desfecho }]
+  enviosAssinatura      Json?
   /// NF de comodato — a remessa do equipamento, emitida SEMPRE a partir do
   /// pedido de venda. O id guardado é o que faz a emissão ser idempotente:
   /// nota fiscal não tem desfazer pela API.

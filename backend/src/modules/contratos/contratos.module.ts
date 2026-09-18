@@ -10,6 +10,7 @@ import { ContratoErpService } from './contrato-erp.service';
 import { ContratoEsteiraService } from './contrato-esteira.service';
 import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
+import { ContratoReenvioService } from './contrato-reenvio.service';
 
 /** Leitura dos contratos de locação — quem os cria é o aceite da proposta. */
 @Module({
@@ -26,6 +27,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
     ContratoErpService,
     ContratoEsteiraService,
     ContratoMensalidadeSyncService,
+    ContratoReenvioService,
     ContratoAprovacaoJob,
   ],
   exports: [
@@ -36,6 +38,7 @@ import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.serv
     ContratoErpService,
     ContratoEsteiraService,
     ContratoMensalidadeSyncService,
+    ContratoReenvioService,
     ContratoAprovacaoJob,
   ],
 })

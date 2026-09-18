@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -8,13 +8,19 @@ import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import { type ListContratosDto, listContratosSchema } from './contratos.dto';
+import {
+  type ListContratosDto,
+  type ReenviarContratoDto,
+  listContratosSchema,
+  reenviarContratoSchema,
+} from './contratos.dto';
 import { ContratosService } from './contratos.service';
 import { ContratoAprovacaoJob } from './contrato-aprovacao.job';
 import { ContratoErpService } from './contrato-erp.service';
 import { ContratoComodatoErpService } from './contrato-comodato-erp.service';
 import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
+import { ContratoReenvioService } from './contrato-reenvio.service';
 
 /**
  * Contratos de locação — leitura.
@@ -41,6 +47,7 @@ export class ContratosController {
     private readonly aprovacao: ContratoAprovacaoJob,
     private readonly fiscal: FiscalPendenciasService,
     private readonly comodatoErp: ContratoComodatoErpService,
+    private readonly reenvio: ContratoReenvioService,
   ) {}
 
   /**
@@ -182,6 +189,57 @@ export class ContratosController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.fiscal.verificar(user.empresaIdAtiva);
+  }
+
+  /**
+   * O cliente pediu alteração de cláusula, o diretor alinhou, e agora vai a
+   * versão nova pra assinar.
+   *
+   * **Quem manda é o DIRETOR.** O rep avisa por fora — é combinado que seja
+   * manual — e não dispara: mudar cláusula é decisão contratual, mesma classe
+   * de teto de desconto e % de comissão (D46). ADMIN entra junto como override
+   * de suporte da plataforma (D48), não como operação normal.
+   *
+   * 🔴 O envelope ANTERIOR é expirado na ClickSign antes de o novo sair. Sem
+   * isso o cliente ficaria com dois links válidos e poderia assinar justamente
+   * a versão que pediu pra mudar.
+   */
+  @Post(':id/reenviar-assinatura')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'reenviar_assinatura', resource: 'contrato', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary: 'Reenvia o contrato pra assinatura com a cláusula alterada. **DIRETOR/ADMIN**.',
+  })
+  reenviarAssinatura(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(reenviarContratoSchema)) body: ReenviarContratoDto,
+  ) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.reenvio.reenviar({
+      empresaId: user.empresaIdAtiva,
+      contratoId: id,
+      usuarioId: user.id,
+      motivo: body.motivo,
+    });
+  }
+
+  /**
+   * As rodadas de assinatura deste contrato — mais recente primeiro.
+   *
+   * Leitura pra quem já vê a proposta: o rep precisa saber em que versão o
+   * cliente está, senão cobra assinatura de um link que foi expirado.
+   */
+  @Get(':id/envios-assinatura')
+  @RequirePermissions({ module: 'propostas', action: 'view' })
+  @ApiOperation({ summary: 'Histórico dos envios pra assinatura (o link de cada rodada).' })
+  enviosAssinatura(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.reenvio.historico(user.empresaIdAtiva, id);
   }
 
   @Get()

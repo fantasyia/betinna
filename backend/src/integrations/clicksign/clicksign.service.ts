@@ -419,6 +419,44 @@ export class ClickSignService {
     return r.data?.attributes?.status ?? null;
   }
 
+  /**
+   * Mata um envelope que não vale mais.
+   *
+   * 🔴 É o passo que impede o pior desfecho do reenvio: sem ele o cliente fica
+   * com DOIS links válidos e pode assinar a versão ANTIGA — justamente a que ele
+   * pediu pra mudar. Aí existe assinatura num documento que ninguém queria.
+   *
+   * ⚠️ A ClickSign NÃO tem "cancelar envelope". O que existe é empurrar o
+   * `deadline_at` pra trás: o envelope vence e passa a recusar assinatura.
+   * Medido em 12/09 — é a saída documentada, não um truque.
+   *
+   * Best-effort por construção: o chamador está no meio de um reenvio, e travar
+   * tudo porque o envelope velho não morreu deixaria o cliente sem a versão
+   * nova. O que ele NÃO pode fazer é falhar calado — por isso devolve o
+   * resultado em vez de engolir.
+   */
+  async expirarEnvelope(empresaId: string, envelopeId: string): Promise<boolean> {
+    const cfg = await this.resolver(empresaId);
+    if (!cfg.token) return false;
+    // Um minuto atrás: já vencido no instante em que a ClickSign ler.
+    const vencido = new Date(Date.now() - 60_000).toISOString();
+    try {
+      await this.chamar(cfg, 'PATCH', `/envelopes/${envelopeId}`, {
+        data: { id: envelopeId, type: 'envelopes', attributes: { deadline_at: vencido } },
+      });
+      this.logger.log(`ClickSign: envelope ${envelopeId} expirado (substituído por versão nova)`);
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `ClickSign: NÃO consegui expirar o envelope ${envelopeId} — o link antigo pode seguir ` +
+          `válido e o cliente assinar a versão errada: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+      );
+      return false;
+    }
+  }
+
   private async chamar<T = unknown>(
     cfg: ConfigClickSign,
     metodo: 'GET' | 'POST' | 'PATCH',
