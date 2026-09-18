@@ -5,6 +5,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { VendasTabs } from '@/components/VendasTabs';
 import { Badge, Button, Card, Checkbox, Field, Input } from '@/components/ui';
 
 /**
@@ -218,6 +219,7 @@ export default function LevantamentoCampoPage() {
       title="Levantamento de campo"
       description="Meça quadro a quadro; o modelo é escolhido pela corrente."
     >
+      <VendasTabs />
       <div className="flex flex-col gap-4">
         <Card className="p-4">
           <Field label="Cliente" required>
