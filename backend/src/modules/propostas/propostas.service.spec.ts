@@ -1048,4 +1048,181 @@ describe('PropostasService', () => {
       expect(data.itens[0].precoUnitario).toBe(5_000.25);
     });
   });
+  /**
+   * RETOMAR O LEVANTAMENTO (Léo, 18/09).
+   *
+   * 🔴 Antes destas rotas o levantamento vivia só na memória do navegador: o rep
+   * media cinco quadros dentro do cliente, fechava a aba e perdia tudo — em campo,
+   * onde a bateria acaba e a rede cai.
+   */
+  describe('itens de proposta em rascunho', () => {
+    const RASCUNHO = {
+      id: 'p1',
+      empresaId: 'emp-1',
+      clienteId: 'cli-1',
+      status: 'RASCUNHO',
+      modalidade: 'LOCACAO',
+      representanteId: 'rep-1',
+      descontoGeral: 0,
+      formaPagamento: 'PIX',
+      condicaoPagamento: '30dias',
+      itens: [],
+    };
+
+    it('adiciona um quadro e recalcula os totais', async () => {
+      prisma.proposta.findFirst.mockResolvedValue(RASCUNHO);
+      prisma.proposta.findUniqueOrThrow.mockResolvedValue({ ...RASCUNHO, itens: [] });
+      prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', empresaId: 'emp-1' });
+      prisma.produto.findMany.mockResolvedValue([
+        {
+          id: 'p-1',
+          sku: 'MB-04',
+          nome: 'MB-04',
+          ativo: true,
+          precoTabela: 50,
+          precoLocacaoMensal: 9,
+        },
+      ]);
+      prisma.propostaItem = { create: vi.fn(), deleteMany: vi.fn() };
+
+      await service.adicionarItem(fakeUser(), 'p1', {
+        produtoId: 'p-1',
+        quantidade: 1,
+        desconto: 0,
+        quadroPainel: 'QGBT',
+        tensaoV: 380,
+        correnteA: 420,
+      } as never);
+
+      const data = prisma.propostaItem.create.mock.calls[0][0].data;
+      // O levantamento tem que sobreviver ao salvar — é o ponto da rota.
+      expect(data.quadroPainel).toBe('QGBT');
+      expect(data.correnteA).toBe(420);
+      expect(prisma.proposta.update).toHaveBeenCalled();
+    });
+
+    /**
+     * ⛔ Proposta ENVIADA já foi vista pelo cliente. Acrescentar item nela mudaria
+     * por baixo o que ele está lendo no link de aceite.
+     */
+    it.each(['ENVIADA', 'ACEITA', 'AGUARDANDO_ASSINATURA'])(
+      'RECUSA mexer em itens no status %s',
+      async (status) => {
+        prisma.proposta.findFirst.mockResolvedValue({ ...RASCUNHO, status });
+        prisma.propostaItem = { create: vi.fn(), deleteMany: vi.fn() };
+
+        await expect(
+          service.adicionarItem(fakeUser(), 'p1', {
+            produtoId: 'p-1',
+            quantidade: 1,
+            desconto: 0,
+          } as never),
+        ).rejects.toThrow(/já viu esta versão/);
+        expect(prisma.propostaItem.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('remover item filtra pela proposta, não só pelo id do item', async () => {
+      prisma.proposta.findFirst.mockResolvedValue(RASCUNHO);
+      prisma.proposta.findUniqueOrThrow.mockResolvedValue({ ...RASCUNHO, itens: [] });
+      prisma.propostaItem = {
+        create: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      };
+
+      await service.removerItem(fakeUser(), 'p1', 'item-9');
+
+      // Id de item sozinho atravessaria pra outra proposta, inclusive de outra empresa.
+      expect(prisma.propostaItem.deleteMany.mock.calls[0][0].where).toEqual({
+        id: 'item-9',
+        propostaId: 'p1',
+      });
+    });
+
+    it('404 ao remover item que não é desta proposta', async () => {
+      prisma.proposta.findFirst.mockResolvedValue(RASCUNHO);
+      prisma.propostaItem = {
+        create: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      };
+
+      await expect(service.removerItem(fakeUser(), 'p1', 'de-outra')).rejects.toThrow(
+        /não encontrado/,
+      );
+    });
+  });
+
+  /** Os prazos do Anexo II são coletados pelo rep e viram texto do documento. */
+  describe('prazos do Anexo II na proposta', () => {
+    it('grava os três prazos no create', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: null,
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        {
+          id: 'p-1',
+          sku: 'MB-04',
+          nome: 'Produto A',
+          ativo: true,
+          precoTabela: 50,
+          precoLocacaoMensal: 9,
+        },
+      ]);
+      prisma.proposta.create.mockResolvedValue(fakeProposta({ status: 'RASCUNHO' }));
+
+      await service.create(fakeUser(), {
+        clienteId: 'cli-1',
+        itens: [{ produtoId: 'p-1', quantidade: 1, desconto: 0 }],
+        formaPagamento: 'PIX' as const,
+        condicaoPagamento: '30dias' as const,
+        descontoGeral: 0,
+        probabilidade: 50,
+        prazoEntregaDias: 45,
+        prazoInstalacaoDias: 15,
+        prazoSoftwareDias: 7,
+      } as never);
+
+      const data = prisma.proposta.create.mock.calls[0][0].data;
+      expect(data.prazoEntregaDias).toBe(45);
+      expect(data.prazoInstalacaoDias).toBe(15);
+      expect(data.prazoSoftwareDias).toBe(7);
+    });
+
+    it('sem prazo definido não grava número nenhum', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: null,
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        {
+          id: 'p-1',
+          sku: 'MB-04',
+          nome: 'Produto A',
+          ativo: true,
+          precoTabela: 50,
+          precoLocacaoMensal: 9,
+        },
+      ]);
+      prisma.proposta.create.mockResolvedValue(fakeProposta({ status: 'RASCUNHO' }));
+
+      await service.create(fakeUser(), {
+        clienteId: 'cli-1',
+        itens: [{ produtoId: 'p-1', quantidade: 1, desconto: 0 }],
+        formaPagamento: 'PIX',
+        condicaoPagamento: '30dias',
+        descontoGeral: 0,
+        probabilidade: 50,
+      } as never);
+
+      // ⛔ Prazo padrão sairia impresso num documento que alguém assina, e ninguém
+      // saberia que o número não foi combinado com o cliente.
+      const data = prisma.proposta.create.mock.calls[0][0].data;
+      expect(data.prazoEntregaDias).toBeUndefined();
+    });
+  });
 });

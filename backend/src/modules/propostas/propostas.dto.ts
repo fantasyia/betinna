@@ -67,6 +67,21 @@ export const createPropostaSchema = z.object({
    * dele. Contrato que começa a cobrar no ato contraria a oferta comercial.
    */
   prazoMeses: z.number().int().min(1).max(120).optional(),
+  /**
+   * ── PRAZOS DO ANEXO II (item 04) ──
+   *
+   * O documento escreve "em ate __ (____) dias". O representante coleta com o
+   * cliente e lanca aqui; e daqui que sai o texto do documento que vai pro
+   * ClickSign (`proposta-tecnica-variaveis.util`).
+   *
+   * Opcionais porque a proposta nasce do levantamento, antes da conversa sobre
+   * prazo. ⛔ Mas ausente sai EM BRANCO no documento, nunca com um numero que o
+   * sistema escolheu: prazo padrao impresso num contrato e um compromisso que
+   * ninguem combinou.
+   */
+  prazoEntregaDias: z.number().int().min(1).max(365).optional(),
+  prazoInstalacaoDias: z.number().int().min(1).max(365).optional(),
+  prazoSoftwareDias: z.number().int().min(1).max(365).optional(),
   diaVencimento: z.number().int().min(1).max(28).optional(),
   carenciaDias: z.number().int().min(0).max(180).optional(),
   /**

@@ -13,11 +13,13 @@ import {
   type ChangeStatusDto,
   type CreatePropostaDto,
   type ListPropostasDto,
+  type PropostaItemInputDto,
   type SelecaoModeloDto,
   type UpdatePropostaDto,
   changeStatusSchema,
   createPropostaSchema,
   listPropostasSchema,
+  propostaItemInputSchema,
   selecaoModeloSchema,
   updatePropostaSchema,
 } from './propostas.dto';
@@ -144,6 +146,36 @@ export class PropostasController {
     @Body(new ZodValidationPipe(createPropostaSchema)) dto: CreatePropostaDto,
   ) {
     return this.propostas.create(user, dto);
+  }
+
+  /**
+   * Acrescenta um quadro ao levantamento salvo.
+   *
+   * 🔴 E o que faz o levantamento poder ser RETOMADO: o representante mede em
+   * campo, salva, e volta depois sem redigitar. So em RASCUNHO.
+   */
+  @Post(':id/itens')
+  @RequirePermissions({ module: 'propostas', action: 'edit' })
+  @Audit({ action: 'add_item', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Adiciona um item/quadro a uma proposta em RASCUNHO.' })
+  adicionarItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(propostaItemInputSchema)) dto: PropostaItemInputDto,
+  ) {
+    return this.propostas.adicionarItem(user, id, dto);
+  }
+
+  @Delete(':id/itens/:itemId')
+  @RequirePermissions({ module: 'propostas', action: 'edit' })
+  @Audit({ action: 'remove_item', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Remove um item/quadro de uma proposta em RASCUNHO.' })
+  removerItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.propostas.removerItem(user, id, itemId);
   }
 
   @Patch(':id')

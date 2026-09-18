@@ -127,6 +127,119 @@ export class PropostasService {
     }
   }
 
+  /**
+   * ADICIONA um quadro ao levantamento que ja virou proposta.
+   *
+   * 🔴 E o que permite RETOMAR. Antes disto o levantamento vivia so na memoria
+   * do navegador: o representante media cinco quadros no cliente, fechava a aba
+   * e perdia tudo — justamente em campo, onde a bateria acaba e a rede cai.
+   *
+   * ⛔ So em RASCUNHO. Proposta ENVIADA ja foi vista pelo cliente; acrescentar
+   * item nela mudaria por baixo o que ele esta lendo.
+   */
+  async adicionarItem(
+    user: AuthenticatedUser,
+    id: string,
+    item: PropostaItemInputDto,
+  ): Promise<PropostaWithRel> {
+    const existing = await this.findById(user, id);
+    this.assertRascunho(existing.status, 'adicionar item');
+
+    const [resolvido] = await this.resolveItens(
+      existing.empresaId,
+      existing.clienteId,
+      [item],
+      existing.modalidade,
+    );
+    await this.prisma.propostaItem.create({
+      data: {
+        propostaId: existing.id,
+        produtoId: resolvido.produtoId,
+        produtoNome: resolvido.nome,
+        quantidade: resolvido.quantidade,
+        precoUnitario: resolvido.precoUnitario,
+        desconto: resolvido.desconto,
+        total: resolvido.total,
+        negociado: resolvido.negociado,
+        quadroPainel: resolvido.quadroPainel,
+        tensaoV: resolvido.tensaoV,
+        correnteA: resolvido.correnteA,
+        secaoTecnica: resolvido.secaoTecnica,
+      },
+    });
+    return this.recalcular(existing.id);
+  }
+
+  /** Tira um quadro do levantamento. So em RASCUNHO, pelo mesmo motivo. */
+  async removerItem(user: AuthenticatedUser, id: string, itemId: string): Promise<PropostaWithRel> {
+    const existing = await this.findById(user, id);
+    this.assertRascunho(existing.status, 'remover item');
+
+    // Filtra pelo propostaId tambem: id de item sozinho atravessaria pra outra
+    // proposta, inclusive de outra empresa.
+    const { count } = await this.prisma.propostaItem.deleteMany({
+      where: { id: itemId, propostaId: existing.id },
+    });
+    if (count === 0) {
+      throw new NotFoundException('Item não encontrado nesta proposta', ErrorCode.NOT_FOUND);
+    }
+    return this.recalcular(existing.id);
+  }
+
+  private assertRascunho(status: string, acao: string): void {
+    if (status !== 'RASCUNHO') {
+      throw new BusinessRuleException(
+        `Proposta em ${status} não aceita ${acao} — o cliente já viu esta versão. ` +
+          'Volte para rascunho antes de mexer nos itens.',
+      );
+    }
+  }
+
+  /**
+   * Refaz subtotal, valor e comissao a partir dos itens que estao no banco.
+   *
+   * Le do banco de proposito, em vez de somar em memoria: depois de um insert
+   * ou delete, o que vale e o que ficou gravado.
+   */
+  private async recalcular(propostaId: string): Promise<PropostaWithRel> {
+    const p = await this.prisma.proposta.findUniqueOrThrow({
+      where: { id: propostaId },
+      include: propostaInclude,
+    });
+    const empresaCfg = await this.prisma.empresa.findUnique({
+      where: { id: p.empresaId },
+      select: { descontoPixPct: true, descontoBoletoAvistaPct: true },
+    });
+    const descAVistaPct = this.pedidoPricing.descontoAVistaPct(
+      p.formaPagamento,
+      p.condicaoPagamento,
+      empresaCfg,
+    );
+    const comissaoPct = await this.resolveComissaoPct(p.representanteId);
+    const totals = this.pedidoPricing.pedidoTotals(
+      p.itens.map((i) => ({
+        quantidade: i.quantidade,
+        precoUnitario: Number(i.precoUnitario),
+        desconto: i.desconto,
+      })),
+      p.descontoGeral,
+      comissaoPct,
+      descAVistaPct,
+    );
+    await this.prisma.proposta.update({
+      where: { id: propostaId },
+      data: {
+        subtotal: totals.subtotal,
+        valor: totals.total,
+        comissaoEstimada: totals.comissao,
+      },
+    });
+    return this.prisma.proposta.findUniqueOrThrow({
+      where: { id: propostaId },
+      include: propostaInclude,
+    });
+  }
+
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
@@ -248,6 +361,9 @@ export class PropostasService {
               signatarioTelefone: dto.signatarioTelefone ?? null,
             }
           : {}),
+        prazoEntregaDias: dto.prazoEntregaDias,
+        prazoInstalacaoDias: dto.prazoInstalacaoDias,
+        prazoSoftwareDias: dto.prazoSoftwareDias,
         subtotal: totals.subtotal,
         descontoGeral: dto.descontoGeral,
         valor: totals.total,
