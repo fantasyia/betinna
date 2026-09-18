@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { ContratoEsteiraService } from './contrato-esteira.service';
 
 /**
- * A esteira pós-assinatura (card do Léo, 17/09): contrato assinado abre um card
- * com os dados do contrato/cliente, e cada etapa é uma coluna pro Leandro
- * acompanhar visualmente — Serasa → produção → NF de comodato → envio →
- * instalação → concluído.
+ * A esteira pós-assinatura: contrato assinado abre um card com os dados do
+ * contrato/cliente, e cada etapa é uma coluna pro diretor comercial acompanhar
+ * visualmente.
+ *
+ * 📌 As etapas são as do quadro **Diretoria**, que o Léo montou à mão e mandou
+ * em foto (18/09) — não as seis que eu tinha suposto no dia anterior.
  *
  * ⚠️ Descongela de propósito o que ficou congelado em 14/09 ("pós-contrato é
  * manual do Leandro até o primeiro contrato subir"). O Léo confirmou em 17/09:
@@ -22,7 +24,14 @@ const CONTRATO = {
   representante: { nome: 'Marcelo Harada' },
 };
 
-function build(opts: { cardExistente?: boolean; quadro?: boolean; dono?: boolean } = {}) {
+function build(
+  opts: {
+    cardExistente?: boolean;
+    quadro?: boolean;
+    quadroDoDiretor?: boolean;
+    dono?: boolean;
+  } = {},
+) {
   const listasCriadas: Array<{ nome: string }> = [];
   const prisma = {
     contrato: { findUnique: vi.fn().mockResolvedValue(CONTRATO) },
@@ -35,8 +44,13 @@ function build(opts: { cardExistente?: boolean; quadro?: boolean; dono?: boolean
       create: vi.fn().mockResolvedValue({ id: 'card-novo' }),
     },
     kanbanBoard: {
-      findFirst: vi.fn().mockResolvedValue(opts.quadro ? { id: 'board-1' } : null),
+      // 1ª chamada = quadro já marcado como esteira; 2ª = adoção pelo nome.
+      findFirst: vi
+        .fn()
+        .mockResolvedValueOnce(opts.quadro ? { id: 'board-1' } : null)
+        .mockResolvedValue(opts.quadroDoDiretor ? { id: 'board-diretoria' } : null),
       create: vi.fn().mockResolvedValue({ id: 'board-novo' }),
+      update: vi.fn().mockResolvedValue({ id: 'board-diretoria' }),
     },
     kanbanLista: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -53,16 +67,74 @@ function build(opts: { cardExistente?: boolean; quadro?: boolean; dono?: boolean
 }
 
 describe('esteira pós-assinatura', () => {
-  it('contrato assinado entra na PRIMEIRA etapa', async () => {
+  /**
+   * 🔴 Os nomes vão LITERAIS aqui de propósito.
+   *
+   * A versão anterior deste teste comparava `listasCriadas` com a própria
+   * constante `ETAPAS` — asserção circular: eu troquei as seis etapas pelas oito
+   * do quadro real e os seis testes continuaram verdes, sem vigiar nada.
+   *
+   * O `garantirColunas` casa coluna por NOME. Um emoji, um acento ou um espaço
+   * a mais aqui não renomeia a coluna do diretor: cria uma SEGUNDA ao lado, e o
+   * quadro dele amanhece com o dobro de colunas.
+   */
+  const ETAPAS_DO_QUADRO = [
+    'Contrato Assinado',
+    'Consulta Serasa',
+    'Gerar Proposta + Pedido de Venda ERP',
+    'Enviar Para Produção',
+    'Emissão Fiscal Comodato',
+    'Expedição',
+    'Aguardando Instalação',
+    'Instalado',
+  ];
+
+  it('as colunas são as do quadro Diretoria, escritas igual', () => {
+    expect([...ContratoEsteiraService.ETAPAS]).toEqual(ETAPAS_DO_QUADRO);
+  });
+
+  it('contrato assinado entra em "Contrato Assinado", não já no Serasa', async () => {
     const { svc, prisma, listasCriadas } = build();
 
     const r = await svc.entrarNaEsteira('ct-1');
 
     expect(r).toBe('criado');
-    // As seis etapas, na ordem do card do Léo.
-    expect(listasCriadas.map((l) => l.nome)).toEqual([...ContratoEsteiraService.ETAPAS]);
-    // E o card nasce na primeira delas — Serasa é o que o Leandro faz primeiro.
+    expect(listasCriadas.map((l) => l.nome)).toEqual(ETAPAS_DO_QUADRO);
+    // A coluna de ENTRADA é a primeira. O card nasce ali e o diretor arrasta
+    // pro Serasa quando começa — nascer já em consulta diria que uma etapa
+    // aconteceu sem ninguém ter feito nada.
     expect(prisma.kanbanCard.create.mock.calls[0][0].data.listaId).toBe('lista-1');
+    expect(listasCriadas[0].nome).toBe('Contrato Assinado');
+  });
+
+  /**
+   * 🔴 O diretor montou o quadro à mão. Se a esteira criasse um paralelo, ele
+   * teria DOIS lugares: aquele onde arrasta os cards, e outro onde os contratos
+   * assinados apareceriam de verdade. Nada acusaria — os dois existiriam.
+   */
+  it('ADOTA o quadro que o diretor já montou em vez de criar outro', async () => {
+    const { svc, prisma } = build({ quadroDoDiretor: true });
+
+    await svc.entrarNaEsteira('ct-1');
+
+    expect(prisma.kanbanBoard.create).not.toHaveBeenCalled();
+    expect(prisma.kanbanBoard.update).toHaveBeenCalledWith({
+      where: { id: 'board-diretoria' },
+      data: { tipoSistema: 'contratos_esteira' },
+    });
+  });
+
+  it('a adoção só pega quadro SEM tipoSistema', async () => {
+    const { svc, prisma } = build({ quadroDoDiretor: true });
+
+    await svc.entrarNaEsteira('ct-1');
+
+    // Sem esta guarda, um quadro de sistema com nome parecido (o espelho
+    // `diretor_tarefas`) poderia ser sequestrado, e os contratos cairiam no meio
+    // das tarefas espelhadas dos reps.
+    const filtro = prisma.kanbanBoard.findFirst.mock.calls[1][0].where;
+    expect(filtro.tipoSistema).toBeNull();
+    expect(filtro.nome).toBe('Diretoria');
   });
 
   /**

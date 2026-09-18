@@ -9,15 +9,22 @@ import { posicaoNoFim } from '@modules/kanban/kanban-posicao.util';
  * do contrato/cliente, e **cada etapa é uma coluna** pra ele acompanhar
  * visualmente em que pé está cada contrato. Ele arrasta conforme anda.
  *
- * 📌 Quadro PRÓPRIO, e não o quadro pessoal dele, por três motivos concretos:
+ * 📌 **As etapas e o quadro são os DELE.** Em 18/09 o Léo mandou a foto do
+ * quadro **Diretoria**, montado à mão, com as oito colunas abaixo — e elas não
+ * são as seis que eu tinha suposto no dia anterior. As diferenças não são
+ * cosméticas:
  *
- * 1. o quadro pessoal nasce com `📋 A fazer · 🔨 Fazendo · ✅ Feito` e o espelho
- *    Diretor↔rep casa as colunas **por NOME** — colunas novas ali mexeriam num
- *    mecanismo que não tem nada a ver com contrato;
- * 2. esteira e lista de afazeres são coisas diferentes: misturar faz o contrato
- *    sumir no meio das tarefas do dia;
- * 3. o Leandro **não tem** quadro pessoal hoje (conferido em 17/09) — não há o
- *    que reaproveitar.
+ * - existe uma coluna de ENTRADA (`Contrato Assinado`) antes do Serasa: o card
+ *   nasce ali, não já em consulta;
+ * - existe uma etapa que eu não tinha — `Gerar Proposta + Pedido de Venda ERP`,
+ *   entre o Serasa e a produção;
+ * - `Envio` virou duas (`Expedição` e `Aguardando Instalação`), porque
+ *   despachar e instalar são esperas diferentes e de gente diferente.
+ *
+ * ⚠️ Os nomes têm que bater **caractere a caractere** com os do quadro: o
+ * `garantirColunas` casa por NOME, então um emoji a mais aqui não renomeia
+ * coluna nenhuma — cria uma segunda, e o quadro do diretor amanhece com
+ * dezesseis.
  *
  * ⛔ Só entra aqui contrato ASSINADO. Antes disso não há o que produzir, e a
  * esteira existe pra ser a fila de produção, não o funil de venda.
@@ -27,20 +34,28 @@ export class ContratoEsteiraService {
   private readonly logger = new Logger(ContratoEsteiraService.name);
 
   /**
-   * As etapas, na ordem do card. Mudar a ORDEM aqui não remexe quadro que já
-   * existe (as colunas ausentes são criadas no fim); mudar um NOME cria coluna
-   * nova em vez de renomear a antiga — renomeação é na tela, à mão.
+   * As etapas, na ordem do quadro Diretoria (foto do Léo, 18/09) e escritas
+   * exatamente como estão lá.
+   *
+   * Mudar a ORDEM aqui não remexe quadro que já existe (as colunas ausentes são
+   * criadas no fim); mudar um NOME cria coluna nova em vez de renomear a antiga
+   * — renomeação é na tela, à mão.
    */
   static readonly ETAPAS = [
-    '🔎 Consulta Serasa',
-    '🔨 Ordem de produção',
-    '🧾 NF de comodato',
-    '📦 Envio',
-    '🔧 Instalação',
-    '✅ Concluído',
+    'Contrato Assinado',
+    'Consulta Serasa',
+    'Gerar Proposta + Pedido de Venda ERP',
+    'Enviar Para Produção',
+    'Emissão Fiscal Comodato',
+    'Expedição',
+    'Aguardando Instalação',
+    'Instalado',
   ] as const;
 
   private static readonly TIPO = 'contratos_esteira';
+
+  /** O quadro que o Léo montou à mão — adotado pelo nome na primeira vez. */
+  private static readonly NOME_QUADRO = 'Diretoria';
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -145,6 +160,12 @@ export class ContratoEsteiraService {
    * Um quadro de esteira por EMPRESA. Reaproveita o que já existe (marcado por
    * `tipoSistema`), e garante as colunas — mesmo padrão dos quadros de rep e do
    * Diretor, pra quem mexer num entender os outros.
+   *
+   * 🔴 **Adota o quadro que o diretor já montou à mão**, em vez de criar um
+   * paralelo. Sem isto o Leandro teria DOIS lugares pra olhar: o dele, onde ele
+   * arrasta os cards, e um "Contratos — pós-assinatura" onde os contratos
+   * assinados apareceriam de verdade. Nada acusaria o erro — os dois quadros
+   * existiriam, os dois pareceriam certos.
    */
   private async garantirQuadro(
     empresaId: string,
@@ -155,6 +176,35 @@ export class ContratoEsteiraService {
     });
     if (existente) {
       return { boardId: existente.id, listas: await this.garantirColunas(existente.id) };
+    }
+
+    // Adoção por NOME, uma vez só: a partir daqui ele fica marcado e a busca
+    // acima o encontra.
+    //
+    // ⚠️ `tipoSistema: null` no filtro é a guarda que importa — sem ela um
+    // quadro de sistema com o nome parecido (o espelho `diretor_tarefas`, por
+    // exemplo) poderia ser sequestrado pra esteira, e aí os contratos cairiam
+    // no meio das tarefas espelhadas dos reps.
+    const doDiretor = await this.prisma.kanbanBoard.findFirst({
+      where: {
+        empresaId,
+        nome: ContratoEsteiraService.NOME_QUADRO,
+        tipoSistema: null,
+        arquivado: false,
+      },
+      select: { id: true },
+      orderBy: { criadoEm: 'asc' },
+    });
+    if (doDiretor) {
+      await this.prisma.kanbanBoard.update({
+        where: { id: doDiretor.id },
+        data: { tipoSistema: ContratoEsteiraService.TIPO },
+      });
+      this.logger.log(
+        `Quadro "${ContratoEsteiraService.NOME_QUADRO}" adotado como esteira de contratos ` +
+          `(${doDiretor.id})`,
+      );
+      return { boardId: doDiretor.id, listas: await this.garantirColunas(doDiretor.id) };
     }
 
     // Dono = o DIRETOR, que é quem opera a esteira. ADMIN é o fallback (empresa
@@ -179,10 +229,11 @@ export class ContratoEsteiraService {
 
     const board = await this.prisma.kanbanBoard.create({
       data: {
-        nome: 'Contratos — pós-assinatura',
+        nome: ContratoEsteiraService.NOME_QUADRO,
         descricao:
-          'Esteira do que acontece DEPOIS que o cliente assina: Serasa, produção, NF de ' +
-          'comodato, envio e instalação. Um card por contrato; arraste conforme a etapa avança.',
+          'Esteira do que acontece DEPOIS que o cliente assina: Serasa, proposta/pedido no ERP, ' +
+          'produção, NF de comodato, expedição e instalação. Um card por contrato; arraste ' +
+          'conforme a etapa avança.',
         empresaId,
         criadoPorId: dono.id,
         tipoSistema: ContratoEsteiraService.TIPO,
