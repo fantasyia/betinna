@@ -23,6 +23,7 @@ import {
   GripVertical,
   PanelLeftClose,
   PanelLeftOpen,
+  GraduationCap,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -197,6 +198,11 @@ const SECTIONS: NavSection[] = [
         icon: BarChart3,
         permission: 'relatorios.view',
         modulo: 'relatorios',
+      },
+      {
+        to: '/treinamentos',
+        label: 'Treinamentos',
+        icon: GraduationCap,
       },
       {
         to: '/perfil',

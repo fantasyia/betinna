@@ -69,6 +69,7 @@ import { PedidosModule } from '@modules/pedidos/pedidos.module';
 import { PermissionsModule } from '@modules/permissions/permissions.module';
 import { ProdutosModule } from '@modules/produtos/produtos.module';
 import { PropostasModule } from '@modules/propostas/propostas.module';
+import { TreinamentosModule } from '@modules/treinamentos/treinamentos.module';
 import { TagsModule } from '@modules/tags/tags.module';
 import { UsersModule } from '@modules/users/users.module';
 import { AllExceptionsFilter } from '@shared/filters/all-exceptions.filter';
@@ -231,6 +232,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     CatalogoModule,
     PedidosModule,
     PropostasModule,
+    TreinamentosModule,
     ComissoesModule,
     WhatsappPacingModule,
     SupressaoModule,

@@ -412,6 +412,7 @@ model Empresa {
   mesclagens            MesclagemContato[]
   inboxLimpezas         InboxLimpeza[]
   comissoesOriginacao   ComissaoOriginacao[]
+  treinamentos          Treinamento[]
 
   @@index([ativo])
 }
@@ -501,6 +502,7 @@ model Usuario {
   kanbanApiTokens           KanbanApiToken[]
   fluxosFavoritos           FluxoFavorito[]
   kanbanEtiquetasPessoais   KanbanEtiqueta[]
+  treinamentosCriados       Treinamento[]
 
   @@index([role])
   @@index([status])
@@ -1409,6 +1411,52 @@ model PropostaItem {
   proposta Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
 
   @@index([propostaId])
+}
+
+/// Vídeo de treinamento interno da empresa.
+///
+/// 📌 Guarda o PONTEIRO, não o vídeo. O arquivo vive no YouTube e é servido por
+/// ele; aqui ficam só título, descrição e ordem. Foi decisão do Léo (18/09) pelo
+/// motivo certo: vídeo é o tipo de arquivo que deixa uma plataforma pesada e
+/// cara, e nada disso é responsabilidade nossa quando o YouTube já faz.
+///
+/// ⚠️ O vídeo tem que ser "NÃO LISTADO", não "privado". Não listado não aparece
+/// em busca nem no canal, mas EMBEDA. Privado não embeda — o funcionário abre a
+/// aba e vê "vídeo indisponível" — e não dá pra detectar isso pela URL, que é
+/// idêntica nos dois casos.
+///
+/// ⛔ E não listado NÃO é controle de acesso: quem tiver o link assiste, esteja
+/// logado no app ou não. Treinamento com margem, custo ou processo que não pode
+/// circular não deve ir pro YouTube — para esse caso o caminho é o Storage com
+/// link assinado, que já existe no projeto.
+model Treinamento {
+  id        String @id @default(cuid())
+  empresaId String
+
+  titulo    String
+  descricao String?
+  /// O ID do vídeo (11 caracteres), NUNCA a URL colada: cada forma de link
+  /// monta um embed diferente, e a de `watch?v=` nem embeda. Quem normaliza é o
+  /// `youtube-id.util`.
+  youtubeId String
+  /// Agrupa na tela ("Comercial", "Instalação"). Livre de propósito: a operação
+  /// é pequena e uma tabela de categorias seria cadastro pra manter sem ganho.
+  categoria String?
+  /// Ordem de exibição. O treinamento tem sequência — assistir na ordem errada
+  /// é pior que não assistir.
+  ordem     Int    @default(0)
+  /// Tirar do ar sem apagar: vídeo substituído por versão nova continua sendo
+  /// histórico de quem assistiu o quê.
+  ativo     Boolean @default(true)
+
+  criadoPorId String?
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa   Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  criadoPor Usuario? @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId, ativo, ordem])
 }
 
 // ─── KANBAN / LEADS ───────────────────────────────────────────────────

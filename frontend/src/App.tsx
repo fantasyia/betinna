@@ -23,6 +23,7 @@ const LoginPage = lazy(() => import("@/pages/LoginPage"));
 const WelcomePage = lazy(() => import("@/pages/WelcomePage"));
 const PropostaAceitePage = lazy(() => import("@/pages/PropostaAceitePage"));
 const LevantamentoCampoPage = lazy(() => import("@/pages/LevantamentoCampoPage"));
+const TreinamentosPage = lazy(() => import("@/pages/TreinamentosPage"));
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
 const KanbanBoardsPage = lazy(() => import("@/pages/kanban/KanbanBoardsPage"));
 const CalendarioMarketingPage = lazy(
@@ -626,6 +627,18 @@ const router = createBrowserRouter([
         <ProtectedRoute requirePermission="segmentos.view">
           <PageSuspense>
             <SegmentosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/treinamentos",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <TreinamentosPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
