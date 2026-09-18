@@ -124,6 +124,7 @@ const SECTIONS: NavSection[] = [
         modulo: 'pedidos',
         match: [
           '/aprovacoes',
+          '/levantamento',
           '/propostas',
           '/amostras',
           '/comissoes',

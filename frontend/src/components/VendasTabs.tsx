@@ -7,8 +7,7 @@ import {
   Wallet,
   Target as TargetIcon,
   FolderOpen,
-  Undo2,
-} from "lucide-react";
+  Undo2, Zap,} from "lucide-react";
 import { SubTabsBar, type SubTab } from "@/components/SubTabsBar";
 
 /**
@@ -22,6 +21,7 @@ export function VendasTabs() {
   const tabs: SubTab[] = [
     { to: "/pedidos", label: "Pedidos", icon: <ShoppingCart size={14} /> },
     { to: "/aprovacoes", label: "Aprovações", icon: <CheckSquare size={14} /> },
+    { to: "/levantamento", label: "Levantamento", icon: <Zap size={14} /> },
     { to: "/propostas", label: "Propostas", icon: <FileText size={14} /> },
     { to: "/contratos", label: "Contratos", icon: <FileSignature size={14} /> },
     { to: "/amostras", label: "Amostras", icon: <Gift size={14} /> },
