@@ -2,11 +2,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreinamentosService } from './treinamentos.service';
 import { createTreinamentoSchema } from './treinamentos.dto';
 
-const ITEM = {
+/**
+ * A linha do banco como o serviço a lê — as DUAS fontes no mesmo tipo.
+ *
+ * Existe porque o fixture era um literal: o `as const` fixava `fonte` em
+ * "YOUTUBE" e o `youtubeId` em `string`, e o `build(itens = [ITEM])` herdava
+ * isso como o tipo do parâmetro. Resultado: o fixture do ARQUIVO — que é
+ * `fonte: 'ARQUIVO'` e `youtubeId: null` — não era atribuível, e o typecheck
+ * completo acusava quatro erros num arquivo cujos testes passavam.
+ *
+ * 📌 Passou despercebido porque o gate do CI é o `tsconfig.build.json`, que
+ * EXCLUI spec. Spec que não typecheca ainda roda — até o dia em que o tipo
+ * errado esconde um contrato que mudou.
+ */
+type Linha = {
+  id: string;
+  fonte: 'YOUTUBE' | 'ARQUIVO';
+  arquivoPath: string | null;
+  arquivoTamanho: number | null;
+  titulo: string;
+  descricao: string | null;
+  youtubeId: string | null;
+  categoria: string;
+  ordem: number;
+  ativo: boolean;
+  criadoEm: Date;
+};
+
+const ITEM: Linha = {
   id: 't1',
-  fonte: 'YOUTUBE' as const,
-  arquivoPath: null as string | null,
-  arquivoTamanho: null as number | null,
+  fonte: 'YOUTUBE',
+  arquivoPath: null,
+  arquivoTamanho: null,
   titulo: 'Como apresentar o Master Block',
   descricao: null,
   youtubeId: 'dQw4w9WgXcQ',
@@ -16,7 +43,7 @@ const ITEM = {
   criadoEm: new Date('2026-09-18T00:00:00Z'),
 };
 
-function build(itens = [ITEM]) {
+function build(itens: Linha[] = [ITEM]) {
   const prisma = {
     treinamento: {
       findMany: vi.fn().mockResolvedValue(itens),
@@ -30,7 +57,13 @@ function build(itens = [ITEM]) {
     },
   };
   const arquivos = {
-    urlParaAssistir: vi.fn(async (caminho: string) => `https://storage/assinada/${caminho}?exp=1`),
+    // `Promise<string | null>` explícito: o null é um caminho REAL (arquivo que
+    // sumiu do Storage) e tem teste próprio. Sem a anotação, o tipo saía do
+    // valor de sucesso e o `mockResolvedValue(null)` do teste não compilava.
+    urlParaAssistir: vi.fn(
+      async (caminho: string): Promise<string | null> =>
+        `https://storage/assinada/${caminho}?exp=1`,
+    ),
     permitirUpload: vi.fn(async () => ({
       caminho: 'emp-1/v.mp4',
       url: 'u',
