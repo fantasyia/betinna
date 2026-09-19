@@ -54,6 +54,7 @@ export class KanbanChecklistsService {
                 texto: item.texto,
                 dataEntrega: item.dataEntrega ?? null,
                 responsavelId: item.responsavelId ?? null,
+                concluido: item.concluido ?? false,
                 posicao: (i + 1) * POSICAO_GAP,
               })),
             }
@@ -130,6 +131,7 @@ export class KanbanChecklistsService {
         texto: dto.texto,
         dataEntrega: dto.dataEntrega ?? null,
         responsavelId: dto.responsavelId ?? null,
+        concluido: dto.concluido ?? false,
         posicao: posicaoNoFim(ultimo?.posicao),
       },
       include: { responsavel: USUARIO_RESUMO },

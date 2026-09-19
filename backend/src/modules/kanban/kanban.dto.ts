@@ -81,6 +81,12 @@ const checklistItemBaseSchema = z.object({
   texto: z.string().trim().min(1, 'Texto é obrigatório').max(500),
   dataEntrega: z.coerce.date().nullable().optional(),
   responsavelId: z.string().min(1).nullable().optional(),
+  // Nascer JÁ marcado. Sem isto o Zod DESCARTAVA o campo (objeto sem
+  // `.passthrough()` remove chave não declarada) e a API respondia 201 com o
+  // item desmarcado: quem importa um checklist de coisas já feitas recebia
+  // sucesso e um quadro errado, sem nada acusando. O `update` sempre aceitou
+  // `concluido` — só o `create` ficou de fora.
+  concluido: z.boolean().optional(),
 });
 
 export const createChecklistSchema = z.object({

@@ -34,6 +34,7 @@ import {
   parseVariaveisGravadas,
   type VariavelGravavel,
 } from './variaveis-gravadas.util';
+import { instrucaoDadosJaInformados } from './dados-ja-informados.util';
 import { conviteDaPergunta, extrairDeterministico } from './extracao-deterministica';
 import { ehNaoSei } from './normalizar-valor.util';
 import {
@@ -2453,7 +2454,23 @@ export class ConversarIaService implements OnModuleDestroy {
       // perfil do WhatsApp a partir da 2ª mensagem.
       (cfg.usarNomeDoLead === false
         ? '\n[Regra] NÃO use o nome do contato em nenhuma mensagem (o nome do perfil não é confiável).'
-        : '');
+        : '') +
+      // POR ÚLTIMO de propósito, e é o ponto todo do conserto: este bloco
+      // concorre com NOVE menções mandando perguntar a tensão, espalhadas nos
+      // 47k do prompt compilado. Escrito lá dentro ele é uma voz contra nove
+      // (medido — a tentativa v61 reprovou igual); aqui ele é a última coisa
+      // que o modelo lê antes da conversa. Mesmo lugar e mesmo motivo das
+      // linhas [Dado] do nome e do e-mail, que já resolveram este sintoma.
+      //
+      // ⚠️ Só no turno de RESPOSTA. O OPENER foi deliberadamente mantido magro
+      // (ver a reversão do INSTRUCAO_OPENER acima): lá o prompt faz duas coisas
+      // e somar instrução pode gastar atenção no lado errado. O defeito medido
+      // (COB.2/COB.3) é de turno de resposta — o lead volta e responde a
+      // corrente. Ampliar pro opener é decisão separada, com medição própria.
+      instrucaoDadosJaInformados(lead.variaveis, {
+        reservada: CHAVE_RESERVADA,
+        ignorar: SINAIS_ROTEAMENTO,
+      });
     // Histórico da conversa = memória da IA no contexto da execução (inclui o
     // opener + os turnos), com fallback pro montarHistorico (execuções antigas).
     // Sem isto a IA não via as próprias mensagens e se reapresentava a cada resposta.

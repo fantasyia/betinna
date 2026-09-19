@@ -894,6 +894,10 @@ const itemChecklistSchema = z.object({
     .email()
     .optional()
     .describe("E-mail de um membro do quadro"),
+  concluido: z
+    .boolean()
+    .optional()
+    .describe("Nasce JÁ marcado (ex.: importar um checklist de coisas feitas)"),
 });
 
 server.registerTool(
@@ -937,6 +941,7 @@ server.registerTool(
           responsavelId: item.responsavelEmail
             ? emailParaId.get(item.responsavelEmail)
             : undefined,
+          concluido: item.concluido,
         });
       }
       const ck = await api.post<{
@@ -1304,6 +1309,7 @@ server.registerTool(
             responsavelId: item.responsavelEmail
               ? emailParaId.get(item.responsavelEmail)
               : undefined,
+            concluido: item.concluido,
           },
         );
         criados.push({ id: i.id, texto: i.texto });
