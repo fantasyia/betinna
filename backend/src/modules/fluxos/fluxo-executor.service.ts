@@ -1659,6 +1659,9 @@ export class FluxoExecutorService {
           empresaId,
           idemBase,
           reativo,
+          // O NÓ, pra guarda de decisão velha: ela precisa saber de onde partir
+          // no grafo pra responder "alguém fala depois de mim?".
+          no,
         );
 
       case 'ENVIAR_EMAIL':
@@ -1702,6 +1705,79 @@ export class FluxoExecutorService {
 
   // ─── Ações concretas ────────────────────────────────────────────────
 
+  /**
+   * A partir deste nó, algum nó de IA é alcançável?
+   *
+   * É a condição que torna seguro DESCARTAR um texto fixo com decisão velha: o
+   * turno de IA seguinte lê a mensagem nova e responde tudo junto, então nada se
+   * perde. Sem nó de IA adiante não há quem refaça a fala — e aí descartar
+   * emudece o bot, que é pior que falar fora de hora.
+   *
+   * É o análogo do `!classificouEfetivo` da guarda do `conversar-ia`: lá a
+   * pergunta é "o nó continua esperando?", aqui é "alguém fala depois de mim?".
+   *
+   * ⚠️ Anda pelo grafo com um conjunto de visitados: fluxo com ciclo (o lead
+   * volta pro mesmo ramo) é comum aqui, e sem isso a varredura não termina.
+   *
+   * FAIL-CLOSED de propósito, ao contrário do resto: erro ao ler o grafo devolve
+   * `false`, que significa NÃO DESCARTA. O lado seguro desta pergunta é mandar.
+   */
+  private async temIaDepois(no: { id: string; fluxoId: string }): Promise<boolean> {
+    try {
+      const [nos, arestas] = await Promise.all([
+        this.prisma.fluxoNo.findMany({
+          where: { fluxoId: no.fluxoId },
+          select: { id: true, tipo: true, acaoTipo: true },
+        }),
+        this.prisma.fluxoEdge.findMany({
+          where: { fluxoId: no.fluxoId },
+          select: { sourceNoId: true, targetNoId: true },
+        }),
+      ]);
+      const ehIa = new Map(
+        nos.map((n) => [n.id, n.tipo === 'ACAO' && n.acaoTipo === 'CONVERSAR_IA']),
+      );
+      const saidas = new Map<string, string[]>();
+      for (const a of arestas) {
+        const lista = saidas.get(a.sourceNoId);
+        if (lista) lista.push(a.targetNoId);
+        else saidas.set(a.sourceNoId, [a.targetNoId]);
+      }
+      const vistos = new Set<string>([no.id]);
+      const fila = [...(saidas.get(no.id) ?? [])];
+      // Teto de voltas, além do conjunto de visitados.
+      //
+      // 🔴 Isto NÃO é redundância: a busca é um laço SÍNCRONO, sem `await` no
+      // corpo. Um defeito no conjunto de visitados não daria resposta errada —
+      // daria laço infinito travando o event loop do worker, que é pior que
+      // qualquer resposta. Medi isso: removendo o `vistos.has`, o teste do grafo
+      // com ciclo PENDURA em vez de falhar, e o vitest não consegue nem
+      // expirá-lo. Defeito que trava não é observável; defeito que erra é.
+      //
+      // O teto não pode ser atingido por fluxo legítimo (o maior tem dezenas de
+      // nós), então bater nele é sinal de bug — e a resposta é a segura: manda.
+      let voltas = 0;
+      const TETO = 5000;
+      while (fila.length) {
+        if (++voltas > TETO) {
+          this.logger.warn(
+            `temIaDepois: varredura passou de ${TETO} voltas no fluxo ${no.fluxoId} — ` +
+              `desistindo (a mensagem SAI)`,
+          );
+          return false;
+        }
+        const atual = fila.shift()!;
+        if (vistos.has(atual)) continue;
+        vistos.add(atual);
+        if (ehIa.get(atual)) return true;
+        fila.push(...(saidas.get(atual) ?? []));
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   private async acaoEnviarWhatsapp(
     cfg: EnviarWhatsappConfig,
     ctx: ExecucaoContexto,
@@ -1713,10 +1789,18 @@ export class FluxoExecutorService {
      * envio — a janela já foi conferida no passo, e resposta não tem horário.
      */
     reativo = false,
+    /** O nó deste envio — só pra guarda de decisão velha. Ausente = sem guarda. */
+    no?: { id: string; fluxoId: string },
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_WHATSAPP');
     const mensagem = interpolate(cfg.mensagem, ctx);
     this.assertSemPlaceholder('ENVIAR_WHATSAPP', { mensagem });
+    // Marco da guarda de decisão velha: tudo que o lead disser a partir de AGORA
+    // é posterior à decisão que este nó carrega. Tirado no começo da ação, antes
+    // de pacing e ritmo — são eles que abrem a janela.
+    const chegouEm = new Date();
+    const conversationIdDoCtx =
+      typeof ctx.conversationId === 'string' ? ctx.conversationId : undefined;
     const modo = cfg.destinatarioModo ?? 'lead';
 
     // Supressão LGPD: se o destino é o PRÓPRIO lead (modo 'lead') e ele tem a tag
@@ -1854,6 +1938,61 @@ export class FluxoExecutorService {
             .catch(() => undefined);
         }
       }
+
+      // ── A DECISÃO FICOU VELHA? (medido em 23/09, 3 de 4 rodadas) ──
+      //
+      // O portão decide no segundo 0,4 e este nó ANUNCIA a decisão dez segundos
+      // depois, sem reler nada. No meio, o cliente respondeu:
+      //
+      //   +0.4s  portão  "Já sabemos a tensão?" → Não   (certo: ninguém tinha dito)
+      //   +8.0s  👤      "é 220V"
+      //   +10.0s 🤖      "E qual o padrão de energia aí, 110V, 220V ou 380V?"
+      //
+      // É a mesma família da resposta de IA velha (`conversar-ia`, 15/09), com a
+      // guarda de um lado só: a resposta da IA é DESCARTADA, a pergunta de texto
+      // fixo SAI. O TEXTO FIXO não passa por `enviarComPersona`, então nunca
+      // encostou naquela checagem.
+      //
+      // ⚠️ DEPOIS do delay do ritmo, de propósito: a espera do "digitando" faz
+      // parte da janela em que a resposta chega. Checar antes perderia os casos
+      // de 3s — que foram 2 das 3 reprovações medidas.
+      //
+      // 🔴 E só descarta se ALGUÉM FALA DEPOIS. Este é o ponto que a guarda da
+      // IA resolve com `!classificouEfetivo` ("só quando o nó continua
+      // esperando") e que aqui não existe de graça: texto fixo terminal
+      // descartado é bot MUDO, que é a família de defeito mais cara desta base.
+      // Por isso a varredura do grafo: sem nó de IA adiante, manda.
+      //
+      // FAIL-OPEN em tudo — consulta que falha, grafo que não carrega, nó
+      // ausente: a mensagem SAI. Emudecer por causa de uma checagem auxiliar é
+      // pior que falar fora de hora.
+      if (no && conversationIdDoCtx && chegouEm) {
+        let descartar = false;
+        try {
+          const novas = await this.prisma.message.count({
+            where: {
+              conversationId: conversationIdDoCtx,
+              direction: 'INBOUND',
+              criadoEm: { gt: chegouEm },
+            },
+          });
+          descartar = novas > 0 && (await this.temIaDepois(no));
+        } catch (err) {
+          this.logger.warn(
+            `ENVIAR_WHATSAPP: não consegui checar se a decisão ficou velha (nó ${no.id}): ` +
+              `${err instanceof Error ? err.message : String(err)} — enviando assim mesmo`,
+          );
+          descartar = false;
+        }
+        if (descartar) {
+          this.logger.log(
+            `ENVIAR_WHATSAPP: decisão velha — o lead respondeu depois de ${chegouEm.toISOString()}; ` +
+              `nó ${no.id} NÃO envia, o turno de IA seguinte cobre`,
+          );
+          return { peerId, modo, descartado: 'decisao-velha', remetente: remetente.origem };
+        }
+      }
+
       try {
         if (cfg.midia?.storagePath) {
           const r = await this.whatsapp.enviarMidia(

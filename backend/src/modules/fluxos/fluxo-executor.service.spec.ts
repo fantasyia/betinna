@@ -39,6 +39,12 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   fluxoNo: {
     findUnique: vi.fn().mockResolvedValue(null),
+    // Varredura "alguém fala depois de mim?" da guarda de decisão velha.
+    findMany: vi.fn().mockResolvedValue([]),
+  } satisfies MockModel,
+  // Guarda de decisão velha: quantas INBOUND chegaram depois de o nó começar.
+  message: {
+    count: vi.fn().mockResolvedValue(0),
   } satisfies MockModel,
   // Gatilho do fluxo: define se o envio é abordagem (janela vale) ou resposta.
   fluxo: {
@@ -1524,6 +1530,131 @@ describe('FluxoExecutorService', () => {
       });
       return acaoNo;
     };
+
+    // ─────────────────────────────────────────────────────────────────────
+    describe('decisão velha — o portão decide e o TEXTO FIXO anuncia 10s depois', () => {
+      /**
+       * Medido em 23/09, 3 de 4 rodadas: o portão decide "ninguém disse a tensão"
+       * no segundo 0,4, um nó de IA queima 9,5s, e o texto fixo pergunta a tensão
+       * que o cliente respondeu no segundo 8.
+       *
+       * É a mesma família da resposta de IA velha — com a guarda de um lado só: a
+       * resposta da IA é descartada, a pergunta de texto fixo sai. TEXTO FIXO não
+       * passa por `enviarComPersona`, então nunca encostou naquela checagem.
+       */
+      const comIaAdiante = () => {
+        prisma.fluxoNo.findMany.mockResolvedValue([
+          { id: 'no-wa', tipo: 'ACAO', acaoTipo: 'ENVIAR_WHATSAPP' },
+          { id: 'no-ia', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
+        ]);
+        prisma.fluxoEdge.findMany.mockResolvedValue([{ sourceNoId: 'no-wa', targetNoId: 'no-ia' }]);
+      };
+
+      it('🔴 lead respondeu no meio E há IA adiante → NÃO envia (o turno seguinte cobre)', async () => {
+        setupWhatsappPasso({
+          clienteId: 'cli-1',
+          cliente: { nome: 'Carlos' },
+          conversationId: 'conv-1',
+        });
+        prisma.message.count.mockResolvedValue(1); // chegou resposta depois do corte
+        comIaAdiante();
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-1');
+
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      });
+
+      it('🔴 lead respondeu MAS não há IA adiante → ENVIA (bot mudo é pior)', async () => {
+        // Sem ninguém pra refazer a fala, descartar apaga a mensagem pra sempre.
+        // É a condição que a guarda da IA tem de graça (`!classificouEfetivo`) e
+        // que aqui precisou da varredura do grafo.
+        setupWhatsappPasso({
+          clienteId: 'cli-1',
+          cliente: { nome: 'Carlos' },
+          conversationId: 'conv-1',
+        });
+        prisma.message.count.mockResolvedValue(1);
+        prisma.fluxoNo.findMany.mockResolvedValue([
+          { id: 'no-wa', tipo: 'ACAO', acaoTipo: 'ENVIAR_WHATSAPP' },
+          { id: 'no-tag', tipo: 'ACAO', acaoTipo: 'MUDAR_TAG' },
+        ]);
+        prisma.fluxoEdge.findMany.mockResolvedValue([
+          { sourceNoId: 'no-wa', targetNoId: 'no-tag' },
+        ]);
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-1');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('lead NÃO respondeu → envia normalmente', async () => {
+        setupWhatsappPasso({
+          clienteId: 'cli-1',
+          cliente: { nome: 'Carlos' },
+          conversationId: 'conv-1',
+        });
+        prisma.message.count.mockResolvedValue(0);
+        comIaAdiante();
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-1');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+        // A consulta que decide isto precisa olhar SÓ o que o lead mandou.
+        const chamada = prisma.message.count.mock.calls.at(-1)?.[0] as
+          | { where?: { direction?: string; criadoEm?: unknown } }
+          | undefined;
+        expect(chamada?.where?.direction).toBe('INBOUND');
+        expect(chamada?.where?.criadoEm).toBeDefined();
+      });
+
+      it('FAIL-OPEN: consulta que falha não emudece o bot', async () => {
+        setupWhatsappPasso({
+          clienteId: 'cli-1',
+          cliente: { nome: 'Carlos' },
+          conversationId: 'conv-1',
+        });
+        prisma.message.count.mockRejectedValue(new Error('banco fora'));
+        comIaAdiante();
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-1');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('sem conversa no contexto não há o que comparar → envia', async () => {
+        setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } }); // sem conversationId
+        prisma.message.count.mockResolvedValue(5);
+        comIaAdiante();
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-1');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('grafo com CICLO não trava a varredura', async () => {
+        // Lead que volta pro mesmo ramo é comum aqui: sem conjunto de visitados a
+        // busca não termina e o passo pendura pra sempre.
+        setupWhatsappPasso({
+          clienteId: 'cli-1',
+          cliente: { nome: 'Carlos' },
+          conversationId: 'conv-1',
+        });
+        prisma.message.count.mockResolvedValue(1);
+        prisma.fluxoNo.findMany.mockResolvedValue([
+          { id: 'no-wa', tipo: 'ACAO', acaoTipo: 'ENVIAR_WHATSAPP' },
+          { id: 'no-a', tipo: 'ACAO', acaoTipo: 'MUDAR_TAG' },
+        ]);
+        prisma.fluxoEdge.findMany.mockResolvedValue([
+          { sourceNoId: 'no-wa', targetNoId: 'no-a' },
+          { sourceNoId: 'no-a', targetNoId: 'no-wa' }, // volta
+        ]);
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-1');
+
+        // Terminou, e sem IA no ciclo → mandou.
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+    });
 
     it('envia mensagem interpolada pelo WhatsApp', async () => {
       setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
