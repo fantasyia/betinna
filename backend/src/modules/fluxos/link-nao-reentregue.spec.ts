@@ -13,9 +13,15 @@ import { pediuOLinkDeNovo, urlsDoTexto } from './conversar-ia.service';
  * O motor detecta a repetição olhando as mensagens OUTBOUND da conversa e
  * REGERA com essa informação — não reescreve a fala da IA.
  *
- * Aqui ficam as duas peças puras da guarda. O caminho completo (regerar e
- * trocar a resposta) é exercitado pelas specs do turno em
- * `conversar-ia.service.spec.ts`.
+ * ⚠️ Aqui ficam as peças PURAS da guarda. O caminho completo (regerar e trocar
+ * a resposta) é exercitado em `conversar-ia.service.spec.ts`, no describe
+ * "link repetido — o caminho da regeração".
+ *
+ * 🔴 Essa frase já esteve aqui e era FALSA por semanas: o mock de `message` no
+ * spec do turno não tinha `findFirst`, a consulta estourava, caía no catch
+ * best-effort e a regeração NUNCA rodava. Dois docblocks afirmavam cobertura
+ * que não existia, e a afirmação foi copiada de um pro outro sem ninguém medir.
+ * Se você for repetir uma frase dessas, rode a mutação antes.
  */
 
 describe('urlsDoTexto — o que conta como "o mesmo link"', () => {

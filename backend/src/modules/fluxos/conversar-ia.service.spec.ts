@@ -59,6 +59,12 @@ const makePrisma = () => {
     message: {
       findMany: vi.fn().mockResolvedValue([]),
       update: vi.fn().mockResolvedValue({}),
+      // 🔴 FALTAVA, e a ausência era invisível: `linkJaEntregue` chama
+      // `findFirst`, e sem o mock a chamada ESTOURA, cai no catch best-effort e
+      // devolve null. Resultado: a guarda de link repetido nunca rodava em
+      // teste, e dois docblocks afirmavam que rodava. Default null = nenhum
+      // link entregue antes (o caso da maioria dos testes).
+      findFirst: vi.fn().mockResolvedValue(null),
       // Conta as entrantes que chegaram DEPOIS da janela de rajada — é por ela
       // que o turno sabe se a resposta pronta ficou velha. Default 0 = ninguém
       // escreveu durante a geração (o caso da maioria dos testes).
@@ -1368,6 +1374,99 @@ describe('ConversarIaService', () => {
       expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
       expect(prisma.fluxoNo.findUnique).not.toHaveBeenCalled();
+    });
+
+    // ── O CAMINHO QUE NINGUÉM EXERCITAVA (descoberto em 24/09) ──────────
+    //
+    // A guarda de link repetido (P2, 14/09) tinha DOIS docblocks afirmando que
+    // "o caminho completo é exercitado pelas specs do turno". Era falso: o mock
+    // de `message` não tinha `findFirst`, a consulta estourava, caía no catch
+    // best-effort e a regeração nunca rodava. A frase sobreviveu a duas
+    // sessões porque ninguém mediu — inclusive eu, que a copiei pro spec novo.
+    //
+    // Estes três testes são o que a frase prometia.
+    describe('link repetido — o caminho da regeração', () => {
+      const prepararLinkRepetido = () => {
+        prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+        prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+        prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+        // O histórico JÁ tem esse link: é o lead que volta.
+        prisma.message.findFirst.mockResolvedValue({ id: 'msg-antiga' });
+      };
+      const LINK = 'https://somatecblocking.com.br/protecao-comercial?corrente=63#calculadora';
+
+      it('🔴 regera SEM o link e é a regeração que vai pro cliente', async () => {
+        prepararLinkRepetido();
+        muller.gerarRespostaIa
+          .mockResolvedValueOnce({
+            texto: `{"resposta":"Segue: ${LINK}","classificou":false}`,
+            modelo: 'gpt',
+          })
+          .mockResolvedValueOnce({
+            texto: '{"resposta":"Conseguiu usar a calculadora?","classificou":false}',
+            modelo: 'gpt',
+          });
+
+        await svc.retomar('exec-1', 'conv-1', 'oi');
+
+        // Duas chamadas: a original e a regeração.
+        expect(muller.gerarRespostaIa).toHaveBeenCalledTimes(2);
+        // A 2ª leva o contexto que a 1ª não tinha.
+        expect(String(muller.gerarRespostaIa.mock.calls[1][1])).toContain('JÁ RECEBEU este link');
+        // E o que sai é a regeração, sem o link.
+        const enviado = String(whatsapp.enviarTexto.mock.calls.at(-1)?.[2] ?? '');
+        expect(enviado).not.toContain(LINK);
+        expect(enviado).toContain('Conseguiu usar');
+      });
+
+      it('🔴 se a regeração AINDA trouxer o link, fica a original — não emudece', async () => {
+        // "Falar demais é recuperável, emudecer no meio não." Sem este teste,
+        // trocar o fallback por um `return` silencioso passa despercebido.
+        prepararLinkRepetido();
+        muller.gerarRespostaIa
+          .mockResolvedValueOnce({
+            texto: `{"resposta":"Segue: ${LINK}","classificou":false}`,
+            modelo: 'gpt',
+          })
+          .mockResolvedValueOnce({
+            texto: `{"resposta":"De novo: ${LINK}","classificou":false}`,
+            modelo: 'gpt',
+          });
+
+        await svc.retomar('exec-1', 'conv-1', 'oi');
+
+        const enviado = String(whatsapp.enviarTexto.mock.calls.at(-1)?.[2] ?? '');
+        expect(enviado).toContain(LINK); // mandou algo
+        expect(enviado).toContain('Segue'); // e foi a ORIGINAL, não a regeração
+      });
+
+      it('se a regeração FALHAR, a original sai mesmo assim', async () => {
+        prepararLinkRepetido();
+        muller.gerarRespostaIa
+          .mockResolvedValueOnce({
+            texto: `{"resposta":"Segue: ${LINK}","classificou":false}`,
+            modelo: 'gpt',
+          })
+          .mockRejectedValueOnce(new Error('IA fora'));
+
+        await svc.retomar('exec-1', 'conv-1', 'oi');
+
+        expect(String(whatsapp.enviarTexto.mock.calls.at(-1)?.[2] ?? '')).toContain(LINK);
+      });
+
+      it('lead que PEDE o link de novo recebe — a guarda não atrapalha quem pediu', async () => {
+        prepararLinkRepetido();
+        muller.gerarRespostaIa.mockResolvedValue({
+          texto: `{"resposta":"Claro: ${LINK}","classificou":false}`,
+          modelo: 'gpt',
+        });
+
+        await svc.retomar('exec-1', 'conv-1', 'manda o link de novo');
+
+        // Uma chamada só: nem tentou regerar.
+        expect(muller.gerarRespostaIa).toHaveBeenCalledTimes(1);
+        expect(String(whatsapp.enviarTexto.mock.calls.at(-1)?.[2] ?? '')).toContain(LINK);
+      });
     });
 
     // ── O turno que engolia a mensagem (card 🔴 de 04/09) ─────────────

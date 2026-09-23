@@ -18,7 +18,12 @@ import { createHash } from 'node:crypto';
  *
  * Aqui a reserva é exercitada como CONTRATO — o que o Redis recebe e o que o
  * serviço conclui a partir da resposta dele. O caminho completo (regerar e
- * trocar a fala) já é coberto pelas specs do turno.
+ * trocar a fala) está em `conversar-ia.service.spec.ts`, describe "link
+ * repetido — o caminho da regeração".
+ *
+ * 🔴 A versão original desta frase dizia "já é coberto pelas specs do turno" e
+ * era FALSA — copiada de outro docblock sem verificação. A cobertura só passou
+ * a existir em 24/09.
  */
 
 /** Espelha `reservarEntregaDoLink`: é isto que o serviço faz com a chave. */
