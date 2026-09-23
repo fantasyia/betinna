@@ -1721,6 +1721,32 @@ export class FluxoExecutorService {
    *
    * FAIL-CLOSED de propósito, ao contrário do resto: erro ao ler o grafo devolve
    * `false`, que significa NÃO DESCARTA. O lado seguro desta pergunta é mandar.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * 🔴 ANTES DE ENDURECER ESTA REGRA, LEIA — varredura dos 25 fluxos da base
+   * feita pela sessão de testes em 23/09:
+   *
+   * Os ÚNICOS `ENVIAR_WHATSAPP` terminais que existem hoje são os **6
+   * disparadores da bateria** (DRV, DRVM, DRVD, DRVA, DRV3, DRV3P). Nenhum
+   * fluxo de produção tem envio de WhatsApp como último nó.
+   *
+   * Isso tenta duas conclusões erradas, e as duas custam caro:
+   *
+   * 1. *"A exceção do terminal não tem usuário de produção, dá pra tirar."*
+   *    Não dá. No dia em que alguém desenhar um fluxo de aviso simples, ele
+   *    nasce terminal — e nasce mudo. A exceção protege um caso que ainda não
+   *    foi escrito; é disso que ela trata.
+   *
+   * 2. *"'Nó de IA ALCANÇÁVEL' é caro, troco por 'existe nó de IA no grafo'."*
+   *    Isso EMUDECE A BATERIA INTEIRA. O DRV3P manda 3 mensagens seguidas pro
+   *    mesmo número; a resposta do bot chega como INBOUND enquanto a 2ª e a 3ª
+   *    ainda estão pendentes. Os disparadores TÊM nó de IA no grafo — só não
+   *    alcançável a partir do envio. Com a regra frouxa, 2 de 3 mensagens são
+   *    descartadas, o disparador entrega 1 de 3, e TODOS os casos falham com
+   *    cara de defeito de produto em vez de instrumento quebrado.
+   *
+   * Se mexer aqui, avise a sessão de testes NO MESMO COMMIT. O caso de
+   * regressão que vigia isto usa o DRV3P como alvo.
    */
   private async temIaDepois(no: { id: string; fluxoId: string }): Promise<boolean> {
     try {
