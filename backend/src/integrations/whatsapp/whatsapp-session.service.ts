@@ -13,6 +13,7 @@ import makeWASocket, {
 import QRCode from 'qrcode';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { normalizarJid } from '@integrations/evolution/jid.util';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
@@ -1321,7 +1322,12 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
   }
 
   private normalizarJid(peerId: string): string {
-    if (peerId.includes('@')) return peerId;
+    // ⚠️ O retorno cedo é certo (já é JID, não remonta), mas devolvia o `+`
+    // intacto — e foi por ele que `+55…@s.whatsapp.net` chegou vivo ao peerId e
+    // rachou a conversa em duas (23/09). Hoje quem constrói passa pelo
+    // `jidDeTelefone` e não manda mais `+`; isto aqui é a segunda camada, pro
+    // caso de um caminho novo esquecer. JID de verdade nunca tem `+`.
+    if (peerId.includes('@')) return normalizarJid(peerId);
     // Nacional BR sem DDI (10/11 dígitos) → prefixa 55, senão o JID fica inválido
     // (exists:false → 1ª msg não sai), igual ao EvolutionService.normalizarNumero.
     // Internacional (+) ou já com DDI (>=12 dígitos) mantém — não corrompe estrangeiro.

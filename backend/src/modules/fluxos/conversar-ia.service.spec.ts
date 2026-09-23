@@ -387,7 +387,7 @@ describe('ConversarIaService', () => {
       expect(r.aguardando).toBe(true);
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
         'emp-1',
-        '11999990000@s.whatsapp.net',
+        '5511999990000@s.whatsapp.net',
         'Olá! Tudo bem?',
         { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0$/) },
       );
@@ -1073,14 +1073,14 @@ describe('ConversarIaService', () => {
       expect(whatsapp.enviarTexto).toHaveBeenNthCalledWith(
         1,
         'emp-1',
-        '11999990000@s.whatsapp.net',
+        '5511999990000@s.whatsapp.net',
         'João, oi',
         { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0$/) },
       );
       expect(whatsapp.enviarTexto).toHaveBeenNthCalledWith(
         2,
         'emp-1',
-        '11999990000@s.whatsapp.net',
+        '5511999990000@s.whatsapp.net',
         'tudo bem?',
         { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b1$/) },
       );
@@ -1528,7 +1528,7 @@ describe('ConversarIaService', () => {
 
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
         'emp-1',
-        '11999990000@s.whatsapp.net',
+        '5511999990000@s.whatsapp.net',
         'Show! Vou te conectar com a diretoria.',
         { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0$/) },
       );
@@ -1660,7 +1660,7 @@ describe('ConversarIaService', () => {
 
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
         'emp-1',
-        '11999990000@s.whatsapp.net',
+        '5511999990000@s.whatsapp.net',
         'Legal! E há quanto tempo atua?',
         { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0$/) },
       );

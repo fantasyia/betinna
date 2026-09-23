@@ -1532,7 +1532,7 @@ describe('FluxoExecutorService', () => {
 
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
         'emp-1',
-        '11987654321@s.whatsapp.net',
+        '5511987654321@s.whatsapp.net',
         'Olá Carlos!',
         { idempotencyKey: 'fx:exec-1:no-wa:p0' },
       );
@@ -1572,7 +1572,7 @@ describe('FluxoExecutorService', () => {
           direction: 'OUTBOUND',
           enviadaPorBot: true,
           conteudo: 'Olá Carlos!',
-          peerId: '11987654321@s.whatsapp.net',
+          peerId: '5511987654321@s.whatsapp.net',
           // O externalId do provider é o que deixa o eco deduplicar depois.
           externalId: 'wa-msg-1',
         }),
@@ -1617,7 +1617,7 @@ describe('FluxoExecutorService', () => {
 
       expect(whatsapp.enviarMidia).toHaveBeenCalledWith(
         'emp-1',
-        '11987654321@s.whatsapp.net',
+        '5511987654321@s.whatsapp.net',
         expect.objectContaining({
           tipo: 'DOCUMENT',
           storagePath: 'emp-1/fluxo/doc.pdf',
@@ -2057,7 +2057,7 @@ describe('FluxoExecutorService', () => {
 
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
         'emp-1',
-        '11999990000@s.whatsapp.net',
+        '5511999990000@s.whatsapp.net',
         'Lead: Padaria Forte (Campinas/SP) wpp +55 19 98888-7777 | canal atacado | obs Compra 3x/mês',
         { idempotencyKey: 'fx:exec-1:no-1:p0' },
       );

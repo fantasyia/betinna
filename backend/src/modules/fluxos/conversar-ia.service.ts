@@ -13,6 +13,7 @@ import type { FluxoExecucao, FluxoNo } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { interpolate } from '@shared/utils/interpolate';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
+import { jidDeTelefone } from '@integrations/evolution/jid.util';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
 import { BotCustoService } from '@modules/mullerbot/bot-custo.service';
 import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
@@ -805,7 +806,7 @@ export class ConversarIaService implements OnModuleDestroy {
       );
       return;
     }
-    const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
+    const peerId = jidDeTelefone(telefone);
     for (const id of ids) {
       const doc = await this.prisma.knowledgeDocumento.findFirst({
         where: { id, empresaId, podeEnviar: true },
@@ -3659,9 +3660,10 @@ export class ConversarIaService implements OnModuleDestroy {
         `CONVERSAR_IA: pacing segurou o envio por ${esperouPacing}ms (reativo=${reativo})`,
       );
     }
-    // Preserva o '+' (E.164) pra o provider distinguir internacional de nacional —
-    // senão número estrangeiro de 10/11 dígitos ganharia 55 indevidamente.
-    const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
+    // O '+' (E.164) é lido DENTRO do `jidDeTelefone` pra distinguir internacional
+    // de nacional — e descartado ali. Ele não pode chegar ao peerId: a conversa é
+    // casada por peerId EXATO e o inbound do WhatsApp nunca traz '+'. Ver jid.util.
+    const peerId = jidDeTelefone(telefone);
     const cfg = await this.persona.obterConfigBot(empresaId).catch(() => null);
     // MESMA persona, MESMO helper do bot geral (enviarEmBaloes): balões, delay e
     // "digitando…" idênticos — sem distinção entre fluxo e bot geral. Sem config

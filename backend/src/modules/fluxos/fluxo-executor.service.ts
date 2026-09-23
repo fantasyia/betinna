@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
+import { jidDeTelefone } from '@integrations/evolution/jid.util';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { codificarProximo, delayRestanteMs, lerProximo } from './proximo-claim.util';
 import {
@@ -1945,7 +1946,9 @@ export class FluxoExecutorService {
       throw new Error(`ENVIAR_WHATSAPP: telefone do destinatário inválido (${telefone})`);
     }
 
-    return enviar(`${telefone}@s.whatsapp.net`);
+    // NUNCA colar o telefone cru: ele vem como o app guarda (E.164, com '+', às
+    // vezes com espaço e hífen) e o peerId precisa do formato da rede. Ver jid.util.
+    return enviar(jidDeTelefone(telefone));
   }
 
   /**
