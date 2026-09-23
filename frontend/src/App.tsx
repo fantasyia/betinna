@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyComRetry } from "@/lib/lazy-com-retry";
 import {
   createBrowserRouter,
   RouterProvider,
@@ -19,67 +20,67 @@ import { PwaBanner } from "@/components/PwaBanner";
  */
 
 // Lazy-loaded pages — code splitting per route
-const LoginPage = lazy(() => import("@/pages/LoginPage"));
-const WelcomePage = lazy(() => import("@/pages/WelcomePage"));
-const PropostaAceitePage = lazy(() => import("@/pages/PropostaAceitePage"));
-const LevantamentoCampoPage = lazy(() => import("@/pages/LevantamentoCampoPage"));
-const TreinamentosPage = lazy(() => import("@/pages/TreinamentosPage"));
-const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
-const KanbanBoardsPage = lazy(() => import("@/pages/kanban/KanbanBoardsPage"));
-const CalendarioMarketingPage = lazy(
+const LoginPage = lazyComRetry(() => import("@/pages/LoginPage"));
+const WelcomePage = lazyComRetry(() => import("@/pages/WelcomePage"));
+const PropostaAceitePage = lazyComRetry(() => import("@/pages/PropostaAceitePage"));
+const LevantamentoCampoPage = lazyComRetry(() => import("@/pages/LevantamentoCampoPage"));
+const TreinamentosPage = lazyComRetry(() => import("@/pages/TreinamentosPage"));
+const DashboardPage = lazyComRetry(() => import("@/pages/DashboardPage"));
+const KanbanBoardsPage = lazyComRetry(() => import("@/pages/kanban/KanbanBoardsPage"));
+const CalendarioMarketingPage = lazyComRetry(
   () => import("@/pages/CalendarioMarketingPage"),
 );
-const KanbanBoardPage = lazy(() => import("@/pages/kanban/KanbanBoardPage"));
-const TokensApiPage = lazy(() => import("@/pages/TokensApiPage"));
-const MeusItensPage = lazy(() => import("@/pages/kanban/MeusItensPage"));
-const WhatsAppPage = lazy(() => import("@/pages/WhatsAppPage"));
-const AdminPage = lazy(() => import("@/pages/AdminPage"));
-const ForbiddenPage = lazy(() => import("@/pages/ForbiddenPage"));
-const ClientesPage = lazy(() => import("@/pages/ClientesPage"));
-const ContatosPage = lazy(() => import("@/pages/ContatosPage"));
-const ClienteDetailPage = lazy(() => import("@/pages/ClienteDetailPage"));
-const CatalogoPage = lazy(() => import("@/pages/CatalogoPage"));
-const MullerBotPage = lazy(() => import("@/pages/MullerBotPage"));
-const PersonaBotPage = lazy(() => import("@/pages/PersonaBotPage"));
-const PromptsBotPage = lazy(() => import("@/pages/PromptsBotPage"));
-const KnowledgePage = lazy(() => import("@/pages/KnowledgePage"));
-const BotAuditoriaPage = lazy(() => import("@/pages/BotAuditoriaPage"));
-const RespostasRapidasPage = lazy(() => import("@/pages/RespostasRapidasPage"));
-const MetasPage = lazy(() => import("@/pages/MetasPage"));
-const SegmentosPage = lazy(() => import("@/pages/SegmentosPage"));
-const MarketplaceIncidentsPage = lazy(
+const KanbanBoardPage = lazyComRetry(() => import("@/pages/kanban/KanbanBoardPage"));
+const TokensApiPage = lazyComRetry(() => import("@/pages/TokensApiPage"));
+const MeusItensPage = lazyComRetry(() => import("@/pages/kanban/MeusItensPage"));
+const WhatsAppPage = lazyComRetry(() => import("@/pages/WhatsAppPage"));
+const AdminPage = lazyComRetry(() => import("@/pages/AdminPage"));
+const ForbiddenPage = lazyComRetry(() => import("@/pages/ForbiddenPage"));
+const ClientesPage = lazyComRetry(() => import("@/pages/ClientesPage"));
+const ContatosPage = lazyComRetry(() => import("@/pages/ContatosPage"));
+const ClienteDetailPage = lazyComRetry(() => import("@/pages/ClienteDetailPage"));
+const CatalogoPage = lazyComRetry(() => import("@/pages/CatalogoPage"));
+const MullerBotPage = lazyComRetry(() => import("@/pages/MullerBotPage"));
+const PersonaBotPage = lazyComRetry(() => import("@/pages/PersonaBotPage"));
+const PromptsBotPage = lazyComRetry(() => import("@/pages/PromptsBotPage"));
+const KnowledgePage = lazyComRetry(() => import("@/pages/KnowledgePage"));
+const BotAuditoriaPage = lazyComRetry(() => import("@/pages/BotAuditoriaPage"));
+const RespostasRapidasPage = lazyComRetry(() => import("@/pages/RespostasRapidasPage"));
+const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
+const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
+const MarketplaceIncidentsPage = lazyComRetry(
   () => import("@/pages/MarketplaceIncidentsPage"),
 );
-const ConfiguracoesPage = lazy(() => import("@/pages/ConfiguracoesPage"));
-const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
-const TagsPage = lazy(() => import("@/pages/TagsPage"));
-const FluxosPage = lazy(() => import("@/pages/FluxosPage"));
-const FluxoTemplatesPage = lazy(() => import("@/pages/FluxoTemplatesPage"));
-const MonitorPage = lazy(() => import("@/pages/MonitorPage"));
-const CampanhasPage = lazy(() => import("@/pages/CampanhasPage"));
-const PermissoesPage = lazy(() => import("@/pages/PermissoesPage"));
-const RelatoriosPage = lazy(() => import("@/pages/RelatoriosPage"));
-const PedidosPage = lazy(() => import("@/pages/PedidosPage"));
-const PedidoDetailPage = lazy(() => import("@/pages/PedidoDetailPage"));
-const FunisPage = lazy(() => import("@/pages/FunisPage"));
-const ComissoesPage = lazy(() => import("@/pages/ComissoesPage"));
-const LeadsPage = lazy(() => import("@/pages/LeadsPage"));
-const PropostasPage = lazy(() => import("@/pages/PropostasPage"));
-const ContratosPage = lazy(() => import("@/pages/ContratosPage"));
-const AmostrasPage = lazy(() => import("@/pages/AmostrasPage"));
-const MateriaisPage = lazy(() => import("@/pages/MateriaisPage"));
-const DevolucoesPage = lazy(() => import("@/pages/DevolucoesPage"));
-const InboxInternaPage = lazy(() => import("@/pages/InboxInternaPage"));
-const OcorrenciasPage = lazy(() => import("@/pages/OcorrenciasPage"));
-const ProdutosPage = lazy(() => import("@/pages/ProdutosPage"));
-const AgendaPage = lazy(() => import("@/pages/AgendaPage"));
-const AprovacoesPage = lazy(() => import("@/pages/AprovacoesPage"));
-const InboxPage = lazy(() => import("@/pages/InboxPage"));
-const IntegracoesPage = lazy(() => import("@/pages/IntegracoesPage"));
-const MinhasIntegracoesPage = lazy(
+const ConfiguracoesPage = lazyComRetry(() => import("@/pages/ConfiguracoesPage"));
+const ProfilePage = lazyComRetry(() => import("@/pages/ProfilePage"));
+const TagsPage = lazyComRetry(() => import("@/pages/TagsPage"));
+const FluxosPage = lazyComRetry(() => import("@/pages/FluxosPage"));
+const FluxoTemplatesPage = lazyComRetry(() => import("@/pages/FluxoTemplatesPage"));
+const MonitorPage = lazyComRetry(() => import("@/pages/MonitorPage"));
+const CampanhasPage = lazyComRetry(() => import("@/pages/CampanhasPage"));
+const PermissoesPage = lazyComRetry(() => import("@/pages/PermissoesPage"));
+const RelatoriosPage = lazyComRetry(() => import("@/pages/RelatoriosPage"));
+const PedidosPage = lazyComRetry(() => import("@/pages/PedidosPage"));
+const PedidoDetailPage = lazyComRetry(() => import("@/pages/PedidoDetailPage"));
+const FunisPage = lazyComRetry(() => import("@/pages/FunisPage"));
+const ComissoesPage = lazyComRetry(() => import("@/pages/ComissoesPage"));
+const LeadsPage = lazyComRetry(() => import("@/pages/LeadsPage"));
+const PropostasPage = lazyComRetry(() => import("@/pages/PropostasPage"));
+const ContratosPage = lazyComRetry(() => import("@/pages/ContratosPage"));
+const AmostrasPage = lazyComRetry(() => import("@/pages/AmostrasPage"));
+const MateriaisPage = lazyComRetry(() => import("@/pages/MateriaisPage"));
+const DevolucoesPage = lazyComRetry(() => import("@/pages/DevolucoesPage"));
+const InboxInternaPage = lazyComRetry(() => import("@/pages/InboxInternaPage"));
+const OcorrenciasPage = lazyComRetry(() => import("@/pages/OcorrenciasPage"));
+const ProdutosPage = lazyComRetry(() => import("@/pages/ProdutosPage"));
+const AgendaPage = lazyComRetry(() => import("@/pages/AgendaPage"));
+const AprovacoesPage = lazyComRetry(() => import("@/pages/AprovacoesPage"));
+const InboxPage = lazyComRetry(() => import("@/pages/InboxPage"));
+const IntegracoesPage = lazyComRetry(() => import("@/pages/IntegracoesPage"));
+const MinhasIntegracoesPage = lazyComRetry(
   () => import("@/pages/MinhasIntegracoesPage"),
 );
-const NotificacoesPage = lazy(() => import("@/pages/NotificacoesPage"));
+const NotificacoesPage = lazyComRetry(() => import("@/pages/NotificacoesPage"));
 
 function PageSuspense({ children }: { children: React.ReactNode }) {
   return (
