@@ -39,6 +39,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api, apiErrorMessage } from '@/lib/api';
+import { getSession } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -70,6 +71,32 @@ import {
   type KCardResumo,
   type KLista,
 } from './kanban-types';
+
+/**
+ * Quem vê o botão de arquivar o quadro.
+ *
+ * Função pura e exportada pra ter teste próprio: é uma regra de PERMISSÃO, e
+ * regra de permissão escondida dentro do render só é conferida por quem abre a
+ * tela com o usuário certo.
+ *
+ * Duas condições, e cada uma responde a uma pergunta diferente:
+ *
+ * 1. **É o dono?** O backend exige `exigirDono` (`kanban-boards.service.ts`,
+ *    `archive`). Mostrar pra membro comum é oferecer um 403 com cara de botão.
+ * 2. **Não é quadro de SISTEMA?** `rep_tarefas` e `diretor_tarefas` são
+ *    provisionados pelo app, e o dono do quadro pessoal de um rep é ele mesmo —
+ *    ou seja, a condição 1 sozinha DEIXARIA ele arquivar a própria caixa de
+ *    tarefas, que os fluxos continuam alimentando. O backend não barra isso.
+ *    Aqui a gente não oferece.
+ */
+export function podeArquivarQuadro(
+  board: { criadoPorId: string; tipoSistema?: string | null } | null | undefined,
+  meuId: string | undefined,
+): boolean {
+  if (!board || !meuId) return false;
+  if (board.tipoSistema) return false;
+  return board.criadoPorId === meuId;
+}
 
 /**
  * O quadro (estilo Trello): listas em colunas horizontais, cards arrastáveis
@@ -152,6 +179,22 @@ export default function KanbanBoardPage() {
   const [nomeEdit, setNomeEdit] = useState('');
   const [descricaoEdit, setDescricaoEdit] = useState('');
   const [salvandoNome, setSalvandoNome] = useState(false);
+  const [arquivarAberto, setArquivarAberto] = useState(false);
+  const [arquivando, setArquivando] = useState(false);
+
+  const mostrarArquivar = podeArquivarQuadro(board, getSession()?.user.id);
+
+  async function arquivarBoard() {
+    setArquivando(true);
+    try {
+      await api.delete(`/kanban/boards/${boardId}`);
+      toast.success('Quadro arquivado');
+      navigate('/kanban');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+      setArquivando(false);
+    }
+  }
 
   function abrirRenomear() {
     setNomeEdit(board?.nome ?? '');
@@ -548,6 +591,16 @@ export default function KanbanBoardPage() {
           >
             Atividade
           </Button>
+          {mostrarArquivar && (
+            <Button
+              variant="ghost"
+              leftIcon={<Archive className="h-4 w-4" />}
+              onClick={() => setArquivarAberto(true)}
+              data-testid="kanban-arquivar-quadro"
+            >
+              Arquivar
+            </Button>
+          )}
         </div>
       }
     >
@@ -835,6 +888,45 @@ export default function KanbanBoardPage() {
                 placeholder="Opcional"
               />
             </Field>
+          </div>
+        </Dialog>
+
+        {/*
+          Confirmação com o aviso QUE IMPORTA: arquivar não apaga, mas hoje é
+          porta de mão única pelo app — o quadro arquivado sai da listagem E do
+          acesso direto (medido: `GET /kanban/boards/:id` responde 404 depois de
+          arquivado), e não existe rota de restaurar. Dizer só "é reversível"
+          seria verdade no banco e mentira pra quem clicou.
+        */}
+        <Dialog
+          open={arquivarAberto}
+          onClose={() => setArquivarAberto(false)}
+          title="Arquivar quadro"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setArquivarAberto(false)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void arquivarBoard()}
+                loading={arquivando}
+                data-testid="kanban-arquivar-confirmar"
+              >
+                Arquivar
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-2 text-sm">
+            <p>
+              O quadro <strong>{board?.nome}</strong> sai da sua lista. As listas, os cards e os
+              anexos continuam guardados — nada é apagado.
+            </p>
+            <p className="text-[var(--color-text-muted)]">
+              ⚠️ Mas <strong>não dá pra desarquivar pelo app</strong>: o quadro some da listagem e
+              do acesso direto. Pra trazer de volta, alguém precisa mexer no banco.
+            </p>
           </div>
         </Dialog>
       </StateView>
