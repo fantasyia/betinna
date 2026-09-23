@@ -36,6 +36,8 @@ function build(statusDaExecucao: string | null) {
     pacing as never,
     {} as never,
     { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+    // redis: reserva atômica da entrega de link (corrida do A8).
+    { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
     {} as never,
   );
   const enviar = (execId?: string) =>
@@ -131,6 +133,8 @@ describe('execução cancelada não ressuscita', () => {
       {} as never,
       {} as never,
       {} as never,
+      // redis: reserva atômica da entrega de link (corrida do A8).
+      { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
       {} as never,
     );
     const atualizar = () =>

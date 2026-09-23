@@ -164,6 +164,8 @@ describe('a pausa nasce COM PRAZO', () => {
       {} as never,
       {} as never,
       {} as never,
+      // redis: reserva atômica da entrega de link (corrida do A8).
+      { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
       {} as never,
     );
     const marcar = (ctx: Record<string, unknown>) =>

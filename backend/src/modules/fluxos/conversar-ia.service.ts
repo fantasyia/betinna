@@ -13,6 +13,8 @@ import type { FluxoExecucao, FluxoNo } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { interpolate } from '@shared/utils/interpolate';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
+import { createHash } from 'node:crypto';
+import { RedisService } from '@database/redis.service';
 import { jidDeTelefone } from '@integrations/evolution/jid.util';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
 import { BotCustoService } from '@modules/mullerbot/bot-custo.service';
@@ -651,6 +653,16 @@ const ultimaFalaDoBot = (h: HistoricoMsg[]): string | undefined =>
 
 const DRAIN_MAX_MS = 25 * 1000;
 
+/**
+ * Janela da reserva de entrega de link, em segundos.
+ *
+ * Precisa cobrir com folga o turno (16–29s medidos) MAIS a gravação da
+ * mensagem OUTBOUND — é ela que faz a guarda do histórico assumir a vigilância
+ * quando a reserva expira. 10 minutos deixa margem pra um turno ruim sem
+ * transformar a reserva em memória permanente.
+ */
+const RESERVA_LINK_S = 600;
+
 @Injectable()
 export class ConversarIaService implements OnModuleDestroy {
   private readonly logger = new Logger(ConversarIaService.name);
@@ -669,6 +681,7 @@ export class ConversarIaService implements OnModuleDestroy {
     private readonly pacing: WhatsappPacingService,
     private readonly supressao: SupressaoService,
     private readonly inbox: InboxService,
+    private readonly redis: RedisService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -2129,7 +2142,11 @@ export class ConversarIaService implements OnModuleDestroy {
    * de fato recebeu, que é mais confiável que o histórico em memória do nó (ele
    * é cortado por tamanho e some entre execuções).
    */
-  private async linkJaEntregue(conversationId: string, resposta: string): Promise<string | null> {
+  private async linkJaEntregue(
+    conversationId: string,
+    resposta: string,
+    execucaoId: string,
+  ): Promise<string | null> {
     const urls = urlsDoTexto(resposta);
     if (urls.length === 0) return null;
     try {
@@ -2146,7 +2163,63 @@ export class ConversarIaService implements OnModuleDestroy {
         `CONVERSAR_IA: não consegui checar link repetido: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    // A consulta acima resolve o lead que VOLTA (o link já está no histórico).
+    // Ela é cega pra dois disparos no MESMO instante — é o que a reserva abaixo
+    // fecha. Só chega aqui quem passou pelo histórico limpo.
+    for (const url of urls) {
+      if (!(await this.reservarEntregaDoLink(conversationId, url, execucaoId))) return url;
+    }
     return null;
+  }
+
+  /**
+   * Reserva ATÔMICA da entrega de um link nesta conversa.
+   *
+   * 🔴 O que isto fecha (caso A8, medido em 19/09): dois disparos no mesmo lead,
+   * em sequência rápida, entregam a MESMA URL duas vezes. A guarda do P2 existe
+   * e funciona — ela só não alcança este caso, porque LÊ o histórico: as duas
+   * execuções consultam antes de qualquer uma ter gravado a mensagem, as duas
+   * veem "nunca entreguei", e as duas entregam. Ler-e-decidir não é atômico.
+   *
+   * ⚠️ E o que protege hoje é o RELÓGIO, não a lógica. A prova é limpa: trocar
+   * um TEXTO FIXO (~1s) por um nó de IA (5–10s) no topo daquele ramo fez o A8
+   * reprovar na hora, sem NADA da lógica de entrega ter mudado. Qualquer coisa
+   * que adicione latência ali reabre — modelo lento num pico, RAG ligado, banco
+   * degradado (aconteceu: o proxy chegou a 25% de falha em 19/09).
+   *
+   * 📌 Por que não resolve por grafo: as duas execuções leem o mesmo estado
+   * vazio no mesmo instante, então um portão novo no topo cai na MESMA corrida.
+   * Precisa ser atômico, e `SET NX EX` é isso — a mesma primitiva do
+   * `CronLockService`, que existe pelo mesmo motivo (duas réplicas, um efeito).
+   *
+   * A janela é o TTL: passado ele, a mensagem OUTBOUND já está gravada e a
+   * consulta do histórico assume a vigilância. As duas guardas se revezam.
+   *
+   * FAIL-OPEN: Redis fora devolve `true` (pode entregar). Link repetido é
+   * recuperável e o cliente entende; link suprimido deixa quem estava quente
+   * sem o que pediu, e ninguém percebe.
+   */
+  private async reservarEntregaDoLink(
+    conversationId: string,
+    url: string,
+    execucaoId: string,
+  ): Promise<boolean> {
+    // Hash: URL crua tem query, âncora e pode passar de 200 chars — chave de
+    // Redis com isso dentro é frágil de depurar e cara de guardar.
+    const chave = `fluxo:link:${conversationId}:${createHash('sha1').update(url).digest('hex')}`;
+    try {
+      if (await this.redis.setNxEx(chave, execucaoId, RESERVA_LINK_S)) return true;
+      // Reservado. Se for ESTA execução (retry do mesmo passo), não é corrida —
+      // é a mesma entrega voltando, e barrar aqui emudeceria o retry.
+      const dono = await this.redis.get(chave);
+      return dono === execucaoId;
+    } catch (err) {
+      this.logger.warn(
+        `CONVERSAR_IA: não consegui reservar a entrega do link (${err instanceof Error ? err.message : String(err)}) — ` +
+          `entregando assim mesmo`,
+      );
+      return true;
+    }
   }
 
   /** Conversa de WhatsApp do lead — quando o contexto não traz a dele. */
@@ -2642,7 +2715,7 @@ export class ConversarIaService implements OnModuleDestroy {
     // informação que faltava, pelo mesmo caminho que já existe pro
     // `falaComOperador`. Se o lead PEDIU o link de novo, não há o que evitar.
     if (conversationId && !pediuOLinkDeNovo(textoLead)) {
-      const repetido = await this.linkJaEntregue(conversationId, respostaPersonalizada);
+      const repetido = await this.linkJaEntregue(conversationId, respostaPersonalizada, execucaoId);
       if (repetido) {
         this.logger.warn(
           `CONVERSAR_IA: a resposta repetia um link já entregue (${repetido}) — ` +

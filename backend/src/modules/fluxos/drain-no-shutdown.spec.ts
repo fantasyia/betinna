@@ -35,6 +35,8 @@ function build() {
     {} as never,
     {} as never,
     {} as never,
+    // redis: reserva atômica da entrega de link (corrida do A8).
+    { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
     {} as never,
   );
   for (const nivel of ['log', 'warn', 'error', 'debug'] as const) {

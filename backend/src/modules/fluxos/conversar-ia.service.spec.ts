@@ -326,6 +326,8 @@ describe('ConversarIaService', () => {
       // inbox: a saída do fluxo passa a ser GRAVADA na conversa (antes só
       // aparecia quando o eco do WhatsApp voltava, assíncrono e sem prazo).
       { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+      // redis: reserva atômica da entrega de link (corrida do A8).
+      { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
       queue as never,
     );
   });
@@ -2103,6 +2105,8 @@ describe('ConversarIaService — captura do turno chega no lead na hora', () => 
       // inbox: sem ele o envio falha e o turno rota pro ramo de erro ANTES de
       // chegar na gravação — o teste passaria a medir outra coisa.
       { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+      // redis: reserva atômica da entrega de link (corrida do A8).
+      { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
       makeQueue() as never,
     );
   });
@@ -2239,6 +2243,9 @@ describe('ConversarIaService — overrides do prompt e enum das variáveis', () 
       makeBus() as never,
       { aguardarSlot: vi.fn() } as never,
       { suprimido: vi.fn(async () => false), aplicarLgpd: vi.fn(async () => 0) } as never, // supressao
+      { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never, // inbox
+      // redis: reserva atômica da entrega de link (corrida do A8).
+      { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
       makeQueue() as never,
     );
   });
