@@ -7,21 +7,26 @@ import { TinyProdutosSyncService, htmlParaTexto } from './tiny-produtos-sync.ser
  */
 function build(produtos: unknown[] = [], existente: { id: string } | null = null) {
   const client = {
-    get: vi.fn((_e: string, caminho: string) => {
-      if (caminho.startsWith('/estoque/')) return Promise.resolve({ saldo: 10, disponivel: 7 });
-      // Anexos devolvem ARRAY DIRETO — não `{ itens }` como o resto da API.
-      if (caminho.includes('/anexos')) {
-        return Promise.resolve([{ id: 1, url: 'https://cdn/mb-01.png', externo: false }]);
-      }
-      // Lista de preços: os produtos vêm em `excecoes`, não em `itens`.
-      if (caminho === '/listas-precos') {
-        return Promise.resolve({ itens: [{ id: 1701, descricao: 'Locação mensal' }] });
-      }
-      if (caminho.startsWith('/listas-precos/')) {
-        return Promise.resolve({ excecoes: [{ idProduto: 335240597, preco: 300 }] });
-      }
-      return Promise.resolve({ itens: produtos, paginacao: { total: produtos.length } });
-    }),
+    // Assinatura declarada (3º arg + retorno `unknown`) só pro tsc: os testes
+    // leem a query em `mock.calls[i][2]` e trocam a implementação por uma que
+    // devolve outros formatos — inferido do corpo, nada disso compilava.
+    get: vi.fn(
+      (_e: string, caminho: string, _query?: Record<string, unknown>): Promise<unknown> => {
+        if (caminho.startsWith('/estoque/')) return Promise.resolve({ saldo: 10, disponivel: 7 });
+        // Anexos devolvem ARRAY DIRETO — não `{ itens }` como o resto da API.
+        if (caminho.includes('/anexos')) {
+          return Promise.resolve([{ id: 1, url: 'https://cdn/mb-01.png', externo: false }]);
+        }
+        // Lista de preços: os produtos vêm em `excecoes`, não em `itens`.
+        if (caminho === '/listas-precos') {
+          return Promise.resolve({ itens: [{ id: 1701, descricao: 'Locação mensal' }] });
+        }
+        if (caminho.startsWith('/listas-precos/')) {
+          return Promise.resolve({ excecoes: [{ idProduto: 335240597, preco: 300 }] });
+        }
+        return Promise.resolve({ itens: produtos, paginacao: { total: produtos.length } });
+      },
+    ),
   };
   const prisma = {
     produto: {
