@@ -18,5 +18,11 @@ declare module 'express-serve-static-core' {
     user?: AuthenticatedUser;
     /** UUID único da requisição, usado em logs e auditoria */
     id?: string;
+    /**
+     * Preenchido quando a requisição veio por token de API `bkt_` (MCP). O
+     * `user` nesse caso é o DONO do token — sem isto, a auditoria não separa
+     * "o Léo pela tela" de "uma sessão de Claude com o token do Léo".
+     */
+    apiToken?: { id: string; nome: string };
   }
 }

@@ -338,6 +338,7 @@ export class AuthGuard implements CanActivate {
       empresaIds: cached.empresaIds,
       empresaIdAtiva: row.empresaId,
     };
+    request.apiToken = { id: row.id, nome: row.nome };
 
     // ultimoUso throttled (mesma técnica do ultimoAcesso)
     const throttleKey = `kanban:token:touched:${row.id}`;

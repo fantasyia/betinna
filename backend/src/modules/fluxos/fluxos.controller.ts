@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
+import { Audit } from '@shared/decorators/audit.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -60,6 +61,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'create', resource: 'fluxo', resourceIdFrom: 'response.id' })
   @Post()
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Cria um novo fluxo de automação' })
@@ -89,6 +91,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'update', resource: 'fluxo', resourceIdFrom: 'params.id' })
   @Put(':id')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Atualiza fluxo (com full-replace de nós/arestas se fornecidos)' })
@@ -104,6 +107,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'importar', resource: 'fluxo', resourceIdFrom: 'response.id' })
   @Post('importar')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Importa um fluxo de um arquivo JSON (cria como RASCUNHO)' })
@@ -114,6 +118,7 @@ export class FluxosController {
     return this.svc.importar(user, dto);
   }
 
+  @Audit({ action: 'upload_midia', resource: 'fluxo' })
   @Post('midia')
   @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({
@@ -159,6 +164,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'ativar', resource: 'fluxo', resourceIdFrom: 'params.id' })
   @Post(':id/ativar')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Ativa o fluxo (valida grafo antes)' })
@@ -168,6 +174,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'definir_gatilho', resource: 'fluxo', resourceIdFrom: 'params.id' })
   @Post(':id/gatilho')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({
@@ -183,6 +190,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'pausar', resource: 'fluxo', resourceIdFrom: 'params.id' })
   @Post(':id/pausar')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Pausa o fluxo (novos eventos não disparam)' })
@@ -192,6 +200,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'arquivar', resource: 'fluxo', resourceIdFrom: 'params.id' })
   @Delete(':id')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Arquiva o fluxo' })
@@ -201,6 +210,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'desarquivar', resource: 'fluxo', resourceIdFrom: 'params.id' })
   @Post(':id/desarquivar')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({
@@ -214,6 +224,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'excluir_permanente', resource: 'fluxo', resourceIdFrom: 'params.id' })
   @Delete(':id/permanente')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Exclui o fluxo PERMANENTEMENTE (apaga nós, arestas e execuções).' })
@@ -234,6 +245,7 @@ export class FluxosController {
     return this.svc.listExecucoes(user, id, params);
   }
 
+  @Audit({ action: 'cancelar', resource: 'fluxo_execucao', resourceIdFrom: 'params.execucaoId' })
   @Post('execucoes/:execucaoId/cancelar')
   @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({ summary: 'Cancela uma execução em andamento' })
@@ -248,6 +260,7 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
+  @Audit({ action: 'testar', resource: 'fluxo' })
   @Post('testar')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Dispara execução de teste manual' })

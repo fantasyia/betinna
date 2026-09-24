@@ -74,3 +74,63 @@ describe('AuditInterceptor', () => {
     expect(audit.log).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * O R2 saiu de ATIVO pra RASCUNHO em 24/09 e ninguém soube quem foi: a escrita
+ * entrou por token de API, que chega como o DONO do token. Estes testes travam
+ * o que separa a tela do MCP — e o que diferencia "renomeou" de "trocou o grafo".
+ */
+describe('AuditInterceptor — por onde veio e o que mudou', () => {
+  const base = {
+    user: { id: 'u-1', empresaIdAtiva: 'emp-1' },
+    method: 'PUT',
+    path: '/fluxos/f1',
+    id: 'r',
+    ip: '1',
+    params: { id: 'f1' },
+  };
+  const rodar = async (req: Record<string, unknown>) => {
+    const audit = { log: vi.fn() };
+    const interceptor = new AuditInterceptor(
+      {
+        getAllAndOverride: vi
+          .fn()
+          .mockReturnValue({ action: 'update', resource: 'fluxo', resourceIdFrom: 'params.id' }),
+      } as never,
+      audit as never,
+    );
+    await firstValueFrom(
+      interceptor.intercept(makeCtx(req), makeHandler({ success: true, data: {} })),
+    );
+    return audit.log.mock.calls[0][0].detalhes as Record<string, unknown>;
+  };
+
+  it('token de API: grava via=api_token + id e nome do token', async () => {
+    const d = await rodar({ ...base, body: {}, apiToken: { id: 'tok-9', nome: 'Claude master' } });
+    expect(d).toMatchObject({
+      via: 'api_token',
+      apiTokenId: 'tok-9',
+      apiTokenNome: 'Claude master',
+    });
+  });
+
+  it('tela: via=sessao, sem campos de token', async () => {
+    const d = await rodar({ ...base, body: {} });
+    expect(d.via).toBe('sessao');
+    expect(d).not.toHaveProperty('apiTokenId');
+  });
+
+  it('grava os NOMES dos campos enviados — e nunca os valores', async () => {
+    const d = await rodar({
+      ...base,
+      body: { nome: 'R2', nos: [{ texto: 'dado do cliente' }], arestas: [] },
+    });
+    expect(d.campos).toEqual(['arestas', 'nome', 'nos']);
+    expect(JSON.stringify(d)).not.toContain('dado do cliente');
+  });
+
+  it('corpo vazio ou ausente não gera "campos"', async () => {
+    expect(await rodar({ ...base, body: {} })).not.toHaveProperty('campos');
+    expect(await rodar({ ...base, body: undefined })).not.toHaveProperty('campos');
+  });
+});

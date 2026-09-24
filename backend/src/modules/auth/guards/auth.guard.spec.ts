@@ -25,6 +25,46 @@ const bktUser = {
   empresas: [{ empresaId: 'emp-1' }],
 };
 
+describe('AuthGuard — token de API deixa rastro de QUAL token entrou', () => {
+  it('bkt_ marca req.apiToken com id e nome — o user é o DONO, e sem isto a auditoria não separa tela de MCP', async () => {
+    const prisma = {
+      kanbanApiToken: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'tok-9',
+          nome: 'Claude Code - sessão master',
+          empresaId: 'emp-1',
+          usuarioId: 'u1',
+          escopo: ['fluxos'],
+          revogado: false,
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      usuario: { findUnique: vi.fn().mockResolvedValue(bktUser) },
+    };
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setNxEx: vi.fn().mockResolvedValue(true),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const guard = new AuthGuard(
+      { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector,
+      {} as never,
+      prisma as never,
+      redis as never,
+      { get: () => 300 } as never,
+    );
+    const ctx = fakeContext({
+      method: 'PUT',
+      path: '/fluxos/f1',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+    await guard.canActivate(ctx);
+    const req = ctx.switchToHttp().getRequest<{ apiToken?: unknown; user?: { id: string } }>();
+    expect(req.apiToken).toEqual({ id: 'tok-9', nome: 'Claude Code - sessão master' });
+    expect(req.user?.id).toBe('u1');
+  });
+});
+
 describe('AuthGuard — token de API (bkt_) em /funis', () => {
   let guard: AuthGuard;
   let prisma: {
