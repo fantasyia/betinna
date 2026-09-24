@@ -15,6 +15,14 @@ import { PropostasService } from './propostas.service';
 type MockModel = Record<string, ReturnType<typeof vi.fn>>;
 type Tx = { pedido: MockModel; proposta: MockModel; aprovacaoDesconto: MockModel };
 
+/**
+ * Declara no TIPO um modelo que alguns testes injetam depois de criar o mock,
+ * SEM mudar o valor em runtime: continua `undefined` até o teste atribuir.
+ * Trocar por `vi.fn()` mudaria o comportamento dos testes que não injetam —
+ * a chamada hoje estoura, e passaria a devolver `undefined` calada.
+ */
+const injetadoDepois = <T>() => undefined as unknown as T;
+
 const makePrismaMock = () => {
   const tx: Tx = {
     pedido: { create: vi.fn() },
@@ -37,6 +45,10 @@ const makePrismaMock = () => {
       create: vi.fn(),
     } satisfies MockModel,
     cliente: { findFirst: vi.fn(), findUnique: vi.fn() } satisfies MockModel,
+    propostaItem: injetadoDepois<{
+      create: ReturnType<typeof vi.fn>;
+      deleteMany: ReturnType<typeof vi.fn>;
+    }>(),
     // default [] = nenhum produto INATIVO (assertProdutosDaPropostaAtivos na conversão, #24).
     produto: { findMany: vi.fn().mockResolvedValue([]) } satisfies MockModel,
     empresa: {
@@ -283,7 +295,13 @@ describe('PropostasService', () => {
     const baseDto = {
       clienteId: 'cli-1',
       itens: [{ produtoId: 'p-1', quantidade: 2, desconto: 0 }],
-      formaPagamento: 'BOLETO' as const,
+      // Era 'BOLETO', que saiu do produto (decisão "só PIX e cartão") — o DTO não
+      // aceita mais, e o fixture testava o serviço com um pagamento impossível.
+      // ⚠️ CARTAO_CREDITO e NÃO PIX, de propósito: a forma entra no cálculo de
+      // preço (`descontoAVistaPct`). BOLETO+30dias dava desconto 0; PIX dá o
+      // desconto PIX em QUALQUER condição e mudaria os totais conferidos abaixo.
+      // Cartão dá 0 — o mesmo número, qualquer que seja a config da empresa.
+      formaPagamento: 'CARTAO_CREDITO' as const,
       condicaoPagamento: '30dias' as const,
       descontoGeral: 0,
       probabilidade: 50,
