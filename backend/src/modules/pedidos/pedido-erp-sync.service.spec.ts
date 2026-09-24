@@ -17,7 +17,7 @@ function build(
     detalhe?: Record<string, unknown>;
     pedidoExistente?: Record<string, unknown> | null;
     clienteExistente?: { id: string } | null;
-    usuarios?: Array<{ id: string; nome: string }>;
+    usuarios?: Array<{ id: string; nome: string; contatoErpId?: string | null }>;
     produto?: { id: string } | null;
     pendentes?: Array<{ numeroErp: string }>;
     /** `null` = pedido com código mas SEM link de consulta. */
@@ -26,6 +26,8 @@ function build(
     clienteSemEmail?: boolean;
     /** O que está GRAVADO no pedido — `null` = pedido sem rastreio nenhum. */
     rastreioGravado?: string | null;
+    /** Número do pedido no SITE (`SB…`) — é o que o cliente conhece. */
+    numeroSite?: string | null;
   } = {},
 ) {
   const detalhe = opts.detalhe ?? {};

@@ -74,7 +74,9 @@ const makePrisma = () => {
   for (const m of modelos) tx[m] = dep();
   tx.mesclagemContato.create.mockResolvedValue({ id: 'msc-1' });
 
-  const prisma: Record<string, unknown> = {
+  // Sem anotação: com `Record<string, unknown>` todo `prisma.cliente…` do
+  // teste virava `unknown` e não compilava.
+  const prisma = {
     tx,
     cliente: {
       findMany: vi.fn().mockResolvedValue([cliNovo, cliVelho]),
@@ -90,7 +92,7 @@ const makePrisma = () => {
       typeof arg === 'function' ? (arg as (t: unknown) => unknown)(tx) : arg,
     ),
   };
-  return prisma as typeof prisma & { tx: typeof tx };
+  return prisma;
 };
 
 describe('ContatosMesclagemService — Cliente + Cliente', () => {
