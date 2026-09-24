@@ -40,14 +40,22 @@ interface HealthInfo {
   uptime: number;
 }
 
-interface DeadLetterJob {
+/**
+ * Formato REAL do `GET /admin/dead-letter` (DeadLetterService.list): o que
+ * interessa mora dentro de `data`. A tela lia `jobName`/`queue`/`failedReason`
+ * na raiz — campos que nunca existiram — e mostrava toda linha como "—".
+ */
+export interface DeadLetterJob {
   id: string;
-  queue: string;
-  jobName: string;
-  failedReason: string;
-  attemptsMade: number;
-  data: unknown;
-  failedAt: string;
+  addedAt: number;
+  data: {
+    originalQueue: string;
+    originalJobId: string;
+    originalJobName: string;
+    error: string;
+    failedAt: string;
+    empresaId?: string;
+  };
 }
 
 function fmtUptime(seconds: number): string {
@@ -229,7 +237,7 @@ function CronLatencySection() {
 
 // ─── Dead Letter Queue ────────────────────────────────────────────────
 
-function DeadLetterSection() {
+export function DeadLetterSection() {
   const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<
     DeadLetterJob[] | { data: DeadLetterJob[] }
@@ -261,12 +269,17 @@ function DeadLetterSection() {
       header: 'Job',
       render: (j) => (
         <div>
-          <div className="font-semibold text-[13px]">{j.jobName ?? '—'}</div>
+          <div className="font-semibold text-[13px]" data-testid="dlq-job">
+            {j.data?.originalJobName ?? '—'}
+          </div>
           <div className="text-[11px] text-muted">
-            <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-info/12 text-info border border-info/19">
-              {j.queue}
+            <span
+              className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-info/12 text-info border border-info/19"
+              data-testid="dlq-fila"
+            >
+              {j.data?.originalQueue ?? '—'}
             </span>{' '}
-            · {j.attemptsMade} tentativas
+            · job {j.data?.originalJobId ?? '—'}
           </div>
         </div>
       ),
@@ -277,16 +290,17 @@ function DeadLetterSection() {
       render: (j) => (
         <div
           className="text-[12px] text-danger max-w-[380px] overflow-hidden text-ellipsis whitespace-nowrap"
-          title={j.failedReason}
+          title={j.data?.error}
+          data-testid="dlq-motivo"
         >
-          {j.failedReason}
+          {j.data?.error ?? '—'}
         </div>
       ),
     },
     {
       key: 'failedAt',
       header: 'Falhou em',
-      render: (j) => fmtDate(j.failedAt),
+      render: (j) => fmtDate(j.data?.failedAt ?? new Date(j.addedAt).toISOString()),
     },
     {
       key: 'actions',
