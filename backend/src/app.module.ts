@@ -29,6 +29,7 @@ import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
 import { MetasModule } from '@modules/metas/metas.module';
 import { SegmentosModule } from '@modules/segmentos/segmentos.module';
 import { ContratosModule } from '@modules/contratos/contratos.module';
+import { ModeloContratoModule } from '@modules/modelo-contrato/modelo-contrato.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { ImportModule } from '@modules/import/import.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
@@ -253,6 +254,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     SegmentosModule,
     NotificacoesModule,
     ContratosModule,
+    ModeloContratoModule,
     ImportModule,
     CampanhasModule,
     RelatoriosModule,

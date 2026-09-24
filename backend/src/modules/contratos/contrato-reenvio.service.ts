@@ -10,6 +10,10 @@ import {
   montarContratoParaAssinar,
   type PropostaDoBanco,
 } from '@modules/propostas/contrato-envio.util';
+import {
+  ModeloContratoService,
+  type ModeloEmUso,
+} from '@modules/modelo-contrato/modelo-contrato.service';
 
 /** Uma linha do rastro — o PONTEIRO pro envelope, não o documento. */
 export interface EnvioAssinatura {
@@ -21,6 +25,12 @@ export interface EnvioAssinatura {
   motivo: string | null;
   /** `substituido` = veio uma versão nova depois dele. */
   desfecho: 'enviado' | 'substituido';
+  /**
+   * Qual versão do MODELO de contrato saiu neste envio (`null` = o padrão do
+   * app). É o que responde "qual texto o cliente assinou?" depois que o
+   * diretor troca o modelo pela tela. Ausente nos envios anteriores a 24/09.
+   */
+  modeloVersao?: number | null;
 }
 
 /**
@@ -50,6 +60,7 @@ export class ContratoReenvioService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly clicksign: ClickSignService,
+    private readonly modelos: ModeloContratoService,
   ) {}
 
   /**
@@ -107,8 +118,22 @@ export class ContratoReenvioService {
 
     // Mesma montagem do aceite — util compartilhado de propósito, pra versão 2
     // não sair diferente da 1 em nada que ninguém pediu.
+    // O modelo EM USO agora — versão ativa ilegível estoura em vez de cair pro
+    // padrão (mandaria um texto diferente do que o diretor ativou).
+    let modelo: ModeloEmUso;
+    try {
+      modelo = await this.modelos.emUso(params.empresaId);
+    } catch (err) {
+      throw new BusinessRuleException(
+        `Contrato não pode ser reenviado: o modelo de contrato ativo não pôde ser lido (${
+          err instanceof Error ? err.message : String(err)
+        }).`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
     const montagem = montarContratoParaAssinar(
       await comSkus(this.prisma, contrato.proposta as PropostaDoBanco),
+      { modelo: modelo.arquivo },
     );
     if (!montagem.ok) {
       throw new BusinessRuleException(
@@ -162,6 +187,7 @@ export class ContratoReenvioService {
         porUsuarioId: params.usuarioId,
         motivo: params.motivo?.trim() || null,
         desfecho: 'enviado',
+        modeloVersao: modelo.versao,
       },
     ];
 

@@ -10,6 +10,10 @@ import {
   comSkus,
   montarContratoParaAssinar,
 } from './contrato-envio.util';
+import {
+  ModeloContratoService,
+  type ModeloEmUso,
+} from '@modules/modelo-contrato/modelo-contrato.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { PedidoComissoesService } from '@modules/pedidos/pedido-comissoes.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
@@ -87,6 +91,7 @@ export class PropostaAceiteService {
     private readonly clicksign: ClickSignService,
     private readonly etapa: LeadEtapaSistemaService,
     private readonly comissoes: PedidoComissoesService,
+    private readonly modelos: ModeloContratoService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -511,7 +516,22 @@ export class PropostaAceiteService {
       // pra mudar. Ela também é quem recusa — prazo e dia de vencimento são
       // termo comercial, e um default sairia impresso num documento que alguém
       // assina sem ninguém saber que o número veio do sistema.
-      const montagem = montarContratoParaAssinar(await comSkus(this.prisma, p));
+      // O modelo EM USO agora. Versão ativa ilegível NÃO cai pro padrão: vira
+      // motivo e aviso, como qualquer outro dado que falte.
+      let modelo: ModeloEmUso;
+      try {
+        modelo = await this.modelos.emUso(empresaId);
+      } catch (err) {
+        const motivo = `o modelo de contrato ativo não pôde ser lido (${
+          err instanceof Error ? err.message : String(err)
+        })`;
+        this.logger.warn(`Proposta ${p.numero} aceita, mas ${motivo} — contrato não enviado.`);
+        await this.avisarFalhaContrato(empresaId, p.representanteId, p.numero, motivo);
+        return;
+      }
+      const montagem = montarContratoParaAssinar(await comSkus(this.prisma, p), {
+        modelo: modelo.arquivo,
+      });
       if (!montagem.ok) {
         // Não é de locação: venda avulsa não gera contrato recorrente, e isso
         // não é falha — sai calado, como antes.
@@ -548,6 +568,7 @@ export class PropostaAceiteService {
               porUsuarioId: null,
               motivo: 'envio inicial (aceite da proposta)',
               desfecho: 'enviado',
+              modeloVersao: modelo.versao,
             },
           ],
         },

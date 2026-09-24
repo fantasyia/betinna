@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { TinyModule } from '@integrations/tiny/tiny.module';
+import { ModeloContratoModule } from '@modules/modelo-contrato/modelo-contrato.module';
 import { ContratosController } from './contratos.controller';
 import { ContratosService } from './contratos.service';
 import { ContratoComodatoService } from './contrato-comodato.service';
@@ -17,7 +18,8 @@ import { ContratoReenvioService } from './contrato-reenvio.service';
   // TinyModule explícito: o serviço de mensalidade injeta TinyContasService, e
   // módulo importado não reexporta o que ELE importa — o ComissoesModule usar o
   // Tiny não torna o Tiny visível aqui.
-  imports: [ComissoesModule, TinyModule],
+  // ModeloContratoModule: o reenvio sai com o modelo EM USO, igual ao aceite.
+  imports: [ComissoesModule, TinyModule, ModeloContratoModule],
   controllers: [ContratosController],
   providers: [
     ContratosService,

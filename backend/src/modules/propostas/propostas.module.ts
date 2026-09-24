@@ -7,6 +7,7 @@ import { ProdutosModule } from '@modules/produtos/produtos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { KanbanModule } from '@modules/kanban/kanban.module';
 import { TinyModule } from '@integrations/tiny/tiny.module';
+import { ModeloContratoModule } from '@modules/modelo-contrato/modelo-contrato.module';
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { ContratoErpPendenteJob } from './contrato-erp-pendente.job';
 import { PropostaAceiteVencimentoJob } from './proposta-aceite-vencimento.job';
@@ -30,6 +31,8 @@ import { PropostasService } from './propostas.service';
     LeadsModule,
     // Tarefa pro rep quando o link de aceite vence.
     KanbanModule,
+    // O contrato do aceite sai com o modelo EM USO (subido pela tela).
+    ModeloContratoModule,
   ],
   controllers: [PropostasController, PropostaAnexosController],
   providers: [

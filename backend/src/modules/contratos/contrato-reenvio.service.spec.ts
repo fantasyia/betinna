@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { ContratoReenvioService, type EnvioAssinatura } from './contrato-reenvio.service';
+import { carregarModelo } from '@modules/propostas/contrato-documento.util';
 
 /** Uma proposta de locação completa — o caso em que o reenvio DEVE sair. */
 const PROPOSTA = {
@@ -74,11 +75,16 @@ function montar(contrato: Record<string, unknown> | null = CONTRATO) {
       signatarios: [],
     }),
   };
+  // Modelo EM USO: default = o padrão do app (nenhuma versão ativa).
+  const modelos = {
+    emUso: vi.fn().mockResolvedValue({ arquivo: carregarModelo(), versao: null }),
+  };
   const svc = new ContratoReenvioService(
     prisma as never,
     clicksign as never,
+    modelos as never,
   ) as ContratoReenvioService;
-  return { svc, prisma, clicksign };
+  return { svc, prisma, clicksign, modelos };
 }
 
 const CHAMADA = {
@@ -244,5 +250,35 @@ describe('ContratoReenvioService', () => {
       .enviosAssinatura as EnvioAssinatura[];
     expect(rastro).toHaveLength(2);
     expect(rastro[1].envelopeId).toBe('env-novo');
+  });
+});
+
+/** O modelo subido pela tela (24/09): qual versão saiu fica no rastro. */
+describe('ContratoReenvioService — modelo do contrato em uso', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('registra no rastro QUAL versão do modelo saiu neste envio', async () => {
+    const { svc, prisma, modelos } = montar();
+    modelos.emUso.mockResolvedValue({ arquivo: carregarModelo(), versao: 4 });
+
+    await svc.reenviar(CHAMADA);
+
+    const rastro = prisma.contrato.update.mock.calls[0][0].data
+      .enviosAssinatura as EnvioAssinatura[];
+    expect(rastro.at(-1)).toMatchObject({ desfecho: 'enviado', modeloVersao: 4 });
+    expect(modelos.emUso).toHaveBeenCalledWith('e1');
+  });
+
+  it('modelo ativo ilegível RECUSA — e não mata o envelope que o cliente tem', async () => {
+    // Cair pro padrão em silêncio mandaria um texto diferente do que o
+    // diretor ativou.
+    const { svc, clicksign, modelos } = montar();
+    modelos.emUso.mockRejectedValue(new Error('Storage fora'));
+
+    await expect(svc.reenviar(CHAMADA)).rejects.toThrow(
+      /modelo de contrato ativo não pôde ser lido/,
+    );
+    expect(clicksign.expirarEnvelope).not.toHaveBeenCalled();
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import PizZip from 'pizzip';
+import { carregarModelo } from './contrato-documento.util';
 import { PropostaAceiteService } from './proposta-aceite.service';
 
 // jose mockado — sem JWT real; validarToken devolve o payload fixo.
@@ -88,6 +89,15 @@ function makeService(txProverbCount: number, recusaCount = 1) {
   };
   // Marco do funil: o aceite move a etapa do lead, e o move é best-effort.
   const etapa = { mover: vi.fn(async () => 'movido' as const) };
+  // Modelo do contrato EM USO: default = o padrão do app (nenhuma versão ativa).
+  const modelos = {
+    emUso: vi.fn(
+      async (): Promise<{ arquivo: Buffer; versao: number | null }> => ({
+        arquivo: carregarModelo(),
+        versao: null,
+      }),
+    ),
+  };
   const svc = new PropostaAceiteService(
     prisma as never,
     makeEnv() as never,
@@ -98,9 +108,10 @@ function makeService(txProverbCount: number, recusaCount = 1) {
     etapa as never,
     // Comissão do pedido nascido do aceite: tem teste próprio no serviço dela.
     { recalcular: vi.fn(async () => undefined) } as never,
+    modelos as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
-  return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa };
+  return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa, modelos };
 }
 
 describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () => {
@@ -218,6 +229,7 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
         {} as never,
         undefined as never, // etapa
         undefined as never, // comissoes
+        undefined as never, // modelos
       ) as unknown as { frontendUrl: () => string };
 
     it('usa FRONTEND_URL quando existe', () => {
@@ -359,5 +371,89 @@ describe('PropostaAceiteService — contrato do aceite é o documento pronto', (
       ...notificacoes.criarParaRole.mock.calls,
     ]);
     expect(avisos).toMatch(/instalação, materiais e customização/);
+  });
+});
+
+describe('PropostaAceiteService — modelo do contrato subido pela tela', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const comModelo = (versao: number | null, falha = false) => {
+    const m = makeService(1);
+    m.clicksign.configurado.mockResolvedValue(true);
+    m.clicksign.enviarParaAssinatura.mockResolvedValue({
+      envelopeId: 'env-1',
+      documentoId: 'doc-1',
+      signatarios: [],
+    });
+    if (falha) m.modelos.emUso.mockRejectedValue(new Error('Storage fora'));
+    else m.modelos.emUso.mockResolvedValue({ arquivo: carregarModelo(), versao });
+    const contrato = { create: vi.fn().mockResolvedValue({}) };
+    Object.assign(m.prisma.proposta, {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'prop-1',
+        numero: 'PROP-0001',
+        clienteId: 'cli-1',
+        representanteId: 'rep-1',
+        valor: 4350,
+        modalidade: 'LOCACAO',
+        prazoMeses: 60,
+        diaVencimento: 5,
+        signatarioNome: 'Marina Torres Aguiar',
+        signatarioEmail: 'marina@exemplo.com.br',
+        signatarioTelefone: null,
+        validoAte: new Date('2026-10-24T12:00:00Z'),
+        prazoEntregaDias: 10,
+        prazoInstalacaoDias: 15,
+        prazoVerificacaoDias: 5,
+        prazoSoftwareDias: 20,
+        servicosTotal: 9000,
+        customizacaoUnitario: 1500,
+        customizacaoQuantidade: 1,
+        itens: [
+          {
+            produtoId: 'p1',
+            quadroPainel: 'QGBT',
+            tensaoV: 220,
+            correnteA: 105,
+            quantidade: 1,
+            total: 4350,
+          },
+        ],
+        cliente: {
+          nome: 'Indústria Exemplo Ltda',
+          email: null,
+          cnpj: '12345678000190',
+          telefone: null,
+          endereco: 'Rua A',
+          numero: '1',
+          complemento: null,
+          bairro: 'B',
+          cidade: 'São Paulo',
+          uf: 'SP',
+        },
+      }),
+    });
+    Object.assign(m.prisma, {
+      produto: { findMany: vi.fn().mockResolvedValue([{ id: 'p1', sku: 'MB-04' }]) },
+      contrato,
+    });
+    return { ...m, contrato };
+  };
+
+  it('o contrato criado registra QUAL versão do modelo saiu', async () => {
+    const { svc, contrato } = comModelo(3);
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+    const envios = contrato.create.mock.calls[0][0].data.enviosAssinatura;
+    expect(envios[0]).toMatchObject({ desfecho: 'enviado', modeloVersao: 3 });
+  });
+
+  it('modelo ativo ilegível: NÃO manda nada e avisa o responsável', async () => {
+    const { svc, clicksign, contrato, notificacoes } = comModelo(3, true);
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
+    expect(contrato.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(notificacoes.criarParaUsuario.mock.calls)).toMatch(
+      /modelo de contrato ativo não pôde ser lido/,
+    );
   });
 });

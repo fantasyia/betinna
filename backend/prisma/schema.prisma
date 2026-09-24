@@ -371,6 +371,7 @@ model Empresa {
   pedidos               Pedido[]
   propostas             Proposta[]
   contratos             Contrato[]
+  modelosContrato       ModeloContrato[]
   leads                 Lead[]
   funis                 Funil[]
   ocorrencias           Ocorrencia[]
@@ -3871,4 +3872,38 @@ model KanbanApiToken {
   criadoEm DateTime @default(now())
 
   @@index([usuarioId])
+}
+
+/// Versão do MODELO .docx do contrato (documento único do Anexo I), subida
+/// pelo diretor na tela — sem deploy (Léo, 24/09).
+///
+/// 🔴 Toda versão fica guardada: o contrato registra qual versão foi usada em
+/// cada envio (`Contrato.enviosAssinatura[].modeloVersao`), e é isso que
+/// responde "qual texto o cliente assinou?" depois que o modelo mudou.
+///
+/// Sem nenhuma versão ATIVA vale o modelo do repositório
+/// (`assets/contratos/proposta-contrato-anexo-i.docx`) — nunca fica sem contrato.
+/// "Uma ativa por empresa" é garantido na ativação (transação), não por índice.
+model ModeloContrato {
+  id           String    @id @default(cuid())
+  empresaId    String
+  /// 1, 2, 3… por empresa. É o número que o contrato guarda.
+  versao       Int
+  nomeArquivo  String
+  /// Caminho no bucket privado `contratos-modelos` — nunca URL.
+  storagePath  String
+  tamanhoBytes Int
+  /// SHA-256 do arquivo: prova de QUAL arquivo era, mesmo se o Storage mudar.
+  sha256       String
+  ativo        Boolean   @default(false)
+  observacao   String?
+  enviadoPorId String?
+  ativadoPorId String?
+  ativadoEm    DateTime?
+  criadoEm     DateTime  @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, versao])
+  @@index([empresaId, ativo])
 }

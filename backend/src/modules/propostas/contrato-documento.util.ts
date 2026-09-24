@@ -272,6 +272,9 @@ export function renderizarDocumento(modelo: Buffer, dados: DadosDocumentoContrat
     delimiters: { start: '{{', end: '}}' },
     paragraphLoop: true,
     linebreaks: true,
+    // O erro já sobe como exceção (vira motivo pro responsável); sem isto o
+    // docxtemplater ainda despeja o JSON inteiro com stack no log.
+    errorLogging: false,
     nullGetter: (parte) => {
       throw new VariavelDesconhecidaNoModelo(
         `O modelo pede {{${parte.value}}} e os dados não têm esse campo.`,
