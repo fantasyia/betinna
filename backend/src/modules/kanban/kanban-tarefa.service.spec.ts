@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { KanbanTarefaService } from './kanban-tarefa.service';
 
 /**
@@ -8,10 +8,26 @@ import { KanbanTarefaService } from './kanban-tarefa.service';
  * rep dá pra deduzir de quem é; com 5 vira uma pilha sem dono — e o quadro
  * existe justamente pra ele saber quem está tratando o quê.
  */
+
+/**
+ * Declara no TIPO um método/modelo que os testes injetam depois de criar o mock,
+ * SEM mudar o valor em runtime: ele continua `undefined` até o teste atribuir.
+ *
+ * ⚠️ Não é enfeite, e trocar por `vi.fn()` muda o comportamento. Hoje, num teste
+ * que NÃO injeta, chamar o método ESTOURA (é `undefined`). Com `vi.fn()` ele
+ * passaria a devolver `undefined` calado — e um teste que dependesse do estouro
+ * continuaria verde testando outra coisa. O tipo tem que existir; o valor não.
+ */
+const injetadoDepois = <T>() => undefined as unknown as T;
+
+type ModeloComUpdateMany = { updateMany: Mock };
+
 const makePrisma = () => ({
   kanbanCard: {
     findFirst: vi.fn().mockResolvedValue(null), // idempotência: nada criado ainda
     create: vi.fn().mockResolvedValue({ id: 'card-novo' }),
+    findUnique: injetadoDepois<Mock>(),
+    update: injetadoDepois<Mock>(),
   },
   kanbanBoard: {
     findFirst: vi.fn(),
@@ -26,7 +42,7 @@ const makePrisma = () => ({
     ]),
     create: vi.fn(),
   },
-  usuario: { findFirst: vi.fn() },
+  usuario: { findFirst: vi.fn(), findUnique: injetadoDepois<Mock>() },
   kanbanEtiqueta: {
     findFirst: vi.fn().mockResolvedValue(null),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -36,6 +52,15 @@ const makePrisma = () => ({
     update: vi.fn().mockResolvedValue({}),
   },
   kanbanCardEtiqueta: { create: vi.fn().mockResolvedValue({}) },
+  kanbanCardMembro: injetadoDepois<{
+    findMany: Mock;
+    create: Mock;
+    deleteMany: Mock;
+    findFirst: Mock;
+  }>(),
+  kanbanComentario: injetadoDepois<ModeloComUpdateMany>(),
+  kanbanChecklist: injetadoDepois<ModeloComUpdateMany>(),
+  kanbanAnexo: injetadoDepois<ModeloComUpdateMany>(),
 });
 
 const params = {
