@@ -1,5 +1,4 @@
-import { Input, Select, Field } from '@/components/ui';
-import { cn } from '@/lib/cn';
+import { Input, Select, Field, MultiSelectList } from '@/components/ui';
 import type { NodePayload } from '@/pages/fluxo/lib/types';
 import type { InspectorEtapaOpt, InspectorTag } from '@/pages/fluxo/hooks/useInspectorData';
 
@@ -15,6 +14,9 @@ export function LiberarLoteForm({
   etapasOpts: InspectorEtapaOpt[];
   tags: InspectorTag[] | null;
 }) {
+  // O array grava o NOME (é o que o executor filtra); o id só dá chave estável.
+  const tagOpts = (tags ?? []).map((t) => ({ value: t.nome, label: t.nome, key: t.id }));
+
   return (
     <>
       <Field label="Etapa de origem">
@@ -124,77 +126,33 @@ export function LiberarLoteForm({
       )}
       <Field
         label="Só leads com tag"
-        hint="Clique pra marcar — só entram leads com QUALQUER uma delas (vazio = todos; ex: Reaquecer + Sem Resposta no cron de reaquecimento)"
+        hint="Só entram leads com QUALQUER uma das marcadas (nenhuma = todos; ex: Reaquecer + Sem Resposta no cron de reaquecimento)"
       >
-        <div className="flex flex-wrap gap-1.5">
-          {(tags ?? []).length === 0 && (
-            <span className="text-[11px] text-muted">Nenhuma tag cadastrada</span>
-          )}
-          {(tags ?? []).map((t) => {
-            const sel = ((data.config.filtroComTag as string[]) ?? []).includes(t.nome);
-            return (
-              <button
-                key={t.id}
-                type="button"
-                data-testid={`lote-comtag-${t.id}`}
-                onClick={() =>
-                  onUpdate((d) => {
-                    const atual = (d.config.filtroComTag as string[]) ?? [];
-                    const next = atual.includes(t.nome)
-                      ? atual.filter((n) => n !== t.nome)
-                      : [...atual, t.nome];
-                    return { ...d, config: { ...d.config, filtroComTag: next } };
-                  })
-                }
-                className={cn(
-                  'text-[11px] px-2 py-1 rounded-md border transition-colors',
-                  sel
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-surface text-text border-border hover:border-border-strong',
-                )}
-              >
-                {t.nome}
-              </button>
-            );
-          })}
-        </div>
+        <MultiSelectList
+          options={tagOpts}
+          value={(data.config.filtroComTag as string[]) ?? []}
+          onChange={(next) =>
+            onUpdate((d) => ({ ...d, config: { ...d.config, filtroComTag: next } }))
+          }
+          placeholder="Buscar tag…"
+          emptyText="Nenhuma tag cadastrada"
+          testIdPrefix="lote-comtag"
+        />
       </Field>
       <Field
         label="Excluir leads com tag"
-        hint="Clique pra marcar — leads com qualquer uma são ignorados (ex: pausado)"
+        hint="Leads com qualquer uma das marcadas são ignorados (ex: pausado)"
       >
-        <div className="flex flex-wrap gap-1.5">
-          {(tags ?? []).length === 0 && (
-            <span className="text-[11px] text-muted">Nenhuma tag cadastrada</span>
-          )}
-          {(tags ?? []).map((t) => {
-            const sel = ((data.config.filtroExcluiTag as string[]) ?? []).includes(t.nome);
-            return (
-              <button
-                key={t.id}
-                type="button"
-                data-testid={`lote-excluitag-${t.id}`}
-                onClick={() =>
-                  onUpdate((d) => {
-                    const atual = (d.config.filtroExcluiTag as string[]) ?? [];
-                    const next = atual.includes(t.nome)
-                      ? atual.filter((n) => n !== t.nome)
-                      : [...atual, t.nome];
-                    return { ...d, config: { ...d.config, filtroExcluiTag: next } };
-                  })
-                }
-                className={cn(
-                  'text-[11px] px-2 py-1 rounded-md border transition-colors',
-                  sel
-                    ? 'bg-primary text-white border-primary'
-                    : 'bg-surface text-text border-border hover:border-border-strong',
-                )}
-              >
-                {t.nome}
-              </button>
-            );
-          })}
-        </div>
+        <MultiSelectList
+          options={tagOpts}
+          value={(data.config.filtroExcluiTag as string[]) ?? []}
+          onChange={(next) =>
+            onUpdate((d) => ({ ...d, config: { ...d.config, filtroExcluiTag: next } }))
+          }
+          placeholder="Buscar tag…"
+          emptyText="Nenhuma tag cadastrada"
+          testIdPrefix="lote-excluitag"
+        />
       </Field>
       <Field
         label="Só liberar leads com WhatsApp"

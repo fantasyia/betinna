@@ -31,6 +31,7 @@ export { Label } from './Label';
 export { Field } from './Field';
 export { Checkbox, type CheckboxProps } from './Checkbox';
 export { Switch, type SwitchProps } from './Switch';
+export { MultiSelectList, type MultiSelectOption } from './MultiSelectList';
 
 export { Tabs, type TabItem } from './Tabs';
 export { Tooltip } from './Tooltip';

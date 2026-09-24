@@ -190,7 +190,7 @@ describe('LiberarLoteForm — filtroSoComWhatsapp (select string→boolean)', ()
   });
 });
 
-describe('LiberarLoteForm — filtroExcluiTag (toggle de botões → array)', () => {
+describe('LiberarLoteForm — filtroExcluiTag (lista com checkbox → array)', () => {
   it('faz APPEND da tag no array ao clicar numa tag não selecionada', () => {
     const data = makeData({ filtroExcluiTag: ['pausado'] });
     const { fn, captured } = makeOnUpdate(data);
@@ -216,7 +216,8 @@ describe('LiberarLoteForm — filtroExcluiTag (toggle de botões → array)', ()
   });
 
   it('mostra fallback "Nenhuma tag cadastrada" quando tags é null', () => {
-    const data = makeData();
+    // Sem valor salvo: um valor salvo apareceria como "não existe mais" (ver abaixo).
+    const data = makeData({ filtroExcluiTag: undefined });
     render(<LiberarLoteForm data={data} onUpdate={vi.fn()} etapasOpts={etapasOpts} tags={null} />);
     // 2 ocorrências: uma no filtro de INCLUSÃO, outra no de EXCLUSÃO.
     expect(screen.getAllByText('Nenhuma tag cadastrada').length).toBe(2);
@@ -247,5 +248,22 @@ describe('LiberarLoteForm — filtroComTag (só leads com tag)', () => {
     fireEvent.click(screen.getByTestId('lote-comtag-tag-1'));
     expect(captured.last!.config.filtroComTag).toEqual(['vip', 'pausado']);
     expect(captured.last!.config.filtroExcluiTag).toEqual(['pausado']);
+  });
+});
+
+describe('LiberarLoteForm — lista pesquisável', () => {
+  it('a busca de uma lista NÃO filtra a outra', () => {
+    const data = makeData();
+    render(<LiberarLoteForm data={data} onUpdate={vi.fn()} etapasOpts={etapasOpts} tags={tags} />);
+    fireEvent.change(screen.getByTestId('lote-comtag-busca'), { target: { value: 'vip' } });
+    expect(screen.queryByTestId('lote-comtag-tag-1')).toBeNull();
+    expect(screen.getByTestId('lote-comtag-tag-2')).toBeTruthy();
+    expect(screen.getByTestId('lote-excluitag-tag-1')).toBeTruthy();
+  });
+
+  it('o label do campo aponta pra busca (acessível por getByLabelText)', () => {
+    const data = makeData();
+    render(<LiberarLoteForm data={data} onUpdate={vi.fn()} etapasOpts={etapasOpts} tags={tags} />);
+    expect(screen.getByLabelText('Só leads com tag')).toBe(screen.getByTestId('lote-comtag-busca'));
   });
 });
