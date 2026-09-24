@@ -7,6 +7,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { VendasTabs } from '@/components/VendasTabs';
 import { Badge, Button, Card, Checkbox, Field, Input } from '@/components/ui';
+import { formatMoeda, maskDinheiro, parseDinheiro } from '@/lib/masks';
 
 /**
  * LEVANTAMENTO DE CAMPO → PROPOSTA (card do Léo, 17–18/09).
@@ -78,6 +79,15 @@ interface Proposta {
   prazoEntregaDias?: number | null;
   prazoInstalacaoDias?: number | null;
   prazoSoftwareDias?: number | null;
+  prazoVerificacaoDias?: number | null;
+  servicosTotal?: number | null;
+  customizacaoUnitario?: number | null;
+  customizacaoQuantidade?: number | null;
+}
+
+/** Número vindo da API → texto do campo de dinheiro ("1.234,56"). */
+function paraCampoDinheiro(v: number | null | undefined): string {
+  return v == null ? '' : maskDinheiro(String(Math.round(v * 100)));
 }
 
 interface ClienteOpt {
@@ -130,7 +140,14 @@ export default function LevantamentoCampoPage() {
   const [prazoEntrega, setPrazoEntrega] = useState('');
   const [prazoInstalacao, setPrazoInstalacao] = useState('');
   const [prazoSoftware, setPrazoSoftware] = useState('');
+  const [prazoVerificacao, setPrazoVerificacao] = useState('');
   const [salvandoPrazos, setSalvandoPrazos] = useState(false);
+
+  // Serviços de implantação (itens 7.2 e III.a do documento único): valor
+  // ÚNICO, separado do aluguel mensal.
+  const [servicosTotal, setServicosTotal] = useState('');
+  const [customUnitario, setCustomUnitario] = useState('');
+  const [customQuantidade, setCustomQuantidade] = useState('1');
 
   const [previa, setPrevia] = useState<RespostaSelecao | null>(null);
   const [consultando, setConsultando] = useState(false);
@@ -160,6 +177,10 @@ export default function LevantamentoCampoPage() {
         setPrazoEntrega(p.prazoEntregaDias ? String(p.prazoEntregaDias) : '');
         setPrazoInstalacao(p.prazoInstalacaoDias ? String(p.prazoInstalacaoDias) : '');
         setPrazoSoftware(p.prazoSoftwareDias ? String(p.prazoSoftwareDias) : '');
+        setPrazoVerificacao(p.prazoVerificacaoDias ? String(p.prazoVerificacaoDias) : '');
+        setServicosTotal(paraCampoDinheiro(p.servicosTotal));
+        setCustomUnitario(paraCampoDinheiro(p.customizacaoUnitario));
+        setCustomQuantidade(p.customizacaoQuantidade ? String(p.customizacaoQuantidade) : '1');
       })
       .catch((e) => setErro(apiErrorMessage(e)));
   }, [propostaIdUrl]);
@@ -257,8 +278,9 @@ export default function LevantamentoCampoPage() {
   }
 
   /**
-   * Os prazos do item 04 do Anexo II — o rep coleta com o cliente depois da
-   * medição, e é daqui que sai o texto do documento.
+   * Os prazos (item 08) e os serviços de implantação (7.2 / III.a) do documento
+   * único — o rep combina com o cliente depois da medição, e é daqui que sai o
+   * texto do contrato.
    */
   async function salvarPrazos() {
     if (!proposta) return;
@@ -268,10 +290,14 @@ export default function LevantamentoCampoPage() {
       const atualizada = await api.patch<Proposta>(`/propostas/${proposta.id}`, {
         prazoEntregaDias: Number(prazoEntrega) || undefined,
         prazoInstalacaoDias: Number(prazoInstalacao) || undefined,
+        prazoVerificacaoDias: Number(prazoVerificacao) || undefined,
         prazoSoftwareDias: Number(prazoSoftware) || undefined,
+        servicosTotal: servicosTotal ? parseDinheiro(servicosTotal) : undefined,
+        customizacaoUnitario: customUnitario ? parseDinheiro(customUnitario) : undefined,
+        customizacaoQuantidade: Number(customQuantidade) || undefined,
       });
       setProposta((p) => (p ? { ...p, ...atualizada } : atualizada));
-      toast.success('Prazos salvos');
+      toast.success('Prazos e serviços salvos');
     } catch (e) {
       setErro(apiErrorMessage(e));
     } finally {
@@ -285,7 +311,12 @@ export default function LevantamentoCampoPage() {
     navigate(`/propostas?id=${proposta.id}`);
   }
 
-  const semPrazo = !prazoEntrega || !prazoInstalacao || !prazoSoftware;
+  const semPrazo = !prazoEntrega || !prazoInstalacao || !prazoVerificacao || !prazoSoftware;
+  const semServicos = !servicosTotal || !customUnitario;
+  // III.a promete "2 parcelas de R$ X cada": centavo ímpar não divide igual, e o
+  // contrato é recusado na montagem. Avisar aqui é mais barato que no aceite.
+  const centavosServicos = Math.round(parseDinheiro(servicosTotal) * 100);
+  const servicosImpar = !!servicosTotal && centavosServicos % 2 !== 0;
 
   return (
     <PageLayout
@@ -493,10 +524,10 @@ export default function LevantamentoCampoPage() {
           <Card className="p-4" data-testid="levantamento-prazos">
             <p className="mb-1 text-sm font-medium">Prazos combinados com o cliente</p>
             <p className="mb-3 text-xs text-text-subtle">
-              Vão impressos no documento como &quot;em até __ (____) dias&quot;. Em branco, a lacuna
-              fica em branco no papel.
+              Vão impressos no contrato como &quot;em até 10 (dez) dias&quot;. Sem os quatro, o
+              contrato não sai pra assinatura — o app não imprime lacuna.
             </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Field label="Entrega (dias)">
                 <Input
                   data-testid="prazo-entrega"
@@ -515,6 +546,15 @@ export default function LevantamentoCampoPage() {
                   placeholder="15"
                 />
               </Field>
+              <Field label="Verificação (dias)" hint="Depois do fim da obra">
+                <Input
+                  data-testid="prazo-verificacao"
+                  inputMode="numeric"
+                  value={prazoVerificacao}
+                  onChange={(e) => setPrazoVerificacao(e.target.value.replace(/\D/g, ''))}
+                  placeholder="5"
+                />
+              </Field>
               <Field label="Software (dias)">
                 <Input
                   data-testid="prazo-software"
@@ -525,6 +565,52 @@ export default function LevantamentoCampoPage() {
                 />
               </Field>
             </div>
+
+            <p className="mb-1 mt-5 text-sm font-medium">Serviços de implantação</p>
+            <p className="mb-3 text-xs text-text-subtle">
+              Valor único, fora do aluguel mensal: instalação + materiais + customização do
+              software, pago em 2 parcelas.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_0.6fr_1.2fr]">
+              <Field label="Customização — valor unitário (R$)">
+                <Input
+                  data-testid="custom-unitario"
+                  inputMode="numeric"
+                  value={customUnitario}
+                  onChange={(e) => setCustomUnitario(maskDinheiro(e.target.value))}
+                  placeholder="1.500,00"
+                />
+              </Field>
+              <Field label="Quantidade">
+                <Input
+                  data-testid="custom-quantidade"
+                  inputMode="numeric"
+                  value={customQuantidade}
+                  onChange={(e) => setCustomQuantidade(e.target.value.replace(/\D/g, ''))}
+                  placeholder="1"
+                />
+              </Field>
+              <Field
+                label="Total de instalação, materiais e customização (R$)"
+                hint={
+                  servicosTotal && !servicosImpar
+                    ? `2 parcelas de ${formatMoeda(centavosServicos / 200)}`
+                    : undefined
+                }
+                error={
+                  servicosImpar ? 'Não divide em 2 parcelas iguais — ajuste os centavos.' : undefined
+                }
+              >
+                <Input
+                  data-testid="servicos-total"
+                  inputMode="numeric"
+                  value={servicosTotal}
+                  onChange={(e) => setServicosTotal(maskDinheiro(e.target.value))}
+                  placeholder="12.000,00"
+                />
+              </Field>
+            </div>
+
             <div className="mt-3">
               <Button
                 variant="secondary"
@@ -532,7 +618,7 @@ export default function LevantamentoCampoPage() {
                 disabled={salvandoPrazos}
                 data-testid="salvar-prazos"
               >
-                {salvandoPrazos ? 'Salvando…' : 'Salvar prazos'}
+                {salvandoPrazos ? 'Salvando…' : 'Salvar prazos e serviços'}
               </Button>
             </div>
           </Card>
@@ -563,6 +649,7 @@ export default function LevantamentoCampoPage() {
             <p className="text-xs text-text-subtle">
               {itens.length} quadro(s) salvos em {proposta.numero}
               {semPrazo && ' · prazos pendentes'}
+              {semServicos && ' · serviços pendentes'}
             </p>
             <Button onClick={concluir} disabled={!!topologia} data-testid="levantamento-concluir">
               <Check size={16} aria-hidden="true" /> Ver proposta

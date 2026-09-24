@@ -414,3 +414,63 @@ describe('topologia do acompanhamento', () => {
     expect(MB04_DS.modelo.sku).toBe('MB-04_D.S.');
   });
 });
+
+/**
+ * Documento único (Anexo I, 24/09): o QUARTO prazo e os serviços de
+ * implantação — valor único, separado do aluguel mensal.
+ */
+describe('verificação e serviços de implantação', () => {
+  it('salva o prazo de verificação e os serviços em NÚMERO (reais, não centavos)', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    apiGet.mockResolvedValue(proposta());
+    apiPatch.mockResolvedValue(proposta());
+    render(<LevantamentoCampoPage />);
+
+    await waitFor(() => expect(screen.getByTestId('levantamento-prazos')).toBeTruthy());
+    fireEvent.change(screen.getByTestId('prazo-verificacao'), { target: { value: '5' } });
+    // A máscara trabalha em centavos: digitar 150000 é R$ 1.500,00.
+    fireEvent.change(screen.getByTestId('custom-unitario'), { target: { value: '150000' } });
+    fireEvent.change(screen.getByTestId('custom-quantidade'), { target: { value: '2' } });
+    fireEvent.change(screen.getByTestId('servicos-total'), { target: { value: '1200000' } });
+    fireEvent.click(screen.getByTestId('salvar-prazos'));
+
+    await waitFor(() => expect(apiPatch).toHaveBeenCalled());
+    expect(apiPatch.mock.calls[0][1]).toMatchObject({
+      prazoVerificacaoDias: 5,
+      customizacaoUnitario: 1500,
+      customizacaoQuantidade: 2,
+      servicosTotal: 12000,
+    });
+  });
+
+  it('retomando, mostra os serviços já gravados formatados', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    apiGet.mockResolvedValue({
+      ...proposta(),
+      prazoVerificacaoDias: 5,
+      servicosTotal: 12000.5,
+      customizacaoUnitario: 1500,
+      customizacaoQuantidade: 1,
+    });
+    render(<LevantamentoCampoPage />);
+
+    await waitFor(() => expect(screen.getByTestId('levantamento-prazos')).toBeTruthy());
+    expect((screen.getByTestId('prazo-verificacao') as HTMLInputElement).value).toBe('5');
+    expect((screen.getByTestId('servicos-total') as HTMLInputElement).value).toBe('12.000,50');
+    expect((screen.getByTestId('custom-unitario') as HTMLInputElement).value).toBe('1.500,00');
+  });
+
+  it('avisa quando o total não divide em 2 parcelas iguais — o contrato recusaria', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    apiGet.mockResolvedValue(proposta());
+    render(<LevantamentoCampoPage />);
+
+    await waitFor(() => expect(screen.getByTestId('levantamento-prazos')).toBeTruthy());
+    fireEvent.change(screen.getByTestId('servicos-total'), { target: { value: '1200001' } });
+    expect(screen.getByText(/Não divide em 2 parcelas iguais/)).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId('servicos-total'), { target: { value: '1200002' } });
+    expect(screen.queryByText(/Não divide em 2 parcelas iguais/)).toBeNull();
+    expect(screen.getByText(/2 parcelas de R\$\s?6\.000,01/)).toBeTruthy();
+  });
+});
