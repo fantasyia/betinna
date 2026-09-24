@@ -23,6 +23,8 @@
  */
 const { spawnSync } = require('child_process');
 
+const NL = String.fromCharCode(10);
+
 function log(msg) {
   console.log(`[deploy-migrations] ${msg}`);
 }
@@ -74,10 +76,6 @@ function isTransientNetworkError(prismaOutput) {
 }
 
 /**
- * Verifica se uma tabela existe usando prisma db execute.
- * Retorna true/false/null (null = não conseguiu determinar).
- */
-/**
  * Reaplica os objetos que o Prisma não conhece (índices só-SQL) — o
  * `db push` os REMOVE ao reconciliar o schema, com exit 0 e log de sucesso.
  * Entre eles estão os dois UNIQUE parciais que protegem o upsert da Inbox
@@ -117,7 +115,6 @@ async function reaplicarObjetosInvisiveis() {
     return false;
   }
 
-  const NL = String.fromCharCode(10);
   const arquivoTexto = fs.readFileSync(arquivo, 'utf-8');
   // UM statement por vez: um índice problemático não pode levar junto os UNIQUE
   // parciais da Inbox, que são o que mais importa aqui.
@@ -175,25 +172,89 @@ async function reaplicarObjetosInvisiveis() {
   }
 }
 
-function tableExists(tableName) {
-  const sql = `SELECT EXISTS (
-    SELECT FROM information_schema.tables
-    WHERE table_schema = current_schema()
-      AND table_name = '${tableName}'
-  );`;
-  const res = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
-    input: sql,
-    encoding: 'utf-8',
-    shell: process.platform === 'win32',
-  });
-  if (res.status !== 0) {
-    log(`⚠️ Não consegui checar existência de ${tableName} (DB unreachable?)`);
-    return null;
+/**
+ * Descobre QUAIS tabelas críticas estão ausentes — nome a nome.
+ *
+ * Retorna:
+ *   { ausentes: [] }             → todas presentes
+ *   { ausentes: ['X', 'Y'] }     → schema incompleto, COM os nomes
+ *   { ausentes: null, motivo }   → INDETERMINADO (DB fora, probe quebrado).
+ *                                  Indeterminado ≠ incompleto: quem chama NÃO
+ *                                  pode disparar o fallback destrutivo às cegas.
+ *
+ * ⚠️ Por que via Prisma Client e não `npx prisma db execute` — a mesma lição já
+ * documentada em reaplicarObjetosInvisiveis(), agora com um segundo caso:
+ *
+ * O probe antigo mandava UM script com os 6 SELECTs e chamava o CLI SEM `--url`
+ * e SEM `--schema`. O `db execute` EXIGE um dos dois, então ele abortava com
+ * "Either --url or --schema must be provided" e exit 1 ANTES de abrir conexão —
+ * sempre, com qualquer banco. Como stdout/stderr eram capturados e descartados,
+ * o log só dizia "⚠️ Tabela crítica AUSENTE", sem nome e sem a mensagem real.
+ *
+ * Efeito medido em produção (deploys de 13/09 e 15/09/2026, linhas idênticas):
+ * `db push --accept-data-loss` rodava em TODO boot de api e worker, com as 6
+ * tabelas presentes e `migrate deploy` reportando "No pending migrations".
+ *
+ * Com o Client o probe devolve LINHAS: dá pra dizer o nome do que falta.
+ */
+async function tabelasCriticasAusentes(tabelas) {
+  let PrismaClient;
+  try {
+    ({ PrismaClient } = require('@prisma/client'));
+  } catch (err) {
+    log(`⚠️ @prisma/client indisponível (${err.message.split(NL)[0]}) — probe via CLI.`);
+    return probeTabelasViaCli(tabelas);
   }
-  // prisma db execute imprime o output do SQL em stdout/stderr — não dá pra
-  // confiar 100% no parse. Mas se exit 0, vamos assumir "ok".
-  // O fallback final cuida do caso real onde tabelas faltam.
-  return true;
+
+  const prisma = new PrismaClient();
+  try {
+    const presentes = await prisma.$queryRawUnsafe(
+      // `::text` de propósito: table_name é o domínio `sql_identifier`, e domínio
+      // tem OID próprio — o driver pode não saber desserializar. Texto puro sempre sabe.
+      `SELECT table_name::text AS table_name FROM information_schema.tables
+        WHERE table_schema = current_schema()
+          AND table_name = ANY($1::text[])`,
+      tabelas,
+    );
+    const nomes = new Set(presentes.map((r) => r.table_name));
+    return { ausentes: tabelas.filter((t) => !nomes.has(t)) };
+  } catch (err) {
+    // Falha do PROBE não é prova de tabela faltando — inclusive DB fora do ar.
+    return { ausentes: null, motivo: String(err.message || err).split(NL)[0] };
+  } finally {
+    await prisma.$disconnect().catch(() => undefined);
+  }
+}
+
+/**
+ * Plano B do probe: um `db execute` POR TABELA — assim o exit != 0 aponta a
+ * tabela, em vez de condenar as seis de uma vez. Agora com `--schema`, sem o
+ * qual o CLI nem conecta. A mensagem do Postgres vai pro log.
+ */
+function probeTabelasViaCli(tabelas) {
+  const path = require('path');
+  const schemaPath = path.join(__dirname, '..', 'prisma', 'schema.prisma');
+  const ausentes = [];
+  for (const tabela of tabelas) {
+    const res = spawnSync(
+      'npx',
+      ['prisma', 'db', 'execute', '--schema', schemaPath, '--stdin'],
+      {
+        input: `SELECT 1 FROM "${tabela}" LIMIT 1;`,
+        encoding: 'utf-8',
+        shell: process.platform === 'win32',
+      },
+    );
+    if (res.status === 0) continue;
+    const saida = `${res.stdout || ''}${res.stderr || ''}`;
+    if (isTransientNetworkError(saida)) {
+      return { ausentes: null, motivo: `DB inacessível ao checar ${tabela}` };
+    }
+    const detalhe = saida.trim().split(NL).filter(Boolean).pop() || 'sem mensagem';
+    log(`   ↳ ${tabela}: ${detalhe}`);
+    ausentes.push(tabela);
+  }
+  return { ausentes };
 }
 
 async function main() {
@@ -255,25 +316,22 @@ async function main() {
   ];
 
   log('Verificando tabelas críticas pós-migrate…');
-  // Probe: um SELECT por tabela crítica. `prisma db execute` NÃO retorna linhas (não dá pra
-  // ler EXISTS do stdout — era por isso que o check antigo era código morto). Mas ele retorna
-  // status != 0 se QUALQUER statement falhar — e um SELECT numa tabela inexistente falha.
-  // Assim detectamos o estado "migrate deploy retornou 0 mas as tabelas não existem".
-  const checkSql = criticalTables.map((t) => `SELECT 1 FROM "${t}" LIMIT 1;`).join('\n');
+  const probe = await tabelasCriticasAusentes(criticalTables);
 
-  const checkRes = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
-    input: checkSql,
-    encoding: 'utf-8',
-    shell: process.platform === 'win32',
-  });
-
-  // Tabela crítica ausente = schema incompleto → precisa de fallback. Ignora falha transiente
-  // de rede no próprio check (aí não força db push à toa; o app sobe degradado e reconcilia depois).
-  const checkTransiente =
-    isTransientNetworkError(checkRes.stderr || '') || isTransientNetworkError(checkRes.stdout || '');
-  const schemaIncompleto = checkRes.status !== 0 && !checkTransiente;
+  // Tabela crítica ausente = schema incompleto → precisa de fallback. Probe que não
+  // conseguiu responder NÃO conta (aí não força db push à toa; o app sobe e reconcilia
+  // depois) — mesma política que já valia pra falha transiente de rede no check.
+  const schemaIncompleto = Array.isArray(probe.ausentes) && probe.ausentes.length > 0;
   if (schemaIncompleto) {
-    log('⚠️ Tabela crítica AUSENTE — migrate deploy retornou 0 mas o schema está incompleto.');
+    log(
+      `⚠️ Tabela(s) crítica(s) AUSENTE(S): ${probe.ausentes.join(', ')} — ` +
+        'migrate deploy retornou 0 mas o schema está incompleto.',
+    );
+  } else if (probe.ausentes === null) {
+    log(`⚠️ Não consegui verificar as tabelas críticas: ${probe.motivo}`);
+    log('⚠️ Seguindo SEM forçar db push — indeterminado não é o mesmo que incompleto.');
+  } else {
+    log(`✅ ${criticalTables.length} tabelas críticas presentes.`);
   }
 
   // Fallback db push se migrate deploy falhou OU se o schema ficou incompleto.
