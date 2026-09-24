@@ -65,6 +65,11 @@ describe('fluxos.controller — auditoria nas rotas de escrita', () => {
     expect(FONTE).toContain(
       "@Audit({ action: 'cancelar', resource: 'fluxo_execucao', resourceIdFrom: 'params.execucaoId' })",
     );
+    // Observação da testadora (24/09): no `testar` o id vem no corpo — filtrar
+    // o auditLog por recurso não achava quem disparou o fluxo X.
+    expect(FONTE).toContain(
+      "@Audit({ action: 'testar', resource: 'fluxo', resourceIdFrom: 'body.fluxoId' })",
+    );
   });
 
   it('a lista de exceções não esconde rota que não existe mais', () => {

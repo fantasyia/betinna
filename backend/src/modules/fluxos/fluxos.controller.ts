@@ -260,7 +260,8 @@ export class FluxosController {
 
   // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
   // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
-  @Audit({ action: 'testar', resource: 'fluxo' })
+  // O fluxoId vem no CORPO, não na URL — sem isto o rastro do teste não diz QUAL fluxo.
+  @Audit({ action: 'testar', resource: 'fluxo', resourceIdFrom: 'body.fluxoId' })
   @Post('testar')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Dispara execução de teste manual' })
