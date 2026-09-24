@@ -517,6 +517,151 @@ describe('ConversarIaService', () => {
       });
     });
 
+    // ── A8-ATRASADO (24/09, opção A do Léo) ──────────────────────────────
+    //
+    // O lead que JÁ recebeu o link e volta pra "Novo" recebia a sequência inteira
+    // de novo. A reserva da abertura não pega (solta no `finally`), e a guarda do
+    // histórico só rodava no turno de resposta. A importação da base (G.15) que
+    // resetar etapa faria isto em lote.
+    describe('lead que volta — abertura CALADA se o link já saiu', () => {
+      const LINK = 'https://somatecblocking.com.br/protecao-comercial?corrente=105#calculadora';
+      const comLink = `Com 105A e 220V já dá pra dimensionar. Segue: ${LINK}`;
+
+      const preparar = (texto = comLink) => {
+        prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+        prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-empresa' });
+        muller.gerarRespostaIa.mockResolvedValue({ texto, modelo: 'gpt' });
+      };
+      /** O histórico da conversa diz: esse link já foi entregue. */
+      const linkJaSaiu = () =>
+        prisma.message.findFirst.mockImplementation(
+          async (a: { where: { conteudo?: { contains?: string } } }) =>
+            a.where.conteudo?.contains === LINK ? { id: 'msg-antiga' } : null,
+        );
+
+      it('🔴 link já entregue → não envia NADA e encerra (pulado, sem esperar)', async () => {
+        preparar();
+        linkJaSaiu();
+
+        const r = await svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1' }) as never,
+          { leadId: 'lead-1' },
+          'emp-1',
+        );
+
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+        expect(r).toMatchObject({ aguardando: false, pulado: true });
+        expect((r as { motivo?: string }).motivo).toContain(LINK);
+        // Não pode ficar AGUARDANDO: a próxima mensagem do cliente seria
+        // respondida por uma execução que nunca falou com ele.
+        expect(escritasDeEstado(prisma)).not.toContainEqual(
+          expect.objectContaining({ data: expect.objectContaining({ status: 'AGUARDANDO' }) }),
+        );
+      });
+
+      it('a prova é a mensagem OUTBOUND da conversa CERTA', async () => {
+        preparar();
+        linkJaSaiu();
+        await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+        expect(prisma.message.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              conversationId: 'conv-empresa',
+              direction: 'OUTBOUND',
+              conteudo: { contains: LINK },
+            },
+          }),
+        );
+      });
+
+      it('link NUNCA entregue → abre normalmente', async () => {
+        preparar();
+        await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('link DIFERENTE (dado novo do lead) → abre normalmente', async () => {
+        preparar(comLink.replace('corrente=105', 'corrente=150'));
+        linkJaSaiu();
+        await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('🔒 escopo do dono: execução do REP confere a caixa DELE, não a da empresa', async () => {
+        preparar();
+        await svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1' }) as never,
+          { leadId: 'lead-1', proprietarioId: 'rep-1' },
+          'emp-1',
+        );
+        expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({ where: expect.objectContaining({ proprietarioId: 'rep-1' }) }),
+        );
+      });
+
+      it('lead que ACABOU de escrever não fica sem resposta — a regra não cala o reativo', async () => {
+        preparar(JSON.stringify({ resposta: comLink, classificou: false }));
+        linkJaSaiu();
+        await svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1' }) as never,
+          { leadId: 'lead-1', conversationId: 'conv-empresa', texto: 'e aí, como fica?' },
+          'emp-1',
+          true,
+        );
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('quem ASSUME a conversa por etapa também fica calado', async () => {
+        preparar(JSON.stringify({ resposta: comLink, classificou: false }));
+        prisma.message.findMany.mockResolvedValue([
+          { direction: 'INBOUND', conteudo: '105A, 220V', criadoEm: new Date(1) },
+        ]);
+        linkJaSaiu();
+        const r = await svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1' }) as never,
+          { leadId: 'lead-1' },
+          'emp-1',
+          true,
+        );
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+        expect(r).toMatchObject({ pulado: true });
+      });
+
+      it('lead que PEDIU o link de novo recebe — reenviar é o certo', async () => {
+        preparar(JSON.stringify({ resposta: comLink, classificou: false }));
+        prisma.message.findMany.mockResolvedValue([
+          { direction: 'INBOUND', conteudo: 'perdi o link, manda de novo?', criadoEm: new Date(1) },
+        ]);
+        linkJaSaiu();
+        await svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1' }) as never,
+          { leadId: 'lead-1' },
+          'emp-1',
+          true,
+        );
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('FAIL-OPEN: banco falha na checagem → abre (calar por engano é lead sem abordagem)', async () => {
+        preparar();
+        prisma.message.findFirst.mockRejectedValue(new Error('banco fora'));
+        await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('abertura sem link não consulta nada e abre', async () => {
+        preparar('Oi! Tudo bem? Qual a tensão do seu quadro?');
+        await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+        expect(prisma.message.findFirst).not.toHaveBeenCalled();
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+    });
+
     it('envia 1ª msg e pausa (AGUARDANDO) quando aguardarResposta', async () => {
       prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
       muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá! Tudo bem?', modelo: 'gpt' });

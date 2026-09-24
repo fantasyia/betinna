@@ -1527,6 +1527,42 @@ export class ConversarIaService implements OnModuleDestroy {
       );
       return { aguardando: false, roteado: true, tipoErro: tipo_erro };
     }
+    // ── A8-ATRASADO: a abertura NÃO reentrega um link que a conversa já recebeu ──
+    //
+    // 🔴 Medido em 24/09 (build 73e6e5b): um lead que JÁ recebeu o link e entra
+    // de novo na etapa "Novo" recebia a sequência inteira outra vez —
+    // explicação, "mandei o link", o link, a despedida. A reserva da abertura
+    // não pega: ela é mutex de aberturas SOBREPOSTAS e solta no `finally`. E a
+    // guarda do histórico (`linkJaEntregue`) só roda no turno de RESPOSTA.
+    //
+    // 0 de 30.282 leads voltaram pra "Novo" até hoje — mas a importação da base
+    // (G.15) que resetar etapa de lead existente faz exatamente isto, em LOTE.
+    //
+    // 📌 Decisão do Léo (24/09, opção A): fica CALADA. Nada é enviado; o motivo
+    // vai pro log do passo. Numa importação em lote, uma "frase de retomada"
+    // seriam centenas de mensagens que ninguém pediu.
+    //
+    // ⚠️ Só quando ninguém acabou de escrever: abordagem fria, ou quem ASSUME a
+    // conversa por etapa/etiqueta. Se o lead mandou mensagem agora, calar é
+    // deixá-lo sem resposta — e se ele PEDIU o link de novo, reenviar é o certo.
+    if ((!reativo || assumindoConversa) && !pediuOLinkDeNovo(mensagemDoTurno)) {
+      const convAbertura = await this.conversaDaAbertura(empresaId, leadId, ctx);
+      const repetido = convAbertura
+        ? await this.linkJaNoHistorico(convAbertura, aberturaTexto)
+        : null;
+      if (repetido) {
+        this.logger.log(
+          `CONVERSAR_IA: abertura CALADA — o link já foi entregue na conversa ${convAbertura} ` +
+            `(lead ${leadId}, exec ${execucaoId}): ${repetido}`,
+        );
+        return {
+          aguardando: false,
+          pulado: true,
+          motivo: `a conversa já recebeu este link — abertura não reenviada (${repetido})`,
+        };
+      }
+    }
+
     // MODO SECO do teste: o opener é a primeira mensagem que a pessoa recebe.
     // Num teste contra conversa REAL, mandar isso significa abordar um cliente
     // que não pediu nada — e não tem desfazer. Roda tudo (IA inclusive), só não
@@ -2216,6 +2252,57 @@ export class ConversarIaService implements OnModuleDestroy {
     // fecha. Só chega aqui quem passou pelo histórico limpo.
     for (const url of urls) {
       if (!(await this.reservarEntregaDoLink(conversationId, url, execucaoId))) return url;
+    }
+    return null;
+  }
+
+  /**
+   * A conversa em que a ABERTURA vai falar: a do contexto, ou a do lead no
+   * escopo do DONO da execução (empresa = `proprietarioId` nulo; rep = o dele).
+   *
+   * O escopo importa: o mesmo telefone existe nas duas caixas (D38), e conferir
+   * o histórico da caixa errada calaria a abertura por um link que o cliente
+   * recebeu do rep, não da empresa — ou o contrário.
+   */
+  private async conversaDaAbertura(
+    empresaId: string,
+    leadId: string,
+    ctx: ExecucaoContexto,
+  ): Promise<string | null> {
+    if (typeof ctx.conversationId === 'string' && ctx.conversationId) return ctx.conversationId;
+    const conv = await this.prisma.conversation
+      .findFirst({
+        where: { empresaId, leadId, canal: 'WHATSAPP', proprietarioId: this.donoDaConversa(ctx) },
+        orderBy: { ultimaMsgEm: 'desc' },
+        select: { id: true },
+      })
+      .catch(() => null);
+    return conv?.id ?? null;
+  }
+
+  /**
+   * Alguma URL deste texto já saiu nesta conversa? Só o HISTÓRICO — sem reserva.
+   *
+   * Na abertura a corrida de dois disparos no mesmo instante já é fechada pela
+   * reserva da abertura; aqui o caso é o lead que VOLTA, e pra ele a mensagem
+   * OUTBOUND gravada é a prova.
+   *
+   * FAIL-OPEN: erro de banco devolve `null` (abre). Abertura repetida é o
+   * defeito que já existia; abertura calada por engano é lead que ninguém aborda.
+   */
+  private async linkJaNoHistorico(conversationId: string, texto: string): Promise<string | null> {
+    try {
+      for (const url of urlsDoTexto(texto)) {
+        const ja = await this.prisma.message.findFirst({
+          where: { conversationId, direction: 'OUTBOUND', conteudo: { contains: url } },
+          select: { id: true },
+        });
+        if (ja) return url;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `CONVERSAR_IA: não consegui checar o link da abertura: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     return null;
   }
