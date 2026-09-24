@@ -221,3 +221,72 @@ describe('AuditService', () => {
     });
   });
 });
+
+/**
+ * Nome de gente e de coisa na lista (pedido do Léo, 24/09). A tela mostrava
+ * UUID e cuid; pra saber "quem desligou o R2?" era preciso traduzir na mão.
+ */
+describe('AuditService.list — nomes ao lado dos ids', () => {
+  const linha = (over: Record<string, unknown>) => ({
+    id: 'l',
+    acao: 'update',
+    recurso: 'fluxo',
+    recursoId: 'fx-r2',
+    usuarioId: 'u-leo',
+    empresaId: 'emp-1',
+    detalhes: { via: 'api_token', apiTokenNome: 'MCP master', campos: ['nome'] },
+    ip: null,
+    criadoEm: new Date(),
+    ...over,
+  });
+  const montar = (linhas: unknown[]) => {
+    const prisma = {
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue(linhas),
+        count: vi.fn().mockResolvedValue(linhas.length),
+      },
+      usuario: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'u-leo', nome: 'Leonardo Beltran' }]),
+      },
+      fluxo: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'fx-r2', nome: 'R2 · Liberação de lote' }]),
+      },
+      proposta: { findMany: vi.fn().mockRejectedValue(new Error('banco fora')) },
+    };
+    return { svc: new AuditService(prisma as never), prisma };
+  };
+
+  it('traz o nome do usuário e o nome do fluxo', async () => {
+    const { svc } = montar([linha({})]);
+    const r = await svc.list({});
+    expect(r.data[0]).toMatchObject({
+      usuarioNome: 'Leonardo Beltran',
+      recursoNome: 'R2 · Liberação de lote',
+      // o que a tela usa pra "de onde veio" e "o que mudou" continua no detalhes
+      detalhes: { via: 'api_token', apiTokenNome: 'MCP master', campos: ['nome'] },
+    });
+  });
+
+  it('UMA consulta por tipo de recurso, não uma por linha', async () => {
+    const { svc, prisma } = montar([linha({ id: 'a' }), linha({ id: 'b' }), linha({ id: 'c' })]);
+    await svc.list({});
+    expect(prisma.fluxo.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.fluxo.findMany.mock.calls[0][0].where.id.in).toEqual(['fx-r2']);
+    expect(prisma.usuario.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('sistema (sem usuário) e recurso sem tradutor ficam com nome null — a linha não some', async () => {
+    const { svc } = montar([linha({ usuarioId: null, recurso: 'conversation', recursoId: 'c1' })]);
+    const r = await svc.list({});
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0]).toMatchObject({ usuarioNome: null, recursoNome: null });
+  });
+
+  it('falha ao traduzir um tipo NÃO derruba a lista (best-effort)', async () => {
+    const { svc } = montar([linha({}), linha({ id: 'p', recurso: 'proposta', recursoId: 'pr-1' })]);
+    const r = await svc.list({});
+    expect(r.data).toHaveLength(2);
+    expect(r.data[0].recursoNome).toBe('R2 · Liberação de lote');
+    expect(r.data[1].recursoNome).toBeNull();
+  });
+});

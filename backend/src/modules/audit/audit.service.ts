@@ -63,6 +63,168 @@ export class AuditService {
 
   // ─── Consulta (ADMIN viewer) ─────────────────────────────────────────
 
+  /**
+   * Nome de GENTE e de COISA ao lado dos ids (pedido do Léo, 24/09).
+   *
+   * A tela mostrava `10fb0fca-5af3-…` e `cmtvasp1f0030o2…`: pra responder "quem
+   * desligou o R2?" era preciso traduzir código na mão. Os nomes são buscados em
+   * LOTE (uma consulta por tipo de recurso da página), não linha a linha.
+   *
+   * Best-effort: tipo sem tradutor, ou registro que já foi apagado, fica com o
+   * nome `null` e o id continua lá — a linha de auditoria nunca some por isso.
+   */
+  private async comNomes<
+    T extends { usuarioId: string | null; recurso: string; recursoId: string | null },
+  >(linhas: T[]): Promise<Array<T & { usuarioNome: string | null; recursoNome: string | null }>> {
+    const idsDe = (recurso: string) => [
+      ...new Set(
+        linhas
+          .filter((l) => l.recurso === recurso && l.recursoId)
+          .map((l) => l.recursoId as string),
+      ),
+    ];
+    const tradutores: Record<string, (ids: string[]) => Promise<Array<[string, string]>>> = {
+      fluxo: async (ids) =>
+        (
+          await this.prisma.fluxo.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      fluxo_execucao: async (ids) =>
+        (
+          await this.prisma.fluxoExecucao.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, fluxo: { select: { nome: true } } },
+          })
+        ).map((r) => [r.id, `execução de ${r.fluxo.nome}`]),
+      proposta: async (ids) =>
+        (
+          await this.prisma.proposta.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, numero: true },
+          })
+        ).map((r) => [r.id, r.numero]),
+      pedido: async (ids) =>
+        (
+          await this.prisma.pedido.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, numero: true },
+          })
+        ).map((r) => [r.id, r.numero]),
+      contrato: async (ids) =>
+        (
+          await this.prisma.contrato.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, proposta: { select: { numero: true } } },
+          })
+        ).map((r) => [r.id, `contrato da ${r.proposta.numero}`]),
+      modelo_contrato: async (ids) =>
+        (
+          await this.prisma.modeloContrato.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, versao: true },
+          })
+        ).map((r) => [r.id, `modelo de contrato v${r.versao}`]),
+      cliente: async (ids) =>
+        (
+          await this.prisma.cliente.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      lead: async (ids) =>
+        (
+          await this.prisma.lead.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      usuario: async (ids) =>
+        (
+          await this.prisma.usuario.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      funil: async (ids) =>
+        (
+          await this.prisma.funil.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      campanha: async (ids) =>
+        (
+          await this.prisma.campanha.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      kanban_board: async (ids) =>
+        (
+          await this.prisma.kanbanBoard.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      kanban_card: async (ids) =>
+        (
+          await this.prisma.kanbanCard.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, titulo: true },
+          })
+        ).map((r) => [r.id, r.titulo]),
+      tag: async (ids) =>
+        (
+          await this.prisma.tag.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+      empresa: async (ids) =>
+        (
+          await this.prisma.empresa.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        ).map((r) => [r.id, r.nome]),
+    };
+
+    const nomeDoRecurso = new Map<string, string>(); // `${recurso}:${id}` → nome
+    await Promise.all(
+      Object.entries(tradutores).map(async ([recurso, traduzir]) => {
+        const ids = idsDe(recurso);
+        if (!ids.length) return;
+        try {
+          for (const [id, nome] of await traduzir(ids)) nomeDoRecurso.set(`${recurso}:${id}`, nome);
+        } catch (err) {
+          this.logger.warn(`Auditoria: não traduzi nomes de ${recurso}: ${this.message(err)}`);
+        }
+      }),
+    );
+
+    const usuarioIds = [...new Set(linhas.map((l) => l.usuarioId).filter(Boolean))] as string[];
+    const nomeDoUsuario = new Map<string, string>();
+    if (usuarioIds.length) {
+      try {
+        const us = await this.prisma.usuario.findMany({
+          where: { id: { in: usuarioIds } },
+          select: { id: true, nome: true },
+        });
+        for (const u of us) nomeDoUsuario.set(u.id, u.nome);
+      } catch (err) {
+        this.logger.warn(`Auditoria: não traduzi nomes de usuário: ${this.message(err)}`);
+      }
+    }
+
+    return linhas.map((l) => ({
+      ...l,
+      usuarioNome: l.usuarioId ? (nomeDoUsuario.get(l.usuarioId) ?? null) : null,
+      recursoNome: l.recursoId ? (nomeDoRecurso.get(`${l.recurso}:${l.recursoId}`) ?? null) : null,
+    }));
+  }
+
   async list(params: {
     page?: number;
     limit?: number;
@@ -84,6 +246,10 @@ export class AuditService {
       detalhes: Prisma.JsonValue;
       ip: string | null;
       criadoEm: Date;
+      /** Nome de quem fez (null = sistema, ou usuário apagado). */
+      usuarioNome: string | null;
+      /** Nome legível do recurso (fluxo, proposta…); null = tipo sem tradutor ou apagado. */
+      recursoNome: string | null;
     }>;
     pagination: { page: number; limit: number; total: number; totalPages: number };
   }> {
@@ -102,7 +268,7 @@ export class AuditService {
       if (params.ate) where.criadoEm.lte = params.ate;
     }
 
-    const [data, total] = await Promise.all([
+    const [linhas, total] = await Promise.all([
       this.prisma.auditLog.findMany({
         where,
         orderBy: { criadoEm: 'desc' },
@@ -111,6 +277,7 @@ export class AuditService {
       }),
       this.prisma.auditLog.count({ where }),
     ]);
+    const data = await this.comNomes(linhas);
 
     return {
       data,

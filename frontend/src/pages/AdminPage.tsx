@@ -613,6 +613,29 @@ interface AuditLogEntry {
   ip: string | null;
   criadoEm: string;
   detalhes: Record<string, unknown> | null;
+  /** Nome de quem fez — o backend traduz o id (null = sistema ou usuário apagado). */
+  usuarioNome?: string | null;
+  /** Nome legível do recurso (fluxo, proposta…) — null = tipo sem tradução ou apagado. */
+  recursoNome?: string | null;
+}
+
+/**
+ * De onde a escrita veio. `api_token` = MCP/sessão de Claude usando o token de
+ * alguém — sem isto uma escrita automatizada fica idêntica a um clique na tela.
+ * Registros antigos (antes de 24/09) não têm `via`.
+ */
+function origemDaAcao(d: Record<string, unknown> | null): string | null {
+  if (!d || typeof d.via !== 'string') return null;
+  if (d.via === 'api_token') {
+    return typeof d.apiTokenNome === 'string' ? `token · ${d.apiTokenNome}` : 'token de API';
+  }
+  return d.via === 'sessao' ? 'tela' : d.via;
+}
+
+/** Os NOMES dos campos enviados (nunca os valores). `nos`/`arestas` = grafo trocado. */
+function camposDaAcao(d: Record<string, unknown> | null): string | null {
+  const campos = d && Array.isArray(d.campos) ? (d.campos as unknown[]).map(String) : [];
+  return campos.length ? campos.join(', ') : null;
 }
 
 interface AuditListResponse {
@@ -620,7 +643,7 @@ interface AuditListResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-function AuditLogSection() {
+export function AuditLogSection() {
   const [filters, setFilters] = useState({ acao: '', recurso: '', usuarioId: '' });
   const [page, setPage] = useState(1);
   const limit = 20;
@@ -651,9 +674,16 @@ function AuditLogSection() {
       key: 'who',
       header: 'Usuário',
       render: (e) => (
-        <span className={cn('text-[11px] font-mono', e.usuarioId ? 'text-text' : 'text-muted')}>
-          {e.usuarioId ?? '(system)'}
-        </span>
+        <div className="text-[12px]">
+          <span className={e.usuarioId ? 'text-text' : 'text-muted'} data-testid="audit-usuario">
+            {e.usuarioNome ?? (e.usuarioId ? `${e.usuarioId.slice(0, 8)}…` : '(sistema)')}
+          </span>
+          {origemDaAcao(e.detalhes) && (
+            <div className="text-[10px] text-muted mt-0.5" data-testid="audit-origem">
+              via {origemDaAcao(e.detalhes)}
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -670,13 +700,28 @@ function AuditLogSection() {
       header: 'Recurso',
       render: (e) => (
         <div className="text-[12px]">
-          <strong className="text-text">{e.recurso}</strong>
-          {e.recursoId && (
-            <div className="text-[10px] text-muted font-mono mt-0.5">
-              {e.recursoId.length > 24 ? `${e.recursoId.slice(0, 24)}…` : e.recursoId}
-            </div>
+          <span className="text-muted">{e.recurso}</span>{' '}
+          {e.recursoNome ? (
+            <strong className="text-text" data-testid="audit-recurso-nome">
+              {e.recursoNome}
+            </strong>
+          ) : (
+            e.recursoId && (
+              <span className="text-[10px] text-muted font-mono">
+                {e.recursoId.length > 24 ? `${e.recursoId.slice(0, 24)}…` : e.recursoId}
+              </span>
+            )
           )}
         </div>
+      ),
+    },
+    {
+      key: 'campos',
+      header: 'O que mudou',
+      render: (e) => (
+        <span className="text-[11px] text-muted" data-testid="audit-campos">
+          {camposDaAcao(e.detalhes) ?? '—'}
+        </span>
       ),
     },
     {
