@@ -252,6 +252,13 @@ describe('AuditService.list — nomes ao lado dos ids', () => {
         findMany: vi.fn().mockResolvedValue([{ id: 'fx-r2', nome: 'R2 · Liberação de lote' }]),
       },
       proposta: { findMany: vi.fn().mockRejectedValue(new Error('banco fora')) },
+      kanbanChecklistItem: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { id: 'it-1', texto: 'Push', checklist: { card: { titulo: 'Tela de auditoria' } } },
+          ]),
+      },
     };
     return { svc: new AuditService(prisma as never), prisma };
   };
@@ -280,6 +287,12 @@ describe('AuditService.list — nomes ao lado dos ids', () => {
     const r = await svc.list({});
     expect(r.data).toHaveLength(1);
     expect(r.data[0]).toMatchObject({ usuarioNome: null, recursoNome: null });
+  });
+
+  it('item de checklist leva o título do card — "Push" sozinho não diz nada', async () => {
+    const { svc } = montar([linha({ recurso: 'kanban_checklist_item', recursoId: 'it-1' })]);
+    const r = await svc.list({});
+    expect(r.data[0].recursoNome).toBe('Push — em Tela de auditoria');
   });
 
   it('falha ao traduzir um tipo NÃO derruba a lista (best-effort)', async () => {

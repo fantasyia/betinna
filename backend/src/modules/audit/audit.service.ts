@@ -175,6 +175,26 @@ export class AuditService {
             select: { id: true, titulo: true },
           })
         ).map((r) => [r.id, r.titulo]),
+      // Item sozinho ("Push") não diz nada — leva o título do card junto. É o tipo
+      // mais frequente do log (toda sessão marca checklist).
+      kanban_checklist: async (ids) =>
+        (
+          await this.prisma.kanbanChecklist.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, titulo: true, card: { select: { titulo: true } } },
+          })
+        ).map((r) => [r.id, `${r.titulo} — em ${r.card.titulo}`]),
+      kanban_checklist_item: async (ids) =>
+        (
+          await this.prisma.kanbanChecklistItem.findMany({
+            where: { id: { in: ids } },
+            select: {
+              id: true,
+              texto: true,
+              checklist: { select: { card: { select: { titulo: true } } } },
+            },
+          })
+        ).map((r) => [r.id, `${r.texto} — em ${r.checklist.card.titulo}`]),
       tag: async (ids) =>
         (
           await this.prisma.tag.findMany({
