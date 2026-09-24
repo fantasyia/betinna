@@ -7,6 +7,26 @@ Fonte: `MODELO DE PROPOSTA TÉCNICA E COMERCIAL_MB IoT - GRUPO TARIFÁRIO A (ANX
 `contrato-variaveis.util.ts` (v4, 12 variáveis) e o `proposta-tecnica-variaveis.util.ts`
 (Anexo II) passam a ser **referência histórica**, não base.
 
+## ⚡ Atualização 24/09 — o que mudou depois das respostas do Leandro
+
+- **O APP monta o documento inteiro** (`src/modules/propostas/contrato-documento.util.ts`)
+  e sobe pronto pra ClickSign (`content_base64`). O levantamento vai de 1 a 240 quadros, e
+  variável de Modelo da ClickSign não cria linha de tabela — **A6 está resolvido**: as
+  tabelas do item 06 e do 7.1 têm UMA linha no modelo, repetida por quadro.
+- O modelo com as variáveis mora em `assets/contratos/proposta-contrato-anexo-i.docx`.
+  ⚠️ Mudar cláusula agora exige deploy (antes era no painel da ClickSign).
+- **Numeração única** (A4): uma variável só, `{{proposta_numero}}` = o `PROP-XXXX` do app.
+  A linha "Proposta Técnica de referência PT-" saiu do cabeçalho, e o item 07 passou a
+  dizer "definido por meio do levantamento técnico do item 06 desta proposta". As
+  variáveis `proposta_pc`/`proposta_pt` das seções 3.1 e 3.4 **não existem mais**.
+- **Relatório mensal** (A1): a nota de rodapé virou "Relatórios Analíticos Mensais / Todo
+  mês, o software…".
+- As tabelas agora são laços: `{{#quadros}}…{{/quadros}}` e `{{#locacao}}…{{/locacao}}`
+  (seções 3.3 e 3.5 abaixo descrevem a versão de linhas numeradas, que foi abandonada).
+- **Ainda falta no app** (seção 2): os dois valores (2.1), o 4º prazo (2.2) e a
+  customização (2.4). O montador já pede esses campos e **recusa o envio** listando o
+  que falta — nunca sai documento com espaço em branco.
+
 ---
 
 ## 1. O que o app JÁ tem

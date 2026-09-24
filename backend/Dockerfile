@@ -24,6 +24,8 @@ RUN npm ci --include=dev
 
 # Copia código e builda
 COPY src ./src
+# Modelos de documento (o contrato do Anexo I é montado pelo app a partir daqui)
+COPY assets ./assets
 RUN npm run build && \
     npm prune --production
 
@@ -47,6 +49,9 @@ WORKDIR /app
 COPY --from=builder --chown=betinna:betinna /app/node_modules ./node_modules
 COPY --from=builder --chown=betinna:betinna /app/dist ./dist
 COPY --from=builder --chown=betinna:betinna /app/prisma ./prisma
+# Sem isto o contrato não sai: o modelo .docx é lido do disco em runtime
+# (process.cwd()/assets), e o `dist` não carrega arquivo que não é .ts.
+COPY --from=builder --chown=betinna:betinna /app/assets ./assets
 COPY --from=builder --chown=betinna:betinna /app/package.json ./package.json
 # scripts/ inclui deploy-migrations.js (smart, baseline-aware) — usado no CMD
 COPY --from=builder --chown=betinna:betinna /app/scripts ./scripts

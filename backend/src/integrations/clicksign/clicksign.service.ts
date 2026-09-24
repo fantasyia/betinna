@@ -25,8 +25,17 @@ export interface ContratoParaAssinar {
    * assinatura ao contrato daqui sem depender só de id.
    */
   metadata?: Record<string, string>;
-  /** Valores das variáveis `{{...}}` do modelo. */
-  variaveis: Record<string, string>;
+  /**
+   * Valores das variáveis `{{...}}` do Modelo guardado NA ClickSign.
+   * Ausente quando o documento vem pronto (`documento`).
+   */
+  variaveis?: Record<string, string>;
+  /**
+   * O documento JÁ MONTADO pelo app (.docx). Quando vem, o Modelo da ClickSign
+   * não é usado — é o caminho das tabelas que crescem com o levantamento, que
+   * variável de Modelo não consegue fazer (ver `contrato-documento.util`).
+   */
+  documento?: { arquivo: Buffer; nome: string };
   /** O cliente. Assina primeiro. */
   cliente: SignatarioContrato;
 }
@@ -52,6 +61,8 @@ export interface EnvelopeCriado {
  * Sequência de um contrato: envelope → documento a partir do modelo →
  * signatários → requisitos (autenticação + concordância) → dispara.
  */
+const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
 /** Conta padrão da ClickSign, quando o tenant não informa outra. */
 const BASE_PADRAO = 'https://app.clicksign.com';
 
@@ -231,7 +242,16 @@ export class ClickSignService {
     // começar numa conta e terminar noutra se alguém trocar a integração no
     // meio do envio.
     const cfg = await this.resolver(empresaId);
-    if (!cfg.token || !cfg.modelo) {
+    if (!dados.documento === !dados.variaveis) {
+      // Os dois ou nenhum: a API aceita UM (`content_base64` OU `template`), e
+      // escolher por conta própria mandaria o texto errado pra assinar.
+      throw new IntegrationException(
+        'Contrato precisa de variáveis do modelo OU do documento pronto — exatamente um dos dois',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    // Documento pronto não precisa do Modelo da ClickSign — só do token.
+    if (!cfg.token || (!dados.documento && !cfg.modelo)) {
       throw new IntegrationException(
         cfg.origem === 'empresa'
           ? 'ClickSign da empresa sem token e/ou modelo de contrato na integração'
@@ -256,9 +276,17 @@ export class ClickSignService {
         data: {
           type: 'documents',
           attributes: {
-            // A API exige extensão .docx aqui — é o formato do modelo.
-            filename: 'contrato.docx',
-            template: { key: cfg.modelo, data: dados.variaveis },
+            ...(dados.documento
+              ? {
+                  filename: dados.documento.nome,
+                  // A API quer o base64 COM o prefixo data URI.
+                  content_base64: `data:${MIME_DOCX};base64,${dados.documento.arquivo.toString('base64')}`,
+                }
+              : {
+                  // A API exige extensão .docx aqui — é o formato do modelo.
+                  filename: 'contrato.docx',
+                  template: { key: cfg.modelo, data: dados.variaveis },
+                }),
             ...(dados.metadata ? { metadata: dados.metadata } : {}),
           },
         },
@@ -471,7 +499,10 @@ export class ClickSignService {
       // Escrita não re-tenta: repetir um POST de envelope criaria contrato
       // duplicado na mão do cliente.
       retries: metodo === 'GET' ? 2 : 0,
-    } as const;
+      // O documento pronto leva nome, CNPJ e endereço do cliente — não vai pro
+      // log de debug (e são ~4 MB de base64).
+      redactKeys: ['content_base64'],
+    };
     try {
       if (metodo === 'GET') return (await this.http.get<T>(url, opcoes)).data;
       if (metodo === 'PATCH')

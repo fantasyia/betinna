@@ -154,3 +154,86 @@ describe('ClickSignService.configurado', () => {
     expect(await svc.configurado('emp-1')).toBe(true);
   });
 });
+
+/**
+ * Documento PRONTO (montado pelo app) vs Modelo da ClickSign.
+ *
+ * O caminho novo existe por causa da tabela que cresce com o levantamento. O
+ * que se trava aqui é o que vai no POST do documento — é ele que decide qual
+ * texto o cliente assina.
+ */
+describe('ClickSignService.enviarParaAssinatura — de onde vem o documento', () => {
+  const montarEnvio = (envs: Record<string, string>) => {
+    const post = vi.fn(async (url: string, _o: { body: unknown }) => ({
+      data: {
+        data: {
+          id: url.includes('/signers') ? 'sig-1' : url.includes('/documents') ? 'doc-1' : 'env-1',
+        },
+      },
+    }));
+    const patch = vi.fn(async () => ({ data: {} }));
+    const svc = new ClickSignService(
+      { get: (k: string) => envs[k] } as never,
+      { post, patch, get: vi.fn() } as never,
+      {
+        obterCredenciaisInternas: vi.fn(async () => {
+          throw new Error('não configurada');
+        }),
+      } as never,
+    );
+    const corpoDoDocumento = () => {
+      const chamada = post.mock.calls.find(([url]) => url.includes('/documents'));
+      return (chamada?.[1].body as { data: { attributes: Record<string, unknown> } }).data
+        .attributes;
+    };
+    return { svc, post, corpoDoDocumento };
+  };
+
+  const cliente = { nome: 'Fulano de Tal', email: 'fulano@cliente.com' };
+  const arquivo = Buffer.from('PK\u0003\u0004 docx de mentira');
+
+  it('documento pronto sobe por content_base64 com o prefixo data URI — sem template', async () => {
+    const { svc, corpoDoDocumento } = montarEnvio({ CLICKSIGN_ACCESS_TOKEN: TOKEN });
+    await svc.enviarParaAssinatura('emp-1', {
+      titulo: 'Contrato',
+      cliente,
+      documento: { arquivo, nome: 'PROP-0042.docx' },
+    });
+    const attrs = corpoDoDocumento();
+    expect(attrs.filename).toBe('PROP-0042.docx');
+    expect(attrs.content_base64).toBe(
+      `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${arquivo.toString('base64')}`,
+    );
+    expect(attrs).not.toHaveProperty('template');
+  });
+
+  it('documento pronto NÃO exige o Modelo da ClickSign configurado', async () => {
+    const { svc } = montarEnvio({ CLICKSIGN_ACCESS_TOKEN: TOKEN });
+    await expect(
+      svc.enviarParaAssinatura('emp-1', {
+        titulo: 'C',
+        cliente,
+        documento: { arquivo, nome: 'a.docx' },
+      }),
+    ).resolves.toMatchObject({ documentoId: 'doc-1' });
+  });
+
+  it('variáveis seguem indo pro Modelo, como antes', async () => {
+    const { svc, corpoDoDocumento } = montarEnvio(AMBIENTE);
+    await svc.enviarParaAssinatura('emp-1', { titulo: 'C', cliente, variaveis: { a: '1' } });
+    const attrs = corpoDoDocumento();
+    expect(attrs.template).toEqual({ key: 'modelo-do-ambiente', data: { a: '1' } });
+    expect(attrs).not.toHaveProperty('content_base64');
+  });
+
+  it.each([
+    ['os dois', { variaveis: { a: '1' }, documento: { arquivo, nome: 'a.docx' } }],
+    ['nenhum', {}],
+  ])('recusa %s — escolher sozinho mandaria o texto errado', async (_c, conteudo) => {
+    const { svc, post } = montarEnvio(AMBIENTE);
+    await expect(
+      svc.enviarParaAssinatura('emp-1', { titulo: 'C', cliente, ...conteudo }),
+    ).rejects.toThrow(/exatamente um/);
+    expect(post).not.toHaveBeenCalled();
+  });
+});
