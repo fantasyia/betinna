@@ -1,13 +1,20 @@
 import { useState } from 'react';
 import { Image as ImageIcon, Video, Mic, Download, FileText } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { carregarMidia } from '@/pages/inbox/lib/midia-em-lote';
 
 /**
  * Hook compartilhado pra buscar a signed URL da mídia de uma mensagem.
  * Os 4 players (imagem/vídeo/áudio/documento) fazem o MESMO fetch — dedup aqui.
+ *
+ * A busca vai pelo LOTE (`carregarMidia`): as mídias de uma conversa que
+ * renderizam juntas viram UMA requisição, em vez de estourar o limite de 10/s
+ * da empresa (card 429). A chave de cache continua sendo o path da mídia.
  */
 export function useMediaUrl(msgId: string) {
-  return useApiQuery<{ url: string; mime: string | null }>(`/inbox/messages/${msgId}/media`);
+  return useApiQuery<{ url: string; mime: string | null }>(`/inbox/messages/${msgId}/media`, {
+    queryFn: () => carregarMidia(msgId),
+  });
 }
 
 export function MessageMediaImage({ msgId }: { msgId: string }) {

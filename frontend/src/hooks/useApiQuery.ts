@@ -22,7 +22,15 @@ export interface UseApiQueryResult<T> {
   refetch: () => void;
 }
 
-export function useApiQuery<T>(path: string | null): UseApiQueryResult<T> {
+export function useApiQuery<T>(
+  path: string | null,
+  /**
+   * `queryFn` troca COMO buscar, mantendo a chave de cache (o path) e o
+   * contrato de retorno. Existe pro lote de mídia da Inbox: cada player pede a
+   * sua URL, mas a busca real é juntada numa requisição só (card 429).
+   */
+  opcoes?: { queryFn?: () => Promise<T> },
+): UseApiQueryResult<T> {
   // empresaId entra na chave do cache (isolamento multi-tenant). Defesa em
   // profundidade: trocar de empresa já dá window.location.reload() (auth-store),
   // o que zera o cache — mesmo assim a chave evita qualquer mistura de tenants.
@@ -30,7 +38,7 @@ export function useApiQuery<T>(path: string | null): UseApiQueryResult<T> {
 
   const query = useQuery<T>({
     queryKey: [path, empresaId],
-    queryFn: () => api.get<T>(path as string),
+    queryFn: opcoes?.queryFn ?? (() => api.get<T>(path as string)),
     enabled: path !== null,
   });
 

@@ -61,6 +61,9 @@ import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MetaMediaService } from '@integrations/meta/meta-media.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 
+/** Teto do lote de mídia — uma página de mensagens é 50; folga pra duas. */
+export const MAX_MIDIAS_POR_LOTE = 100;
+
 /**
  * Inbox unificada (atendimento ao cliente).
  *
@@ -130,6 +133,49 @@ export class InboxController {
     return merge(eventos, heartbeat);
   }
 
+  /**
+   * Signed URLs de VÁRIAS mídias numa requisição só — `?ids=a,b,c` (até 100).
+   *
+   * 🔴 Card 429 (Sentry BETINNA-FRONT-B, 24/09): cada player de mídia fazia a
+   * sua requisição, todas no mesmo render. Uma conversa com 50 mídias mandava
+   * 50 GETs no mesmo segundo, contra um balde de 10/s que é da EMPRESA — a
+   * 11ª em diante caía em 429 e a mídia ficava "indisponível". E um rep abrindo
+   * uma conversa pesada derrubava as requisições dos outros reps do tenant.
+   *
+   * Uma mídia que falha não derruba o lote: ela volta `null` e só aquele player
+   * mostra "indisponível". Mesma regra de visibilidade do endpoint unitário.
+   */
+  @Get('messages/media')
+  @ApiOperation({ summary: 'Signed URLs de várias mídias de uma vez (?ids=a,b,c — até 100)' })
+  async getMessagesMedia(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('ids') idsBruto?: string,
+  ): Promise<{ itens: Record<string, { url: string; mime: string | null } | null> }> {
+    const ids = [
+      ...new Set(
+        (idsBruto ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (ids.length > MAX_MIDIAS_POR_LOTE) {
+      throw new BusinessRuleException(
+        `No máximo ${MAX_MIDIAS_POR_LOTE} mídias por requisição (vieram ${ids.length})`,
+      );
+    }
+    const infos = await this.svc.getMessagesMediaPaths(user, ids);
+    const itens: Record<string, { url: string; mime: string | null } | null> = {};
+    await Promise.all(
+      ids.map(async (id) => {
+        const info = infos.get(id);
+        const url = info ? await this.urlDaMidia(info).catch(() => null) : null;
+        itens[id] = info && url ? { url, mime: info.mime } : null;
+      }),
+    );
+    return { itens };
+  }
+
   @Get('messages/:id/media')
   @ApiOperation({
     summary: 'Retorna signed URL temporária para mídia da mensagem (válida ~7 dias)',
@@ -142,29 +188,29 @@ export class InboxController {
     if (!info) {
       throw new NotFoundException('Message media', id);
     }
-
-    // mediaUrl pode ser:
-    //  - storage path (foi arquivado por Whats/Meta media service)
-    //  - URL pública (fallback quando arquivamento falhou — usado direto)
-    // Heurística simples: se começa com http, retorna direto. Senão, gera signed URL.
-    if (info.storagePath.startsWith('http://') || info.storagePath.startsWith('https://')) {
-      return { url: info.storagePath, mime: info.mime };
-    }
-
-    let url: string | null = null;
-    if (info.canal === 'WHATSAPP') {
-      url = await this.whatsappMedia.signedUrl(info.storagePath);
-    } else if (info.canal === 'FACEBOOK' || info.canal === 'INSTAGRAM') {
-      url = await this.metaMedia.signedUrl(info.storagePath);
-    } else {
-      throw new BusinessRuleException(
-        `Mídia do canal ${info.canal} ainda não está disponível para download`,
-      );
-    }
+    const url = await this.urlDaMidia(info);
     if (!url) {
       throw new BusinessRuleException('Falha gerando URL temporária');
     }
     return { url, mime: info.mime };
+  }
+
+  /**
+   * URL servível da mídia. `mediaUrl` pode ser storage path (arquivado pelo
+   * media service do canal) ou URL pública (fallback quando o arquivamento
+   * falhou — usada direto). Canal sem download estoura.
+   */
+  private async urlDaMidia(info: { canal: string; storagePath: string }): Promise<string | null> {
+    if (info.storagePath.startsWith('http://') || info.storagePath.startsWith('https://')) {
+      return info.storagePath;
+    }
+    if (info.canal === 'WHATSAPP') return this.whatsappMedia.signedUrl(info.storagePath);
+    if (info.canal === 'FACEBOOK' || info.canal === 'INSTAGRAM') {
+      return this.metaMedia.signedUrl(info.storagePath);
+    }
+    throw new BusinessRuleException(
+      `Mídia do canal ${info.canal} ainda não está disponível para download`,
+    );
   }
 
   @Post('messages/:id/reagir')

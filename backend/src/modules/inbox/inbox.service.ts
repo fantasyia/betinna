@@ -655,6 +655,47 @@ export class InboxService {
     return { canal: msg.conversation.canal, storagePath: msg.mediaUrl, mime: msg.mediaMime };
   }
 
+  /**
+   * Os caminhos de mídia de VÁRIAS mensagens de uma vez — pro `GET
+   * /inbox/messages/media?ids=` (card 429, 24/09).
+   *
+   * Mesma regra de visibilidade do `getMessageMediaPath`, conferida por
+   * CONVERSA (uma consulta pra todas) em vez de uma por mensagem: abrir uma
+   * conversa com 50 mídias fazia 50 requisições e estourava o balde de 10/s da
+   * EMPRESA inteira. Mensagem que o usuário não enxerga, que não existe ou que
+   * não tem mídia simplesmente não volta — o lote não falha por uma delas.
+   */
+  async getMessagesMediaPaths(
+    user: AuthenticatedUser,
+    messageIds: string[],
+  ): Promise<Map<string, { canal: string; storagePath: string; mime: string | null }>> {
+    const out = new Map<string, { canal: string; storagePath: string; mime: string | null }>();
+    if (messageIds.length === 0) return out;
+    const msgs = await this.prisma.message.findMany({
+      where: { id: { in: messageIds }, mediaUrl: { not: null } },
+      select: {
+        id: true,
+        mediaUrl: true,
+        mediaMime: true,
+        conversation: { select: { id: true, canal: true } },
+      },
+    });
+    const convIds = [...new Set(msgs.map((m) => m.conversation.id))];
+    const visiveis = new Set(
+      (
+        await this.prisma.conversation.findMany({
+          where: { id: { in: convIds }, ...this.baseWhere(user) },
+          select: { id: true },
+        })
+      ).map((c) => c.id),
+    );
+    for (const m of msgs) {
+      if (!m.mediaUrl || !visiveis.has(m.conversation.id)) continue;
+      out.set(m.id, { canal: m.conversation.canal, storagePath: m.mediaUrl, mime: m.mediaMime });
+    }
+    return out;
+  }
+
   async listMensagens(
     user: AuthenticatedUser,
     conversationId: string,
