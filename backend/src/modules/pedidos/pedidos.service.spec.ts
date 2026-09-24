@@ -68,7 +68,11 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 describe('PedidosService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let pricingService: { priceForClientBatch: ReturnType<typeof vi.fn> };
-  let erpPedidos: { enviarPedido: ReturnType<typeof vi.fn> };
+  let erpPedidos: {
+    enviarPedido: ReturnType<typeof vi.fn>;
+    cancelarNoErp: ReturnType<typeof vi.fn>;
+    cancelarNoErpPorRef: ReturnType<typeof vi.fn>;
+  };
   let svc: PedidosService;
 
   beforeEach(() => {
@@ -133,7 +137,10 @@ describe('PedidosService', () => {
       svc.create(fakeUser(), {
         clienteId: 'cli-1',
         itens: [{ produtoId: 'p1', quantidade: 1, desconto: 0 }],
-        formaPagamento: 'BOLETO',
+        // Era BOLETO, que saiu do produto (só PIX e cartão). Cartão e não PIX:
+        // boleto a 30 dias nunca teve desconto à vista, e PIX ligaria um —
+        // mudaria os totais que os testes conferem.
+        formaPagamento: 'CARTAO_CREDITO',
         condicaoPagamento: '30dias',
         descontoGeral: 0,
       }),
@@ -152,7 +159,7 @@ describe('PedidosService', () => {
       svc.create(fakeUser(), {
         clienteId: 'cli-1',
         itens: [{ produtoId: 'p1', quantidade: 1, desconto: 0 }],
-        formaPagamento: 'BOLETO',
+        formaPagamento: 'CARTAO_CREDITO',
         condicaoPagamento: '30dias',
         descontoGeral: 0,
       }),
@@ -274,7 +281,7 @@ describe('PedidosService', () => {
       svc.create(fakeUser(), {
         clienteId: 'cli-1',
         itens: [{ produtoId: 'p1', quantidade: 1, desconto: 20 }], // > teto
-        formaPagamento: 'BOLETO',
+        formaPagamento: 'CARTAO_CREDITO',
         condicaoPagamento: '30dias',
         descontoGeral: 0,
         // motivoDesconto ausente!
@@ -302,7 +309,7 @@ describe('PedidosService', () => {
       svc.create(fakeUser(), {
         clienteId: 'cli-1',
         itens: [{ produtoId: 'p1', quantidade: 1, desconto: 0, precoUnitarioOverride: 10 }],
-        formaPagamento: 'BOLETO',
+        formaPagamento: 'CARTAO_CREDITO',
         condicaoPagamento: '30dias',
         descontoGeral: 0,
         // motivoDesconto ausente — deve bloquear pois o override implica 90% de desconto
@@ -337,7 +344,7 @@ describe('PedidosService', () => {
     await svc.create(fakeUser(), {
       clienteId: 'cli-1',
       itens: [{ produtoId: 'p1', quantidade: 1, desconto: 20 }],
-      formaPagamento: 'BOLETO',
+      formaPagamento: 'CARTAO_CREDITO',
       condicaoPagamento: '30dias',
       descontoGeral: 0,
       motivoDesconto: 'Cliente VIP, fechando pedido recorrente',
@@ -376,7 +383,7 @@ describe('PedidosService', () => {
     await svc.create(fakeUser(), {
       clienteId: 'cli-1',
       itens: [{ produtoId: 'p1', quantidade: 5, desconto: 5 }], // dentro do teto
-      formaPagamento: 'BOLETO',
+      formaPagamento: 'CARTAO_CREDITO',
       condicaoPagamento: '30dias',
       descontoGeral: 0,
     });
@@ -518,7 +525,7 @@ describe('PedidosService', () => {
     await svc.create(fakeUser(), {
       clienteId: 'cli-1',
       itens: [{ produtoId: 'p1', quantidade: 5, desconto: 0 }], // total 500
-      formaPagamento: 'BOLETO',
+      formaPagamento: 'CARTAO_CREDITO',
       condicaoPagamento: '30dias',
       descontoGeral: 0,
     });
