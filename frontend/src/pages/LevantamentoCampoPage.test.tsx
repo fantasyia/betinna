@@ -176,6 +176,34 @@ describe('LevantamentoCampoPage', () => {
     expect(apiGet.mock.calls.at(-1)?.[0]).toContain(esperado);
   });
 
+  /**
+   * 🔴 Corrida medida em produção (24/09): digitar a corrente e clicar direto no
+   * checkbox. O blur consulta SEM acompanhamento; a resposta chegava depois da
+   * troca e virava o modelo — o quadro principal era gravado sem Data Sense.
+   */
+  it('resposta ATRASADA de antes da troca do checkbox não vira o modelo', async () => {
+    semRascunhos();
+    let responderAntiga: (v: unknown) => void = () => {};
+    const antiga = new Promise((r) => (responderAntiga = r));
+    render(<LevantamentoCampoPage />);
+    await waitFor(() => expect(apiGet).toHaveBeenCalled());
+
+    apiGet.mockReturnValueOnce(antiga).mockResolvedValueOnce(MB04_DS);
+    const corrente = screen.getByTestId('levantamento-corrente');
+    fireEvent.change(corrente, { target: { value: '420' } });
+    fireEvent.blur(corrente); // consulta BASE, fica em voo
+    fireEvent.click(screen.getByTestId('levantamento-acompanhamento'));
+    fireEvent.click(screen.getByTestId('levantamento-principal'));
+    fireEvent.click(screen.getByTestId('levantamento-consultar')); // DATA_SENSE
+
+    await waitFor(() =>
+      expect(screen.getByTestId('levantamento-previa').textContent).toContain('MB-04_D.S.'),
+    );
+    responderAntiga(MB04); // a antiga chega por último
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByTestId('levantamento-previa').textContent).toContain('MB-04_D.S.');
+  });
+
   it('"quadro principal" só existe com acompanhamento marcado', () => {
     semRascunhos();
     render(<LevantamentoCampoPage />);

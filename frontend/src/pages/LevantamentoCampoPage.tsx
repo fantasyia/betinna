@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowRight, Check, Plus, RotateCcw, Trash2, Zap } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
@@ -151,6 +151,16 @@ export default function LevantamentoCampoPage() {
 
   const [previa, setPrevia] = useState<RespostaSelecao | null>(null);
   const [consultando, setConsultando] = useState(false);
+  /**
+   * Número da consulta que ainda vale. Mudar corrente ou acompanhamento
+   * invalida a que está em voo: sem isto, a resposta ATRASADA (da variante
+   * anterior) chegava depois e virava o modelo do quadro. Acontecia no gesto
+   * mais comum — digitar a corrente e clicar direto no checkbox: o blur
+   * consultava sem acompanhamento, o "Ver modelo" ficava desabilitado enquanto
+   * isso, e o quadro principal era gravado sem o Data Sense (24/09, teste do
+   * contrato em produção).
+   */
+  const consultaAtual = useRef(0);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -192,24 +202,33 @@ export default function LevantamentoCampoPage() {
    * por 4 e por 42, que são correntes válidas de OUTROS modelos — a tela ficaria
    * piscando modelo errado enquanto ele digita.
    */
+  function invalidarConsulta() {
+    consultaAtual.current += 1;
+    setPrevia(null);
+    setConsultando(false);
+  }
+
   async function consultarModelo() {
     const correnteA = Number(corrente);
     if (!Number.isFinite(correnteA) || correnteA <= 0) {
       setPrevia(null);
       return;
     }
+    const minha = ++consultaAtual.current;
     setConsultando(true);
     try {
       const variante = varianteDe(acompanhamento, principal);
       const r = await api.get<RespostaSelecao>(
         `/propostas/selecao-modelo?correnteA=${correnteA}&variante=${variante}`,
       );
+      if (minha !== consultaAtual.current) return; // a tela mudou enquanto isso
       setPrevia(r);
     } catch (e) {
+      if (minha !== consultaAtual.current) return;
       setErro(apiErrorMessage(e));
       setPrevia(null);
     } finally {
-      setConsultando(false);
+      if (minha === consultaAtual.current) setConsultando(false);
     }
   }
 
@@ -399,7 +418,7 @@ export default function LevantamentoCampoPage() {
                 value={corrente}
                 onChange={(e) => {
                   setCorrente(e.target.value.replace(/\D/g, ''));
-                  setPrevia(null);
+                  invalidarConsulta();
                 }}
                 onBlur={consultarModelo}
                 placeholder="420"
@@ -417,7 +436,7 @@ export default function LevantamentoCampoPage() {
                 // Sem software não há papel na topologia; deixar a marca faria o
                 // próximo quadro herdar um estado que não existe mais.
                 if (!e.target.checked) setPrincipal(false);
-                setPrevia(null);
+                invalidarConsulta();
               }}
             />
             <Checkbox
@@ -427,7 +446,7 @@ export default function LevantamentoCampoPage() {
               checked={principal}
               onChange={(e) => {
                 setPrincipal(e.target.checked);
-                setPrevia(null);
+                invalidarConsulta();
               }}
             />
             <Button
