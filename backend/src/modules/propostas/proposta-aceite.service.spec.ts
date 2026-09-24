@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { BusinessRuleException } from '@shared/errors/app-exception';
+import PizZip from 'pizzip';
 import { PropostaAceiteService } from './proposta-aceite.service';
 
 // jose mockado — sem JWT real; validarToken devolve o payload fixo.
@@ -250,5 +251,113 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
 
       expect(svc.frontendUrl()).toBe('http://localhost:5173');
     });
+  });
+});
+
+/**
+ * O contrato que sai do ACEITE é o DOCUMENTO ÚNICO do Anexo I (24/09).
+ *
+ * Todos os outros testes deste arquivo rodam com a ClickSign desligada — e por
+ * isso nenhum exercitava o envio. Como o envio é best-effort (engole erro pra
+ * não perder o aceite), um defeito aqui não quebraria teste nenhum: o contrato
+ * só não sairia, calado.
+ */
+describe('PropostaAceiteService — contrato do aceite é o documento pronto', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const LOCACAO = {
+    id: 'prop-1',
+    numero: 'PROP-0001',
+    clienteId: 'cli-1',
+    representanteId: 'rep-1',
+    valor: 4350,
+    modalidade: 'LOCACAO',
+    prazoMeses: 60,
+    diaVencimento: 5,
+    signatarioNome: 'Marina Torres Aguiar',
+    signatarioEmail: 'marina@exemplo.com.br',
+    signatarioTelefone: '11999998888',
+    validoAte: new Date('2026-10-24T12:00:00Z'),
+    prazoEntregaDias: 10,
+    prazoInstalacaoDias: 15,
+    prazoVerificacaoDias: 5,
+    prazoSoftwareDias: 20,
+    servicosTotal: 9000,
+    customizacaoUnitario: 1500,
+    customizacaoQuantidade: 1,
+    itens: [
+      {
+        produtoId: 'prod-mb04',
+        quadroPainel: 'QGBT',
+        tensaoV: 220,
+        correnteA: 105,
+        quantidade: 1,
+        total: 4350,
+      },
+    ],
+    cliente: {
+      nome: 'Indústria Exemplo Ltda',
+      email: 'contato@exemplo.com.br',
+      cnpj: '12345678000190',
+      telefone: '1133334444',
+      endereco: 'Rua das Turbinas',
+      numero: '100',
+      complemento: null,
+      bairro: 'Distrito',
+      cidade: 'São Paulo',
+      uf: 'SP',
+    },
+  };
+
+  const comClickSign = (proposta: Record<string, unknown>) => {
+    const m = makeService(1);
+    m.clicksign.configurado.mockResolvedValue(true);
+    m.clicksign.enviarParaAssinatura.mockResolvedValue({
+      envelopeId: 'env-1',
+      documentoId: 'doc-1',
+      signatarios: [],
+    });
+    Object.assign(m.prisma.proposta, { findFirst: vi.fn().mockResolvedValue(proposta) });
+    const contrato = { create: vi.fn().mockResolvedValue({}) };
+    Object.assign(m.prisma, {
+      produto: { findMany: vi.fn().mockResolvedValue([{ id: 'prod-mb04', sku: 'MB-04_D.S.' }]) },
+      contrato,
+    });
+    return { ...m, contrato };
+  };
+
+  it('aceite de locação completa manda o .docx montado, com o quadro do levantamento', async () => {
+    const { svc, clicksign, contrato } = comClickSign(LOCACAO);
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    expect(clicksign.enviarParaAssinatura).toHaveBeenCalledTimes(1);
+    const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
+      documento?: { arquivo: Buffer; nome: string };
+      variaveis?: unknown;
+    };
+    expect(dados.variaveis).toBeUndefined();
+    expect(dados.documento?.nome).toBe('PROP-0001.docx');
+    const xml = new PizZip(dados.documento!.arquivo).file('word/document.xml')!.asText();
+    expect(xml).toContain('QGBT');
+    expect(xml).toContain('MB-04');
+    expect(contrato.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('proposta sem os dados do documento NÃO manda nada e AVISA o responsável', async () => {
+    const { svc, clicksign, contrato, notificacoes } = comClickSign({
+      ...LOCACAO,
+      servicosTotal: null,
+    });
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
+    expect(contrato.create).not.toHaveBeenCalled();
+    const avisos = JSON.stringify([
+      ...notificacoes.criarParaUsuario.mock.calls,
+      ...notificacoes.criarParaRole.mock.calls,
+    ]);
+    expect(avisos).toMatch(/instalação, materiais e customização/);
   });
 });

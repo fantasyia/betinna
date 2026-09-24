@@ -13,6 +13,25 @@ const PROPOSTA = {
   signatarioNome: 'Marina Torres Aguiar',
   signatarioEmail: 'marina@exemplo.com.br',
   signatarioTelefone: '11999998888',
+  // Documento único (Anexo I, 24/09): o que a montagem exige além do contrato v4.
+  validoAte: new Date('2026-10-24T12:00:00Z'),
+  prazoEntregaDias: 10,
+  prazoInstalacaoDias: 15,
+  prazoVerificacaoDias: 5,
+  prazoSoftwareDias: 20,
+  servicosTotal: new Prisma.Decimal(9000),
+  customizacaoUnitario: new Prisma.Decimal(1500),
+  customizacaoQuantidade: 1,
+  itens: [
+    {
+      produtoId: 'prod-mb04',
+      quadroPainel: 'QGBT',
+      tensaoV: 220,
+      correnteA: 105,
+      quantidade: 1,
+      total: new Prisma.Decimal(4350),
+    },
+  ],
   cliente: {
     nome: 'Indústria Exemplo Ltda',
     email: 'contato@exemplo.com.br',
@@ -44,6 +63,8 @@ function montar(contrato: Record<string, unknown> | null = CONTRATO) {
       findFirst: vi.fn().mockResolvedValue(contrato),
       update: vi.fn().mockResolvedValue({}),
     },
+    // O SKU diz o modelo e o acompanhamento do quadro no documento.
+    produto: { findMany: vi.fn().mockResolvedValue([{ id: 'prod-mb04', sku: 'MB-04_D.S.' }]) },
   };
   const clicksign = {
     expirarEnvelope: vi.fn().mockResolvedValue(true),

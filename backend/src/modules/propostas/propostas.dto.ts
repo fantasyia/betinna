@@ -82,6 +82,19 @@ export const createPropostaSchema = z.object({
   prazoEntregaDias: z.number().int().min(1).max(365).optional(),
   prazoInstalacaoDias: z.number().int().min(1).max(365).optional(),
   prazoSoftwareDias: z.number().int().min(1).max(365).optional(),
+  /** Item 08, V — verificação de funcionamento (documento único, 23/09). */
+  prazoVerificacaoDias: z.number().int().min(1).max(365).optional(),
+  /**
+   * ── SERVIÇOS DE IMPLANTAÇÃO (itens 7.2 e III.a do documento único) ──
+   *
+   * Valor ÚNICO, separado do aluguel mensal: instalação + materiais +
+   * customização, pago em 2 parcelas. A paridade dos centavos (parcelas iguais)
+   * é conferida na montagem do contrato, não aqui: o rep pode estar no meio do
+   * ajuste, e recusar na digitação seria atrito sem ganho.
+   */
+  servicosTotal: z.number().min(0).max(99_999_999).optional(),
+  customizacaoUnitario: z.number().min(0).max(99_999_999).optional(),
+  customizacaoQuantidade: z.number().int().min(1).max(10_000).optional(),
   diaVencimento: z.number().int().min(1).max(28).optional(),
   carenciaDias: z.number().int().min(0).max(180).optional(),
   /**

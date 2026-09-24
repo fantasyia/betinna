@@ -6,8 +6,9 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import { ClickSignService } from '@integrations/clicksign/clicksign.service';
 import {
   SELECT_PROPOSTA_CONTRATO,
+  comSkus,
   montarContratoParaAssinar,
-  type PropostaParaEnvio,
+  type PropostaDoBanco,
 } from '@modules/propostas/contrato-envio.util';
 
 /** Uma linha do rastro — o PONTEIRO pro envelope, não o documento. */
@@ -106,7 +107,9 @@ export class ContratoReenvioService {
 
     // Mesma montagem do aceite — util compartilhado de propósito, pra versão 2
     // não sair diferente da 1 em nada que ninguém pediu.
-    const montagem = montarContratoParaAssinar(contrato.proposta as PropostaParaEnvio);
+    const montagem = montarContratoParaAssinar(
+      await comSkus(this.prisma, contrato.proposta as PropostaDoBanco),
+    );
     if (!montagem.ok) {
       throw new BusinessRuleException(
         `Contrato não pode ser reenviado: ${montagem.motivo}.`,

@@ -5,7 +5,11 @@ import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { ClickSignService } from '@integrations/clicksign/clicksign.service';
-import { SELECT_PROPOSTA_CONTRATO, montarContratoParaAssinar } from './contrato-envio.util';
+import {
+  SELECT_PROPOSTA_CONTRATO,
+  comSkus,
+  montarContratoParaAssinar,
+} from './contrato-envio.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { PedidoComissoesService } from '@modules/pedidos/pedido-comissoes.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
@@ -507,7 +511,7 @@ export class PropostaAceiteService {
       // pra mudar. Ela também é quem recusa — prazo e dia de vencimento são
       // termo comercial, e um default sairia impresso num documento que alguém
       // assina sem ninguém saber que o número veio do sistema.
-      const montagem = montarContratoParaAssinar(p);
+      const montagem = montarContratoParaAssinar(await comSkus(this.prisma, p));
       if (!montagem.ok) {
         // Não é de locação: venda avulsa não gera contrato recorrente, e isso
         // não é falha — sai calado, como antes.

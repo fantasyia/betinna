@@ -1200,6 +1200,25 @@ model Proposta {
   /// "VI - Habilitação do software e de seu acesso: em até __ dias", contados do
   /// TÉRMINO das obras (não do aceite, como os outros dois).
   prazoSoftwareDias    Int?
+  /// "V - Verificação de funcionamento dos produtos: em até __ dias, contados da
+  /// data em que for comunicada do término da obra" — o QUARTO prazo do
+  /// documento único (Anexo I, 23/09). Âncora própria: não dá pra derivar dos
+  /// outros três.
+  prazoVerificacaoDias Int?
+
+  /// ── SERVIÇOS DE IMPLANTAÇÃO (Anexo I, itens 7.2 e III.a) ──
+  ///
+  /// 🔴 O documento é DOIS negócios na mesma proposta: a LOCAÇÃO (mensal, é o
+  /// `valor` dos itens) e a PRESTAÇÃO DE SERVIÇOS (instalação + materiais +
+  /// customização, valor ÚNICO, em 2 parcelas). Somar os dois num `valor` só
+  /// imprimiria o aluguel mensal com a instalação dentro.
+  ///
+  /// Total de instalação + materiais + customização. Tem que dividir em 2
+  /// parcelas iguais (centavos pares) — o documento promete "R$ X cada".
+  servicosTotal          Decimal? @db.Decimal(14, 2)
+  /// Linha "Customização" do 7.2: unitário × quantidade.
+  customizacaoUnitario   Decimal? @db.Decimal(14, 2)
+  customizacaoQuantidade Int?
 
   /// LOCAÇÃO vira CONTRATO recorrente no ERP, e contrato precisa de três coisas
   /// que a proposta não tinha: por quantos meses, em que dia cobra, e quando a

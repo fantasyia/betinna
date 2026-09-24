@@ -123,10 +123,17 @@ export class ClickSignService {
     private readonly integracoes: IntegracoesService,
   ) {}
 
-  /** `false` quando a empresa ainda não tem assinatura eletrônica utilizável. */
+  /**
+   * `false` quando a empresa ainda não tem assinatura eletrônica utilizável.
+   *
+   * Basta o TOKEN: desde 24/09 o contrato vai como documento pronto, montado
+   * pelo app (`contrato-documento.util`), e o Modelo da ClickSign não é usado.
+   * Exigir o modelo aqui deixaria a integração "desligada" pra quem nunca
+   * precisou de um — e o contrato não sairia, calado.
+   */
   async configurado(empresaId: string): Promise<boolean> {
     const cfg = await this.resolver(empresaId);
-    return Boolean(cfg.token) && Boolean(cfg.modelo);
+    return Boolean(cfg.token);
   }
 
   private ler(chave: string): string {

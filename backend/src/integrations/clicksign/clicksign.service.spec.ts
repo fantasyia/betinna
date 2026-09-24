@@ -144,9 +144,12 @@ describe('ClickSignService.configurado', () => {
     expect(await svc.configurado('emp-1')).toBe(false);
   });
 
-  it('token sem modelo ainda é desligada — não há o que mandar assinar', async () => {
+  it('token sem modelo LIGA — o documento vai pronto do app (24/09)', async () => {
+    // Antes o contrato era um Modelo guardado na ClickSign e, sem ele, não havia
+    // o que assinar. Agora o app monta o .docx: exigir o modelo deixaria a
+    // integração "desligada" e o contrato não sairia, calado.
     const { svc } = montar({ CLICKSIGN_ACCESS_TOKEN: TOKEN }, null);
-    expect(await svc.configurado('emp-1')).toBe(false);
+    expect(await svc.configurado('emp-1')).toBe(true);
   });
 
   it('token e modelo da própria empresa ligam a integração', async () => {
