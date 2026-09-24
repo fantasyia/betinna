@@ -244,3 +244,44 @@ describe('o modelo vai junto na imagem', () => {
     expect(dockerfile).toMatch(/^WORKDIR \/app$/m);
   });
 });
+
+/**
+ * O papel timbrado e o rodapé (24/09).
+ *
+ * O rodapé com endereço, telefones e e-mail era DESENHO dentro do timbrado
+ * (EMF, letras em contorno) — trocar um dado exigia a arte original. Os traços
+ * saíram do desenho e o rodapé virou texto no Word. E o e-mail público é o
+ * `comercial@` (decisão do Léo, 07/09): o `somatec@` não é canal.
+ */
+describe('o timbrado e o rodapé', () => {
+  const zip = new PizZip(carregarModelo());
+  const parte = (nome: string) => zip.file(nome)?.asText() ?? '';
+
+  it('o rodapé é TEXTO, com o e-mail comercial@', () => {
+    const rodape = parte('word/footer1.xml');
+    expect(rodape).toContain('comercial@somatecblocking.com.br');
+    expect(rodape).toContain('Rua XV de Novembro, 743');
+    expect(rodape).not.toContain('somatec@');
+    expect(parte('word/document.xml')).toMatch(/<w:footerReference w:type="default"/);
+  });
+
+  it('o timbrado não carrega o PDF da arte antiga embutido', () => {
+    // O EMF original trazia o PDF do Illustrator num comentário, com o rodapé
+    // velho dentro. Conversor que prefere o PDF aos traços imprimiria o
+    // `somatec@` de volta, com o rodapé de texto por cima.
+    const rels = parte('word/_rels/header1.xml.rels');
+    const alvo = /Target="media\/([^"]+)"/.exec(rels)?.[1];
+    expect(alvo).toBeTruthy();
+    const emf = Buffer.from(zip.file(`word/media/${alvo}`)!.asUint8Array());
+    expect(emf.includes(Buffer.from('%PDF'))).toBe(false);
+  });
+
+  it('nenhum campo sai em VERMELHO — era a marcação de "preencher aqui"', () => {
+    expect(parte('word/document.xml')).not.toContain('FF0000');
+  });
+
+  it('o rodapé sobrevive ao preenchimento', () => {
+    const out = new PizZip(renderizarDocumento(carregarModelo(), montar()));
+    expect(out.file('word/footer1.xml')?.asText()).toContain('comercial@somatecblocking.com.br');
+  });
+});
