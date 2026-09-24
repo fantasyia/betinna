@@ -38,8 +38,8 @@ function build(secretConfigurado = SEGREDO, marcas: Record<string, string> = {})
  *  o ERP espera o corpo cru do contrato dele, não o envelope do app. */
 function fakeRes() {
   const res = {
-    status: vi.fn(() => res),
-    json: vi.fn(() => res),
+    status: vi.fn((_codigo: number) => res),
+    json: vi.fn((_corpo: unknown) => res),
     corpo: () => (res.json.mock.calls[0]?.[0] ?? null) as unknown,
   };
   return res;

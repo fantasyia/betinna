@@ -46,7 +46,7 @@ const makeRepScopeMock = () => ({
   }),
   // Escopo do DONO da campanha (o cron dispara como sistema). Default: sem
   // restrição — os testes de carteira sobrescrevem.
-  getRepIdsPorUsuario: vi.fn(async () => null),
+  getRepIdsPorUsuario: vi.fn(async (_userId: string): Promise<string[] | null> => null),
 });
 
 const makeQueueMock = () => ({

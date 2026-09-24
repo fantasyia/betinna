@@ -40,7 +40,10 @@ const makePrisma = (emCurso: unknown[] = []) => {
   p.$transaction = vi.fn(async (arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(p) : Promise.all(arg as never),
   );
-  return p as typeof p & { fluxoExecucao: { create: ReturnType<typeof vi.fn> } };
+  return p as typeof p & {
+    fluxo: { findMany: ReturnType<typeof vi.fn> };
+    fluxoExecucao: { create: ReturnType<typeof vi.fn> };
+  };
 };
 
 const fluxo = (id: string, nome: string) => ({

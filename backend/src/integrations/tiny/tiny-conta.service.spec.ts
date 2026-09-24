@@ -8,7 +8,7 @@ import { TinyContaService } from './tiny-conta.service';
  */
 function build(resp: Record<string, unknown>) {
   const client = {
-    get: vi.fn((_e: string, caminho: string) => {
+    get: vi.fn((_e: string, caminho: string, _query?: Record<string, unknown>) => {
       const chave = Object.keys(resp).find((k) => caminho.startsWith(k));
       const v = chave ? resp[chave] : undefined;
       return v instanceof Error ? Promise.reject(v) : Promise.resolve(v ?? { itens: [] });

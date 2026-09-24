@@ -47,6 +47,7 @@ const fakeTag = (overrides: Partial<Tag> = {}): Tag => ({
   categoria: null,
   descricao: null,
   funilId: null,
+  visivelParaRep: false,
   ...overrides,
 });
 

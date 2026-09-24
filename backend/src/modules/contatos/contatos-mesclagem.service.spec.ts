@@ -98,6 +98,11 @@ const makePrisma = () => {
   };
 };
 
+/** Args do `tx.lead.update` (o patch do principal traz `variaveis`). */
+type LeadUpdateArgs = [
+  { data: Record<string, unknown> & { variaveis?: { atribuicao?: unknown } } },
+];
+
 describe('ContatosMesclagemService', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let svc: ContatosMesclagemService;
@@ -130,14 +135,14 @@ describe('ContatosMesclagemService', () => {
       // O 1º update pode ser o que LIBERA o e-mail do absorvido (índice único
       // parcial por empresa+lower(email) estourava P2002 no update do principal).
       // O patch do principal é o update que traz `variaveis`.
-      const patch = prisma.tx.lead.update.mock.calls.find(
-        (c: [{ data: Record<string, unknown> }]) => 'variaveis' in c[0].data,
+      const patch = (prisma.tx.lead.update.mock.calls as unknown as LeadUpdateArgs[]).find(
+        (c) => 'variaveis' in c[0].data,
       )![0].data;
       expect(patch.utmCampaign).toBe('vtcd-alimenticia');
       expect(patch.utmSource).toBe('google');
       expect(patch.origemCadastro).toBe('site');
       // O bloco de 1º toque do JSON também vem do mais antigo.
-      expect(patch.variaveis.atribuicao).toEqual({
+      expect(patch.variaveis?.atribuicao).toEqual({
         primeiro: { utmCampaign: 'vtcd-alimenticia' },
       });
     });
@@ -148,8 +153,8 @@ describe('ContatosMesclagemService', () => {
       // O 1º update pode ser o que LIBERA o e-mail do absorvido (índice único
       // parcial por empresa+lower(email) estourava P2002 no update do principal).
       // O patch do principal é o update que traz `variaveis`.
-      const patch = prisma.tx.lead.update.mock.calls.find(
-        (c: [{ data: Record<string, unknown> }]) => 'variaveis' in c[0].data,
+      const patch = (prisma.tx.lead.update.mock.calls as unknown as LeadUpdateArgs[]).find(
+        (c) => 'variaveis' in c[0].data,
       )![0].data;
       // Principal não tinha e-mail → herda do absorvido.
       expect(patch.contatoEmail).toBe('contato@acme.com');

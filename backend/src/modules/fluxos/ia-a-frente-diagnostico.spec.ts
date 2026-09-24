@@ -14,7 +14,10 @@ import { IaAFrenteDiagnosticoService } from './ia-a-frente-diagnostico.service';
 const ADMIN = { empresaIdAtiva: 'emp-1', role: 'ADMIN', id: 'u-1' } as never;
 
 describe('IaAFrenteDiagnosticoService', () => {
-  let prisma: Record<string, never>;
+  let prisma: {
+    fluxo: { findFirst: ReturnType<typeof vi.fn> };
+    $queryRaw: ReturnType<typeof vi.fn>;
+  };
   let criado: Record<string, unknown> | null;
   let deletado: string | null;
   let svc: IaAFrenteDiagnosticoService;

@@ -33,13 +33,20 @@ const leadNoBanco = {
   etapaDesde: new Date(Date.now() - 3 * 86_400_000),
 };
 
+type DepsSemPrisma =
+  ConstructorParameters<typeof FluxoExecutorService> extends [unknown, ...infer R] ? R : never;
+
 const makeSvc = (lead: unknown) => {
   const prisma = {
     lead: { findFirst: vi.fn().mockResolvedValue(lead) },
     empresa: { findUnique: vi.fn().mockResolvedValue({ config: {} }) },
     variavelCustomizada: { findMany: vi.fn().mockResolvedValue([]) },
   };
-  const svc = new FluxoExecutorService(prisma as never, ...(Array(14).fill({}) as never[]));
+  // Continua passando 14 dependências vazias (a 15ª, persona, fica undefined).
+  const svc = new FluxoExecutorService(
+    prisma as never,
+    ...(Array(14).fill({}) as unknown as DepsSemPrisma),
+  );
   return { svc, prisma };
 };
 

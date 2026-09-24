@@ -18,15 +18,15 @@ const linha = (over: Record<string, unknown> = {}) => ({
 
 const build = (linhas: Array<Record<string, unknown>> = [linha()]) => {
   const prisma = {
-    contrato: { findFirst: vi.fn(async () => ({ id: 'ctr-1' })) },
+    contrato: { findFirst: vi.fn(async (): Promise<{ id: string } | null> => ({ id: 'ctr-1' })) },
     contratoComissao: {
-      findMany: vi.fn(async () => linhas),
+      findMany: vi.fn(async (_args: unknown) => linhas),
       update: vi.fn(async () => ({})),
     },
   };
   const contas = {
     acharCategoria: vi.fn(async () => 338186079),
-    criarContaPagar: vi.fn(async () => 338205280),
+    criarContaPagar: vi.fn(async (_empresaId: string, _lanc: unknown) => 338205280),
   };
   const comissoes = { registrarMensalidadeRecebida: vi.fn(async () => 1) };
   const svc = new ContratoComissaoErpService(prisma as never, contas as never, comissoes as never);

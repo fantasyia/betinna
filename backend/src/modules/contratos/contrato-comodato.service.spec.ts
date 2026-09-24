@@ -25,7 +25,7 @@ const build = (
       findUnique: vi.fn(async () =>
         over.contrato === undefined ? { id: 'ctr-1', primeiraCobrancaEm: null } : over.contrato,
       ),
-      update: vi.fn(async () => ({})),
+      update: vi.fn(async (_args: unknown) => ({})),
     },
   };
   const comissoes = { recalcular: vi.fn(async () => undefined) };

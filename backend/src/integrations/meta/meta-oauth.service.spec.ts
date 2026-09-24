@@ -358,9 +358,8 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
     expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('renovado');
 
     // E o novo prazo NÃO fica undefined — senão o problema volta no próximo ciclo.
-    const salvo = integ.salvarCredenciaisInternas.mock.calls[0][2] as {
-      userTokenExpiresAt?: number;
-    };
+    const calls = integ.salvarCredenciaisInternas.mock.calls as unknown as SalvarArgs[];
+    const salvo = calls[0][2] as { userTokenExpiresAt?: number };
     expect(salvo.userTokenExpiresAt).toBeGreaterThan(Date.now());
   });
 });

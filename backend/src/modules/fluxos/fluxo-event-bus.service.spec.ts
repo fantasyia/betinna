@@ -409,8 +409,11 @@ describe('FluxoEventBusService', () => {
           nos: [{ id: 'trg', config: { apenasComBotLigado: true } }],
         }),
       ]);
-      prisma.empresa = { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: false }) };
-      prisma.conversation = { findUnique: vi.fn().mockResolvedValue({ botLigado: null }) };
+      // O mock base não tem `empresa` nem `conversation.findUnique`: troca os dois.
+      Object.assign(prisma, {
+        empresa: { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: false }) },
+        conversation: { findUnique: vi.fn().mockResolvedValue({ botLigado: null }) },
+      });
 
       await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
         canal: 'WHATSAPP',
@@ -430,8 +433,10 @@ describe('FluxoEventBusService', () => {
         }),
       ]);
       // Global DESLIGADO, mas a conversa tem override ligado → roda.
-      prisma.empresa = { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: false }) };
-      prisma.conversation = { findUnique: vi.fn().mockResolvedValue({ botLigado: true }) };
+      Object.assign(prisma, {
+        empresa: { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: false }) },
+        conversation: { findUnique: vi.fn().mockResolvedValue({ botLigado: true }) },
+      });
       prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
       prisma.fluxoExecucao.update.mockResolvedValue({});
 

@@ -17,6 +17,7 @@ function build(
       sku: string;
       nome: string;
       precoTabela?: number;
+      precoPromocional?: number;
       vendavel?: boolean;
     }>;
     clientePorDoc?: Array<{ id: string }>;

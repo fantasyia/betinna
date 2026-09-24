@@ -703,7 +703,10 @@ describe('InboxService.limparConversa', () => {
 
     await svc.limparConversa(fakeUser(), 'conv-1');
 
-    const args = prisma.fluxoExecucao.updateMany.mock.calls[0][0];
+    const calls = prisma.fluxoExecucao.updateMany.mock.calls as unknown as Array<
+      [{ where: { status: { in: string[] }; OR: unknown[] }; data: { status: string } }]
+    >;
+    const args = calls[0][0];
     expect(args.where.status.in).toEqual(['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO']);
     expect(args.where.OR).toEqual(
       expect.arrayContaining([

@@ -102,7 +102,7 @@ const makePersona = () => ({
     async (_empresaId: string) =>
       'Você é a Bê, assistente comercial. Use APENAS o catálogo fornecido.',
   ),
-  obterModelo: vi.fn(async (_empresaId: string) => null),
+  obterModelo: vi.fn(async (_empresaId: string): Promise<string | null> => null),
 });
 
 const PRODUTO_BASE = {

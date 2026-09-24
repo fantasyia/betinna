@@ -24,7 +24,7 @@ const makePrisma = () => ({
   },
   message: { findMany: vi.fn(async () => []), update: vi.fn(async () => ({})) },
   $queryRaw: vi.fn<() => Promise<Array<{ id: string }>>>(async () => []),
-  lead: { findUnique: vi.fn(async () => null) },
+  lead: { findUnique: vi.fn(async (): Promise<Record<string, unknown> | null> => null) },
   fluxoExecucao: { findFirst: vi.fn<() => Promise<{ id: string } | null>>(async () => null) },
 });
 

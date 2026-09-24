@@ -88,13 +88,14 @@ function makeService(opts: {
      * tela. Um mock que resolvesse na hora esconderia exatamente o defeito que
      * a Testadora mediu em campo (3s configurados, 6s cobrados do cliente).
      */
-    enviarPresenca: vi.fn((_e: string, _p: string, estado: string, delayMs?: number) =>
-      // Só o `composing` bloqueia — o `paused` vai com delay 0 e responde na
-      // hora. (Um `setTimeout(0)` aqui não resolveria sob timers falsos depois
-      // que o relógio já avançou, e isso seria artefato do mock, não defeito.)
-      estado === 'composing' && delayMs
-        ? new Promise<void>((r) => setTimeout(r, delayMs))
-        : Promise.resolve(),
+    enviarPresenca: vi.fn(
+      (_e: string, _p: string, estado: string, delayMs?: number, _proprietarioId?: string) =>
+        // Só o `composing` bloqueia — o `paused` vai com delay 0 e responde na
+        // hora. (Um `setTimeout(0)` aqui não resolveria sob timers falsos depois
+        // que o relógio já avançou, e isso seria artefato do mock, não defeito.)
+        estado === 'composing' && delayMs
+          ? new Promise<void>((r) => setTimeout(r, delayMs))
+          : Promise.resolve(),
     ),
   };
 

@@ -4,6 +4,7 @@ import { MullerBotPersonaService } from './persona.service';
 const makePrisma = () => ({
   mullerBotPersona: {
     findUnique: vi.fn().mockResolvedValue(null),
+    deleteMany: vi.fn(),
     upsert: vi.fn().mockImplementation(({ update }) =>
       Promise.resolve({
         id: 'p1',

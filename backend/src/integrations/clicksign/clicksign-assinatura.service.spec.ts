@@ -63,7 +63,10 @@ const corpoComCaminhoRelativo = () =>
 
 function montar(contrato: unknown = CONTRATO) {
   const prisma = {
-    contrato: { findFirst: vi.fn(async () => contrato), update: vi.fn(async () => ({})) },
+    contrato: {
+      findFirst: vi.fn(async () => contrato),
+      update: vi.fn(async (_args: { data: Record<string, unknown> }) => ({})),
+    },
     // A PROPOSTA acompanha o contrato: ACEITA → ASSINADA quando o documento volta.
     proposta: { update: vi.fn(async () => ({})) },
     pedido: { updateMany: vi.fn(async () => ({ count: 1 })) },

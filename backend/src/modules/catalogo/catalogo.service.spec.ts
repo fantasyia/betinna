@@ -455,13 +455,16 @@ describe('CatalogoService', () => {
       produto: {
         id: 'p-1',
         nome: 'Óleo 5L',
+        descricao: null,
         sku: 'OLE-5L',
         marca: 'Soya',
         linha: 'Alimentos',
         unidade: 'UN',
         imagem: null,
         precoTabela: 50,
+        precoPromocional: null,
         precoFabrica: 40, // CUSTO — não pode vazar
+        precoLocacaoMensal: null,
         popularidade: 5,
         ativo: true,
         estoque: 300, // não pode vazar

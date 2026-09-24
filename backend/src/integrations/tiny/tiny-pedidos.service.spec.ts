@@ -15,7 +15,7 @@ function build(
       Promise.resolve({ itens: caminho.startsWith('/contatos') ? contatos : produtos }),
     ),
     // POST atende dois recursos: /contatos (cliente) e /pedidos (a venda).
-    post: vi.fn((_e: string, caminho: string) =>
+    post: vi.fn((_e: string, caminho: string, _corpo?: Record<string, unknown>) =>
       Promise.resolve(caminho === '/contatos' ? { id: 555 } : { id: 900, numeroPedido: 1 }),
     ),
   };

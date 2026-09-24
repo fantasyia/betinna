@@ -23,7 +23,14 @@ const makeHttp = () => ({
 });
 
 const makeUserIntegracoes = () => ({
-  conectarInterno: vi.fn(async () => ({})),
+  conectarInterno: vi.fn(
+    async (
+      _usuarioId: string,
+      _servico: string,
+      _credenciais: Record<string, unknown>,
+      _opcoes?: { carimbarConexao?: boolean },
+    ) => ({}),
+  ),
   obterCredenciaisInternas: vi.fn(),
 });
 

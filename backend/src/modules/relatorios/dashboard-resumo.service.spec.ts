@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { DashboardResumoService } from './dashboard-resumo.service';
@@ -384,7 +385,7 @@ describe('DashboardResumoService.graficos (M8)', () => {
  */
 describe('DashboardResumoService — teste fora do painel', () => {
   it('TODA leitura de execução filtra teste (groupBy, falhas e as duas SQL cruas)', () => {
-    const fonte = readFileSync(new URL('./dashboard-resumo.service.ts', import.meta.url), 'utf8');
+    const fonte = readFileSync(join(__dirname, 'dashboard-resumo.service.ts'), 'utf8');
 
     // As duas queries Prisma sobre FluxoExecucao.
     const trechosPrisma = fonte.split('prisma.fluxoExecucao.').slice(1);

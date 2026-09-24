@@ -209,7 +209,8 @@ describe('Email templates', () => {
     it('rodapé tem SEMPRE as duas linhas: motivo + domínio', () => {
       // com footerNote próprio (rastreio) o domínio não pode sumir…
       const comNota = templateOcorrenciaCritica({
-        clienteNome: 'ACME',
+        destinatarioNome: 'ACME',
+        numero: 'OC-0001',
         titulo: 'Falha',
         severidade: 'CRITICA',
         slaHoras: 2,

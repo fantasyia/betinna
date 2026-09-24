@@ -74,6 +74,7 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
   let redis: {
     get: ReturnType<typeof vi.fn>;
     setNxEx: ReturnType<typeof vi.fn>;
+    eval: ReturnType<typeof vi.fn>;
     setEx: ReturnType<typeof vi.fn>;
   };
 

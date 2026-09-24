@@ -8,8 +8,8 @@ import { ComissaoBaixaSyncService } from './comissao-baixa-sync.service';
  */
 const makePrisma = () => ({
   pedidoComissao: {
-    findMany: vi.fn(async () => [] as unknown[]),
-    update: vi.fn(async () => ({})),
+    findMany: vi.fn(async (_args: unknown) => [] as unknown[]),
+    update: vi.fn(async (_args: unknown) => ({})),
   },
   contratoComissao: {
     findMany: vi.fn(async () => [] as unknown[]),
