@@ -308,6 +308,13 @@ describe('ConversarIaService', () => {
   let whatsapp: ReturnType<typeof makeWhatsapp>;
   let bus: ReturnType<typeof makeBus>;
   let queue: ReturnType<typeof makeQueue>;
+  // Controlável por teste: as reservas de ABERTURA e de LINK dependem da resposta
+  // dele. Default = toda reserva é ganha (o caso da maioria dos testes).
+  let redis: {
+    setNxEx: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+    eval: ReturnType<typeof vi.fn>;
+  };
   let svc: ConversarIaService;
 
   beforeEach(() => {
@@ -318,6 +325,11 @@ describe('ConversarIaService', () => {
     whatsapp = makeWhatsapp();
     bus = makeBus();
     queue = makeQueue();
+    redis = {
+      setNxEx: vi.fn(async () => true),
+      get: vi.fn(async () => null),
+      eval: vi.fn(async () => 1),
+    };
     svc = new ConversarIaService(
       prisma as never,
       persona as never,
@@ -333,7 +345,7 @@ describe('ConversarIaService', () => {
       // aparecia quando o eco do WhatsApp voltava, assíncrono e sem prazo).
       { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
       // redis: reserva atômica da entrega de link (corrida do A8).
-      { setNxEx: vi.fn(async () => true), get: vi.fn(async () => null) } as never,
+      redis as never,
       queue as never,
     );
   });
@@ -379,6 +391,129 @@ describe('ConversarIaService', () => {
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
       // …mas a execução segue pro estado certo (AGUARDANDO), em vez de ficar presa.
       expect(r.aguardando).toBe(true);
+    });
+
+    // ── Reserva da ABERTURA (A8, 24/09 — opção B do Léo) ──────────────────
+    //
+    // Duas execuções do C1 no mesmo lead entravam no nó que FALA PRIMEIRO com 1 ms
+    // de diferença, e o opener não tinha guarda nenhuma: o cliente recebeu a
+    // sequência inteira duas vezes (8 balões). A reserva do link (`76b7a49`) mora
+    // no turno de RESPOSTA e não alcançava. Estes testes prendem o conserto real.
+    describe('reserva da abertura', () => {
+      const abrir = () =>
+        svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+      const preparar = () => {
+        prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+        muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá! Tudo bem?', modelo: 'gpt' });
+      };
+
+      it('🔴 PERDEDOR desiste em silêncio: não chama a IA, não envia nada, encerra', async () => {
+        preparar();
+        redis.setNxEx.mockResolvedValue(false); // outra execução já reservou
+        redis.get.mockResolvedValue('exec-OUTRA');
+
+        const r = await abrir();
+
+        // `pulado` faz o executor ENCERRAR como CONCLUIDO sem enfileirar sucessor.
+        expect(r).toMatchObject({ aguardando: false, pulado: true });
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+        // Desiste ANTES da IA: perder a corrida não pode custar uma chamada paga.
+        expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+      });
+
+      it('🔴 perdedor NÃO fica esperando resposta — senão a próxima msg do cliente dobra', async () => {
+        // Se o perdedor ficasse AGUARDANDO na mesma conversa, a próxima mensagem
+        // do cliente seria respondida pelas DUAS execuções.
+        preparar();
+        redis.setNxEx.mockResolvedValue(false);
+        redis.get.mockResolvedValue('exec-OUTRA');
+
+        const r = await abrir();
+
+        expect(r.aguardando).toBe(false);
+        expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ status: 'AGUARDANDO' }) }),
+        );
+      });
+
+      it('a chave é por LEAD e por NÓ, e o dono é a execução', async () => {
+        preparar();
+        await abrir();
+        expect(redis.setNxEx).toHaveBeenCalledWith(
+          'fluxo:abertura:lead-1:no-ia',
+          'exec-1',
+          expect.any(Number),
+        );
+      });
+
+      it('retry da MESMA execução passa — não é corrida, é a mesma abertura voltando', async () => {
+        preparar();
+        redis.setNxEx.mockResolvedValue(false);
+        redis.get.mockResolvedValue('exec-1'); // o dono sou eu
+
+        await abrir();
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('🔴 SOLTA a reserva ao terminar — quem volta a escrever tem que ser atendido', async () => {
+        // Se a reserva durasse minutos, o lead que escreve de novo e dispara uma
+        // execução nova no mesmo nó perderia — e ficaria SEM RESPOSTA.
+        preparar();
+        await abrir();
+
+        expect(redis.eval).toHaveBeenCalledWith(
+          expect.stringContaining("redis.call('del'"),
+          ['fluxo:abertura:lead-1:no-ia'],
+          ['exec-1'],
+        );
+        // E o script tem que CONFERIR O DONO antes de apagar. Um `DEL` cego
+        // passava no `stringContaining('del')` acima — medido por mutação — e
+        // reabre a corrida: uma execução lenta, cujo TTL expirou, apagaria a
+        // reserva que OUTRA já readquiriu.
+        const script = String(redis.eval.mock.calls.at(-1)?.[0] ?? '');
+        expect(script).toContain("redis.call('get', KEYS[1]) == ARGV[1]");
+      });
+
+      it('solta a reserva MESMO quando a abertura pula (lead sem telefone)', async () => {
+        prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: null });
+        await abrir();
+        expect(redis.eval).toHaveBeenCalled();
+      });
+
+      it('solta a reserva MESMO quando a abertura estoura', async () => {
+        prisma.lead.findFirst.mockRejectedValue(new Error('banco fora'));
+        await abrir().catch(() => undefined);
+        expect(redis.eval).toHaveBeenCalled();
+      });
+
+      it('falha AO SOLTAR não derruba uma abertura que deu certo', async () => {
+        // O erro síncrono de um cliente sem o método saía pelo `finally` e
+        // derrubava o `iniciar` inteiro — 39 testes caíram assim na 1ª versão.
+        preparar();
+        redis.eval.mockImplementation(() => {
+          throw new Error('conexão fechada no shutdown');
+        });
+
+        const r = await abrir();
+
+        expect(r.aguardando).toBe(true);
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('FAIL-OPEN: Redis fora na reserva → abre mesmo assim', async () => {
+        preparar();
+        redis.setNxEx.mockRejectedValue(new Error('redis fora'));
+
+        await abrir();
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('sem lead no contexto não reserva — o interno já pula limpo', async () => {
+        await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, {}, 'emp-1');
+        expect(redis.setNxEx).not.toHaveBeenCalled();
+      });
     });
 
     it('envia 1ª msg e pausa (AGUARDANDO) quando aguardarResposta', async () => {

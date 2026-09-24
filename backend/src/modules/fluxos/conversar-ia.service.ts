@@ -653,6 +653,31 @@ const ultimaFalaDoBot = (h: HistoricoMsg[]): string | undefined =>
 
 const DRAIN_MAX_MS = 25 * 1000;
 
+/** O que a abertura devolve pro executor. */
+type ResultadoAbertura = {
+  aguardando: boolean;
+  pulado?: boolean;
+  motivo?: string;
+  /** Capturou erro de IA/WhatsApp e roteou pela saída "erro" (executor não segue o caminho normal). */
+  roteado?: boolean;
+  tipoErro?: string;
+  /**
+   * O nó JÁ enfileirou os sucessores (classificação no 1º turno). O executor
+   * não pode navegar de novo — foi essa navegação em dobro que fazia o ramo
+   * seguinte rodar duas vezes.
+   */
+  navegou?: boolean;
+};
+
+/**
+ * Rede de segurança da reserva de abertura, em segundos — NÃO é a janela.
+ *
+ * A reserva é solta no `finally` assim que o opener termina; este TTL só vale
+ * se o processo MORRER no meio (deploy, OOM), pra chave não ficar presa. Cobre
+ * com folga o opener mais lento medido (IA 5–30s + pacing + balões).
+ */
+const RESERVA_ABERTURA_S = 180;
+
 /**
  * Janela da reserva de entrega de link, em segundos.
  *
@@ -1009,20 +1034,41 @@ export class ConversarIaService implements OnModuleDestroy {
      * (cron, lead criado, tag) segue como abordagem — e essa sim tem hora.
      */
     reativo = false,
-  ): Promise<{
-    aguardando: boolean;
-    pulado?: boolean;
-    motivo?: string;
-    /** Capturou erro de IA/WhatsApp e roteou pela saída "erro" (executor não segue o caminho normal). */
-    roteado?: boolean;
-    tipoErro?: string;
-    /**
-     * O nó JÁ enfileirou os sucessores (classificação no 1º turno). O executor
-     * não pode navegar de novo — foi essa navegação em dobro que fazia o ramo
-     * seguinte rodar duas vezes.
-     */
-    navegou?: boolean;
-  }> {
+  ): Promise<ResultadoAbertura> {
+    const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
+    // Sem lead, o interno já pula limpo com motivo — não há o que reservar.
+    if (leadId && !(await this.reservarAbertura(leadId, no.id, execucaoId))) {
+      this.logger.warn(
+        `CONVERSAR_IA: outra execução já está abrindo a conversa com o lead ${leadId} ` +
+          `no nó ${no.id} — exec ${execucaoId} desiste em SILÊNCIO e encerra`,
+      );
+      // `pulado` (e não `navegou`): o executor ENCERRA a execução como CONCLUIDO e
+      // não enfileira sucessores. `navegou` voltaria sem mexer no status e a
+      // execução ficaria EM_EXECUCAO pra sempre — outra família de defeito.
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo: 'outra execução já está abordando este lead neste nó — desistiu em silêncio',
+      };
+    }
+    try {
+      return await this.iniciarSemReserva(execucaoId, no, ctx, empresaId, reativo);
+    } finally {
+      // Solta ASSIM QUE o opener termina (enviou, pulou, errou ou foi seco de
+      // teste). A reserva é mutex da ABERTURA, não memória da conversa: quem
+      // volta a escrever depois tem que ser atendido por uma execução nova.
+      if (leadId) await this.liberarAbertura(leadId, no.id, execucaoId);
+    }
+  }
+
+  /** O corpo original do `iniciar` — só roda com a reserva da abertura na mão. */
+  private async iniciarSemReserva(
+    execucaoId: string,
+    no: FluxoNo,
+    ctx: ExecucaoContexto,
+    empresaId: string,
+    reativo = false,
+  ): Promise<ResultadoAbertura> {
     const cfg = (no.config ?? {}) as ConversarIaConfig;
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
     // Sem lead no contexto não há a quem abordar. Acontece em teste manual sem lead
@@ -2170,6 +2216,82 @@ export class ConversarIaService implements OnModuleDestroy {
       if (!(await this.reservarEntregaDoLink(conversationId, url, execucaoId))) return url;
     }
     return null;
+  }
+
+  /**
+   * Reserva ATÔMICA da ABERTURA de um nó de IA pra um lead — só uma execução
+   * fala primeiro por vez.
+   *
+   * 🔴 O que isto fecha (caso A8, medido em 24/09, 3 de 3 rodadas): duas
+   * execuções do C1 no mesmo lead entram no nó "só monta e entrega o link" com
+   * 1 ms de diferença. O nó FALA PRIMEIRO, então a entrega sai pelo OPENER — e
+   * o opener não tinha guarda nenhuma. O cliente recebeu a sequência INTEIRA duas
+   * vezes: 8 balões, link incluído.
+   *
+   * ⚠️ E o conserto anterior (reserva do LINK, `76b7a49`) não alcançava isto:
+   * ele mora no `processarTurno`, o turno de RESPOSTA. O opener é outro caminho.
+   * Consertei o turno vizinho e escrevi que o A8 estava resolvido. Não estava.
+   *
+   * 📌 Por que na ENTRADA e não antes do envio: as duas execuções ENTRAM com
+   * milissegundos de diferença, mas a IA de cada uma leva de 5 a 30s pra compor.
+   * Reservando antes do envio, a mais rápida mandaria e soltaria, e a lenta
+   * ganharia a reserva depois — duplicata de novo. Na entrada, a segunda perde
+   * na hora, qualquer que seja a duração da IA.
+   *
+   * 📌 Por que é MUTEX e não janela: solta no `finally` do `iniciar`. Se durasse
+   * minutos, o lead que volta a escrever e dispara uma execução nova no mesmo nó
+   * perderia a reserva e ficaria SEM RESPOSTA — trocar duplicata por silêncio.
+   *
+   * Por que o perdedor desiste INTEIRO (e não só do link): decisão do Léo
+   * (24/09, opção B). Pôr a guarda só no link faria o perdedor regerar sem o link
+   * e mandar os outros balões — o cliente receberia a sequência duas vezes.
+   *
+   * FAIL-OPEN: Redis fora devolve `true` (pode abrir). Abertura duplicada é o
+   * defeito que já existia; abertura suprimida é lead abordado por ninguém.
+   */
+  private async reservarAbertura(
+    leadId: string,
+    noId: string,
+    execucaoId: string,
+  ): Promise<boolean> {
+    const chave = `fluxo:abertura:${leadId}:${noId}`;
+    try {
+      if (await this.redis.setNxEx(chave, execucaoId, RESERVA_ABERTURA_S)) return true;
+      // Reservado. Se for ESTA execução (retry do mesmo passo depois de o
+      // processo morrer no meio), não é corrida — é a mesma abertura voltando.
+      const dono = await this.redis.get(chave);
+      return dono === execucaoId;
+    } catch (err) {
+      this.logger.warn(
+        `CONVERSAR_IA: não consegui reservar a abertura (${err instanceof Error ? err.message : String(err)}) — ` +
+          `abrindo assim mesmo`,
+      );
+      return true;
+    }
+  }
+
+  /**
+   * Solta a reserva de abertura — SÓ se esta execução for a dona.
+   *
+   * Compare-and-delete em Lua, igual ao `CronLockService.release`: sem isto, uma
+   * execução lenta cujo TTL expirou apagaria a reserva que OUTRA já readquiriu,
+   * reabrindo a corrida. Best-effort: se falhar, o TTL limpa.
+   */
+  private async liberarAbertura(leadId: string, noId: string, execucaoId: string): Promise<void> {
+    // `try` em volta de TUDO, e não `.catch` na promise: se o erro for síncrono
+    // (cliente sem o método, conexão já fechada no shutdown), ele estoura ANTES
+    // de existir promise pra pegar — e sairia pelo `finally` do `iniciar`,
+    // derrubando uma abertura que tinha dado certo. Medido nos testes em 24/09:
+    // 39 caíram assim com a versão `.catch`.
+    try {
+      await this.redis.eval(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+        [`fluxo:abertura:${leadId}:${noId}`],
+        [execucaoId],
+      );
+    } catch {
+      /* best-effort — o TTL limpa */
+    }
   }
 
   /**
