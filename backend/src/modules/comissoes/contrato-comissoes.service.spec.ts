@@ -8,7 +8,14 @@ const makePrisma = () => ({
   // de pessoas escolhidas + % do representante daquele contrato.
   empresa: {
     findUnique: vi.fn(async () => ({
-      config: { comissoes: { locacao: { representantePercentual: 10, participacao: [] } } },
+      config: {
+        comissoes: {
+          locacao: {
+            representantePercentual: 10,
+            participacao: [] as Array<{ usuarioId: string; percentual: number }>,
+          },
+        },
+      },
     })),
   },
   // Filtra os beneficiários da regra que estão ativos.
@@ -17,12 +24,18 @@ const makePrisma = () => ({
       args.where.id.in.map((id) => ({ id })),
     ),
   },
+  // Assinaturas declaradas só pro tsc: os testes leem `mock.calls[0][0]` e
+  // trocam o retorno do findUnique — sem o parâmetro/retorno tipados, o tipo
+  // inferido é `() => null` e toda leitura vira erro de tipo.
   contratoComissao: {
-    findUnique: vi.fn(async () => null),
-    create: vi.fn(async () => ({})),
-    update: vi.fn(async () => ({})),
-    updateMany: vi.fn(async () => ({ count: 0 })),
-    deleteMany: vi.fn(async () => ({ count: 0 })),
+    findUnique: vi.fn(
+      async (_args: unknown): Promise<{ id: string; contaPagarErpId: string | null } | null> =>
+        null,
+    ),
+    create: vi.fn(async (_args: unknown) => ({})),
+    update: vi.fn(async (_args: unknown) => ({})),
+    updateMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
+    deleteMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
   },
 });
 
