@@ -126,6 +126,14 @@ jobs:
         working-directory: ./backend
         run: npm run typecheck
 
+      # O de cima usa o tsconfig.build.json, que EXCLUI os *.spec.ts — foi assim
+      # que 243 erros de tipo se acumularam nos testes sem ninguém ver (24/09):
+      # mock no lugar errado do construtor, guarda multi-tenant que o teste não
+      # conferia, campo que não existia mais. Zerados; este passo segura o zero.
+      - name: Typecheck (testes)
+        working-directory: ./backend
+        run: npm run typecheck:testes
+
       - name: Unit tests (vitest)
         working-directory: ./backend
         env:
