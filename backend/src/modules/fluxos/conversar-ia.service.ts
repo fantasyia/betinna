@@ -679,12 +679,14 @@ type ResultadoAbertura = {
 const RESERVA_ABERTURA_S = 180;
 
 /**
- * Janela da reserva de entrega de link, em segundos.
+ * Rede de segurança da reserva de entrega de link, em segundos — NÃO é a janela.
  *
- * Precisa cobrir com folga o turno (16–29s medidos) MAIS a gravação da
- * mensagem OUTBOUND — é ela que faz a guarda do histórico assumir a vigilância
- * quando a reserva expira. 10 minutos deixa margem pra um turno ruim sem
- * transformar a reserva em memória permanente.
+ * A reserva é SOLTA assim que a mensagem OUTBOUND com o link é gravada
+ * (`soltarReservasDeLinkGravadas`): dali em diante o histórico assume. Este TTL
+ * só vale quando a soltura não acontece — gravação da saída que falhou (é
+ * best-effort) ou processo que morreu no meio. Até 24/09 ele ERA a janela, e
+ * atravessava rodadas: 5 casos da bateria na mesma conversa, com a mesma URL,
+ * reprovavam falso por herdar a reserva do caso anterior.
  */
 const RESERVA_LINK_S = 600;
 
@@ -2295,6 +2297,46 @@ export class ConversarIaService implements OnModuleDestroy {
   }
 
   /**
+   * Solta as reservas de link desta execução — mas SÓ as que o histórico já cobre.
+   *
+   * A reserva existe pra cobrir a janela até a mensagem OUTBOUND ser gravada:
+   * dali em diante a consulta do histórico (`linkJaEntregue`) assume. O código
+   * dizia isso no comentário e deixava a reserva viva 600s — proposta da sessão
+   * de testes em 24/09: fazer o código cumprir o que o comentário prometia.
+   *
+   * 🔴 A condição "já está no histórico" NÃO é zelo. A gravação da saída é
+   * best-effort (`enviarWhatsapp` engole a falha pra não desfazer um envio que
+   * já aconteceu). Se ela falhou e eu soltasse mesmo assim, o link ficaria sem
+   * proteção NENHUMA — nem reserva, nem histórico — e a próxima execução
+   * reentregaria. Nesse caso a reserva fica, e o TTL é a rede.
+   *
+   * Solta com compare-and-delete: execução que PERDEU a reserva não é dona e não
+   * mexe na do vencedor.
+   */
+  private async soltarReservasDeLinkGravadas(
+    conversationId: string,
+    texto: string,
+    execucaoId: string,
+  ): Promise<void> {
+    for (const url of urlsDoTexto(texto)) {
+      try {
+        const gravada = await this.prisma.message.findFirst({
+          where: { conversationId, direction: 'OUTBOUND', conteudo: { contains: url } },
+          select: { id: true },
+        });
+        if (!gravada) continue; // histórico ainda não cobre — a reserva fica
+        await this.redis.eval(
+          "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+          [`fluxo:link:${conversationId}:${createHash('sha1').update(url).digest('hex')}`],
+          [execucaoId],
+        );
+      } catch {
+        /* best-effort — o TTL limpa */
+      }
+    }
+  }
+
+  /**
    * Reserva ATÔMICA da entrega de um link nesta conversa.
    *
    * 🔴 O que isto fecha (caso A8, medido em 19/09): dois disparos no mesmo lead,
@@ -3000,6 +3042,12 @@ export class ConversarIaService implements OnModuleDestroy {
       if (err instanceof WhatsappIndisponivelError) throw err;
       await this.rotearParaErro(execucaoId, no.id, ctx, 'whatsapp_falha', err);
       return;
+    }
+    // A reserva do link cobre "até a mensagem ser gravada" — e ela acabou de ser.
+    // Solta agora pra o histórico assumir; sem isto ela durava os 600s do TTL e
+    // barrava reenvio legítimo nesse meio-tempo.
+    if (conversationId && textoEnviado) {
+      await this.soltarReservasDeLinkGravadas(conversationId, respostaTexto, execucaoId);
     }
     // Depois do texto, manda os arquivos pedidos (best-effort, re-valida podeEnviar).
     await this.enviarDocumentos(

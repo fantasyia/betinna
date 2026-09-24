@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SINAIS_ROTEAMENTO } from './fluxo-executor.types';
 import { filtrarVariaveisGravaveis, moldurarNome } from './conversar-ia.service';
@@ -1509,6 +1510,76 @@ describe('ConversarIaService', () => {
       expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
       expect(prisma.fluxoNo.findUnique).not.toHaveBeenCalled();
+    });
+
+    // ── A reserva SOLTA quando a mensagem é gravada (24/09) ──────────────
+    //
+    // Antes ela vivia os 600s do TTL e atravessava rodadas da bateria na mesma
+    // conversa. O comentário sempre disse "cobre até a OUTBOUND ser gravada";
+    // agora o código faz isso.
+    describe('a reserva do link solta quando a mensagem é gravada', () => {
+      const LINK_OK = 'https://somatecblocking.com.br/protecao-comercial?corrente=77#calculadora';
+      const chave = `fluxo:link:conv-1:${createHash('sha1').update(LINK_OK).digest('hex')}`;
+      const preparar = () => {
+        prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+        prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+        prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+        muller.gerarRespostaIa.mockResolvedValue({
+          texto: `{"resposta":"Segue: ${LINK_OK}","classificou":false}`,
+          modelo: 'gpt',
+        });
+      };
+
+      it('🔴 solta a reserva depois que a mensagem com o link está no histórico', async () => {
+        preparar();
+        prisma.message.findFirst
+          .mockResolvedValueOnce(null) // guarda do histórico: nunca entregue
+          .mockResolvedValueOnce({ id: 'out-1' }); // depois do envio: gravada
+
+        await svc.retomar('exec-1', 'conv-1', 'oi');
+
+        expect(redis.eval).toHaveBeenCalledWith(
+          expect.stringContaining("redis.call('get', KEYS[1]) == ARGV[1]"),
+          [chave],
+          ['exec-1'],
+        );
+        // A checagem tem que olhar o que o BOT mandou. O mock responde igual pra
+        // qualquer `where` — trocar OUTBOUND por INBOUND passava calado (medido
+        // por mutação), e aí o link do CLIENTE soltaria a reserva do bot.
+        const posEnvio = prisma.message.findFirst.mock.calls.at(-1)?.[0] as
+          | { where?: { direction?: string } }
+          | undefined;
+        expect(posEnvio?.where?.direction).toBe('OUTBOUND');
+      });
+
+      it('🔴 NÃO solta se a gravação da saída falhou — senão o link fica sem proteção nenhuma', async () => {
+        // A gravação é best-effort. Soltando sem ela, nem reserva nem histórico
+        // protegeriam o link, e a próxima execução reentregaria.
+        preparar();
+        prisma.message.findFirst
+          .mockResolvedValueOnce(null) // guarda do histórico
+          .mockResolvedValueOnce(null); // depois do envio: NÃO gravou
+
+        await svc.retomar('exec-1', 'conv-1', 'oi');
+
+        expect(redis.eval).not.toHaveBeenCalledWith(expect.anything(), [chave], expect.anything());
+      });
+
+      it('turno sem link não mexe em reserva nenhuma', async () => {
+        preparar();
+        muller.gerarRespostaIa.mockResolvedValue({
+          texto: '{"resposta":"Qual a corrente do disjuntor?","classificou":false}',
+          modelo: 'gpt',
+        });
+
+        await svc.retomar('exec-1', 'conv-1', 'oi');
+
+        expect(redis.eval).not.toHaveBeenCalledWith(
+          expect.anything(),
+          [expect.stringContaining('fluxo:link:')],
+          expect.anything(),
+        );
+      });
     });
 
     // ── O CAMINHO QUE NINGUÉM EXERCITAVA (descoberto em 24/09) ──────────
