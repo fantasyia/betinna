@@ -1,11 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowRight, Check, Plus, RotateCcw, Trash2, Zap } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Trash2,
+  UserPlus,
+  Zap,
+} from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { VendasTabs } from '@/components/VendasTabs';
+import { ClienteFormModal, type ClienteCadastro } from '@/components/ClienteFormModal';
+import { PhoneInput } from '@/components/PhoneInput';
 import { Badge, Button, Card, Checkbox, Field, Input } from '@/components/ui';
 import { formatMoeda, maskDinheiro, parseDinheiro } from '@/lib/masks';
 
@@ -83,6 +95,37 @@ interface Proposta {
   servicosTotal?: number | null;
   customizacaoUnitario?: number | null;
   customizacaoQuantidade?: number | null;
+  prazoMeses?: number | null;
+  diaVencimento?: number | null;
+  validoAte?: string | null;
+  signatarioNome?: string | null;
+  signatarioEmail?: string | null;
+  signatarioTelefone?: string | null;
+}
+
+/**
+ * O que o CONTRATO exige do cadastro do cliente (documento único): CNPJ e
+ * endereço completo. Mostrar aqui, enquanto o rep está no cliente, custa menos
+ * que descobrir no aceite — quando o contrato simplesmente não sai.
+ */
+const CAMPOS_DO_CONTRATO: Array<[keyof ClienteCadastro, string]> = [
+  ['cnpj', 'CNPJ'],
+  ['cep', 'CEP'],
+  ['endereco', 'logradouro'],
+  ['numero', 'número'],
+  ['bairro', 'bairro'],
+  ['cidade', 'cidade'],
+  ['uf', 'UF'],
+];
+
+function faltaNoCadastro(c: ClienteCadastro): string[] {
+  return CAMPOS_DO_CONTRATO.filter(([k]) => !String(c[k] ?? '').trim()).map(([, nome]) => nome);
+}
+
+function enderecoCurto(c: ClienteCadastro): string {
+  const rua = [c.endereco, c.numero].filter(Boolean).join(', ');
+  const cidade = [c.cidade, c.uf].filter(Boolean).join('/');
+  return [rua, c.bairro, cidade].filter(Boolean).join(' · ');
 }
 
 /** Número vindo da API → texto do campo de dinheiro ("1.234,56"). */
@@ -128,6 +171,9 @@ export default function LevantamentoCampoPage() {
   const propostaIdUrl = params.get('proposta');
 
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
+  /** O cadastro COMPLETO do cliente escolhido — é dele que o contrato lê o endereço. */
+  const [cadastro, setCadastro] = useState<ClienteCadastro | null>(null);
+  const [modalCliente, setModalCliente] = useState<'novo' | 'editar' | null>(null);
   const [proposta, setProposta] = useState<Proposta | null>(null);
   const [rascunhos, setRascunhos] = useState<Proposta[]>([]);
 
@@ -148,6 +194,17 @@ export default function LevantamentoCampoPage() {
   const [servicosTotal, setServicosTotal] = useState('');
   const [customUnitario, setCustomUnitario] = useState('');
   const [customQuantidade, setCustomQuantidade] = useState('1');
+
+  // Dados do CONTRATO (Léo, 24/09): antes só existiam no formulário de "Nova
+  // proposta" — e o signatário em tela nenhuma. Proposta nascida do levantamento
+  // chegava no aceite sem eles, e o contrato não saía.
+  const [prazoMeses, setPrazoMeses] = useState('');
+  const [diaVencimento, setDiaVencimento] = useState('');
+  const [validoAte, setValidoAte] = useState('');
+  const [signatarioNome, setSignatarioNome] = useState('');
+  const [signatarioEmail, setSignatarioEmail] = useState('');
+  const [signatarioTelefone, setSignatarioTelefone] = useState('');
+  const [salvandoContrato, setSalvandoContrato] = useState(false);
 
   const [previa, setPrevia] = useState<RespostaSelecao | null>(null);
   const [consultando, setConsultando] = useState(false);
@@ -191,9 +248,41 @@ export default function LevantamentoCampoPage() {
         setServicosTotal(paraCampoDinheiro(p.servicosTotal));
         setCustomUnitario(paraCampoDinheiro(p.customizacaoUnitario));
         setCustomQuantidade(p.customizacaoQuantidade ? String(p.customizacaoQuantidade) : '1');
+        setPrazoMeses(p.prazoMeses ? String(p.prazoMeses) : '');
+        setDiaVencimento(p.diaVencimento ? String(p.diaVencimento) : '');
+        setValidoAte(p.validoAte ? p.validoAte.slice(0, 10) : '');
+        setSignatarioNome(p.signatarioNome ?? '');
+        setSignatarioEmail(p.signatarioEmail ?? '');
+        setSignatarioTelefone(p.signatarioTelefone ?? '');
       })
       .catch((e) => setErro(apiErrorMessage(e)));
   }, [propostaIdUrl]);
+
+  /** Cliente escolhido (ou retomado) → busca o cadastro inteiro. */
+  useEffect(() => {
+    if (!cliente?.id) {
+      setCadastro(null);
+      return;
+    }
+    let vivo = true;
+    api
+      .get<ClienteCadastro>(`/clientes/${cliente.id}`)
+      .then((c) => {
+        if (vivo) setCadastro(c);
+      })
+      .catch(() => {
+        if (vivo) setCadastro(null);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [cliente?.id]);
+
+  function usarCliente(c: ClienteCadastro) {
+    setCliente({ id: c.id, nome: c.nome, cnpj: c.cnpj ?? null });
+    setCadastro(c);
+    setModalCliente(null);
+  }
 
   /**
    * Consulta o modelo pra corrente digitada.
@@ -324,6 +413,42 @@ export default function LevantamentoCampoPage() {
     }
   }
 
+  async function salvarContrato() {
+    if (!proposta) return;
+    const dia = Number(diaVencimento);
+    const meses = Number(prazoMeses);
+    if (diaVencimento && (dia < 1 || dia > 28)) {
+      setErro('Dia de vencimento vai de 1 a 28 — 29, 30 e 31 não existem em todo mês.');
+      return;
+    }
+    if (prazoMeses && (meses < 1 || meses > 120)) {
+      setErro('Prazo do contrato vai de 1 a 120 meses.');
+      return;
+    }
+    if (signatarioNome.trim() && signatarioNome.trim().length < 3) {
+      setErro('Quem assina é uma pessoa: informe nome e sobrenome.');
+      return;
+    }
+    setSalvandoContrato(true);
+    setErro(null);
+    try {
+      const atualizada = await api.patch<Proposta>(`/propostas/${proposta.id}`, {
+        prazoMeses: meses || undefined,
+        diaVencimento: dia || undefined,
+        validoAte: validoAte || undefined,
+        signatarioNome: signatarioNome.trim() || undefined,
+        signatarioEmail: signatarioEmail.trim() || undefined,
+        signatarioTelefone: signatarioTelefone.trim() || undefined,
+      });
+      setProposta((p) => (p ? { ...p, ...atualizada } : atualizada));
+      toast.success('Dados do contrato salvos');
+    } catch (e) {
+      setErro(apiErrorMessage(e));
+    } finally {
+      setSalvandoContrato(false);
+    }
+  }
+
   function concluir() {
     if (!proposta) return;
     toast.success(`Levantamento salvo na proposta ${proposta.numero}`);
@@ -332,6 +457,9 @@ export default function LevantamentoCampoPage() {
 
   const semPrazo = !prazoEntrega || !prazoInstalacao || !prazoVerificacao || !prazoSoftware;
   const semServicos = !servicosTotal || !customUnitario;
+  const semContrato =
+    !prazoMeses || !diaVencimento || !validoAte || !signatarioNome.trim() || !signatarioEmail.trim();
+  const faltaCadastro = cadastro ? faltaNoCadastro(cadastro) : [];
   // III.a promete "2 parcelas de R$ X cada": centavo ímpar não divide igual, e o
   // contrato é recusado na montagem. Avisar aqui é mais barato que no aceite.
   const centavosServicos = Math.round(parseDinheiro(servicosTotal) * 100);
@@ -378,18 +506,57 @@ export default function LevantamentoCampoPage() {
                 <span className="text-text-subtle">{proposta.numero}</span>
               </p>
             ) : (
-              <AsyncCombobox<ClienteOpt>
-                testId="levantamento-cliente"
-                endpoint="/clientes"
-                placeholder="Buscar cliente por nome ou CNPJ…"
-                getLabel={(c) => c.nome}
-                getSubLabel={(c) => c.cnpj ?? null}
-                getId={(c) => c.id}
-                value={cliente}
-                onChange={setCliente}
-              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <div className="min-w-0 flex-1">
+                  <AsyncCombobox<ClienteOpt>
+                    testId="levantamento-cliente"
+                    endpoint="/clientes"
+                    placeholder="Buscar cliente por nome ou CNPJ…"
+                    getLabel={(c) => c.nome}
+                    getSubLabel={(c) => c.cnpj ?? null}
+                    getId={(c) => c.id}
+                    value={cliente}
+                    onChange={setCliente}
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => setModalCliente('novo')}
+                  data-testid="levantamento-novo-cliente"
+                >
+                  <UserPlus size={15} aria-hidden="true" /> Novo cliente
+                </Button>
+              </div>
             )}
           </Field>
+
+          {cadastro && (
+            <div
+              className="mt-3 border-t border-border pt-3 text-xs"
+              data-testid="levantamento-cadastro"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-text-subtle">
+                  {cadastro.cnpj ? `CNPJ ${cadastro.cnpj}` : 'sem CNPJ'}
+                  {enderecoCurto(cadastro) && ` · ${enderecoCurto(cadastro)}`}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setModalCliente('editar')}
+                  data-testid="levantamento-editar-cliente"
+                >
+                  <Pencil size={13} aria-hidden="true" />
+                  {faltaCadastro.length ? 'Completar cadastro' : 'Editar cadastro'}
+                </Button>
+              </div>
+              {faltaCadastro.length > 0 && (
+                <p className="mt-1 text-warning" data-testid="levantamento-cadastro-falta">
+                  O contrato não sai sem: {faltaCadastro.join(', ')}.
+                </p>
+              )}
+            </div>
+          )}
         </Card>
 
         <Card className="p-4">
@@ -643,6 +810,82 @@ export default function LevantamentoCampoPage() {
           </Card>
         )}
 
+        {proposta && (
+          <Card className="p-4" data-testid="levantamento-contrato">
+            <p className="mb-1 text-sm font-medium">Dados do contrato</p>
+            <p className="mb-3 text-xs text-text-subtle">
+              Quem assina pelo cliente é uma PESSOA — a assinatura eletrônica recusa razão social.
+              Sem estes dados o cliente aceita e o contrato não sai.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Prazo do contrato (meses)">
+                <Input
+                  data-testid="contrato-prazo-meses"
+                  inputMode="numeric"
+                  value={prazoMeses}
+                  onChange={(e) => setPrazoMeses(e.target.value.replace(/\D/g, ''))}
+                  placeholder="36"
+                />
+              </Field>
+              <Field label="Dia de vencimento" hint="De 1 a 28">
+                <Input
+                  data-testid="contrato-dia-vencimento"
+                  inputMode="numeric"
+                  value={diaVencimento}
+                  onChange={(e) => setDiaVencimento(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="10"
+                />
+              </Field>
+              <Field label="Validade da proposta">
+                <Input
+                  data-testid="contrato-validade"
+                  type="date"
+                  value={validoAte}
+                  onChange={(e) => setValidoAte(e.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Quem assina pelo cliente (nome)">
+                <Input
+                  data-testid="contrato-signatario-nome"
+                  value={signatarioNome}
+                  maxLength={120}
+                  onChange={(e) => setSignatarioNome(e.target.value)}
+                  placeholder="Nome e sobrenome"
+                />
+              </Field>
+              <Field label="E-mail de quem assina">
+                <Input
+                  data-testid="contrato-signatario-email"
+                  type="email"
+                  value={signatarioEmail}
+                  maxLength={160}
+                  onChange={(e) => setSignatarioEmail(e.target.value)}
+                  placeholder={cadastro?.email ?? 'nome@empresa.com.br'}
+                />
+              </Field>
+              <Field label="Celular de quem assina">
+                <PhoneInput
+                  testId="contrato-signatario-telefone"
+                  value={signatarioTelefone}
+                  onChange={setSignatarioTelefone}
+                />
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Button
+                variant="secondary"
+                onClick={salvarContrato}
+                disabled={salvandoContrato}
+                data-testid="salvar-contrato"
+              >
+                {salvandoContrato ? 'Salvando…' : 'Salvar dados do contrato'}
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {topologia && (
           <div
             data-testid="levantamento-topologia"
@@ -669,6 +912,8 @@ export default function LevantamentoCampoPage() {
               {itens.length} quadro(s) salvos em {proposta.numero}
               {semPrazo && ' · prazos pendentes'}
               {semServicos && ' · serviços pendentes'}
+              {semContrato && ' · dados do contrato pendentes'}
+              {faltaCadastro.length > 0 && ' · cadastro do cliente incompleto'}
             </p>
             <Button onClick={concluir} disabled={!!topologia} data-testid="levantamento-concluir">
               <Check size={16} aria-hidden="true" /> Ver proposta
@@ -676,6 +921,16 @@ export default function LevantamentoCampoPage() {
           </div>
         )}
       </div>
+
+      {modalCliente && (
+        <ClienteFormModal
+          open
+          cliente={modalCliente === 'editar' ? cadastro : null}
+          onClose={() => setModalCliente(null)}
+          onSaved={usarCliente}
+          onUsarExistente={usarCliente}
+        />
+      )}
     </PageLayout>
   );
 }

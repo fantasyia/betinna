@@ -502,3 +502,124 @@ describe('verificação e serviços de implantação', () => {
     expect(screen.getByText(/2 parcelas de R\$\s?6\.000,01/)).toBeTruthy();
   });
 });
+
+/**
+ * Dados do contrato e cadastro do cliente NA TELA do levantamento (Léo, 24/09).
+ * Antes, proposta nascida aqui chegava no aceite sem prazo em meses, dia de
+ * vencimento, validade e signatário — e o contrato não saía.
+ */
+describe('dados do contrato e cadastro do cliente', () => {
+  const cadastroCompleto = {
+    id: 'cli-1',
+    nome: 'Alfa',
+    cnpj: '16774052000155',
+    email: 'compras@alfa.com.br',
+    cep: '04304-010',
+    endereco: 'Av. Fagundes Filho',
+    numero: '141',
+    bairro: 'Vila Monte Alegre',
+    cidade: 'São Paulo',
+    uf: 'SP',
+  };
+  function rotas(prop: unknown, cadastro: unknown = cadastroCompleto) {
+    apiGet.mockImplementation((url: string) =>
+      Promise.resolve(url.startsWith('/clientes/') ? cadastro : prop),
+    );
+  }
+
+  it('salva prazo, dia, validade e signatário em NÚMERO e texto limpo', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas(proposta());
+    apiPatch.mockResolvedValue({});
+    render(<LevantamentoCampoPage />);
+    await waitFor(() => expect(screen.getByTestId('levantamento-contrato')).toBeTruthy());
+
+    fireEvent.change(screen.getByTestId('contrato-prazo-meses'), { target: { value: '36' } });
+    fireEvent.change(screen.getByTestId('contrato-dia-vencimento'), { target: { value: '10' } });
+    fireEvent.change(screen.getByTestId('contrato-validade'), { target: { value: '2026-10-31' } });
+    fireEvent.change(screen.getByTestId('contrato-signatario-nome'), {
+      target: { value: ' Marina Aguiar ' },
+    });
+    fireEvent.change(screen.getByTestId('contrato-signatario-email'), {
+      target: { value: 'pedido@somatecblocking.com.br' },
+    });
+    fireEvent.click(screen.getByTestId('salvar-contrato'));
+
+    await waitFor(() => expect(apiPatch).toHaveBeenCalled());
+    expect(apiPatch).toHaveBeenCalledWith('/propostas/prop-9', {
+      prazoMeses: 36,
+      diaVencimento: 10,
+      validoAte: '2026-10-31',
+      signatarioNome: 'Marina Aguiar',
+      signatarioEmail: 'pedido@somatecblocking.com.br',
+      signatarioTelefone: undefined,
+    });
+  });
+
+  it('dia de vencimento 29 é recusado na tela, sem chamar a API', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas(proposta());
+    render(<LevantamentoCampoPage />);
+    await waitFor(() => expect(screen.getByTestId('levantamento-contrato')).toBeTruthy());
+
+    fireEvent.change(screen.getByTestId('contrato-dia-vencimento'), { target: { value: '29' } });
+    fireEvent.click(screen.getByTestId('salvar-contrato'));
+
+    expect(screen.getByTestId('levantamento-erro').textContent).toContain('1 a 28');
+    expect(apiPatch).not.toHaveBeenCalled();
+  });
+
+  it('retomando, carrega os dados do contrato já gravados', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas({
+      ...proposta(),
+      prazoMeses: 24,
+      diaVencimento: 5,
+      validoAte: '2026-10-31T00:00:00.000Z',
+      signatarioNome: 'Marina Aguiar',
+      signatarioEmail: 'pedido@somatecblocking.com.br',
+    });
+    render(<LevantamentoCampoPage />);
+    await waitFor(() =>
+      expect((screen.getByTestId('contrato-prazo-meses') as HTMLInputElement).value).toBe('24'),
+    );
+    expect((screen.getByTestId('contrato-dia-vencimento') as HTMLInputElement).value).toBe('5');
+    expect((screen.getByTestId('contrato-validade') as HTMLInputElement).value).toBe('2026-10-31');
+    expect((screen.getByTestId('contrato-signatario-nome') as HTMLInputElement).value).toBe(
+      'Marina Aguiar',
+    );
+  });
+
+  it('cadastro sem endereço: diz o que falta e oferece COMPLETAR', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas(proposta(), { id: 'cli-1', nome: 'Alfa', cnpj: '16774052000155' });
+    render(<LevantamentoCampoPage />);
+
+    await waitFor(() => expect(screen.getByTestId('levantamento-cadastro-falta')).toBeTruthy());
+    expect(screen.getByTestId('levantamento-cadastro-falta').textContent).toBe(
+      'O contrato não sai sem: CEP, logradouro, número, bairro, cidade, UF.',
+    );
+    expect(screen.getByTestId('levantamento-editar-cliente').textContent).toContain(
+      'Completar cadastro',
+    );
+  });
+
+  it('cadastro completo: mostra CNPJ e endereço, sem aviso', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas(proposta());
+    render(<LevantamentoCampoPage />);
+
+    await waitFor(() => expect(screen.getByTestId('levantamento-cadastro')).toBeTruthy());
+    expect(screen.getByTestId('levantamento-cadastro').textContent).toContain(
+      'Av. Fagundes Filho, 141',
+    );
+    expect(screen.queryByTestId('levantamento-cadastro-falta')).toBeNull();
+  });
+
+  it('sem proposta ainda, dá pra cadastrar cliente ali mesmo', () => {
+    semRascunhos();
+    render(<LevantamentoCampoPage />);
+    fireEvent.click(screen.getByTestId('levantamento-novo-cliente'));
+    expect(screen.getByTestId('cliente-cnpj-input')).toBeTruthy();
+  });
+});
