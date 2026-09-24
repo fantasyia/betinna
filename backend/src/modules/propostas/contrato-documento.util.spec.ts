@@ -260,8 +260,12 @@ describe('o timbrado e o rodapé', () => {
   it('o rodapé é TEXTO, com o e-mail comercial@', () => {
     const rodape = parte('word/footer1.xml');
     expect(rodape).toContain('comercial@somatecblocking.com.br');
-    expect(rodape).toContain('Rua XV de Novembro, 743');
     expect(rodape).not.toContain('somatec@');
+    // Dados oficiais = `CONTACT` do site (somatec_web/src/lib/constants/site.ts).
+    // O timbrado trazia o endereço e os telefones de Dracena, que não valem mais.
+    expect(rodape).toContain('Av. Fagundes Filho, 141, Conjunto 72');
+    expect(rodape).toContain('+55 11 91764-4757');
+    expect(rodape).not.toMatch(/Dracena|XV de Novembro|98138|3823/);
     expect(parte('word/document.xml')).toMatch(/<w:footerReference w:type="default"/);
   });
 
