@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SINAIS_ROTEAMENTO } from './fluxo-executor.types';
-import { filtrarVariaveisGravaveis, moldurarNome } from './conversar-ia.service';
-import { filtrarVariaveisGravaveis, normalizarPontuacao } from './conversar-ia.service';
+import {
+  filtrarVariaveisGravaveis,
+  moldurarNome,
+  normalizarPontuacao,
+} from './conversar-ia.service';
 import {
   semMic,
   ConversarIaService,
@@ -31,7 +34,6 @@ const makePrisma = () => {
       gravacoesDeVariaveis.push({ ...banco });
       return Promise.resolve([{ variaveis: { ...banco } }]);
     }),
-    $executeRaw: vi.fn().mockResolvedValue(1),
     // #4: cancelamento cross-fluxo das AGUARDANDO usa raw (o filtro JSON do
     // Prisma trata chave ausente como NULL — ver fluxo-event-bus).
     $executeRaw: vi.fn().mockResolvedValue(0),
@@ -124,14 +126,16 @@ const makeQueue = () => ({ add: vi.fn().mockResolvedValue({ id: 'job-1' }) });
  * a pegar a chamada errada quando as escritas de estado viraram condicionais
  * (`where: status != CANCELADO`, pra não ressuscitar execução cancelada).
  */
+/** O `data` de uma escrita de estado, no formato que os testes leem. */
+type EscritaDeEstado = {
+  data: { contexto?: Record<string, unknown> } & Record<string, unknown>;
+};
 function escritasDeEstado(prisma: {
   fluxoExecucao: { updateMany: { mock: { calls: unknown[][] } } };
-}): Array<{ data: Record<string, never> }> {
+}): EscritaDeEstado[] {
   return prisma.fluxoExecucao.updateMany.mock.calls
     .map((c) => c[0] as { data?: Record<string, unknown> })
-    .filter((c): c is { data: Record<string, never> } =>
-      Boolean(c?.data && !('processandoTurno' in c.data)),
-    );
+    .filter((c): c is EscritaDeEstado => Boolean(c?.data && !('processandoTurno' in c.data)));
 }
 
 describe('parseTurnoIa', () => {
