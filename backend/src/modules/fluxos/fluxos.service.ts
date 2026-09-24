@@ -657,7 +657,10 @@ export class FluxosService {
     return this.findOneById(fluxoId);
   }
 
-  async list(user: AuthenticatedUser, params: ListFluxosDto): Promise<Paginated<FluxoWithRel>> {
+  async list(
+    user: AuthenticatedUser,
+    params: ListFluxosDto,
+  ): Promise<Paginated<FluxoWithRel & { favorito: boolean }>> {
     const empresaId = this.requireEmpresa(user);
     const where: Prisma.FluxoWhereInput = { empresaId };
     // Fluxo com DONO (card 👤): pessoal fica FORA da lista da empresa por

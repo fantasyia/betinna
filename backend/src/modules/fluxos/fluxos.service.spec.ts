@@ -36,6 +36,8 @@ const makePrismaMock = () => ({
     update: vi.fn(),
     updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     count: vi.fn(),
+    // Os testes de "situação" trocam por uma implementação própria.
+    groupBy: vi.fn(),
   },
   fluxoFavorito: {
     findMany: vi.fn().mockResolvedValue([]),
@@ -1042,7 +1044,13 @@ describe('FluxosService — favoritos', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new FluxosService(prisma as never, makeBusMock() as never);
+    // redis e mídia não entram na listagem — iam `undefined` implícitos.
+    svc = new FluxosService(
+      prisma as never,
+      makeBusMock() as never,
+      undefined as never,
+      undefined as never,
+    );
   });
 
   it('favorito sobe pro topo, o resto segue em ordem de nome', async () => {
