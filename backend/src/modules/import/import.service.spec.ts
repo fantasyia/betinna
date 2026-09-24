@@ -301,6 +301,7 @@ describe('ImportService.importarLeads', () => {
   it('REP recebe ForbiddenException', async () => {
     await expect(
       svc.importarLeads(fakeUser({ role: 'REP' as UserRole }), {
+        dispararReguas: false,
         csv: 'nome\nLead A',
         dryRun: false,
         onDuplicate: 'skip',
@@ -310,6 +311,7 @@ describe('ImportService.importarLeads', () => {
 
   it('importa rows (Excel) — sem etapa escolhida, entra como CONTATO (sem funil)', async () => {
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Rep João', telefone: '11999990000', cidade: 'São Paulo' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -326,6 +328,7 @@ describe('ImportService.importarLeads', () => {
 
   it('CSV com header "whatsapp" vira contatoTelefone', async () => {
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       csv: 'nome,whatsapp\nMaria,11988887777',
       dryRun: false,
       onDuplicate: 'skip',
@@ -337,6 +340,7 @@ describe('ImportService.importarLeads', () => {
   it('dedup por telefone: onDuplicate=skip pula o existente', async () => {
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -347,6 +351,7 @@ describe('ImportService.importarLeads', () => {
 
   it('rejeita linha sem nome', async () => {
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -362,6 +367,7 @@ describe('ImportService.importarLeads', () => {
       tipo: 'ATIVA',
     });
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Lead X' }],
       funilEtapaId: 'etapa-prospec',
       dryRun: false,
@@ -375,6 +381,7 @@ describe('ImportService.importarLeads', () => {
 
   it('dryRun não persiste', async () => {
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Lead Y' }],
       dryRun: true,
       onDuplicate: 'skip',
@@ -384,6 +391,7 @@ describe('ImportService.importarLeads', () => {
   });
   it('lead NOVO nasce com origemCadastro=importacao (nunca nulo)', async () => {
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Lead Z', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -403,6 +411,7 @@ describe('ImportService.importarLeads', () => {
     });
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000', empresa: 'ACME' }],
       dryRun: false,
       onDuplicate: 'update',
@@ -422,6 +431,7 @@ describe('ImportService.importarLeads', () => {
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'update',
@@ -436,6 +446,7 @@ describe('ImportService.importarLeads', () => {
     prisma.lead.findUnique.mockResolvedValueOnce({ variaveis: null });
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'update',
@@ -466,6 +477,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'update',
@@ -482,6 +494,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'update',
@@ -494,6 +507,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000', valor: '5000' }],
       dryRun: false,
       onDuplicate: 'update',
@@ -506,6 +520,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'update',
@@ -522,6 +537,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-do-whatsapp' }]);
 
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Mesma pessoa', telefone: '(11) 99999-0000' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -535,6 +551,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-por-email' });
 
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Sem fone', email: 'Contato@Empresa.com' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -619,6 +636,7 @@ describe('ImportService.importarLeads — destino no funil', () => {
     // e-mail marketing, lista de reps, prospecção fria) despejava tudo no
     // pipeline principal e depois era trabalho manual tirar.
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Contato Frio', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -639,6 +657,7 @@ describe('ImportService.importarLeads — destino no funil', () => {
     });
 
     await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [{ nome: 'Lead Quente', telefone: '11999990000' }],
       dryRun: false,
       onDuplicate: 'skip',
@@ -653,6 +672,7 @@ describe('ImportService.importarLeads — destino no funil', () => {
   it('funil SEM etapa é recusado (a etapa é decisão de quem importa)', async () => {
     await expect(
       svc.importarLeads(fakeUser(), {
+        dispararReguas: false,
         rows: [{ nome: 'X', telefone: '11999990000' }],
         dryRun: false,
         onDuplicate: 'skip',
@@ -666,6 +686,7 @@ describe('ImportService.importarLeads — destino no funil', () => {
 
     await expect(
       svc.importarLeads(fakeUser(), {
+        dispararReguas: false,
         rows: [{ nome: 'X', telefone: '11999990000' }],
         dryRun: false,
         onDuplicate: 'skip',
@@ -796,6 +817,7 @@ B,X2,20`,
 
   it('lead repetido casa pelo SUFIXO do telefone, não pela string crua', async () => {
     const r = await svc.importarLeads(fakeUser(), {
+      dispararReguas: false,
       rows: [
         { nome: 'João', telefone: '11999990000' },
         { nome: 'Joao (outro formato)', telefone: '+55 11 99999-0000' },
