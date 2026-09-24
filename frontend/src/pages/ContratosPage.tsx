@@ -11,6 +11,8 @@ import { StateView } from '@/components/StateView';
 import { Avatar, Badge, Button, Card, EmptyState, Input, Select } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { formatMoeda, formatNumero } from '@/lib/masks';
+import { useRole } from '@/hooks/usePermission';
+import { ModeloContratoCard } from '@/pages/contratos/ModeloContratoCard';
 
 type ContratoStatus =
   'RASCUNHO' | 'AGUARDANDO_ASSINATURA' | 'ASSINADO' | 'ATIVO' | 'ENCERRADO' | 'CANCELADO';
@@ -68,6 +70,9 @@ export default function ContratosPage() {
   const [busca, setBusca] = useState(searchParams.get('search') ?? '');
   const [baixando, setBaixando] = useState<string | null>(null);
   const toast = useToast();
+  // O modelo do contrato é cláusula contratual: só quem manda no tenant troca.
+  const role = useRole();
+  const podeTrocarModelo = role === 'DIRECTOR' || role === 'ADMIN';
 
   const params = new URLSearchParams({ page: '1', limit: '50' });
   if (status) params.set('status', status);
@@ -98,6 +103,11 @@ export default function ContratosPage() {
       }
     >
       <VendasTabs />
+      {podeTrocarModelo && (
+        <div className="mb-4">
+          <ModeloContratoCard />
+        </div>
+      )}
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
           <Input
