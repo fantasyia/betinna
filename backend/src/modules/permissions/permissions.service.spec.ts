@@ -213,7 +213,11 @@ describe('PermissionsService', () => {
         { usuarioId: 'rep-1', modulo: 'clientes', podeVer: false, podeEditar: false },
       ]);
 
-      const rows = await service.listEffectiveForUser('rep-1', 'REP');
+      const rows = await service.listEffectiveForUser('rep-1', 'REP', 'emp-1');
+      // 🔒 Os overrides são da empresa ATIVA, não de todas as do usuário.
+      expect(prisma.usuarioPermissao.findMany).toHaveBeenCalledWith({
+        where: { usuarioId: 'rep-1', empresaId: 'emp-1' },
+      });
       const clientes = rows.find((r) => r.modulo === 'clientes');
       const pedidos = rows.find((r) => r.modulo === 'pedidos');
 
@@ -222,7 +226,7 @@ describe('PermissionsService', () => {
     });
 
     it('ADMIN → tudo true sem override', async () => {
-      const rows = await service.listEffectiveForUser('adm-1', 'ADMIN');
+      const rows = await service.listEffectiveForUser('adm-1', 'ADMIN', 'emp-1');
       expect(rows.every((r) => r.podeVer && r.podeEditar && !r.override)).toBe(true);
     });
   });
@@ -307,10 +311,14 @@ describe('PermissionsService', () => {
       ]);
       prisma.usuarioPermissao.findMany.mockResolvedValue([]);
 
-      await service.removeUserOverride('rep-1', 'catalogo');
+      await service.removeUserOverride('rep-1', 'catalogo', 'emp-1');
 
+      // 🔒 O `empresaId` no where é a guarda multi-tenant: sem ele, remover o
+      // override aqui apagaria o do usuário em TODAS as empresas. O teste antigo
+      // chamava sem o parâmetro e o toHaveBeenCalledWith trata `undefined` como
+      // igual — passava sem conferir justamente isso.
       expect(prisma.usuarioPermissao.deleteMany).toHaveBeenCalledWith({
-        where: { usuarioId: 'rep-1', modulo: 'catalogo' },
+        where: { usuarioId: 'rep-1', empresaId: 'emp-1', modulo: 'catalogo' },
       });
       expect(service.userCanFor('rep-1', 'REP', 'catalogo', 'view')).toBe(true);
     });

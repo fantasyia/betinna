@@ -33,7 +33,12 @@ describe('FluxoExecutorProcessor.onFailed', () => {
   beforeEach(() => {
     prisma = makePrisma();
     deadLetter = { record: vi.fn().mockResolvedValue(undefined) };
-    processor = new FluxoExecutorProcessor({} as never, prisma as never, deadLetter as never);
+    processor = new FluxoExecutorProcessor(
+      {} as never,
+      prisma as never,
+      deadLetter as never,
+      undefined as never, // bus
+    );
   });
 
   it('marca a execução como FALHOU quando os retries acabam', async () => {

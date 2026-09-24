@@ -215,6 +215,8 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
         {} as never,
         {} as never,
         {} as never,
+        undefined as never, // etapa
+        undefined as never, // comissoes
       ) as unknown as { frontendUrl: () => string };
 
     it('usa FRONTEND_URL quando existe', () => {

@@ -43,6 +43,7 @@ const makeJob = (prisma: ReturnType<typeof makePrisma>, bus: Record<string, unkn
     {} as never,
     {} as never,
     {} as never,
+    undefined as never, // notificacoes
   );
 
 describe('FluxoTriggersJob.reconciliarClaims — execuções abandonadas', () => {

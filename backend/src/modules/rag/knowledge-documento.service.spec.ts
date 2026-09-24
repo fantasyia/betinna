@@ -38,7 +38,7 @@ describe('KnowledgeDocumentoService — fonte de resposta vs anexar arquivo', ()
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new KnowledgeDocumentoService(prisma as never, {} as never);
+    svc = new KnowledgeDocumentoService(prisma as never, {} as never, undefined as never);
     prisma.knowledgeDocumento.findFirst.mockResolvedValue({ id: 'doc-1', titulo: 'Playbook' });
   });
 

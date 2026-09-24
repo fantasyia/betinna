@@ -42,6 +42,7 @@ describe('CampanhaEnvioProcessor.onFailed — #erro-retry', () => {
         whatsappInvalido: vi.fn(async () => false),
         marcarWhatsappInvalido: vi.fn(async () => 0),
       } as never, // supressao
+      undefined as never, // queue
     );
   });
 

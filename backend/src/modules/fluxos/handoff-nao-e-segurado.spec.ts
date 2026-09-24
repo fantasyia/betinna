@@ -48,7 +48,7 @@ const build = (turnoAberto: boolean) => {
     $queryRaw: vi.fn().mockResolvedValue(turnoAberto ? [{ id: 'exec-viva' }] : []),
   };
   const queue = { add: vi.fn().mockResolvedValue({ id: 'job-1' }) };
-  const bus = new FluxoEventBusService(prisma as never, queue as never);
+  const bus = new FluxoEventBusService(prisma as never, queue as never, undefined as never);
   return { bus, prisma, queue };
 };
 

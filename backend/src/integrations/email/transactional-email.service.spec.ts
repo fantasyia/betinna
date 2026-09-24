@@ -33,6 +33,7 @@ describe('TransactionalEmailService — provedor único (Resend)', () => {
       resend as never,
       makeEnvMock() as never,
       prisma as never,
+      undefined as never, // descadastro — não usado nestes testes
     );
   });
 

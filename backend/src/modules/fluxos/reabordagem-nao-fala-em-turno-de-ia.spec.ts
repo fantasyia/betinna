@@ -55,7 +55,7 @@ describe('Gatilho proativo x turno de IA aberto', () => {
     prisma = makePrisma(turnoAberto);
     prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prisma));
     queue = makeQueue();
-    return new FluxoEventBusService(prisma as never, queue as never);
+    return new FluxoEventBusService(prisma as never, queue as never, undefined as never);
   };
 
   it('turno de IA aberto: a reabordagem NÃO fala e NÃO cria execução', async () => {

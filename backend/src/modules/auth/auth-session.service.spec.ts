@@ -83,7 +83,13 @@ describe('AuthSessionService.welcomeFinalize — gate de segurança', () => {
   beforeEach(() => {
     env = makeEnv();
     prisma = makePrisma();
-    service = new AuthSessionService(env as never, prisma as never);
+    service = new AuthSessionService(
+      env as never,
+      prisma as never,
+      undefined as never, // email
+      undefined as never, // redis
+      undefined as never, // branding
+    );
     mockUpdateUserById.mockReset();
     mockUpdateUserById.mockResolvedValue({ error: null });
   });

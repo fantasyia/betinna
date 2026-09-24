@@ -39,8 +39,7 @@ function build(criou = true) {
     { responderPendente: vi.fn().mockResolvedValue(false) } as never,
     {} as never,
     notificacoes as never,
-    // inbox: a saída do ENVIAR_WHATSAPP passa a ser gravada na conversa.
-    { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+    // (o `inbox` que ia aqui era um 11º argumento: o job não o recebe mais.)
   );
   return { job, prisma, bus };
 }

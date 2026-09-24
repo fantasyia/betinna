@@ -33,7 +33,7 @@ describe('FluxoEventBusService — gate de teste', () => {
       $executeRaw: vi.fn().mockResolvedValue(0),
     };
     queue = { add: vi.fn() };
-    bus = new FluxoEventBusService(prisma as never, queue as never);
+    bus = new FluxoEventBusService(prisma as never, queue as never, undefined as never);
   });
 
   it('payload com _teste=true é SUPRIMIDO — nem consulta fluxos ativos', async () => {

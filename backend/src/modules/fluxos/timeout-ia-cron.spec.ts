@@ -26,6 +26,7 @@ function build(lockOk = true) {
     conversarIa as never,
     {} as never,
     {} as never,
+    undefined as never, // notificacoes
   );
   return { job, conversarIa, cronLock, prisma };
 }

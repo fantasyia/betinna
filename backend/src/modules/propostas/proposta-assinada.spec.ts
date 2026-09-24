@@ -22,6 +22,9 @@ const transicao = (de: string, para: string) => {
     {} as never,
     {} as never,
     {} as never,
+    undefined as never, // pedidosSvc
+    undefined as never, // marca
+    undefined as never, // selecaoModelo
   );
   return () =>
     (

@@ -176,6 +176,13 @@ function build(
       ehPerguntaDePedido: vi.fn().mockReturnValue(false),
       contextoPorTelefone: vi.fn().mockResolvedValue(''),
     } as never,
+    // notificacoes — ⚠️ entrou ANTES de supressao no construtor e o teste não
+    // acompanhou: o mock de LGPD caía na vaga de notificacoes e a supressão
+    // rodava `undefined` em todos os testes deste arquivo (achado em 24/09).
+    {
+      criarParaUsuario: vi.fn().mockResolvedValue(null),
+      criarParaRole: vi.fn().mockResolvedValue(null),
+    } as never,
     { aplicarLgpd: vi.fn().mockResolvedValue(0) } as never, // supressao (B-4)
   );
   // Expostos pros testes de anti-spam (contador no Redis) e falha de envio.

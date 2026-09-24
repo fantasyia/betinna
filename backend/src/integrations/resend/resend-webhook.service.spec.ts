@@ -23,7 +23,16 @@ function build(secret = SECRET) {
     campanhaDestinatario: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
   const env = { get: vi.fn(() => secret) };
-  return { svc: new ResendWebhookService(env as never, prisma as never), prisma };
+  return {
+    svc: new ResendWebhookService(
+      env as never,
+      prisma as never,
+      undefined as never, // supressao
+      undefined as never, // inbound
+      undefined as never, // resend
+    ),
+    prisma,
+  };
 }
 
 describe('webhook do Resend', () => {

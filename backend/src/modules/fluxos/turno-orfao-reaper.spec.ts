@@ -27,6 +27,7 @@ const makeJob = (prisma: ReturnType<typeof makePrisma>, conversarIa: Record<stri
     conversarIa as never,
     {} as never,
     {} as never,
+    undefined as never, // notificacoes
   );
 
 describe('FluxoTriggersJob.destravarTurnosOrfaos', () => {

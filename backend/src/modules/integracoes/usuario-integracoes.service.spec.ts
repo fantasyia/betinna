@@ -77,7 +77,7 @@ describe('UsuarioIntegracoesService', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     env = makeEnv();
-    service = new UsuarioIntegracoesService(prisma as never, env as never);
+    service = new UsuarioIntegracoesService(prisma as never, env as never, undefined as never);
   });
 
   // -------------------------------------------------------------------------

@@ -111,6 +111,9 @@ describe('IntegracoesService', () => {
       env as never,
       statusMock as never,
       resendMock as never,
+      undefined as never, // redis
+      undefined as never, // evolution
+      undefined as never, // email
     );
   });
 
@@ -681,6 +684,7 @@ describe('IntegracoesService — status do WhatsApp segue o provider ativo', () 
       {} as never,
       {} as never,
       evolution as never,
+      undefined as never, // email
     );
     return { svc, evolution };
   };
@@ -700,6 +704,7 @@ describe('IntegracoesService — status do WhatsApp segue o provider ativo', () 
       {} as never,
       {} as never,
       evolution as never,
+      undefined as never, // email
     );
     return { svc, evolution };
   };
