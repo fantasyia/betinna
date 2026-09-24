@@ -115,7 +115,7 @@ describe('testar fluxo', () => {
   it('marca a execução como teste na COLUNA, não só no contexto', async () => {
     const { svc, prisma } = makeService();
 
-    await svc.testar(user, { fluxoId: 'f1', contexto: {} });
+    await svc.testar(user, { fluxoId: 'f1', contexto: {}, enviarDeVerdade: false });
 
     const data = (prisma.fluxoExecucao.create.mock.calls[0][0] as { data: { teste: boolean } })
       .data;
@@ -127,16 +127,18 @@ describe('testar fluxo', () => {
     // falha ainda ia sujar o painel. Melhor recusar com a instrução certa.
     const { svc, prisma } = makeService([noWa('CRIAR_LEAD', 'Criar/amarrar lead na Triagem')]);
 
-    await expect(svc.testar(user, { fluxoId: 'f1', contexto: {} })).rejects.toBeInstanceOf(
-      BusinessRuleException,
-    );
+    await expect(
+      svc.testar(user, { fluxoId: 'f1', contexto: {}, enviarDeVerdade: false }),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
     expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
   });
 
   it('a recusa NOMEIA o nó e diz o que fazer', async () => {
     const { svc } = makeService([noWa('CRIAR_LEAD', 'Criar/amarrar lead na Triagem')]);
 
-    const err = await svc.testar(user, { fluxoId: 'f1', contexto: {} }).catch((e: Error) => e);
+    const err = (await svc
+      .testar(user, { fluxoId: 'f1', contexto: {}, enviarDeVerdade: false })
+      .catch((e: Error) => e)) as Error;
 
     expect(err.message).toContain('Criar/amarrar lead na Triagem');
     expect(err.message).toMatch(/conversa/i);
@@ -153,7 +155,12 @@ describe('testar fluxo', () => {
       mensagens: [{ conteudo: 'oi, quero orçamento' }],
     });
 
-    await svc.testar(user, { fluxoId: 'f1', contexto: {}, conversationId: 'conv-1' });
+    await svc.testar(user, {
+      fluxoId: 'f1',
+      contexto: {},
+      enviarDeVerdade: false,
+      conversationId: 'conv-1',
+    });
 
     const ctx = (prisma.fluxoExecucao.create.mock.calls[0][0] as { data: { contexto: unknown } })
       .data.contexto as Record<string, unknown>;
@@ -169,7 +176,12 @@ describe('testar fluxo', () => {
     prisma.conversation.findFirst.mockResolvedValue(null);
 
     await expect(
-      svc.testar(user, { fluxoId: 'f1', contexto: {}, conversationId: 'de-outro-tenant' }),
+      svc.testar(user, {
+        fluxoId: 'f1',
+        contexto: {},
+        enviarDeVerdade: false,
+        conversationId: 'de-outro-tenant',
+      }),
     ).rejects.toBeInstanceOf(BusinessRuleException);
     expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
   });
@@ -177,7 +189,7 @@ describe('testar fluxo', () => {
   it('fluxo que NÃO depende de conversa segue testável sem informar nada', async () => {
     const { svc, prisma } = makeService([noWa('ENVIAR_EMAIL')]);
 
-    await svc.testar(user, { fluxoId: 'f1', contexto: {} });
+    await svc.testar(user, { fluxoId: 'f1', contexto: {}, enviarDeVerdade: false });
 
     expect(prisma.fluxoExecucao.create).toHaveBeenCalled();
   });
