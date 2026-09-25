@@ -103,6 +103,18 @@ function tamanhoLegivel(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`;
 }
 
+/** Texto sobre um fundo: escuro em cor clara (ex.: laranja), branco em cor escura. */
+export function textoSobre(hex: string): string {
+  const h = hex.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return '#ffffff';
+  const canal = (i: number) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
+  return lum > 0.18 ? '#0B1620' : '#ffffff';
+}
+
 function estilos(m: Marca): string {
   const { primaria, secundaria, acao } = m.cores;
   return `
@@ -144,7 +156,7 @@ function estilos(m: Marca): string {
   .ac-anexo .tam { font-size:12px; color:#636363; }
   .ac-btn { border:none; cursor:pointer; font-family:'Poppins',sans-serif; font-weight:600; font-size:15px; padding:14px 22px; border-radius:6px; }
   .ac-btn:disabled { opacity:.6; cursor:default; }
-  .ac-btn.acao { background:${acao}; color:#fff; }
+  .ac-btn.acao { background:${acao}; color:${textoSobre(acao)}; }
   .ac-btn.sec { background:#fff; color:${primaria}; border:1px solid ${primaria}; }
   .ac-btn.leve { background:#fff; color:#636363; border:1px solid #D0D0D0; }
   .ac-btn.perigo { background:#c43c3c; color:#fff; }

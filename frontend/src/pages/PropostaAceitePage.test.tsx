@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import PropostaAceitePage, { dataPura } from './PropostaAceitePage';
+import PropostaAceitePage, { dataPura, textoSobre } from './PropostaAceitePage';
 
 /**
  * Página que o CLIENTE abre (Léo, 25/09): o levantamento no formato do
@@ -128,5 +128,10 @@ describe('PropostaAceitePage', () => {
   it('dataPura não desloca o dia', () => {
     expect(dataPura('2026-10-24T00:00:00.000Z')).toBe('24/10/2026');
     expect(dataPura(null)).toBe('—');
+  });
+
+  it('botão de aprovar: texto escuro na cor de ação clara (laranja)', () => {
+    expect(textoSobre('#F39200')).toBe('#0B1620');
+    expect(textoSobre('#00416E')).toBe('#ffffff');
   });
 });

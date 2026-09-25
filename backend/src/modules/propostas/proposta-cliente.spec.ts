@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { templatePropostaParaAprovar } from '@integrations/email/email-templates';
+import { templatePropostaParaAprovar, textoSobre } from '@integrations/email/email-templates';
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostasService } from './propostas.service';
 import { PropostaAnexosService } from './proposta-anexos.service';
@@ -419,5 +419,36 @@ describe('o projeto congela quando o link de aceite existe', () => {
     await expect(svc.upload({} as never, 'prop-27', arquivo as never)).rejects.toThrow(
       /link de aceite já foi gerado/,
     );
+  });
+});
+
+describe('contraste do botão na cor de ação (regra da marca: escuro no laranja)', () => {
+  it('laranja leva texto ESCURO; navy leva branco', () => {
+    expect(textoSobre('#F39200')).toBe('#0B1620');
+    expect(textoSobre('#00416E')).toBe('#ffffff');
+    expect(textoSobre('lixo')).toBe('#ffffff');
+  });
+
+  it('o e-mail com a marca do tenant usa o texto certo no botão', () => {
+    const { html } = templatePropostaParaAprovar({
+      nome: 'Leonardo',
+      empresaNome: 'Empresa X',
+      numero: 'PROP-0027',
+      aluguelMensal: 1528,
+      vigenciaMeses: 60,
+      servicosTotal: null,
+      parcelas: null,
+      valorParcela: null,
+      valorTotal: 1528,
+      validade: null,
+      url: 'https://app.x/a',
+      marca: {
+        empresaNome: 'Empresa X',
+        logoUrl: 'https://x/l.png',
+        corPrimaria: '#00416E',
+        corAcao: '#F39200',
+      },
+    });
+    expect(html).toMatch(/color:#0B1620;text-decoration:none[^>]*>Ver a proposta e aprovar/);
   });
 });

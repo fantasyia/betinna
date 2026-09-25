@@ -468,6 +468,7 @@ export default function PropostasPage() {
             setSelected(null);
             refetch();
           }}
+          onAtualizarLista={refetch}
         />
       )}
       {creating && (
@@ -570,14 +571,21 @@ function PaginationBar({
 
 // ─── Detail drawer ─────────────────────────────────────────────
 
-function PropostaDetailDrawer({
+export function PropostaDetailDrawer({
   id,
   onClose,
   onChanged,
+  onAtualizarLista,
 }: {
   id: string;
   onClose: () => void;
   onChanged: () => void;
+  /**
+   * Atualiza a LISTA sem fechar o painel. Enviar e gerar link usavam o
+   * `onChanged`, que FECHA — e a confirmação e o link sumiam na hora: o Léo
+   * passou duas vezes achando que tinha enviado (teste 25/09).
+   */
+  onAtualizarLista?: () => void;
 }) {
   const toast = useToast();
   const role = useRole();
@@ -586,6 +594,7 @@ function PropostaDetailDrawer({
   const { data, loading, error, refetch } = useApiQuery<PropostaDetail>(`/propostas/${id}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [emailEnviadoPara, setEmailEnviadoPara] = useState<string | null>(null);
   const [transition, setTransition] = useState<PropostaStatus | null>(null);
   const [motivo, setMotivo] = useState('');
 
@@ -715,9 +724,12 @@ function PropostaDetailDrawer({
         `/propostas/${id}/enviar-email`,
       );
       toast.success('Proposta enviada', `E-mail enviado pra ${res.enviadoPara}`);
-      // O e-mail leva o MESMO link — fica na tela pra copiar pro WhatsApp.
+      // O e-mail leva o MESMO link — fica na tela pra copiar pro WhatsApp. O
+      // painel NÃO fecha: a confirmação é a prova de que foi.
+      setEmailEnviadoPara(res.enviadoPara);
       if (res.url) setAceiteLink(res.url);
-      onChanged();
+      refetch();
+      onAtualizarLista?.();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar e-mail');
     } finally {
@@ -734,7 +746,10 @@ function PropostaDetailDrawer({
         `/propostas/${id}/enviar-aceite`,
       );
       setAceiteLink(res.url);
-      onChanged(); // status virou AGUARDANDO_ASSINATURA — atualiza lista
+      setEmailEnviadoPara(null);
+      // Status virou AGUARDANDO_ASSINATURA: atualiza, mas SEM fechar o painel.
+      refetch();
+      onAtualizarLista?.();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao gerar link de aceite');
     } finally {
@@ -797,7 +812,7 @@ function PropostaDetailDrawer({
                 Excel
               </Button>
               <Button
-                variant="secondary"
+                variant="primary"
                 size="sm"
                 data-testid="proposta-enviar-email"
                 loading={exportBusy === 'email'}
@@ -860,7 +875,7 @@ function PropostaDetailDrawer({
               {/* C3 — link de aceite externo (oculto pra propostas já aceitas/recusadas) */}
               {data.status !== 'ACEITA' && data.status !== 'RECUSADA' && (
                 <Button
-                  variant="primary"
+                  variant="secondary"
                   size="sm"
                   data-testid="proposta-enviar-aceite"
                   loading={exportBusy === 'aceite'}
@@ -879,9 +894,19 @@ function PropostaDetailDrawer({
                 className="px-3 py-2.5 rounded-md bg-success/10 border border-success/30"
                 data-testid="proposta-aceite-link"
               >
-                <p className="text-sm font-medium text-text m-0 mb-1.5">
-                  Link de aprovação gerado — envie pro cliente:
-                </p>
+                {emailEnviadoPara ? (
+                  <p
+                    className="text-sm font-medium text-text m-0 mb-1.5"
+                    data-testid="proposta-email-enviado"
+                  >
+                    ✓ E-mail enviado para {emailEnviadoPara}. O mesmo link, pra mandar pelo
+                    WhatsApp:
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium text-text m-0 mb-1.5">
+                    Link de aprovação gerado — envie pro cliente:
+                  </p>
+                )}
                 <div className="flex items-center gap-2">
                   <input
                     readOnly

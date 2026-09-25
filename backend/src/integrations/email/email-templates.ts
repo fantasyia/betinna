@@ -72,6 +72,23 @@ function escaparUrlCss(url: string): string {
   return url.replace(/['"()\\\r\n\s]/g, (c) => encodeURIComponent(c));
 }
 
+/**
+ * Cor do TEXTO sobre um fundo: escuro em cor clara, branco em cor escura.
+ * Branco sobre laranja não passa contraste (regra da marca Somatec: #0B1620 no
+ * laranja) — calculado pela cor, e não cravado por tenant.
+ */
+export function textoSobre(hex: string): string {
+  const h = hex.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return '#ffffff';
+  const canal = (i: number) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
+  // Mesmo contraste contra branco e contra quase-preto em lum ≈ 0,18.
+  return lum > 0.18 ? '#0B1620' : '#ffffff';
+}
+
 function layout(p: BaseLayoutParams): string {
   return p.marca ? layoutDoTenant(p, p.marca) : layoutGenerico(p);
 }
@@ -117,7 +134,7 @@ ${preheader ? `<div style="display:none;font-size:1px;max-height:0;opacity:0;ove
    ${bodyHtml}</td></tr>
  ${
    ctaText && ctaUrl
-     ? `<tr><td style="padding:14px 44px 44px 44px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${escapeAttr(acao)}" style="background-color:${escapeAttr(acao)};"><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:15px 30px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:.2px;">${escapeHtml(ctaText)}</a></td></tr></table></td></tr>`
+     ? `<tr><td style="padding:14px 44px 44px 44px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${escapeAttr(acao)}" style="background-color:${escapeAttr(acao)};"><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:15px 30px;color:${escapeAttr(textoSobre(acao))};text-decoration:none;font-size:15px;font-weight:700;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:.2px;">${escapeHtml(ctaText)}</a></td></tr></table></td></tr>`
      : ''
  }
  <tr><td style="background:${escapeAttr(m.corPrimaria)};padding:26px 44px;">
