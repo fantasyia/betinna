@@ -107,6 +107,24 @@ interface PropostaDetail extends Proposta {
   itens?: PropostaItemDetail[];
 }
 
+/** O envio ao cliente: o link valendo e o e-mail (sai UMA vez por link — Léo, 25/09). */
+interface EnvioAoCliente {
+  ok: boolean;
+  jaEnviado: boolean;
+  enviadoPara: string;
+  enviadoEm: string | null;
+  url: string;
+  expiraEm: string;
+}
+
+/** "25/09 às 19:04", no fuso de Brasília. */
+function diaEHora(iso: string): string {
+  const d = new Date(iso);
+  const f = (o: Intl.DateTimeFormatOptions) =>
+    d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', ...o });
+  return `${f({ day: '2-digit', month: '2-digit' })} às ${f({ hour: '2-digit', minute: '2-digit' })}`;
+}
+
 interface AnexoProposta {
   id: string;
   nome: string;
@@ -594,7 +612,11 @@ export function PropostaDetailDrawer({
   const { data, loading, error, refetch } = useApiQuery<PropostaDetail>(`/propostas/${id}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [emailEnviadoPara, setEmailEnviadoPara] = useState<string | null>(null);
+  // O link valendo e se o e-mail já foi — vem do servidor, então reabrir o
+  // painel mostra o mesmo estado (o e-mail sai UMA vez por link, Léo 25/09).
+  const envioQ = useApiQuery<EnvioAoCliente | null>(`/propostas/${id}/envio`);
+  const [envioAgora, setEnvioAgora] = useState<EnvioAoCliente | null>(null);
+  const envio = envioAgora ?? envioQ.data ?? null;
   const [transition, setTransition] = useState<PropostaStatus | null>(null);
   const [motivo, setMotivo] = useState('');
 
@@ -677,11 +699,9 @@ export function PropostaDetailDrawer({
   }
 
   // ─── C2 — Exportar / enviar ──────────────────────────────────────────
-  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'aceite' | 'erp' | 'pedido-erp' | null>(
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'erp' | 'pedido-erp' | null>(
     null,
   );
-  // C3 — link de aceite externo gerado
-  const [aceiteLink, setAceiteLink] = useState<string | null>(null);
 
   /** Converte base64 → Blob e dispara download no navegador. */
   function baixarBase64(base64: string, filename: string, mime: string) {
@@ -720,38 +740,19 @@ export function PropostaDetailDrawer({
     setExportBusy('email');
     setActionError(null);
     try {
-      const res = await api.post<{ ok: boolean; enviadoPara: string; url?: string }>(
-        `/propostas/${id}/enviar-email`,
-      );
-      toast.success('Proposta enviada', `E-mail enviado pra ${res.enviadoPara}`);
+      const res = await api.post<EnvioAoCliente>(`/propostas/${id}/enviar-email`);
       // O e-mail leva o MESMO link — fica na tela pra copiar pro WhatsApp. O
       // painel NÃO fecha: a confirmação é a prova de que foi.
-      setEmailEnviadoPara(res.enviadoPara);
-      if (res.url) setAceiteLink(res.url);
+      setEnvioAgora(res);
+      if (res.jaEnviado) {
+        toast.info('E-mail já enviado', 'Não foi reenviado — o link é o mesmo, dá pra copiar abaixo.');
+        return;
+      }
+      toast.success('Proposta enviada', `E-mail enviado pra ${res.enviadoPara}`);
       refetch();
       onAtualizarLista?.();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar e-mail');
-    } finally {
-      setExportBusy(null);
-    }
-  }
-
-  // C3 — gera link de aceite externo pra enviar ao cliente
-  async function gerarAceite() {
-    setExportBusy('aceite');
-    setActionError(null);
-    try {
-      const res = await api.post<{ url: string; expiraEm: string }>(
-        `/propostas/${id}/enviar-aceite`,
-      );
-      setAceiteLink(res.url);
-      setEmailEnviadoPara(null);
-      // Status virou AGUARDANDO_ASSINATURA: atualiza, mas SEM fechar o painel.
-      refetch();
-      onAtualizarLista?.();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha ao gerar link de aceite');
     } finally {
       setExportBusy(null);
     }
@@ -872,45 +873,31 @@ export function PropostaDetailDrawer({
                   {podeAprovar ? 'aprove no Tiny' : 'aguardando aprovação da gestão'}
                 </span>
               )}
-              {/* C3 — link de aceite externo (oculto pra propostas já aceitas/recusadas) */}
-              {data.status !== 'ACEITA' && data.status !== 'RECUSADA' && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  data-testid="proposta-enviar-aceite"
-                  loading={exportBusy === 'aceite'}
-                  disabled={exportBusy !== null}
-                  onClick={() => void gerarAceite()}
-                  leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
-                >
-                  Gerar link de aceite
-                </Button>
-              )}
             </div>
 
-            {/* C3 — link gerado: copiar pra enviar ao cliente */}
-            {aceiteLink && (
+            {/* O link que está com o cliente: copiar pro WhatsApp */}
+            {envio && (
               <div
                 className="px-3 py-2.5 rounded-md bg-success/10 border border-success/30"
                 data-testid="proposta-aceite-link"
               >
-                {emailEnviadoPara ? (
+                {envio.enviadoEm ? (
                   <p
                     className="text-sm font-medium text-text m-0 mb-1.5"
                     data-testid="proposta-email-enviado"
                   >
-                    ✓ E-mail enviado para {emailEnviadoPara}. O mesmo link, pra mandar pelo
-                    WhatsApp:
+                    ✓ E-mail enviado para {envio.enviadoPara} em {diaEHora(envio.enviadoEm)}. O
+                    mesmo link, pra mandar pelo WhatsApp:
                   </p>
                 ) : (
                   <p className="text-sm font-medium text-text m-0 mb-1.5">
-                    Link de aprovação gerado — envie pro cliente:
+                    Link de aprovação valendo — envie pro cliente:
                   </p>
                 )}
                 <div className="flex items-center gap-2">
                   <input
                     readOnly
-                    value={aceiteLink}
+                    value={envio.url}
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                     className="flex-1 text-xs px-2 py-1.5 rounded border border-border bg-surface text-text-subtle font-mono"
                   />
@@ -918,7 +905,7 @@ export function PropostaDetailDrawer({
                     variant="secondary"
                     size="sm"
                     onClick={() => {
-                      void navigator.clipboard.writeText(aceiteLink);
+                      void navigator.clipboard.writeText(envio.url);
                       toast.success('Link copiado');
                     }}
                   >
@@ -926,8 +913,11 @@ export function PropostaDetailDrawer({
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted m-0 mt-1.5">
-                  O cliente abre o link, vê a proposta e aceita/recusa. Ao aceitar, um pedido é
-                  criado automaticamente. Link válido por 7 dias.
+                  O cliente abre o link, vê a proposta e aprova ou recusa.{' '}
+                  {data.modalidade === 'LOCACAO'
+                    ? 'Ao aceitar, o contrato vai pra assinatura.'
+                    : 'Ao aceitar, um pedido é criado automaticamente.'}{' '}
+                  Link válido até {diaEHora(envio.expiraEm)}.
                 </p>
               </div>
             )}
@@ -1725,10 +1715,10 @@ function ProjetoAnexos({
     >
       <div className="flex items-center justify-between gap-2 mb-2">
         <div>
-          <p className="m-0 text-sm font-medium text-text">Projeto do cliente</p>
+          <p className="m-0 text-sm font-medium text-text">Levantamento técnico de projeto</p>
           <p className="m-0 text-[11px] text-muted">
             {vazio
-              ? 'Sem o projeto anexado a proposta não vai pro cliente aprovar.'
+              ? 'Sem o levantamento técnico de projeto anexado a proposta não vai pro cliente aprovar.'
               : 'É o que o cliente aprova junto com o preço.'}
           </p>
         </div>

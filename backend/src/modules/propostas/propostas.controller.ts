@@ -142,6 +142,13 @@ export class PropostasController {
     return this.propostas.enviarPorEmail(user, id);
   }
 
+  @Get(':id/envio')
+  @RequirePermissions({ module: 'propostas', action: 'view' })
+  @ApiOperation({ summary: 'Link de aceite valendo e se o e-mail já foi (uma vez por link).' })
+  envio(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.propostas.envioAoCliente(user, id);
+  }
+
   @Post(':id/enviar-aceite')
   @RequirePermissions({ module: 'propostas', action: 'edit' })
   @Audit({ action: 'enviar_aceite', resource: 'proposta', resourceIdFrom: 'params.id' })

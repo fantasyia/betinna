@@ -1280,6 +1280,10 @@ model Proposta {
   /// Token usado uma vez (limpado após aceite/recusa). TTL default 7 dias.
   aceiteToken    String?   @unique
   aceiteExpiraEm DateTime?
+  /// O e-mail do link de aceite sai UMA vez por link (Léo, 25/09). Também é a
+  /// trava do clique duplo: o envio só segue se conseguir gravar isto primeiro.
+  aceiteEmailEnviadoEm   DateTime?
+  aceiteEmailEnviadoPara String?
   /// Contrato CONGELADO ao gerar o link (Léo, 25/09: "o contrato é o mesmo"):
   /// o .docx que o cliente lê na página de aceite é o que vai pra ClickSign.
   contratoPreviaPath         String?

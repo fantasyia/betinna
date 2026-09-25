@@ -8,6 +8,7 @@ import { SelecaoModeloService, type VarianteAcompanhamento } from './selecao-mod
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import {
   BusinessRuleException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@shared/errors/app-exception';
@@ -39,6 +40,17 @@ const propostaInclude = {
 type PropostaWithRel = Prisma.PropostaGetPayload<{ include: typeof propostaInclude }>;
 
 const COMISSAO_PADRAO_PCT = 5;
+
+/** O envio da proposta ao cliente: o link valendo e o e-mail (uma vez por link). */
+export interface EnvioAoCliente {
+  ok: true;
+  /** true = o e-mail JÁ tinha ido com este link; nada foi reenviado agora. */
+  jaEnviado: boolean;
+  enviadoPara: string;
+  enviadoEm: Date | null;
+  url: string;
+  expiraEm: Date;
+}
 
 @Injectable()
 export class PropostasService {
@@ -1020,17 +1032,34 @@ export class PropostasService {
    * Envia a proposta (PDF anexado) por email pro cliente via Resend.
    * Requer email do cliente + Resend configurado.
    */
-  async enviarPorEmail(
-    user: AuthenticatedUser,
-    id: string,
-  ): Promise<{ ok: true; enviadoPara: string; url: string; expiraEm: Date }> {
+  async enviarPorEmail(user: AuthenticatedUser, id: string): Promise<EnvioAoCliente> {
     const data = await this.dadosParaExport(user, id);
     const alvo = await this.findById(user, id);
     const proposta = await this.prisma.proposta.findUnique({
       where: { id },
-      select: SELECT_PROPOSTA_CONTRATO,
+      select: {
+        ...SELECT_PROPOSTA_CONTRATO,
+        aceiteEmailEnviadoEm: true,
+        aceiteEmailEnviadoPara: true,
+      },
     });
     if (!proposta) throw new NotFoundException('Proposta', id);
+
+    // UMA vez por link (Léo, 25/09). Link valendo + e-mail já enviado = devolve
+    // o que já está com o cliente: sem e-mail novo, sem token novo. Link novo
+    // (venceu, ou a proposta voltou pra rascunho) libera um envio novo.
+    const antes = proposta.aceiteEmailEnviadoEm ?? null;
+    const vigente = await this.aceiteSvc.linkVigente(alvo.id);
+    if (vigente && antes) {
+      return {
+        ok: true,
+        jaEnviado: true,
+        enviadoPara: proposta.aceiteEmailEnviadoPara ?? '',
+        enviadoEm: antes,
+        url: vigente.url,
+        expiraEm: vigente.expiraEm,
+      };
+    }
 
     // Vai pra QUEM ASSINA (Léo, 25/09): é a pessoa que aprova. O e-mail do
     // cadastro do cliente é o da empresa — fica só de reserva.
@@ -1051,6 +1080,59 @@ export class PropostasService {
     // Sem link não há e-mail: mandar aviso de proposta sem forma de aceitar é
     // pior que não mandar, porque queima o toque com o cliente. E o link só sai
     // com a proposta completa (`gerarLink` confere tudo que o contrato exige).
+    //
+    // Trava do clique duplo: só segue quem gravar a marca de envio a partir do
+    // valor que leu (CAS). O segundo clique concorrente não acha mais esse valor.
+    const agora = new Date();
+    const trava = await this.prisma.proposta.updateMany({
+      where: { id, aceiteEmailEnviadoEm: antes },
+      data: { aceiteEmailEnviadoEm: agora, aceiteEmailEnviadoPara: para },
+    });
+    if (trava.count === 0) {
+      throw new ConflictException('Esta proposta já está sendo enviada. Atualize a tela.');
+    }
+    try {
+      return await this.enviarEmailDoLink(alvo, proposta, data, para, agora);
+    } catch (err) {
+      // Não saiu: devolve a marca, senão a proposta ficaria "enviada" sem e-mail.
+      await this.prisma.proposta.updateMany({
+        where: { id, aceiteEmailEnviadoEm: agora },
+        data: {
+          aceiteEmailEnviadoEm: antes,
+          aceiteEmailEnviadoPara: proposta.aceiteEmailEnviadoPara ?? null,
+        },
+      });
+      throw err;
+    }
+  }
+
+  /** O que o painel mostra do envio: o link valendo e, se foi, pra quem e quando. */
+  async envioAoCliente(user: AuthenticatedUser, id: string): Promise<EnvioAoCliente | null> {
+    const alvo = await this.findById(user, id); // valida tenant + scope
+    const vigente = await this.aceiteSvc.linkVigente(alvo.id);
+    if (!vigente) return null;
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: alvo.id },
+      select: { aceiteEmailEnviadoEm: true, aceiteEmailEnviadoPara: true },
+    });
+    return {
+      ok: true,
+      jaEnviado: !!p?.aceiteEmailEnviadoEm,
+      enviadoPara: p?.aceiteEmailEnviadoPara ?? '',
+      enviadoEm: p?.aceiteEmailEnviadoEm ?? null,
+      url: vigente.url,
+      expiraEm: vigente.expiraEm,
+    };
+  }
+
+  private async enviarEmailDoLink(
+    alvo: PropostaWithRel,
+    proposta: Prisma.PropostaGetPayload<{ select: typeof SELECT_PROPOSTA_CONTRATO }>,
+    data: PropostaExportData,
+    para: string,
+    agora: Date,
+  ): Promise<EnvioAoCliente> {
+    const id = alvo.id;
     const aceite = await this.aceiteSvc.gerarLink(alvo.id, alvo.empresaId, alvo.status);
 
     const locacao = proposta.modalidade === 'LOCACAO';
@@ -1088,6 +1170,13 @@ export class PropostasService {
     }
 
     this.logger.log(`Proposta ${data.numero} enviada por e-mail a quem assina`);
-    return { ok: true, enviadoPara: para, url: aceite.url, expiraEm: aceite.expiraEm };
+    return {
+      ok: true,
+      jaEnviado: false,
+      enviadoPara: para,
+      enviadoEm: agora,
+      url: aceite.url,
+      expiraEm: aceite.expiraEm,
+    };
   }
 }

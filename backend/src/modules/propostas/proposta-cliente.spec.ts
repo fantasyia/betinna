@@ -320,7 +320,10 @@ describe('página de aceite — o que a prévia pública entrega', () => {
 });
 
 describe('enviarPorEmail — vai pra QUEM ASSINA, com o aluguel por mês', () => {
-  function montarEnvio(overContrato: Record<string, unknown> = {}) {
+  function montarEnvio(
+    overContrato: Record<string, unknown> = {},
+    vigente: { token: string; url: string; expiraEm: Date } | null = null,
+  ) {
     const linha = {
       id: 'prop-27',
       numero: 'PROP-0027',
@@ -343,6 +346,7 @@ describe('enviarPorEmail — vai pra QUEM ASSINA, com o aluguel por mês', () =>
       proposta: {
         findFirst: vi.fn().mockResolvedValue(linha),
         findUnique: vi.fn().mockResolvedValue({ ...PARA_CONTRATO, ...overContrato }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       cliente: {
         findUnique: vi.fn().mockResolvedValue({
@@ -361,6 +365,7 @@ describe('enviarPorEmail — vai pra QUEM ASSINA, com o aluguel por mês', () =>
         url: 'https://app.x/proposta/aceite/t',
         expiraEm: new Date('2026-10-24T00:00:00Z'),
       }),
+      linkVigente: vi.fn().mockResolvedValue(vigente),
     };
 
     const svc = new PropostasService(
@@ -376,9 +381,15 @@ describe('enviarPorEmail — vai pra QUEM ASSINA, com o aluguel por mês', () =>
       { resolver: vi.fn().mockResolvedValue({}) } as never,
       {} as never,
     );
-    return { svc, email, aceite };
+    return { svc, email, aceite, prisma };
   }
   const user = { id: 'u-1', role: 'ADMIN', empresaIdAtiva: 'emp-1' } as never;
+  const VIGENTE = {
+    token: 'v',
+    url: 'https://app.x/proposta/aceite/v',
+    expiraEm: new Date('2026-10-02T00:00:00Z'),
+  };
+  const ENVIADO_EM = new Date('2026-09-25T22:04:00Z');
 
   it('destinatário = e-mail de quem assina; saudação = a pessoa; aluguel mensal e validade sem fuso', async () => {
     const { svc, email, aceite } = montarEnvio();
@@ -405,6 +416,60 @@ describe('enviarPorEmail — vai pra QUEM ASSINA, com o aluguel por mês', () =>
     const { svc, email } = montarEnvio({ signatarioEmail: null });
     await svc.enviarPorEmail(user, 'prop-27');
     expect(email.enviarPropostaParaAprovar.mock.calls[0][0].para).toBe('compras@industria.com.br');
+  });
+
+  /** Léo, 25/09: o e-mail sai UMA vez por link; clicar de novo mostra o link valendo. */
+  it('link valendo e e-mail já enviado: NÃO reenvia, NÃO troca o token — devolve o que está com o cliente', async () => {
+    const { svc, email, aceite, prisma } = montarEnvio(
+      { aceiteEmailEnviadoEm: ENVIADO_EM, aceiteEmailEnviadoPara: 'pedido@somatecblocking.com.br' },
+      VIGENTE,
+    );
+    const r = await svc.enviarPorEmail(user, 'prop-27');
+    expect(r).toMatchObject({
+      jaEnviado: true,
+      enviadoPara: 'pedido@somatecblocking.com.br',
+      enviadoEm: ENVIADO_EM,
+      url: VIGENTE.url,
+    });
+    expect(email.enviarPropostaParaAprovar).not.toHaveBeenCalled();
+    expect(aceite.gerarLink).not.toHaveBeenCalled();
+    expect(prisma.proposta.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('clique duplo: quem não pega a trava NÃO manda o 2º e-mail', async () => {
+    const { svc, email, aceite, prisma } = montarEnvio();
+    prisma.proposta.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(svc.enviarPorEmail(user, 'prop-27')).rejects.toThrow(/já está sendo enviada/);
+    expect(email.enviarPropostaParaAprovar).not.toHaveBeenCalled();
+    expect(aceite.gerarLink).not.toHaveBeenCalled();
+    expect(prisma.proposta.updateMany.mock.calls[0][0].where).toEqual({
+      id: 'prop-27',
+      aceiteEmailEnviadoEm: null,
+    });
+  });
+
+  it('link VENCIDO (ou de volta a rascunho): libera UM envio novo, travando a partir da marca antiga', async () => {
+    const { svc, email, prisma } = montarEnvio(
+      { aceiteEmailEnviadoEm: ENVIADO_EM, aceiteEmailEnviadoPara: 'pedido@somatecblocking.com.br' },
+      null,
+    );
+    const r = await svc.enviarPorEmail(user, 'prop-27');
+    expect(r.jaEnviado).toBe(false);
+    expect(email.enviarPropostaParaAprovar).toHaveBeenCalledTimes(1);
+    expect(prisma.proposta.updateMany.mock.calls[0][0].where).toEqual({
+      id: 'prop-27',
+      aceiteEmailEnviadoEm: ENVIADO_EM,
+    });
+  });
+
+  it('e-mail falhou: devolve a marca — a proposta não fica "enviada" sem e-mail', async () => {
+    const { svc, email, prisma } = montarEnvio();
+    email.enviarPropostaParaAprovar.mockResolvedValueOnce({ ok: false, motivo: 'resend fora' });
+    await expect(svc.enviarPorEmail(user, 'prop-27')).rejects.toThrow(/resend fora/);
+    const [, desfaz] = prisma.proposta.updateMany.mock.calls as unknown as Array<
+      [{ data: Record<string, unknown> }]
+    >;
+    expect(desfaz[0].data).toEqual({ aceiteEmailEnviadoEm: null, aceiteEmailEnviadoPara: null });
   });
 });
 

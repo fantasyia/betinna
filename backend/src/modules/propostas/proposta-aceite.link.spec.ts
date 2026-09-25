@@ -140,6 +140,44 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
     expect(previa.salvar).not.toHaveBeenCalled();
   });
 
+  /** Léo, 25/09: trocar o token invalidava o link que o cliente já recebeu. */
+  it('link VALENDO é reaproveitado: não troca o token, não congela outro contrato', async () => {
+    const expiraEm = new Date(Date.now() + 86_400_000);
+    const { svc, prisma, previa } = montar({
+      ...COMPLETA,
+      status: 'AGUARDANDO_ASSINATURA',
+      aceiteToken: 'tok-vigente',
+      aceiteExpiraEm: expiraEm,
+    });
+    const r = await svc.gerarLink('prop-27', 'emp-1', 'AGUARDANDO_ASSINATURA');
+    expect(r.token).toBe('tok-vigente');
+    expect(r.expiraEm).toBe(expiraEm);
+    expect(prisma.proposta.update).not.toHaveBeenCalled();
+    expect(previa.salvar).not.toHaveBeenCalled();
+  });
+
+  it('link VENCIDO ou proposta de volta a rascunho: gera link novo', async () => {
+    const vencido = montar({
+      ...COMPLETA,
+      status: 'AGUARDANDO_ASSINATURA',
+      aceiteToken: 'tok-velho',
+      aceiteExpiraEm: new Date(Date.now() - 1000),
+    });
+    expect(
+      (await vencido.svc.gerarLink('prop-27', 'emp-1', 'AGUARDANDO_ASSINATURA')).token,
+    ).not.toBe('tok-velho');
+    const rascunho = montar({
+      ...COMPLETA,
+      status: 'RASCUNHO',
+      aceiteToken: 'tok-velho',
+      aceiteExpiraEm: new Date(Date.now() + 86_400_000),
+    });
+    expect((await rascunho.svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO')).token).not.toBe(
+      'tok-velho',
+    );
+    expect(rascunho.prisma.proposta.update).toHaveBeenCalledTimes(1);
+  });
+
   it('sem projeto anexado continua recusando antes de tudo', async () => {
     const { svc, prisma } = montar(COMPLETA, 0);
     await expect(svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO')).rejects.toThrow(/projeto/);

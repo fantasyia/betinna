@@ -164,6 +164,11 @@ export class PropostaAceiteService {
         `Proposta em status ${statusAtual} não pode ser enviada pra aceite.`,
       );
     }
+    // Link que JÁ está valendo não é trocado (Léo, 25/09): trocar o token
+    // invalidava o link que o cliente já recebeu por e-mail ou WhatsApp.
+    // Link novo só quando o anterior venceu ou a proposta voltou pra rascunho.
+    const vigente = await this.linkVigente(propostaId);
+    if (vigente) return vigente;
     // O cliente aprova o PROJETO, não uma lista de preços. Regra do Léo
     // (04/09): sem o projeto anexado a proposta não sai — e o gate fica AQUI,
     // no ponto único por onde nasce o link, porque ele serve tanto o e-mail
@@ -172,7 +177,7 @@ export class PropostaAceiteService {
     const anexos = await this.prisma.propostaAnexo.count({ where: { propostaId } });
     if (anexos === 0) {
       throw new BusinessRuleException(
-        'Anexe o projeto do cliente antes de mandar a proposta — é o projeto que ele aprova.',
+        'Anexe o levantamento técnico de projeto antes de mandar a proposta — é o que o cliente aprova.',
       );
     }
     // E a LOCAÇÃO não sai sem o que o contrato exige (Léo, 25/09): conferir só
@@ -249,6 +254,32 @@ export class PropostaAceiteService {
     });
 
     return { token, url: `${this.frontendUrl()}/proposta/aceite/${token}`, expiraEm };
+  }
+
+  /**
+   * O link de aceite que JÁ está valendo: proposta aguardando o cliente e token
+   * não vencido. `null` = não há (nunca gerou, venceu, ou voltou pra rascunho).
+   */
+  async linkVigente(
+    propostaId: string,
+  ): Promise<{ token: string; url: string; expiraEm: Date } | null> {
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: { status: true, aceiteToken: true, aceiteExpiraEm: true },
+    });
+    if (
+      !p?.aceiteToken ||
+      p.status !== 'AGUARDANDO_ASSINATURA' ||
+      !p.aceiteExpiraEm ||
+      p.aceiteExpiraEm.getTime() <= Date.now()
+    ) {
+      return null;
+    }
+    return {
+      token: p.aceiteToken,
+      url: `${this.frontendUrl()}/proposta/aceite/${p.aceiteToken}`,
+      expiraEm: p.aceiteExpiraEm,
+    };
   }
 
   /**
