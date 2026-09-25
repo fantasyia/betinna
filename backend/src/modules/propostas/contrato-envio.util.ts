@@ -28,6 +28,7 @@ export interface PropostaParaEnvio {
   modalidade: string;
   prazoMeses: number | null;
   diaVencimento: number | null;
+  carenciaMeses: number | null;
   signatarioNome: string | null;
   signatarioEmail: string | null;
   signatarioTelefone: string | null;
@@ -138,6 +139,9 @@ export function montarContratoParaAssinar(
     prazoInstalacaoDias: p.prazoInstalacaoDias,
     prazoVerificacaoDias: p.prazoVerificacaoDias,
     prazoSoftwareDias: p.prazoSoftwareDias,
+    prazoMeses: p.prazoMeses,
+    diaVencimento: p.diaVencimento,
+    carenciaMeses: p.carenciaMeses,
   });
   if (!documento.ok) {
     return { ok: false, motivo: `falta na proposta: ${documento.faltando.join('; ')}` };
@@ -179,6 +183,7 @@ export const SELECT_PROPOSTA_CONTRATO = {
   modalidade: true,
   prazoMeses: true,
   diaVencimento: true,
+  carenciaMeses: true,
   signatarioNome: true,
   signatarioEmail: true,
   signatarioTelefone: true,

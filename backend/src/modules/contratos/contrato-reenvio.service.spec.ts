@@ -20,6 +20,7 @@ const PROPOSTA = {
   prazoInstalacaoDias: 15,
   prazoVerificacaoDias: 5,
   prazoSoftwareDias: 20,
+  carenciaMeses: 1,
   servicosTotal: new Prisma.Decimal(9000),
   customizacaoUnitario: new Prisma.Decimal(1500),
   customizacaoQuantidade: 1,

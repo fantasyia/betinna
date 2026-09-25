@@ -98,6 +98,12 @@ export const createPropostaSchema = z.object({
   diaVencimento: z.number().int().min(1).max(28).optional(),
   carenciaDias: z.number().int().min(0).max(180).optional(),
   /**
+   * Meses grátis contados do término da instalação — o documento escreve "do
+   * (N+1)º mês subsequente". Teto de 6: carência maior é negociação especial,
+   * não campo de formulário.
+   */
+  carenciaMeses: z.number().int().min(0).max(6).optional(),
+  /**
    * QUEM assina o contrato pelo cliente — pessoa, não empresa.
    *
    * A assinatura eletrônica recusa razão social como nome de signatário, e o

@@ -536,6 +536,7 @@ describe('dados do contrato e cadastro do cliente', () => {
 
     fireEvent.change(screen.getByTestId('contrato-prazo-meses'), { target: { value: '36' } });
     fireEvent.change(screen.getByTestId('contrato-dia-vencimento'), { target: { value: '10' } });
+    fireEvent.change(screen.getByTestId('contrato-carencia'), { target: { value: '0' } });
     fireEvent.change(screen.getByTestId('contrato-validade'), { target: { value: '2026-10-31' } });
     fireEvent.change(screen.getByTestId('contrato-signatario-nome'), {
       target: { value: ' Marina Aguiar ' },
@@ -549,6 +550,8 @@ describe('dados do contrato e cadastro do cliente', () => {
     expect(apiPatch).toHaveBeenCalledWith('/propostas/prop-9', {
       prazoMeses: 36,
       diaVencimento: 10,
+      // 0 = "sem carência" combinado — não pode sumir como se fosse vazio.
+      carenciaMeses: 0,
       validoAte: '2026-10-31',
       signatarioNome: 'Marina Aguiar',
       signatarioEmail: 'pedido@somatecblocking.com.br',
@@ -569,12 +572,26 @@ describe('dados do contrato e cadastro do cliente', () => {
     expect(apiPatch).not.toHaveBeenCalled();
   });
 
+  it('prazo de 12 meses é recusado na tela — o contrato promete a saída no 13º', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas(proposta());
+    render(<LevantamentoCampoPage />);
+    await waitFor(() => expect(screen.getByTestId('levantamento-contrato')).toBeTruthy());
+
+    fireEvent.change(screen.getByTestId('contrato-prazo-meses'), { target: { value: '12' } });
+    fireEvent.click(screen.getByTestId('salvar-contrato'));
+
+    expect(screen.getByTestId('levantamento-erro').textContent).toContain('13 a 120');
+    expect(apiPatch).not.toHaveBeenCalled();
+  });
+
   it('retomando, carrega os dados do contrato já gravados', async () => {
     busca = new URLSearchParams('proposta=prop-9');
     rotas({
       ...proposta(),
       prazoMeses: 24,
       diaVencimento: 5,
+      carenciaMeses: 0,
       validoAte: '2026-10-31T00:00:00.000Z',
       signatarioNome: 'Marina Aguiar',
       signatarioEmail: 'pedido@somatecblocking.com.br',
@@ -584,6 +601,7 @@ describe('dados do contrato e cadastro do cliente', () => {
       expect((screen.getByTestId('contrato-prazo-meses') as HTMLInputElement).value).toBe('24'),
     );
     expect((screen.getByTestId('contrato-dia-vencimento') as HTMLInputElement).value).toBe('5');
+    expect((screen.getByTestId('contrato-carencia') as HTMLInputElement).value).toBe('0');
     expect((screen.getByTestId('contrato-validade') as HTMLInputElement).value).toBe('2026-10-31');
     expect((screen.getByTestId('contrato-signatario-nome') as HTMLInputElement).value).toBe(
       'Marina Aguiar',

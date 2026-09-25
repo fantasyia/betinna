@@ -97,6 +97,7 @@ interface Proposta {
   customizacaoQuantidade?: number | null;
   prazoMeses?: number | null;
   diaVencimento?: number | null;
+  carenciaMeses?: number | null;
   validoAte?: string | null;
   signatarioNome?: string | null;
   signatarioEmail?: string | null;
@@ -200,6 +201,9 @@ export default function LevantamentoCampoPage() {
   // chegava no aceite sem eles, e o contrato não saía.
   const [prazoMeses, setPrazoMeses] = useState('');
   const [diaVencimento, setDiaVencimento] = useState('');
+  // Meses grátis contados do término da instalação. Sem padrão da casa (Léo,
+  // 25/09): vazio é "não combinado", e o contrato não sai assim.
+  const [carenciaMeses, setCarenciaMeses] = useState('');
   const [validoAte, setValidoAte] = useState('');
   const [signatarioNome, setSignatarioNome] = useState('');
   const [signatarioEmail, setSignatarioEmail] = useState('');
@@ -250,6 +254,7 @@ export default function LevantamentoCampoPage() {
         setCustomQuantidade(p.customizacaoQuantidade ? String(p.customizacaoQuantidade) : '1');
         setPrazoMeses(p.prazoMeses ? String(p.prazoMeses) : '');
         setDiaVencimento(p.diaVencimento ? String(p.diaVencimento) : '');
+        setCarenciaMeses(p.carenciaMeses != null ? String(p.carenciaMeses) : '');
         setValidoAte(p.validoAte ? p.validoAte.slice(0, 10) : '');
         setSignatarioNome(p.signatarioNome ?? '');
         setSignatarioEmail(p.signatarioEmail ?? '');
@@ -421,8 +426,15 @@ export default function LevantamentoCampoPage() {
       setErro('Dia de vencimento vai de 1 a 28 — 29, 30 e 31 não existem em todo mês.');
       return;
     }
-    if (prazoMeses && (meses < 1 || meses > 120)) {
-      setErro('Prazo do contrato vai de 1 a 120 meses.');
+    if (prazoMeses && (meses < 13 || meses > 120)) {
+      setErro(
+        'Prazo do contrato vai de 13 a 120 meses — o contrato dá 12 meses de avaliação e a saída no 13º.',
+      );
+      return;
+    }
+    const carencia = Number(carenciaMeses);
+    if (carenciaMeses && carencia > 6) {
+      setErro('Carência vai de 0 a 6 meses.');
       return;
     }
     if (signatarioNome.trim() && signatarioNome.trim().length < 3) {
@@ -435,6 +447,8 @@ export default function LevantamentoCampoPage() {
       const atualizada = await api.patch<Proposta>(`/propostas/${proposta.id}`, {
         prazoMeses: meses || undefined,
         diaVencimento: dia || undefined,
+        // 0 é valor de verdade ("sem carência"), não ausência.
+        carenciaMeses: carenciaMeses === '' ? undefined : carencia,
         validoAte: validoAte || undefined,
         signatarioNome: signatarioNome.trim() || undefined,
         signatarioEmail: signatarioEmail.trim() || undefined,
@@ -458,7 +472,12 @@ export default function LevantamentoCampoPage() {
   const semPrazo = !prazoEntrega || !prazoInstalacao || !prazoVerificacao || !prazoSoftware;
   const semServicos = !servicosTotal || !customUnitario;
   const semContrato =
-    !prazoMeses || !diaVencimento || !validoAte || !signatarioNome.trim() || !signatarioEmail.trim();
+    !prazoMeses ||
+    !diaVencimento ||
+    carenciaMeses === '' ||
+    !validoAte ||
+    !signatarioNome.trim() ||
+    !signatarioEmail.trim();
   const faltaCadastro = cadastro ? faltaNoCadastro(cadastro) : [];
   // III.a promete "2 parcelas de R$ X cada": centavo ímpar não divide igual, e o
   // contrato é recusado na montagem. Avisar aqui é mais barato que no aceite.
@@ -817,8 +836,8 @@ export default function LevantamentoCampoPage() {
               Quem assina pelo cliente é uma PESSOA — a assinatura eletrônica recusa razão social.
               Sem estes dados o cliente aceita e o contrato não sai.
             </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Prazo do contrato (meses)">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Field label="Prazo do contrato (meses)" hint="De 13 a 120">
                 <Input
                   data-testid="contrato-prazo-meses"
                   inputMode="numeric"
@@ -834,6 +853,15 @@ export default function LevantamentoCampoPage() {
                   value={diaVencimento}
                   onChange={(e) => setDiaVencimento(e.target.value.replace(/\D/g, '').slice(0, 2))}
                   placeholder="10"
+                />
+              </Field>
+              <Field label="Carência (meses)" hint="Grátis após a instalação">
+                <Input
+                  data-testid="contrato-carencia"
+                  inputMode="numeric"
+                  value={carenciaMeses}
+                  onChange={(e) => setCarenciaMeses(e.target.value.replace(/\D/g, '').slice(0, 1))}
+                  placeholder="1"
                 />
               </Field>
               <Field label="Validade da proposta">
