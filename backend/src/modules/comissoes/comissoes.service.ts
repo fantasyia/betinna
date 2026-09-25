@@ -10,7 +10,6 @@ import { NotificacoesService } from '@modules/notificacoes/notificacoes.service'
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { addBreadcrumb } from '@shared/observability/sentry';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
-import { ComissaoErpService } from './comissao-erp.service';
 import { empresaFilter, getCallerEmpresaId, isGlobalAdmin } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
@@ -49,7 +48,6 @@ export class ComissoesService {
     // Entra por ÚLTIMO de propósito: dependência nova no meio da lista desloca
     // os argumentos posicionais dos testes e quebra tudo por um motivo que não
     // tem nada a ver com o que se está testando.
-    private readonly erp: ComissaoErpService,
   ) {}
 
   /**
@@ -621,17 +619,11 @@ export class ComissoesService {
       void this.notificarEmailFechamento(empresaId, dto.mes, dto.ano);
     }
 
-    // Provisiona a folha no financeiro do ERP (contas a pagar). Best-effort de
-    // propósito: o fechamento é o fato contábil daqui e não pode ser desfeito
-    // porque o Tiny estava fora do ar. O provisionamento é idempotente — cada
-    // comissão guarda o id da conta — então basta re-rodar depois.
-    void this.erp.provisionar(empresaId, dto.mes, dto.ano).catch((err: unknown) => {
-      this.logger.error(
-        `Folha ${dto.mes}/${dto.ano} fechada, mas NÃO provisionada no ERP: ` +
-          `${err instanceof Error ? err.message : String(err)}. ` +
-          'Rode POST /comissoes/provisionar-erp pra tentar de novo.',
-      );
-    });
+    // NÃO lança no ERP aqui (Léo, 25/09). O fechamento monta a FOLHA; as contas a
+    // pagar nascem no botão "Lançar comissões no ERP" (POST
+    // /comissoes/provisionar-erp), apertado no dia do fechamento — um momento só
+    // de conferência. Antes o fechamento (inclusive o do cron do dia 1) lançava
+    // sozinho, e a expedição lançava pedido a pedido.
 
     return {
       ok: true,

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { TinyContasService } from '@integrations/tiny/tiny-contas.service';
 import { TinyContatosService } from '@integrations/tiny/tiny-contatos.service';
+import { PedidoComissaoErpService } from '@modules/pedidos/pedido-comissao-erp.service';
 
 export interface ResultadoProvisionamento {
   comissoes: number;
@@ -10,6 +11,18 @@ export interface ResultadoProvisionamento {
   jaProvisionadas: number;
   /** Já tinham conta no ERP e o valor mudou (reprocessamento) — a conta foi reescrita lá. */
   atualizadas: number;
+  /**
+   * Comissões POR PEDIDO do mês (rep e site): 1 conta por pessoa, por pedido.
+   * Nascem aqui, no botão do fechamento — não mais na expedição (Léo, 25/09).
+   */
+  porPedido: {
+    pedidos: number;
+    criadas: number;
+    atualizadas: number;
+    semContato: string[];
+    paraApagar: string[];
+    erros: number;
+  };
   originacao: { valor: number; provisionada: boolean; motivo?: string };
   erros: number;
 }
@@ -67,6 +80,7 @@ export class ComissaoErpService {
     private readonly prisma: PrismaService,
     private readonly contas: TinyContasService,
     private readonly contatos: TinyContatosService,
+    private readonly porPedido: PedidoComissaoErpService,
   ) {}
 
   async provisionar(
@@ -82,6 +96,14 @@ export class ComissaoErpService {
       atualizadas: 0,
       originacao: { valor: 0, provisionada: false },
       erros: 0,
+      porPedido: {
+        pedidos: 0,
+        criadas: 0,
+        atualizadas: 0,
+        semContato: [],
+        paraApagar: [],
+        erros: 0,
+      },
     };
 
     const comissoes = await this.prisma.comissao.findMany({
@@ -180,6 +202,8 @@ export class ComissaoErpService {
       }
     }
 
+    await this.lancarPorPedido(empresaId, mes, ano, r);
+
     await this.provisionarOriginacao(empresaId, mes, ano, {
       vencimento,
       competencia,
@@ -189,9 +213,55 @@ export class ComissaoErpService {
 
     this.logger.log(
       `[erp] folha ${mes}/${ano}: ${r.provisionadas} provisionada(s), ` +
-        `${r.jaProvisionadas} já estavam, ${r.semContatoNoErp.length} sem contato, ${r.erros} erro(s)`,
+        `${r.jaProvisionadas} já estavam, ${r.semContatoNoErp.length} sem contato, ${r.erros} erro(s); ` +
+        `por pedido: ${r.porPedido.criadas} criada(s) em ${r.porPedido.pedidos} pedido(s)`,
     );
     return r;
+  }
+
+  /**
+   * Cada pedido comissionável do mês → 1 conta a pagar por pessoa (rep, site).
+   *
+   * A MESMA janela da folha (`enviadoErpEm` no mês, fuso de Brasília) e os
+   * mesmos status comissionáveis: o que o botão lança é o que a folha mostrou.
+   * Idempotente pelo `PedidoComissao.contaPagarErpId` — apertar de novo só
+   * corrige valor que mudou, não duplica.
+   */
+  private async lancarPorPedido(
+    empresaId: string,
+    mes: number,
+    ano: number,
+    r: ResultadoProvisionamento,
+  ): Promise<void> {
+    const inicio = new Date(Date.UTC(ano, mes - 1, 1, 3));
+    const fim = new Date(Date.UTC(ano, mes, 1, 3));
+    const pedidos = await this.prisma.pedido.findMany({
+      where: {
+        empresaId,
+        status: { in: ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'] },
+        enviadoErpEm: { gte: inicio, lt: fim },
+        comissoesPedido: { some: {} },
+      },
+      select: { id: true },
+      orderBy: { enviadoErpEm: 'asc' },
+    });
+    r.porPedido.pedidos = pedidos.length;
+    for (const p of pedidos) {
+      try {
+        const pv = await this.porPedido.provisionar(empresaId, p.id, null, { criar: true });
+        r.porPedido.criadas += pv.criadas;
+        r.porPedido.atualizadas += pv.atualizadas;
+        r.porPedido.semContato.push(...pv.semContato);
+        r.porPedido.paraApagar.push(...pv.paraApagar);
+        r.porPedido.erros += pv.erros;
+      } catch (err) {
+        r.porPedido.erros += 1;
+        this.logger.error(
+          `[erp] comissões do pedido ${p.id} não lançadas: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    r.porPedido.semContato = [...new Set(r.porPedido.semContato)];
   }
 
   /**

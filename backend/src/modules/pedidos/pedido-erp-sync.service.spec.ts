@@ -34,6 +34,7 @@ function build(
   const tiny = {
     listar: vi.fn().mockResolvedValue({ itens: [{ id: 900, numeroPedido: 55 }], total: 1 }),
     obter: vi.fn().mockResolvedValue(detalhe),
+    obterNota: vi.fn().mockResolvedValue({ situacao: 6, numero: 34, serie: 1 }),
   };
   const prisma = {
     pedido: {
@@ -91,6 +92,15 @@ function build(
     sincronizarPedido: vi.fn().mockResolvedValue(true),
     configurado: true,
   };
+  const comissaoErp = {
+    provisionar: vi.fn(async () => ({
+      criadas: 0,
+      atualizadas: 0,
+      semContato: [],
+      paraApagar: [],
+      erros: 0,
+    })),
+  };
   const svc = new PedidoErpSyncService(
     prisma as never,
     tiny as never,
@@ -114,19 +124,11 @@ function build(
     // Conta a receber ao faturar: idem.
     { lancarContasReceber: vi.fn(async () => ({ efeito: 'jaLancado' as const })) } as never,
     // Conta a pagar de comissão por pedido: idem.
-    {
-      provisionar: vi.fn(async () => ({
-        criadas: 0,
-        atualizadas: 0,
-        semContato: [],
-        paraApagar: [],
-        erros: 0,
-      })),
-    } as never,
+    comissaoErp as never,
     // Início da cobrança do comodato (locação): tem teste próprio no serviço.
     { iniciarCobranca: vi.fn(async () => undefined) } as never,
   );
-  return { svc, prisma, tiny, notificacoes, emailSvc, bus, sequence, site };
+  return { svc, prisma, tiny, notificacoes, emailSvc, bus, sequence, site, comissaoErp };
 }
 
 /** A janela padrão é de 30 dias — o pedido base é de hoje pra não vencer. */
@@ -316,6 +318,32 @@ describe('pedidos que vêm do ERP', () => {
     const dados = prisma.pedido.update.mock.calls[0][0].data;
     expect(dados.status).toBe('ENVIADO');
     expect(dados.rastreioCodigo).toBe('BR123');
+  });
+
+  /**
+   * Léo, 25/09: a conta a pagar de comissão nasce no BOTÃO do fechamento, não
+   * na expedição. Aqui ela só é CORRIGIDA se já existir (`criar: false`).
+   */
+  it('pedido expedido com NF autorizada NÃO cria conta de comissão — só corrige a que existe', async () => {
+    const { svc, comissaoErp } = build({
+      detalhe: { ...PEDIDO_ERP, situacao: 5, idNotaFiscal: 777 },
+      pedidoExistente: {
+        id: 'ped-1',
+        numero: 'PED-0007',
+        status: 'ENVIADO',
+        observacoes: null,
+        total: 3150,
+        rastreioCodigo: null,
+        rastreioUrl: null,
+      },
+    });
+
+    await svc.sincronizar('emp-1');
+
+    expect(comissaoErp.provisionar).toHaveBeenCalled();
+    for (const chamada of comissaoErp.provisionar.mock.calls as unknown[][]) {
+      expect(chamada[3]).toEqual({ criar: false });
+    }
   });
 
   it('nada mudou no ERP → nenhuma escrita no banco', async () => {

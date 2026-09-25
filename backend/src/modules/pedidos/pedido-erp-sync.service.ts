@@ -1064,11 +1064,15 @@ export class PedidoErpSyncService {
           this.logger.warn(`[erp] conta a receber do pedido ${pedidoId} falhou: ${this.msg(err)}`);
         }
       }
-      // A comissão de cada pessoa vira conta a pagar POR PEDIDO, quando a
-      // expedição conclui (decisão do Léo, 05/09) — não no fim do mês.
+      // A conta a pagar da comissão NÃO nasce mais aqui: nasce no botão "Lançar
+      // comissões no ERP", no dia do fechamento (Léo, 25/09 — substitui a decisão
+      // de 05/09). Aqui só se CORRIGE a conta que já existe (pedido que mudou de
+      // valor depois do lançamento): `criar: false`.
       if (opcoes.comissao)
         try {
-          const pv = await this.comissaoErp.provisionar(empresaId, pedidoId, nota, { criar: true });
+          const pv = await this.comissaoErp.provisionar(empresaId, pedidoId, nota, {
+            criar: false,
+          });
           for (const n of pv.semContato) {
             r.avisos.push(
               `Pedido ${pedidoId}: ${n} sem contato no ERP — comissão não provisionada`,

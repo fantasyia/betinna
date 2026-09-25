@@ -108,10 +108,10 @@ export class ComissoesController {
   /**
    * Reprovisiona a folha no financeiro do ERP.
    *
-   * O fechamento já provisiona sozinho; isto existe pro caso em que o ERP
-   * estava fora do ar (ou o rep ainda não tinha contato lá) e a folha ficou
-   * fechada sem as contas a pagar. É idempotente: quem já tem conta criada não
-   * é lançado de novo.
+   * O BOTÃO "Lançar comissões no ERP" (Léo, 25/09): é aqui, e só aqui, que as
+   * contas a pagar de comissão nascem — pedido a pedido (1 por pessoa), mais
+   * gerente e originação. O fechamento monta a folha e não lança; a expedição
+   * não lança mais. Idempotente: quem já tem conta não é lançado de novo.
    */
   @Post('provisionar-erp')
   @Roles('ADMIN', 'DIRECTOR')

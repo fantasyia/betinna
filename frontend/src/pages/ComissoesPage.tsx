@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { usePermission } from '@/hooks/usePermission';
+import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
@@ -591,6 +591,9 @@ function ListaAdmin() {
   // D46+D48: fechar mês / marcar pago / desmarcar = DIRECTOR (mandatário do
   // tenant) OU ADMIN (master da plataforma). GERENTE só visualiza.
   const canManage = usePermission('comissoes.manage');
+  // Lançar no financeiro é decisão de dinheiro: só ADMIN/DIRECTOR (a rota exige).
+  const role = useRole();
+  const podeLancarErp = role === 'ADMIN' || role === 'DIRECTOR';
   const [page, setPage] = useState(1);
   const now = new Date();
   const [mes, setMes] = useState<number | ''>(now.getMonth() + 1);
@@ -616,6 +619,7 @@ function ListaAdmin() {
   } = useApiQuery<PaginatedResponse<Comissao>>(listPath);
 
   const [fecharOpen, setFecharOpen] = useState(false);
+  const [lancarOpen, setLancarOpen] = useState(false);
   const [pagar, setPagar] = useState<Comissao | null>(null);
 
   const columns: Column<Comissao>[] = [
@@ -695,16 +699,28 @@ function ListaAdmin() {
     <section className="bg-surface border border-border rounded-[10px] p-6">
       <header className="flex justify-between items-center mb-3">
         <h2 className="m-0 text-[18px]">Comissões da equipe</h2>
-        {canManage && (
-          <button
-            type="button"
-            data-testid="fechar-mes-btn"
-            onClick={() => setFecharOpen(true)}
-            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
-          >
-            Fechar mês
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {podeLancarErp && (
+            <button
+              type="button"
+              data-testid="lancar-erp-btn"
+              onClick={() => setLancarOpen(true)}
+              className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+            >
+              Lançar comissões no ERP
+            </button>
+          )}
+          {canManage && (
+            <button
+              type="button"
+              data-testid="fechar-mes-btn"
+              onClick={() => setFecharOpen(true)}
+              className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+            >
+              Fechar mês
+            </button>
+          )}
+        </div>
       </header>
 
       <FilterBar>
@@ -775,6 +791,7 @@ function ListaAdmin() {
           }}
         />
       )}
+      {lancarOpen && <LancarErpModal onClose={() => setLancarOpen(false)} />}
       {pagar && (
         <PagarModal
           comissao={pagar}
@@ -786,6 +803,147 @@ function ListaAdmin() {
         />
       )}
     </section>
+  );
+}
+
+interface ResultadoLancamento {
+  provisionadas: number;
+  semContatoNoErp: string[];
+  erros: number;
+  originacao: { valor: number; provisionada: boolean; motivo?: string };
+  porPedido?: {
+    pedidos: number;
+    criadas: number;
+    atualizadas: number;
+    semContato: string[];
+    paraApagar: string[];
+    erros: number;
+  };
+}
+
+/**
+ * "Lançar comissões no ERP" (Léo, 25/09): no dia do fechamento, UM botão cria as
+ * contas a pagar do mês — pedido a pedido, 1 por pessoa (ele e cada rep). Antes
+ * elas nasciam sozinhas em cada expedição, e pedido cancelado depois obrigava a
+ * corrigir conta já lançada. Apertar de novo não duplica: só corrige valor.
+ */
+export function LancarErpModal({ onClose }: { onClose: () => void }) {
+  const now = new Date();
+  const dPrev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const [mes, setMes] = useState(dPrev.getMonth() + 1);
+  const [ano, setAno] = useState(dPrev.getFullYear());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<ResultadoLancamento | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      setResultado(await api.post<ResultadoLancamento>('/comissoes/provisionar-erp', { mes, ano }));
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pp = resultado?.porPedido;
+  const semContato = [...new Set([...(resultado?.semContatoNoErp ?? []), ...(pp?.semContato ?? [])])];
+  const erros = (resultado?.erros ?? 0) + (pp?.erros ?? 0);
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Lançar comissões no ERP"
+      footer={
+        resultado ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+          >
+            Fechar
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="lancar-erp-form"
+              data-testid="lancar-erp-confirm"
+              disabled={busy}
+              className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+            >
+              {busy ? 'Lançando…' : 'Lançar no ERP'}
+            </button>
+          </>
+        )
+      }
+    >
+      {resultado ? (
+        <div className="text-[13px]" data-testid="lancar-erp-resultado">
+          <p className="mt-0">
+            <strong>{pp?.criadas ?? 0}</strong> conta(s) a pagar criada(s) em{' '}
+            <strong>{pp?.pedidos ?? 0}</strong> pedido(s)
+            {pp?.atualizadas ? `, ${pp.atualizadas} corrigida(s)` : ''}.
+          </p>
+          {resultado.provisionadas > 0 && (
+            <p>{resultado.provisionadas} lançamento(s) da folha (gerente) criado(s).</p>
+          )}
+          {semContato.length > 0 && (
+            <p className="text-warning">
+              Sem contato no ERP (não lançado): {semContato.join(', ')}. Cadastre o contato e lance de
+              novo — quem já foi lançado não duplica.
+            </p>
+          )}
+          {(pp?.paraApagar.length ?? 0) > 0 && (
+            <p className="text-warning">Zeradas com conta no ERP (conferir): {pp!.paraApagar.join('; ')}</p>
+          )}
+          {erros > 0 && (
+            <p className="text-danger">{erros} falha(s). Tente de novo: o que já foi lançado não duplica.</p>
+          )}
+        </div>
+      ) : (
+        <form id="lancar-erp-form" onSubmit={submit}>
+          <p className="text-muted text-[13px] mt-0">
+            Cria no ERP as contas a pagar do mês: para cada pedido, 1 lançamento por pessoa
+            comissionada, com vencimento no dia 5. Faça depois de fechar o mês. Lançar de novo não
+            duplica.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Mês" htmlFor="le-mes" required>
+              <Select id="le-mes" value={mes} onChange={(e) => setMes(Number(e.target.value))}>
+                {MES_NOMES.map((n, i) => (
+                  <option key={i} value={i + 1}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField label="Ano" htmlFor="le-ano" required>
+              <Input
+                id="le-ano"
+                type="number"
+                min={2020}
+                max={2100}
+                value={ano}
+                onChange={(e) => setAno(Number(e.target.value))}
+              />
+            </FormField>
+          </div>
+          {error && <p className="text-danger text-[13px] mt-2">{error}</p>}
+        </form>
+      )}
+    </Dialog>
   );
 }
 
@@ -842,6 +1000,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
       <form id="fechar-mes-form" onSubmit={submit}>
         <p className="text-muted text-[13px] mt-0">
           Agrega pedidos comissionáveis do período e cria/atualiza registros REP + GERENTE + SITE.
+          Não lança nada no ERP — isso é o botão "Lançar comissões no ERP".
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Mês" htmlFor="fm-mes" required>

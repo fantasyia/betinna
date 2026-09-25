@@ -67,9 +67,6 @@ describe('ComissoesService', () => {
         enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
         enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
       } as never,
-      // Provisionamento no ERP: aqui é mock. O alvo destes testes é o CÁLCULO
-      // da folha — o lançamento no financeiro tem spec própria.
-      { provisionar: vi.fn().mockResolvedValue({}) } as never,
     );
     prisma.comissao.upsert.mockImplementation((args: { create: unknown }) =>
       Promise.resolve(args.create),
@@ -600,7 +597,6 @@ describe('ComissoesService', () => {
           enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
           enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
         } as never,
-        { provisionar: vi.fn().mockResolvedValue({}) } as never,
       );
       prisma.comissao.count.mockResolvedValue(0);
       prisma.comissao.findMany.mockResolvedValue([]);

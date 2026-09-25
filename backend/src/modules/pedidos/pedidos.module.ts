@@ -19,7 +19,6 @@ import { PedidoErpSyncService } from './pedido-erp-sync.service';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { ContratosModule } from '@modules/contratos/contratos.module';
 import { ErpCancelamentosService } from './erp-cancelamentos.service';
-import { PedidoComissaoErpService } from './pedido-comissao-erp.service';
 import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
 import { ErpSyncDiarioJob } from './erp-sync-diario.job';
 import { ErpWebhooksJob } from './erp-webhooks.job';
@@ -49,7 +48,6 @@ import { SiteStatusRetryJob } from './site-status-retry.job';
     ErpSyncDiarioJob,
     ErpCancelamentosService,
     PedidoFinanceiroErpService,
-    PedidoComissaoErpService,
     ErpWebhooksJob,
     SiteStatusRetryJob,
     PedidoSiteService,

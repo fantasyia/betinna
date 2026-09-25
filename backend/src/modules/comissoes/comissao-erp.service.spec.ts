@@ -15,6 +15,7 @@ function build(
     config?: Record<string, unknown> | null;
     pedidos?: Array<Record<string, unknown>>;
     linhas?: Array<Record<string, unknown>>;
+    pedidosDoMes?: Array<{ id: string }>;
   } = {},
 ) {
   const prisma = {
@@ -29,7 +30,11 @@ function build(
     empresa: {
       findUnique: vi.fn().mockResolvedValue({ config: opts.config ?? {} }),
     },
-    pedido: { groupBy: vi.fn().mockResolvedValue(opts.pedidos ?? []) },
+    pedido: {
+      groupBy: vi.fn().mockResolvedValue(opts.pedidos ?? []),
+      // Pedidos comissionáveis do mês — o lançamento POR PEDIDO do botão.
+      findMany: vi.fn().mockResolvedValue(opts.pedidosDoMes ?? []),
+    },
     pedidoComissao: { findMany: vi.fn().mockResolvedValue(opts.linhas ?? []) },
     usuario: { findUnique: vi.fn().mockResolvedValue({ contatoErpId: '999' }) },
   };
@@ -40,8 +45,22 @@ function build(
     acharCategoria: vi.fn().mockResolvedValue(77),
   };
   const contatos = { garantir: vi.fn().mockResolvedValue(894891897) };
-  const svc = new ComissaoErpService(prisma as never, contas as never, contatos as never);
-  return { svc, prisma, contas, contatos };
+  const porPedido = {
+    provisionar: vi.fn().mockResolvedValue({
+      criadas: 2,
+      atualizadas: 0,
+      semContato: [],
+      paraApagar: [],
+      erros: 0,
+    }),
+  };
+  const svc = new ComissaoErpService(
+    prisma as never,
+    contas as never,
+    contatos as never,
+    porPedido as never,
+  );
+  return { svc, prisma, contas, contatos, porPedido };
 }
 
 // GERENTE: é o único tipo que a folha MENSAL ainda provisiona (REP/SITE são por pedido).
@@ -56,6 +75,34 @@ const COMISSAO_REP = {
 
 describe('folha de comissões no financeiro do ERP', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  /**
+   * O BOTÃO do fechamento (Léo, 25/09): lança POR PEDIDO — 1 conta por pessoa —
+   * os pedidos comissionáveis do mês, na MESMA janela da folha.
+   */
+  it('botão: lança cada pedido do mês, com criar=true, e soma o resultado', async () => {
+    const { svc, prisma, porPedido } = build({ pedidosDoMes: [{ id: 'ped-1' }, { id: 'ped-2' }] });
+    const r = await svc.provisionar('emp-1', 9, 2026);
+
+    expect(porPedido.provisionar).toHaveBeenCalledTimes(2);
+    expect(porPedido.provisionar).toHaveBeenCalledWith('emp-1', 'ped-1', null, { criar: true });
+    expect(r.porPedido).toMatchObject({ pedidos: 2, criadas: 4, erros: 0 });
+    // Janela de setembro no fuso de Brasília: 01/09 03:00Z até 01/10 03:00Z.
+    const where = prisma.pedido.findMany.mock.calls[0][0].where;
+    expect(where.enviadoErpEm).toEqual({
+      gte: new Date('2026-09-01T03:00:00.000Z'),
+      lt: new Date('2026-10-01T03:00:00.000Z'),
+    });
+    expect(where.comissoesPedido).toEqual({ some: {} });
+  });
+
+  it('botão: um pedido que falha não impede os outros', async () => {
+    const { svc, porPedido } = build({ pedidosDoMes: [{ id: 'ped-1' }, { id: 'ped-2' }] });
+    porPedido.provisionar.mockRejectedValueOnce(new Error('Tiny fora'));
+    const r = await svc.provisionar('emp-1', 9, 2026);
+    expect(porPedido.provisionar).toHaveBeenCalledTimes(2);
+    expect(r.porPedido).toMatchObject({ pedidos: 2, criadas: 2, erros: 1 });
+  });
 
   it('vence dia 05 do mês SEGUINTE e tem competência no mês do faturamento', async () => {
     // As duas datas são coisas diferentes: competência é resultado, vencimento
