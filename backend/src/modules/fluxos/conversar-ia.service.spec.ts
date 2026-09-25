@@ -1774,6 +1774,37 @@ describe('ConversarIaService', () => {
         expect(enviado).toContain('Conseguiu usar');
       });
 
+      /**
+       * 🔴 Reteste de 25/09: a IA cola o próximo balão com "|||" SEM espaço. A
+       * busca no histórico procurava "…#calculadora|||Se", que nunca casa com
+       * a mensagem gravada. O mock de `findFirst` responde a QUALQUER consulta,
+       * por isso aqui se confere A URL consultada, e não só se regerou.
+       */
+      it('🔴 link colado no próximo balão ("|||") é procurado LIMPO no histórico', async () => {
+        prepararLinkRepetido();
+        muller.gerarRespostaIa
+          .mockResolvedValueOnce({
+            texto: `{"resposta":"Segue: ${LINK}|||Se surgir dúvida, me chama!","classificou":false}`,
+            modelo: 'gpt',
+          })
+          .mockResolvedValueOnce({
+            texto: '{"resposta":"Conseguiu usar a calculadora?","classificou":false}',
+            modelo: 'gpt',
+          });
+
+        await svc.retomar('exec-1', 'conv-1', 'oi');
+
+        const consultas = prisma.message.findFirst.mock.calls.map(
+          (c: unknown[]) =>
+            (c[0] as { where?: { conteudo?: { contains?: string } } }).where?.conteudo?.contains,
+        );
+        expect(consultas).toContain(LINK);
+        expect(consultas.some((u: unknown) => String(u).includes('|'))).toBe(false);
+        expect(muller.gerarRespostaIa).toHaveBeenCalledTimes(2);
+        const enviados = whatsapp.enviarTexto.mock.calls.map((c: unknown[]) => String(c[2]));
+        expect(enviados.join(' ')).not.toContain(LINK);
+      });
+
       it('🔴 se a regeração AINDA trouxer o link, fica a original — não emudece', async () => {
         // "Falar demais é recuperável, emudecer no meio não." Sem este teste,
         // trocar o fallback por um `return` silencioso passa despercebido.

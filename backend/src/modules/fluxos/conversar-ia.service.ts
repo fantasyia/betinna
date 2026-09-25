@@ -530,9 +530,16 @@ export function filtrarVariaveisGravaveis(
   return Object.fromEntries(semReservadas.filter(([k]) => permitidas.has(k)));
 }
 
-/** URLs http(s) de um texto — sem pontuação de fim de frase colada. */
+/**
+ * URLs http(s) de um texto — sem pontuação de fim de frase colada.
+ *
+ * `|` também encerra a URL: é o separador de balões, e a IA cola o próximo
+ * balão sem espaço ("…#calculadora|||Se surgir…"). Engolir o "|||Se" fazia a
+ * URL nunca casar com a mensagem gravada, e toda guarda de link repetido
+ * passava reto (reteste A8-atrasado, 25/09). URL real com "|" vem como %7C.
+ */
 export function urlsDoTexto(texto: string): string[] {
-  const achadas = texto.match(/https?:\/\/[^\s<>"')]+/gi) ?? [];
+  const achadas = texto.match(/https?:\/\/[^\s<>"')|]+/gi) ?? [];
   return achadas.map((u) => u.replace(/[.,;:!?]+$/, ''));
 }
 

@@ -43,6 +43,26 @@ describe('urlsDoTexto — o que conta como "o mesmo link"', () => {
     ]);
   });
 
+  /**
+   * 🔴 Reteste de 25/09 (A8-atrasado, 2 links e a sequência repetida): a IA
+   * cola os balões com "|||" SEM espaço, e a URL procurada virava
+   * "…#calculadora|||Se" — nunca casava com a mensagem gravada, e as quatro
+   * guardas (resposta, abertura, reserva, regeração) deixavam o link passar.
+   * Os specs anteriores passavam porque o link ficava no FIM do texto.
+   */
+  it('para no separador de balão "|||" colado na URL', () => {
+    const texto =
+      'Segue: https://somatecblocking.com.br/protecao-comercial?corrente=63#calculadora' +
+      '|||Se surgir qualquer dúvida, me chama!';
+    expect(urlsDoTexto(texto)).toEqual([
+      'https://somatecblocking.com.br/protecao-comercial?corrente=63#calculadora',
+    ]);
+    expect(urlsDoTexto('olha https://site.com.br/x|||e mais https://site.com.br/y|||fim')).toEqual([
+      'https://site.com.br/x',
+      'https://site.com.br/y',
+    ]);
+  });
+
   it('acha mais de um link e ignora texto sem link', () => {
     expect(urlsDoTexto('a https://a.com e b http://b.com')).toHaveLength(2);
     expect(urlsDoTexto('sem link nenhum aqui')).toEqual([]);
