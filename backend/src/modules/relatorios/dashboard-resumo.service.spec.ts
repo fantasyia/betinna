@@ -424,6 +424,40 @@ describe('painel "Precisa de você" — arquivado sai da frente', () => {
     prisma = makePrisma();
   });
 
+  /**
+   * 25/09: "Parado há 73d em NOVO" em 3 leads da base fria importada (30 mil,
+   * sem funil, sem dono, sem conversa). Ocupavam o painel pra sempre. Parado é
+   * lead que alguém está trabalhando: num funil, com rep, ou que já respondeu.
+   */
+  it('"parado" ignora a base fria: exige funil, rep OU mensagem recebida — sem apagar o filtro de triagem', async () => {
+    // 1ª chamada = ids de triagem; as seguintes = funis com contagem.
+    prisma.funil.findMany = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 'fun-triagem' }])
+      .mockResolvedValue([{ id: 'fun-1', nome: 'Clientes', _count: { leads: 3 } }]);
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+
+    await svc.resumo(user());
+
+    const chamadas = prisma.lead.findMany.mock.calls as Array<[{ where: Record<string, unknown> }]>;
+    const parados = chamadas.find(([a]) => Array.isArray(a.where.AND));
+    expect(parados).toBeDefined();
+    expect(parados![0].where.AND).toEqual([
+      {
+        OR: [
+          { funilId: { not: null } },
+          { representanteId: { not: null } },
+          { ultimaMensagemEm: { not: null } },
+        ],
+      },
+    ]);
+    // O `OR` da triagem continua lá — o critério novo não pode sobrescrevê-lo.
+    expect(parados![0].where.OR).toEqual([
+      { funilId: null },
+      { funilId: { notIn: ['fun-triagem'] } },
+    ]);
+  });
+
   it('a busca de tarefas atrasadas exige card NÃO arquivado', async () => {
     const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
 

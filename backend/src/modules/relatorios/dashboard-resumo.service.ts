@@ -156,12 +156,31 @@ export class DashboardResumoService {
       `,
       // Mais parados: top leads em etapa ativa há mais tempo (sem SLA definido
       // também contam — parado é parado).
+      //
+      // ⚠️ Mas só lead que ALGUÉM está trabalhando: num funil, com rep dono, ou
+      // que já mandou mensagem (`ultimaMensagemEm` carimba só o que o lead
+      // RECEBEU dele — envio de régua não conta). A base fria importada em 13/07
+      // (30 mil leads `cold` em NOVO, sem funil, sem dono, sem conversa) ocupava
+      // os 3 lugares pra sempre: "Parado há 73d" em lead que ninguém nunca
+      // começou a trabalhar é ruído, não ação (Léo, 25/09). Quem da base
+      // RESPONDER passa a contar — aí sim está parado.
+      // `AND` e não um `OR` solto: `foraDaTriagem` já usa a chave `OR`, e um
+      // segundo spread a sobrescreveria em silêncio.
       this.prisma.lead.findMany({
         where: {
           empresaId,
           etapa: { notIn: ['GANHO', 'PERDIDO'] },
           ...repFilter,
           ...foraDaTriagem,
+          AND: [
+            {
+              OR: [
+                { funilId: { not: null } },
+                { representanteId: { not: null } },
+                { ultimaMensagemEm: { not: null } },
+              ],
+            },
+          ],
         },
         orderBy: { etapaDesde: 'asc' },
         take: 3,
