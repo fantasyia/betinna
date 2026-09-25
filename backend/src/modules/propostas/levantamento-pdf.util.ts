@@ -198,9 +198,24 @@ export function desenharLevantamento(
       type Coluna = { titulo: string; peso: number; direita?: boolean };
       type Celula = { texto: string; negrito?: boolean; tag?: string };
       const tabela = (colunas: Coluna[], linhas: Celula[][]) => {
-        const soma = colunas.reduce((s, c) => s + c.peso, 0);
-        const larg = colunas.map((c) => (c.peso / soma) * CW);
         const pad = 3 * MM;
+        // Coluna de NÚMERO nunca quebra: a largura é MEDIDA — o maior entre o
+        // título (caixa alta com espaçamento) e o maior valor. "TENSÃ/O" e
+        // "CORRENT/E" saíam cortados com largura por proporção. O texto livre
+        // (quadro, modelo) fica com o que sobra, e esse pode quebrar linha.
+        const medida = colunas.map((c, i) => {
+          if (!c.direita) return 0;
+          doc.font('Helvetica-Bold').fontSize(7.5);
+          const titulo = doc.widthOfString(c.titulo.toUpperCase(), { characterSpacing: 0.6 });
+          const valores = linhas.map((l) => {
+            doc.font(l[i].negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+            return doc.widthOfString(l[i].texto);
+          });
+          return Math.ceil(Math.max(titulo, ...valores) + 2 * pad + 2);
+        });
+        const livre = CW - medida.reduce((s, w) => s + w, 0);
+        const somaLivre = colunas.reduce((s, c) => s + (c.direita ? 0 : c.peso), 0);
+        const larg = colunas.map((c, i) => (c.direita ? medida[i] : (c.peso / somaLivre) * livre));
         const cabecalho = () => {
           const alt = 7 * MM;
           doc.rect(x0, y, CW, alt).fill(marca.primaria);
@@ -223,11 +238,23 @@ export function desenharLevantamento(
         garantir(7 * MM + 9 * MM);
         cabecalho();
         for (const linha of linhas) {
+          // Etiqueta ("principal"): ao lado do nome quando cabe na MESMA linha;
+          // senão desce pra linha de baixo. Ao lado de um nome que quebra, ela
+          // era desenhada pela largura do texto inteiro e invadia a coluna vizinha.
+          const etiquetas = linha.map((cel, i) => {
+            if (!cel.tag) return null;
+            const util = larg[i] - 2 * pad;
+            doc.font(cel.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+            const wTexto = doc.widthOfString(cel.texto);
+            doc.font('Helvetica-Bold').fontSize(7.5);
+            const wTag = doc.widthOfString(cel.tag) + 3 * MM;
+            return { wTexto, wTag, aoLado: wTexto + 1.5 * MM + wTag <= util };
+          });
           const alturas = linha.map((cel, i) => {
             doc.font(cel.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
-            return doc.heightOfString(cel.texto, {
-              width: larg[i] - 2 * pad - (cel.tag ? 18 * MM : 0),
-            });
+            const h = doc.heightOfString(cel.texto || ' ', { width: larg[i] - 2 * pad });
+            const e = etiquetas[i];
+            return e && !e.aoLado ? h + 5.5 * MM : h;
           });
           const alt = Math.max(...alturas) + 4 * MM;
           if (y + alt > H - ALTURA_RODAPE - 6 * MM) {
@@ -242,22 +269,23 @@ export function desenharLevantamento(
               .fontSize(10)
               .fillColor(TINTA)
               .text(cel.texto, x + pad, y + 2 * MM, {
-                width: larg[i] - 2 * pad - (cel.tag ? 18 * MM : 0),
+                width: larg[i] - 2 * pad,
                 align: c.direita ? 'right' : 'left',
               });
-            if (cel.tag) {
-              const wTexto = doc.widthOfString(cel.texto);
-              doc.font('Helvetica-Bold').fontSize(7.5);
-              const wTag = doc.widthOfString(cel.tag) + 3 * MM;
-              const tx = x + pad + wTexto + 1.5 * MM;
+            const e = etiquetas[i];
+            if (e && cel.tag) {
+              const tx = e.aoLado ? x + pad + e.wTexto + 1.5 * MM : x + pad;
+              const ty = e.aoLado ? y + 2 * MM : doc.y + 1 * MM;
               doc
-                .roundedRect(tx, y + 2 * MM, wTag, 4.2 * MM, 1.5)
+                .roundedRect(tx, ty, e.wTag, 4.2 * MM, 1.5)
                 .lineWidth(0.8)
                 .strokeColor(marca.secundaria)
                 .stroke();
               doc
+                .font('Helvetica-Bold')
+                .fontSize(7.5)
                 .fillColor(escurecer(marca.secundaria, 0.25))
-                .text(cel.tag, tx + 1.5 * MM, y + 2.8 * MM, { lineBreak: false });
+                .text(cel.tag, tx + 1.5 * MM, ty + 0.8 * MM, { lineBreak: false });
             }
             x += larg[i];
           });

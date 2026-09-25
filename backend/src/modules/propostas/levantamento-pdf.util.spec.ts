@@ -85,6 +85,38 @@ describe('desenharLevantamento', () => {
     expect(t).toContain('contato@x'); // rodapé do tenant
   });
 
+  /** Revisão 25/09: "TENSÃ/O" e "CORRENT/E" quebravam no meio da palavra. */
+  it('coluna de número NÃO quebra: título e valor inteiros, mesmo com número grande', async () => {
+    const pdf = await desenharLevantamento(
+      {
+        ...RESUMO,
+        quadros: [
+          {
+            quadro: 'Quadro Geral de Baixa Tensão da Subestação Norte — Ala de Envase',
+            principal: true,
+            tensaoV: 13800,
+            correnteA: 1250,
+            modelo: 'Modelo A + Concentrador',
+            aluguelMensal: 111111.78,
+          },
+        ],
+      },
+      MARCA,
+      { comprimir: false },
+    );
+    const linhas = textoDo(pdf).split('\n');
+    for (const inteiro of [
+      'TENSÃO',
+      'CORRENTE',
+      'ALUGUEL MENSAL',
+      '13800 V',
+      '1250 A',
+      'R$ 111.111,78',
+    ]) {
+      expect(linhas).toContain(inteiro);
+    }
+  });
+
   it('sem serviços, não desenha a tabela de serviços', async () => {
     const pdf = await desenharLevantamento(
       { ...RESUMO, servicos: { customizacao: null, total: null, parcelas: 2, valorParcela: null } },
