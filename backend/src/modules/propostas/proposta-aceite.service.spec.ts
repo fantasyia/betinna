@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import PizZip from 'pizzip';
 import { carregarModelo } from './contrato-documento.util';
@@ -98,6 +99,12 @@ function makeService(txProverbCount: number, recusaCount = 1) {
       }),
     ),
   };
+  // Contrato congelado no link: por padrão NÃO há (proposta de antes do 25/09).
+  const previa = {
+    salvar: vi.fn(async () => ({ path: 'emp-1/prop-1/1.docx', sha256: 'h' })),
+    baixar: vi.fn(async () => Buffer.from('docx-guardado')),
+    linkAssinado: vi.fn(async () => 'https://storage/contrato.docx'),
+  };
   const svc = new PropostaAceiteService(
     prisma as never,
     makeEnv() as never,
@@ -109,9 +116,10 @@ function makeService(txProverbCount: number, recusaCount = 1) {
     // Comissão do pedido nascido do aceite: tem teste próprio no serviço dela.
     { recalcular: vi.fn(async () => undefined) } as never,
     modelos as never,
+    previa as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
-  return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa, modelos };
+  return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa, modelos, previa };
 }
 
 describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () => {
@@ -230,6 +238,7 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
         undefined as never, // etapa
         undefined as never, // comissoes
         undefined as never, // modelos
+        undefined as never, // previa
       ) as unknown as { frontendUrl: () => string };
 
     it('usa FRONTEND_URL quando existe', () => {
@@ -374,6 +383,46 @@ describe('PropostaAceiteService — contrato do aceite é o documento pronto', (
         diaVencimento: 5,
       });
     }
+  });
+
+  /**
+   * "O contrato é o mesmo" (Léo, 25/09): o que vai pra ClickSign ao aprovar é o
+   * ARQUIVO que o cliente leu no link, não uma montagem nova.
+   */
+  it('com contrato congelado no link: manda O ARQUIVO GUARDADO, conferido pelo hash', async () => {
+    const guardado = Buffer.from('docx-guardado');
+    const hash = createHash('sha256').update(guardado).digest('hex');
+    const { svc, clicksign, contrato, previa } = comClickSign({
+      ...LOCACAO,
+      contratoPreviaPath: 'emp-1/prop-1/1.docx',
+      contratoPreviaSha256: hash,
+      contratoPreviaModeloVersao: 3,
+    });
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    expect(previa.baixar).toHaveBeenCalledWith('emp-1/prop-1/1.docx');
+    const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
+      documento?: { arquivo: Buffer };
+    };
+    expect(dados.documento?.arquivo.equals(guardado)).toBe(true);
+    const envio = contrato.create.mock.calls[0][0].data.enviosAssinatura[0];
+    expect(envio).toMatchObject({ modeloVersao: 3, sha256: hash });
+  });
+
+  it('hash do guardado NÃO confere → não manda outro texto, e avisa', async () => {
+    const { svc, clicksign, contrato, notificacoes } = comClickSign({
+      ...LOCACAO,
+      contratoPreviaPath: 'emp-1/prop-1/1.docx',
+      contratoPreviaSha256: 'outro-hash',
+      contratoPreviaModeloVersao: 3,
+    });
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
+    expect(contrato.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(notificacoes.criarParaUsuario.mock.calls)).toContain('não confere');
   });
 
   it('proposta sem os dados do documento NÃO manda nada e AVISA o responsável', async () => {

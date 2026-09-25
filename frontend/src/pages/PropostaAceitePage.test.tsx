@@ -18,6 +18,10 @@ vi.mock('@/lib/api', () => ({
   apiErrorMessage: (e: unknown) => String(e),
 }));
 vi.mock('react-router-dom', () => ({ useParams: () => ({ token: 'tok-27' }) }));
+const renderAsync = vi.fn(async (_b: Blob, alvo: HTMLElement) => {
+  alvo.innerHTML = '<section class="docx">CLÁUSULA PRIMEIRA — OBJETO</section>';
+});
+vi.mock('docx-preview', () => ({ renderAsync: (...a: unknown[]) => renderAsync(...(a as [Blob, HTMLElement])) }));
 vi.mock('@/lib/marca', async () => {
   const real = await vi.importActual<typeof import('@/lib/marca')>('@/lib/marca');
   const m = {
@@ -117,12 +121,43 @@ describe('PropostaAceitePage', () => {
     expect(apiPost).toHaveBeenCalledWith('/propostas/aceite/tok-27/decidir', { decisao: 'ACEITA' }, { skipAuth: true });
   });
 
+  /** "O contrato é o mesmo" (Léo, 25/09): lê o arquivo congelado, no navegador. */
+  it('CONTRATO: "Ler o contrato" busca o arquivo congelado do token e mostra aqui', async () => {
+    apiGet.mockImplementation(async (url: string) =>
+      url.endsWith('/contrato')
+        ? { url: 'https://storage/contrato.docx', nome: 'PROP-0027.docx' }
+        : { ...PREVIEW, temContrato: true },
+    );
+    const blob = new Blob(['PK-docx']);
+    const fetchMock = vi.fn(async () => ({ ok: true, blob: async () => blob }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<PropostaAceitePage />);
+    await waitFor(() => expect(screen.getByTestId('aceite-contrato')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('aceite-ler-contrato'));
+    await waitFor(() =>
+      expect(screen.getByTestId('aceite-contrato-leitor').textContent).toContain('CLÁUSULA PRIMEIRA'),
+    );
+    expect(apiGet).toHaveBeenCalledWith('/propostas/aceite/tok-27/contrato', { skipAuth: true });
+    expect(fetchMock).toHaveBeenCalledWith('https://storage/contrato.docx');
+    expect(renderAsync.mock.calls[0][0]).toBe(blob);
+    vi.unstubAllGlobals();
+  });
+
+  it('sem contrato congelado (ou venda): não oferece leitura', async () => {
+    apiGet.mockResolvedValue({ ...PREVIEW, temContrato: false });
+    render(<PropostaAceitePage />);
+    await waitFor(() => expect(screen.getByTestId('aceite-decisao')).toBeTruthy());
+    expect(screen.queryByTestId('aceite-contrato')).toBeNull();
+  });
+
   it('já respondida: avisa, e não mostra projeto nem botões', async () => {
     apiGet.mockResolvedValue({ ...PREVIEW, jaRespondida: true, resumo: null, anexos: [] });
     render(<PropostaAceitePage />);
     await waitFor(() => expect(screen.getByTestId('aceite-ja-respondida')).toBeTruthy());
     expect(screen.queryByTestId('aceite-decisao')).toBeNull();
     expect(screen.queryByTestId('aceite-projeto')).toBeNull();
+    expect(screen.queryByTestId('aceite-contrato')).toBeNull();
   });
 
   it('dataPura não desloca o dia', () => {

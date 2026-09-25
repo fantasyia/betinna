@@ -1280,6 +1280,12 @@ model Proposta {
   /// Token usado uma vez (limpado após aceite/recusa). TTL default 7 dias.
   aceiteToken    String?   @unique
   aceiteExpiraEm DateTime?
+  /// Contrato CONGELADO ao gerar o link (Léo, 25/09: "o contrato é o mesmo"):
+  /// o .docx que o cliente lê na página de aceite é o que vai pra ClickSign.
+  contratoPreviaPath         String?
+  contratoPreviaSha256       String?
+  contratoPreviaModeloVersao Int?
+  contratoPreviaEm           DateTime?
   aceitoEm       DateTime?
   aceitoDoIp     String? // auditoria do aceite
 

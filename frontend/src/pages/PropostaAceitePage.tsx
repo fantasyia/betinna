@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
@@ -12,6 +12,12 @@ import { carregarMarca, escurecer, marca, type Marca } from '@/lib/marca';
  * condições — e SEM O PROJETO, que é justamente o que o cliente aprova. Agora é
  * o documento do levantamento (quadros, aluguel por mês, condições, serviços,
  * prazos), o projeto pra abrir, e o aceite embaixo.
+ *
+ * Levantamento e projeto são UMA coisa só: "Levantamento técnico de projeto"
+ * (Léo, 25/09). E o CONTRATO se lê aqui antes de aprovar — o arquivo congelado
+ * no link, o MESMO que vai pra ClickSign quando ele aprova ("o contrato é o
+ * mesmo"). Renderizado no navegador (docx-preview): nada sai pra visualizador
+ * de terceiro.
  *
  * ⛔ Marca do TENANT, resolvida pelo domínio (`/public/branding`): nenhuma cor
  * nem nome de empresa escrito aqui. O rodapé vem da config do tenant, o mesmo
@@ -81,6 +87,8 @@ interface AceitePreview {
   resumo?: Resumo | null;
   anexos?: Array<{ id: string; nome: string; mime: string; tamanho: number }>;
   rodape?: string | null;
+  /** Há contrato congelado pra ler (`aceite/:token/contrato`). */
+  temContrato?: boolean;
 }
 
 /** Data "pura" (validade: 00:00 UTC) — no fuso de Brasília ela mostrava o dia anterior. */
@@ -168,6 +176,10 @@ function estilos(m: Marca): string {
   .ac-erro { color:#c43c3c; font-size:14px; margin-top:10px; }
   .ac-rodape { border-top:3px solid ${primaria}; padding:16px 32px; font-size:12px; color:#636363; white-space:pre-line; }
   .ac-centro { text-align:center; padding:48px 20px; }
+  .ac-contrato-acoes { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+  .ac-contrato-leitor { margin-top:12px; border:1px solid #D0D0D0; background:#f3f3f3; max-height:75vh; overflow:auto; }
+  .ac-contrato-leitor .docx-wrapper { padding:16px !important; background:#f3f3f3 !important; }
+  .ac-contrato-leitor .docx-wrapper > section.docx { box-shadow:0 2px 8px rgba(0,0,0,.08); margin-bottom:16px !important; }
   @media (max-width: 640px) {
     .ac { padding:0 0 24px; }
     .ac-topo, .ac-corpo, .ac-rodape { padding-left:16px; padding-right:16px; }
@@ -175,6 +187,8 @@ function estilos(m: Marca): string {
     .ac-cond { grid-template-columns:repeat(2,1fr); }
     .ac h1 { font-size:24px; }
     .ac-total .val { font-size:22px; }
+    .ac-contrato-leitor .docx-wrapper { padding:0 !important; }
+    .ac-contrato-leitor .docx-wrapper > section.docx { width:100% !important; min-height:0 !important; padding:20px 16px !important; }
   }`;
 }
 
@@ -188,6 +202,8 @@ export default function PropostaAceitePage() {
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [resultado, setResultado] = useState<'ACEITA' | 'RECUSADA' | null>(null);
   const [confirmarRecusa, setConfirmarRecusa] = useState(false);
+  const [contrato, setContrato] = useState<'fechado' | 'carregando' | 'aberto'>('fechado');
+  const leitor = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // A marca vem pelo domínio; no 1º acesso (sem cache) ela chega depois do render.
@@ -252,6 +268,56 @@ export default function PropostaAceitePage() {
     }
   }
 
+  /** Busca o .docx congelado (link temporário) — pra ler aqui ou baixar. */
+  async function arquivoDoContrato(): Promise<{ blob: Blob; nome: string }> {
+    const l = await api.get<{ url: string; nome: string }>(`/propostas/aceite/${token}/contrato`, {
+      skipAuth: true,
+    });
+    const resp = await fetch(l.url);
+    if (!resp.ok) throw new Error('Não consegui abrir o contrato. Tente de novo.');
+    return { blob: await resp.blob(), nome: l.nome };
+  }
+
+  async function lerContrato() {
+    if (contrato === 'aberto') {
+      setContrato('fechado');
+      return;
+    }
+    setContrato('carregando');
+    setError(null);
+    try {
+      const [{ blob }, { renderAsync }] = await Promise.all([
+        arquivoDoContrato(),
+        import('docx-preview'),
+      ]);
+      setContrato('aberto');
+      // O leitor só existe depois do 'aberto' renderizar.
+      await new Promise((ok) => setTimeout(ok, 0));
+      if (leitor.current) {
+        leitor.current.innerHTML = '';
+        await renderAsync(blob, leitor.current, undefined, { inWrapper: true, ignoreLastRenderedPageBreak: true });
+      }
+    } catch (err) {
+      setContrato('fechado');
+      setError(apiErrorMessage(err));
+    }
+  }
+
+  async function baixarContrato() {
+    setError(null);
+    try {
+      const { blob, nome } = await arquivoDoContrato();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nome;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  }
+
   const r = data?.resumo ?? null;
   const logo = m.logoNegativoUrl ?? m.logoUrl;
 
@@ -307,7 +373,7 @@ export default function PropostaAceitePage() {
 
               {r ? (
                 <>
-                  <h1>Levantamento técnico</h1>
+                  <h1>Levantamento técnico de projeto</h1>
                   <p className="sub">
                     Medição feita quadro a quadro. O modelo de cada quadro é definido pela corrente
                     medida.
@@ -484,9 +550,9 @@ export default function PropostaAceitePage() {
 
               {!data.jaRespondida && (data.anexos?.length ?? 0) > 0 && (
                 <section data-testid="aceite-projeto">
-                  <div className="ac-eyebrow">Projeto</div>
+                  <div className="ac-eyebrow">Levantamento técnico de projeto · arquivo</div>
                   <p className="ac-nota">
-                    É o projeto que você aprova: onde entra cada equipamento, em qual quadro.
+                    É o que você aprova: onde entra cada equipamento, em qual quadro.
                   </p>
                   {data.anexos!.map((a) => (
                     <div className="ac-anexo" key={a.id}>
@@ -505,6 +571,41 @@ export default function PropostaAceitePage() {
                       </button>
                     </div>
                   ))}
+                </section>
+              )}
+
+              {!data.jaRespondida && data.temContrato && (
+                <section data-testid="aceite-contrato">
+                  <div className="ac-eyebrow">Contrato</div>
+                  <p className="ac-nota">
+                    Leia antes de aprovar. É exatamente este contrato que você recebe para assinar.
+                  </p>
+                  <div className="ac-contrato-acoes">
+                    <button
+                      type="button"
+                      className="ac-btn sec"
+                      data-testid="aceite-ler-contrato"
+                      disabled={contrato === 'carregando'}
+                      onClick={() => void lerContrato()}
+                    >
+                      {contrato === 'carregando'
+                        ? 'Abrindo…'
+                        : contrato === 'aberto'
+                          ? 'Fechar contrato'
+                          : 'Ler o contrato'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ac-btn leve"
+                      data-testid="aceite-baixar-contrato"
+                      onClick={() => void baixarContrato()}
+                    >
+                      Baixar
+                    </button>
+                  </div>
+                  {contrato === 'aberto' && (
+                    <div className="ac-contrato-leitor" ref={leitor} data-testid="aceite-contrato-leitor" />
+                  )}
                 </section>
               )}
 

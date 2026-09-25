@@ -13,6 +13,7 @@ import {
 } from './contrato-envio.util';
 import { TERMOS_DO_CONTRATO } from './contrato-documento.util';
 import { resumoDaProposta, type ResumoProposta } from './proposta-resumo.util';
+import { ContratoPreviaService, sha256 } from './contrato-previa.service';
 import {
   ModeloContratoService,
   type ModeloEmUso,
@@ -74,6 +75,8 @@ export interface AceitePreview {
   anexos: Array<{ id: string; nome: string; mime: string; tamanho: number }>;
   /** Rodapé oficial do tenant (`config.marca.rodape`), o mesmo dos e-mails. */
   rodape: string | null;
+  /** Há contrato CONGELADO pra ler (`aceite/:token/contrato`) — o mesmo que ele assina. */
+  temContrato: boolean;
   itens: Array<{
     produtoNome: string;
     /** Descrição vigente do produto (ERP) — o cliente lê o que está aceitando. */
@@ -101,6 +104,7 @@ export class PropostaAceiteService {
     private readonly etapa: LeadEtapaSistemaService,
     private readonly comissoes: PedidoComissoesService,
     private readonly modelos: ModeloContratoService,
+    private readonly previa: ContratoPreviaService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -178,13 +182,42 @@ export class PropostaAceiteService {
       where: { id: propostaId },
       select: SELECT_PROPOSTA_CONTRATO,
     });
+    let congelado: {
+      contratoPreviaPath: string;
+      contratoPreviaSha256: string;
+      contratoPreviaModeloVersao: number | null;
+      contratoPreviaEm: Date;
+    } | null = null;
     if (paraContrato?.modalidade === 'LOCACAO') {
-      const falta = pendenciasDoContrato(await comSkus(this.prisma, paraContrato));
+      const completa = await comSkus(this.prisma, paraContrato);
+      const falta = pendenciasDoContrato(completa);
       if (falta.length) {
         throw new BusinessRuleException(
           `A proposta ainda não pode ir pro cliente. Falta: ${falta.join('; ')}.`,
         );
       }
+      // O CONTRATO que o cliente vai ler — e assinar. Montado AGORA, uma vez, e
+      // guardado: no aprovar sai este arquivo, não uma montagem nova (Léo,
+      // 25/09: "o contrato é o mesmo"). Falha aqui barra o link: link sem o
+      // contrato congelado faria o aprovar montar outro, e aí não é o mesmo.
+      const modelo = await this.modelos.emUso(empresaId);
+      const montagem = montarContratoParaAssinar(completa, { modelo: modelo.arquivo });
+      if (!montagem.ok || !montagem.dados.documento) {
+        throw new BusinessRuleException(
+          `O contrato não pôde ser montado: ${montagem.ok ? 'sem documento' : montagem.motivo}.`,
+        );
+      }
+      const guardado = await this.previa.salvar(
+        empresaId,
+        propostaId,
+        montagem.dados.documento.arquivo,
+      );
+      congelado = {
+        contratoPreviaPath: guardado.path,
+        contratoPreviaSha256: guardado.sha256,
+        contratoPreviaModeloVersao: modelo.versao,
+        contratoPreviaEm: new Date(),
+      };
     }
     const token = await new SignJWT({ pid: propostaId, eid: empresaId })
       .setProtectedHeader({ alg: 'HS256' })
@@ -195,7 +228,12 @@ export class PropostaAceiteService {
     const expiraEm = new Date(Date.now() + this.ttlSeconds * 1000);
     const proposta = await this.prisma.proposta.update({
       where: { id: propostaId },
-      data: { aceiteToken: token, aceiteExpiraEm: expiraEm, status: 'AGUARDANDO_ASSINATURA' },
+      data: {
+        aceiteToken: token,
+        aceiteExpiraEm: expiraEm,
+        status: 'AGUARDANDO_ASSINATURA',
+        ...(congelado ?? {}),
+      },
       select: { clienteId: true },
     });
 
@@ -227,6 +265,17 @@ export class PropostaAceiteService {
       throw new NotFoundException('Proposta', propostaId);
     }
     return propostaId;
+  }
+
+  /** O contrato congelado, pra o cliente LER na página de aceite (só com token vigente). */
+  async linkDoContrato(token: string): Promise<{ url: string; nome: string }> {
+    const propostaId = await this.propostaDoTokenAberto(token);
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: { numero: true, contratoPreviaPath: true },
+    });
+    if (!p?.contratoPreviaPath) throw new NotFoundException('Contrato', propostaId);
+    return { url: await this.previa.linkAssinado(p.contratoPreviaPath), nome: `${p.numero}.docx` };
   }
 
   private async validarToken(token: string): Promise<AcceptPayload> {
@@ -309,6 +358,7 @@ export class PropostaAceiteService {
       resumo,
       anexos,
       rodape: cfg.marca?.rodape?.trim() || null,
+      temContrato: !jaRespondida && !!proposta.contratoPreviaPath,
       // Já respondida: a tela só diz isso — sem os itens (F-6).
       itens: jaRespondida
         ? []
@@ -572,7 +622,14 @@ export class PropostaAceiteService {
     try {
       const p = await this.prisma.proposta.findFirst({
         where: { id: propostaId, empresaId },
-        select: { ...SELECT_PROPOSTA_CONTRATO, clienteId: true, representanteId: true },
+        select: {
+          ...SELECT_PROPOSTA_CONTRATO,
+          clienteId: true,
+          representanteId: true,
+          contratoPreviaPath: true,
+          contratoPreviaSha256: true,
+          contratoPreviaModeloVersao: true,
+        },
       });
       if (!p) return;
 
@@ -608,6 +665,23 @@ export class PropostaAceiteService {
         return;
       }
 
+      // O ARQUIVO que o cliente leu no link — não a montagem de agora (Léo,
+      // 25/09: "o contrato é o mesmo"). A montagem acima segue dando os dados do
+      // signatário; o documento é o guardado, conferido pelo hash. Hash que não
+      // bate = não envia: mandar outro texto seria pior que não mandar.
+      let versaoEnviada = modelo.versao;
+      if (p.contratoPreviaPath) {
+        const arquivo = await this.previa.baixar(p.contratoPreviaPath);
+        if (sha256(arquivo) !== p.contratoPreviaSha256) {
+          const motivo = 'o contrato guardado no link não confere (hash diferente)';
+          this.logger.error(`Proposta ${p.numero} aceita, mas ${motivo} — contrato não enviado.`);
+          await this.avisarFalhaContrato(empresaId, p.representanteId, p.numero, motivo);
+          return;
+        }
+        montagem.dados.documento = { arquivo, nome: `${p.numero}.docx` };
+        versaoEnviada = p.contratoPreviaModeloVersao;
+      }
+
       const envelope = await this.clicksign.enviarParaAssinatura(empresaId, montagem.dados);
 
       await this.prisma.contrato.create({
@@ -634,7 +708,9 @@ export class PropostaAceiteService {
               porUsuarioId: null,
               motivo: 'envio inicial (aceite da proposta)',
               desfecho: 'enviado',
-              modeloVersao: modelo.versao,
+              modeloVersao: versaoEnviada,
+              // Hash do arquivo que saiu — o mesmo que o cliente leu no link.
+              sha256: p.contratoPreviaSha256 ?? null,
             },
           ],
         },

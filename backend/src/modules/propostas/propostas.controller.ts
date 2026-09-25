@@ -55,6 +55,16 @@ export class PropostasController {
   }
 
   @Public()
+  @Get('aceite/:token/contrato')
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @ApiOperation({
+    summary: 'Link temporário do CONTRATO congelado, pro cliente ler antes de aprovar.',
+  })
+  aceiteContrato(@Param('token') token: string) {
+    return this.aceite.linkDoContrato(token);
+  }
+
+  @Public()
   @Get('aceite/:token/anexos/:anexoId')
   @Throttle({ default: { limit: 30, ttl: seconds(60) } })
   @ApiOperation({ summary: 'Link temporário do PROJETO anexado, pro cliente na página de aceite.' })

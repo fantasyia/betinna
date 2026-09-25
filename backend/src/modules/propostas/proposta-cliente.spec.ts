@@ -200,6 +200,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
     numero: 'PROP-0027',
     status: 'AGUARDANDO_ASSINATURA',
     aceiteToken: TOKEN,
+    contratoPreviaPath: 'emp-1/prop-27/1.docx' as string | null,
     modalidade: 'LOCACAO',
     criadoEm: new Date('2026-09-25T15:00:00Z'),
     validoAte: new Date('2026-10-24T00:00:00Z'),
@@ -223,6 +224,11 @@ function montarAceite(over: Record<string, unknown> = {}) {
         if (args.include) return linhaPreview;
         if (args.select?.aceiteToken)
           return { aceiteToken: linhaPreview.aceiteToken, status: linhaPreview.status };
+        if (args.select?.contratoPreviaPath)
+          return {
+            numero: linhaPreview.numero,
+            contratoPreviaPath: linhaPreview.contratoPreviaPath,
+          };
         return PARA_CONTRATO;
       }),
     },
@@ -235,6 +241,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
         ]),
     },
   };
+  const previa = { linkAssinado: vi.fn(async () => 'https://storage/contrato.docx') };
   const svc = new PropostaAceiteService(
     prisma as never,
     { get: vi.fn(() => 'k'.repeat(64)) } as never,
@@ -245,9 +252,10 @@ function montarAceite(over: Record<string, unknown> = {}) {
     {} as never,
     {} as never,
     {} as never,
+    previa as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-27', eid: 'emp-1' } });
-  return { svc, prisma };
+  return { svc, prisma, previa };
 }
 
 describe('página de aceite — o que a prévia pública entrega', () => {
@@ -287,6 +295,27 @@ describe('página de aceite — o que a prévia pública entrega', () => {
     await expect(
       montarAceite({ status: 'RECUSADA' }).svc.propostaDoTokenAberto(TOKEN),
     ).rejects.toThrow();
+  });
+
+  /** "O contrato é o mesmo" (Léo, 25/09): o cliente lê o arquivo congelado no link. */
+  it('contrato congelado: a prévia avisa que há contrato e o link abre O ARQUIVO guardado', async () => {
+    const { svc, previa } = montarAceite();
+    expect((await svc.resolverPreview(TOKEN)).temContrato).toBe(true);
+    expect(await svc.linkDoContrato(TOKEN)).toEqual({
+      url: 'https://storage/contrato.docx',
+      nome: 'PROP-0027.docx',
+    });
+    expect(previa.linkAssinado).toHaveBeenCalledWith('emp-1/prop-27/1.docx');
+  });
+
+  it('contrato: sem arquivo congelado não há o que ler; respondida não abre', async () => {
+    const sem = montarAceite({ contratoPreviaPath: null });
+    expect((await sem.svc.resolverPreview(TOKEN)).temContrato).toBe(false);
+    await expect(sem.svc.linkDoContrato(TOKEN)).rejects.toThrow();
+    const aceita = montarAceite({ status: 'ACEITA', aceiteToken: null });
+    expect((await aceita.svc.resolverPreview(TOKEN)).temContrato).toBe(false);
+    await expect(aceita.svc.linkDoContrato(TOKEN)).rejects.toThrow();
+    expect(aceita.previa.linkAssinado).not.toHaveBeenCalled();
   });
 });
 

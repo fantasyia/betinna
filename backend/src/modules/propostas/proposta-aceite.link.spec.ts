@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PropostaAceiteService } from './proposta-aceite.service';
+import { carregarModelo } from './contrato-documento.util';
 
 /**
  * O link de aceite é o ponto ÚNICO por onde a proposta vai ao cliente (e-mail
@@ -59,6 +60,8 @@ function montar(proposta: Record<string, unknown>, anexos = 1) {
     produto: { findMany: vi.fn().mockResolvedValue([{ id: 'prod-mb04', sku: 'MB-04_D.S.' }]) },
   };
   const etapa = { mover: vi.fn(async () => 'movido' as const) };
+  const modelos = { emUso: vi.fn(async () => ({ arquivo: carregarModelo(), versao: 4 })) };
+  const previa = { salvar: vi.fn(async () => ({ path: 'emp-1/prop-27/1.docx', sha256: 'abc' })) };
   const svc = new PropostaAceiteService(
     prisma as never,
     { get: vi.fn(() => 'k'.repeat(64)) } as never,
@@ -68,9 +71,10 @@ function montar(proposta: Record<string, unknown>, anexos = 1) {
     {} as never,
     etapa as never,
     {} as never,
-    {} as never,
+    modelos as never,
+    previa as never,
   );
-  return { svc, prisma };
+  return { svc, prisma, previa };
 }
 
 describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato', () => {
@@ -81,6 +85,27 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
     const r = await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
     expect(r.url).toContain('/proposta/aceite/');
     expect(prisma.proposta.update).toHaveBeenCalledTimes(1);
+  });
+
+  /** "O contrato é o mesmo" (Léo, 25/09): congela o .docx junto com o token. */
+  it('congela o CONTRATO no link: guarda o .docx e grava caminho, hash e versão', async () => {
+    const { svc, prisma, previa } = montar(COMPLETA);
+    await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
+    expect(previa.salvar).toHaveBeenCalledTimes(1);
+    const [, , arquivo] = previa.salvar.mock.calls[0] as unknown as [string, string, Buffer];
+    expect(arquivo.subarray(0, 2).toString()).toBe('PK'); // é um .docx de verdade
+    expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
+      contratoPreviaPath: 'emp-1/prop-27/1.docx',
+      contratoPreviaSha256: 'abc',
+      contratoPreviaModeloVersao: 4,
+    });
+  });
+
+  it('não conseguiu guardar o contrato → NÃO gera o link (o aprovar não teria o mesmo arquivo)', async () => {
+    const { svc, prisma, previa } = montar(COMPLETA);
+    previa.salvar.mockRejectedValueOnce(new Error('storage fora'));
+    await expect(svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO')).rejects.toThrow();
+    expect(prisma.proposta.update).not.toHaveBeenCalled();
   });
 
   it('🔴 completa MENOS o celular: recusa, diz o que falta e NÃO muda o status', async () => {
@@ -105,9 +130,14 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
   });
 
   it('venda não passa pela checagem do contrato — não gera contrato', async () => {
-    const { svc, prisma } = montar({ ...COMPLETA, modalidade: 'VENDA', signatarioTelefone: null });
+    const { svc, prisma, previa } = montar({
+      ...COMPLETA,
+      modalidade: 'VENDA',
+      signatarioTelefone: null,
+    });
     await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
     expect(prisma.proposta.update).toHaveBeenCalledTimes(1);
+    expect(previa.salvar).not.toHaveBeenCalled();
   });
 
   it('sem projeto anexado continua recusando antes de tudo', async () => {
