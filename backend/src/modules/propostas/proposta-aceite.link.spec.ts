@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PDFDocument } from 'pdf-lib';
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { carregarModelo } from './contrato-documento.util';
 
@@ -51,6 +52,19 @@ const COMPLETA = {
   },
 };
 
+/** PDF de verdade com N páginas — o arquivo único é montado com pdf-lib. */
+async function umPdf(paginas: number): Promise<Buffer> {
+  const d = await PDFDocument.create();
+  for (let i = 0; i < paginas; i++) d.addPage();
+  return Buffer.from(await d.save());
+}
+let PDF_LEVANTAMENTO: Buffer;
+let PDF_CONTRATO: Buffer;
+beforeAll(async () => {
+  PDF_LEVANTAMENTO = await umPdf(1);
+  PDF_CONTRATO = await umPdf(7);
+});
+
 function montar(proposta: Record<string, unknown>, anexos = 1) {
   const prisma = {
     propostaAnexo: { count: vi.fn().mockResolvedValue(anexos) },
@@ -70,8 +84,8 @@ function montar(proposta: Record<string, unknown>, anexos = 1) {
       }),
     ),
   };
-  const docxPdf = { converter: vi.fn(async () => Buffer.from('%PDF-1.7 contrato')) };
-  const levantamentoPdf = { gerar: vi.fn(async () => Buffer.from('%PDF-1.7 levantamento')) };
+  const docxPdf = { converter: vi.fn(async () => PDF_CONTRATO) };
+  const levantamentoPdf = { gerar: vi.fn(async () => PDF_LEVANTAMENTO) };
   const svc = new PropostaAceiteService(
     prisma as never,
     { get: vi.fn(() => 'k'.repeat(64)) } as never,
@@ -103,7 +117,7 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
   it('congela o CONTRATO no link: guarda o .docx e grava caminho, hash e versão', async () => {
     const { svc, prisma, previa } = montar(COMPLETA);
     await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
-    expect(previa.salvar).toHaveBeenCalledTimes(3); // contrato .docx + contrato .pdf + levantamento
+    expect(previa.salvar).toHaveBeenCalledTimes(4); // .docx + contrato .pdf + levantamento + completo
     const [, , arquivo] = previa.salvar.mock.calls[0] as unknown as [string, string, Buffer];
     expect(arquivo.subarray(0, 2).toString()).toBe('PK'); // é um .docx de verdade
     expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
@@ -223,10 +237,23 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
     // O MESMO .docx guardado (mesma referência — comparar 1 MB byte a byte estoura o tempo).
     expect((docxPdf.converter.mock.calls[0] as unknown[])[0]).toBe(docx?.[2]);
     const pdf = previa.salvar.mock.calls.find((c) => c[3] === 'pdf' && c[4] === 'contrato');
-    expect(String(pdf?.[2])).toContain('%PDF-1.7 contrato');
+    expect(pdf?.[2]).toBe(PDF_CONTRATO);
     expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
       contratoPdfPath: 'emp-1/prop-27/1-contrato.pdf',
       contratoPdfSha256: 'hash-contrato',
+    });
+  });
+
+  /** Léo, 25/09: "o correto não seria subir 1 só já completo?" */
+  it('congela UM PDF com os dois: levantamento e depois contrato, na ordem da página', async () => {
+    const { svc, prisma, previa } = montar(COMPLETA);
+    await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
+    const completo = previa.salvar.mock.calls.find((c) => c[4] === 'completo');
+    const junto = await PDFDocument.load(completo?.[2] as Buffer);
+    expect(junto.getPageCount()).toBe(8); // 1 do levantamento + 7 do contrato
+    expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
+      documentoPdfPath: 'emp-1/prop-27/1-completo.pdf',
+      documentoPdfSha256: 'hash-completo',
     });
   });
 

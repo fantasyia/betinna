@@ -1298,6 +1298,10 @@ model Proposta {
   /// que o cliente lê na página E o que vai pra ClickSign (Léo, 25/09).
   contratoPdfPath            String?
   contratoPdfSha256          String?
+  /// UM PDF com os dois (levantamento + contrato), congelado junto. É o que vai
+  /// pra ClickSign — um documento, uma assinatura — e o "Baixar tudo" da página.
+  documentoPdfPath           String?
+  documentoPdfSha256         String?
   aceitoEm       DateTime?
   aceitoDoIp     String? // auditoria do aceite
 

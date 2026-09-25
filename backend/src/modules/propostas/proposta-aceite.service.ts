@@ -98,6 +98,17 @@ export interface AceitePreview {
   }>;
 }
 
+/** Junta PDFs num só, na ordem dada. */
+async function juntarPdfs(arquivos: Buffer[]): Promise<Buffer> {
+  const junto = await PDFDocument.create();
+  for (const arquivo of arquivos) {
+    const parte = await PDFDocument.load(arquivo);
+    const paginas = await junto.copyPages(parte, parte.getPageIndices());
+    paginas.forEach((pg) => junto.addPage(pg));
+  }
+  return Buffer.from(await junto.save());
+}
+
 @Injectable()
 export class PropostaAceiteService {
   private readonly logger = new Logger(PropostaAceiteService.name);
@@ -201,6 +212,8 @@ export class PropostaAceiteService {
       levantamentoPdfSha256: string;
       contratoPdfPath: string;
       contratoPdfSha256: string;
+      documentoPdfPath: string;
+      documentoPdfSha256: string;
     } | null = null;
     if (paraContrato?.modalidade === 'LOCACAO') {
       const completa = await comSkus(this.prisma, paraContrato);
@@ -250,6 +263,16 @@ export class PropostaAceiteService {
         'pdf',
         'levantamento',
       );
+      // E os DOIS num arquivo só, na ordem da página (Léo, 25/09: "o correto
+      // não seria subir 1 só já completo?"). É ele que vai pra ClickSign — uma
+      // assinatura, e o PDF assinado que volta já tem o levantamento dentro.
+      const guardadoCompleto = await this.previa.salvar(
+        empresaId,
+        propostaId,
+        await juntarPdfs([pdf, contratoPdf]),
+        'pdf',
+        'completo',
+      );
       congelado = {
         contratoPreviaPath: guardado.path,
         contratoPreviaSha256: guardado.sha256,
@@ -259,6 +282,8 @@ export class PropostaAceiteService {
         levantamentoPdfSha256: guardadoPdf.sha256,
         contratoPdfPath: guardadoContratoPdf.path,
         contratoPdfSha256: guardadoContratoPdf.sha256,
+        documentoPdfPath: guardadoCompleto.path,
+        documentoPdfSha256: guardadoCompleto.sha256,
       };
     }
     const token = await new SignJWT({ pid: propostaId, eid: empresaId })
@@ -417,20 +442,27 @@ export class PropostaAceiteService {
     const propostaId = await this.propostaDoTokenAberto(token);
     const p = await this.prisma.proposta.findUnique({
       where: { id: propostaId },
-      select: { numero: true, levantamentoPdfPath: true, contratoPdfPath: true },
+      select: {
+        numero: true,
+        levantamentoPdfPath: true,
+        contratoPdfPath: true,
+        documentoPdfPath: true,
+      },
     });
     if (!p?.levantamentoPdfPath || !p.contratoPdfPath) {
       throw new NotFoundException('Documentos', propostaId);
     }
-    const junto = await PDFDocument.create();
-    for (const caminho of [p.levantamentoPdfPath, p.contratoPdfPath]) {
-      const parte = await PDFDocument.load(await this.previa.baixar(caminho));
-      const paginas = await junto.copyPages(parte, parte.getPageIndices());
-      paginas.forEach((pg) => junto.addPage(pg));
-    }
+    // O arquivo CONGELADO — o mesmo que vai pra ClickSign. Junta na hora só em
+    // proposta de antes dele existir.
+    const arquivo = p.documentoPdfPath
+      ? await this.previa.baixar(p.documentoPdfPath)
+      : await juntarPdfs([
+          await this.previa.baixar(p.levantamentoPdfPath),
+          await this.previa.baixar(p.contratoPdfPath),
+        ]);
     return {
       filename: `${p.numero}-proposta-e-contrato.pdf`,
-      base64: Buffer.from(await junto.save()).toString('base64'),
+      base64: arquivo.toString('base64'),
     };
   }
 
@@ -804,6 +836,8 @@ export class PropostaAceiteService {
           levantamentoPdfSha256: true,
           contratoPdfPath: true,
           contratoPdfSha256: true,
+          documentoPdfPath: true,
+          documentoPdfSha256: true,
           contratoPreviaModeloVersao: true,
         },
       });
@@ -847,7 +881,26 @@ export class PropostaAceiteService {
       // bate = não envia: mandar outro texto seria pior que não mandar.
       let versaoEnviada = modelo.versao;
       let shaEnviado = p.contratoPreviaSha256 ?? null;
-      if (p.contratoPdfPath) {
+      let documentoUnico = false;
+      if (p.documentoPdfPath) {
+        // UM documento: levantamento + contrato, o arquivo que o cliente viu e
+        // baixou na página. Uma assinatura; o PDF assinado já traz os dois.
+        const arquivo = await this.previa.baixar(p.documentoPdfPath);
+        if (sha256(arquivo) !== p.documentoPdfSha256) {
+          const motivo = 'o documento guardado no link não confere (hash diferente)';
+          this.logger.error(`Proposta ${p.numero} aceita, mas ${motivo} — contrato não enviado.`);
+          await this.avisarFalhaContrato(empresaId, p.representanteId, p.numero, motivo);
+          return;
+        }
+        montagem.dados.documento = {
+          arquivo,
+          nome: `${p.numero}-proposta-e-contrato.pdf`,
+          mime: 'application/pdf',
+        };
+        versaoEnviada = p.contratoPreviaModeloVersao;
+        shaEnviado = p.documentoPdfSha256;
+        documentoUnico = true;
+      } else if (p.contratoPdfPath) {
         // O PDF que o cliente LEU na página — o mesmo arquivo, página por página.
         const arquivo = await this.previa.baixar(p.contratoPdfPath);
         if (sha256(arquivo) !== p.contratoPdfSha256) {
@@ -876,7 +929,7 @@ export class PropostaAceiteService {
       }
       // O Levantamento técnico de projeto vai ANEXADO no envelope — o PDF que o
       // cliente viu no link, conferido pelo hash, pela mesma regra do contrato.
-      if (p.levantamentoPdfPath) {
+      if (p.levantamentoPdfPath && !documentoUnico) {
         const pdf = await this.previa.baixar(p.levantamentoPdfPath);
         if (sha256(pdf) !== p.levantamentoPdfSha256) {
           const motivo = 'o levantamento técnico guardado no link não confere (hash diferente)';

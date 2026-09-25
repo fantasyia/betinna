@@ -414,6 +414,51 @@ describe('PropostaAceiteService — contrato do aceite é o documento pronto', (
     expect(envio).toMatchObject({ modeloVersao: 3, sha256: hash });
   });
 
+  /** Léo, 25/09: "o correto não seria subir 1 só já completo?" — UM documento. */
+  it('com o documento ÚNICO congelado: o envelope leva SÓ ele, sem anexo, pelo hash', async () => {
+    const unico = Buffer.from('%PDF levantamento + contrato');
+    const hashUnico = createHash('sha256').update(unico).digest('hex');
+    const { svc, clicksign, contrato, previa } = comClickSign({
+      ...LOCACAO,
+      contratoPdfPath: 'emp-1/prop-1/1-contrato.pdf',
+      contratoPdfSha256: 'h-contrato',
+      levantamentoPdfPath: 'emp-1/prop-1/1-levantamento.pdf',
+      levantamentoPdfSha256: 'h-lev',
+      documentoPdfPath: 'emp-1/prop-1/1-completo.pdf',
+      documentoPdfSha256: hashUnico,
+    });
+    previa.baixar.mockImplementation(async (p: string) =>
+      p.endsWith('completo.pdf') ? unico : Buffer.from('outro'),
+    );
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
+      documento?: { arquivo: Buffer; nome: string; mime?: string };
+      anexos?: unknown[];
+    };
+    expect(dados.documento?.arquivo.equals(unico)).toBe(true);
+    expect(dados.documento?.nome).toMatch(/proposta-e-contrato\.pdf$/);
+    expect(dados.anexos ?? []).toHaveLength(0); // o levantamento já está DENTRO
+    const envio = contrato.create.mock.calls[0][0].data.enviosAssinatura[0];
+    expect(envio).toMatchObject({ sha256: hashUnico });
+  });
+
+  it('documento único guardado NÃO confere → não envia nada, e avisa', async () => {
+    const { svc, clicksign, contrato, notificacoes, previa } = comClickSign({
+      ...LOCACAO,
+      documentoPdfPath: 'emp-1/prop-1/1-completo.pdf',
+      documentoPdfSha256: 'outro',
+    });
+    previa.baixar.mockResolvedValue(Buffer.from('%PDF'));
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
+    expect(contrato.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(notificacoes.criarParaUsuario.mock.calls)).toContain('não confere');
+  });
+
   /** Léo, 25/09: com o contrato em PDF congelado, a ClickSign recebe ESSE PDF. */
   it('com contrato em PDF congelado: o envelope leva O PDF (não o .docx), pelo hash', async () => {
     const docx = Buffer.from('docx-guardado');

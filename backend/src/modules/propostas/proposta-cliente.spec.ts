@@ -203,6 +203,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
     contratoPreviaPath: 'emp-1/prop-27/1.docx' as string | null,
     levantamentoPdfPath: 'emp-1/prop-27/1.pdf' as string | null,
     contratoPdfPath: 'emp-1/prop-27/1-contrato.pdf' as string | null,
+    documentoPdfPath: null as string | null,
     modalidade: 'LOCACAO',
     criadoEm: new Date('2026-09-25T15:00:00Z'),
     validoAte: new Date('2026-10-24T00:00:00Z'),
@@ -231,6 +232,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
             numero: linhaPreview.numero,
             levantamentoPdfPath: linhaPreview.levantamentoPdfPath,
             contratoPdfPath: linhaPreview.contratoPdfPath,
+            documentoPdfPath: linhaPreview.documentoPdfPath,
           };
         if (args.select?.contratoPreviaPath)
           return {
@@ -374,6 +376,17 @@ describe('página de aceite — o que a prévia pública entrega', () => {
       'emp-1/prop-27/1.pdf',
       'emp-1/prop-27/1-contrato.pdf',
     ]);
+  });
+
+  it('DOCUMENTO COMPLETO congelado: entrega O ARQUIVO guardado (o mesmo da ClickSign), sem juntar de novo', async () => {
+    const { svc, previa } = montarAceite({ documentoPdfPath: 'emp-1/prop-27/1-completo.pdf' });
+    const guardado = Buffer.from('%PDF o mesmo da ClickSign');
+    previa.baixar.mockImplementation(async (p: string) =>
+      p.endsWith('completo.pdf') ? guardado : Buffer.from(''),
+    );
+    const r = await svc.documentoCompleto(TOKEN);
+    expect(Buffer.from(r.base64, 'base64').equals(guardado)).toBe(true);
+    expect(previa.baixar.mock.calls.map((c) => c[0])).toEqual(['emp-1/prop-27/1-completo.pdf']);
   });
 
   it('documentos: respondida ou sem o contrato em PDF não abre', async () => {
