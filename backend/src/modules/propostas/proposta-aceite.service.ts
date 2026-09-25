@@ -14,6 +14,7 @@ import {
 import { TERMOS_DO_CONTRATO } from './contrato-documento.util';
 import { resumoDaProposta, type ResumoProposta } from './proposta-resumo.util';
 import { ContratoPreviaService, sha256 } from './contrato-previa.service';
+import { LevantamentoPdfService } from './levantamento-pdf.service';
 import {
   ModeloContratoService,
   type ModeloEmUso,
@@ -77,6 +78,8 @@ export interface AceitePreview {
   rodape: string | null;
   /** Há contrato CONGELADO pra ler (`aceite/:token/contrato`) — o mesmo que ele assina. */
   temContrato: boolean;
+  /** Há o PDF do Levantamento técnico de projeto congelado (`aceite/:token/levantamento`). */
+  temLevantamento: boolean;
   itens: Array<{
     produtoNome: string;
     /** Descrição vigente do produto (ERP) — o cliente lê o que está aceitando. */
@@ -105,6 +108,7 @@ export class PropostaAceiteService {
     private readonly comissoes: PedidoComissoesService,
     private readonly modelos: ModeloContratoService,
     private readonly previa: ContratoPreviaService,
+    private readonly levantamentoPdf: LevantamentoPdfService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -169,29 +173,24 @@ export class PropostaAceiteService {
     // Link novo só quando o anterior venceu ou a proposta voltou pra rascunho.
     const vigente = await this.linkVigente(propostaId);
     if (vigente) return vigente;
-    // O cliente aprova o PROJETO, não uma lista de preços. Regra do Léo
-    // (04/09): sem o projeto anexado a proposta não sai — e o gate fica AQUI,
-    // no ponto único por onde nasce o link, porque ele serve tanto o e-mail
-    // quanto o WhatsApp do rep. Barrar só num dos canais deixaria a porta
-    // aberta no outro.
-    const anexos = await this.prisma.propostaAnexo.count({ where: { propostaId } });
-    if (anexos === 0) {
-      throw new BusinessRuleException(
-        'Anexe o levantamento técnico de projeto antes de mandar a proposta — é o que o cliente aprova.',
-      );
-    }
-    // E a LOCAÇÃO não sai sem o que o contrato exige (Léo, 25/09): conferir só
+    // O projeto que o cliente aprova não é mais anexo do rep (Léo, 25/09): o
+    // app GERA o "Levantamento técnico de projeto" aqui embaixo, junto com o
+    // contrato. A exigência de anexo saiu.
+    //
+    // A LOCAÇÃO não sai sem o que o contrato exige (Léo, 25/09): conferir só
     // no aceite deixava o cliente aceitar uma proposta que não vira contrato.
     // Mesma lista da montagem (`pendenciasDoContrato`) — uma checagem só.
     const paraContrato = await this.prisma.proposta.findUnique({
       where: { id: propostaId },
-      select: SELECT_PROPOSTA_CONTRATO,
+      select: { ...SELECT_PROPOSTA_CONTRATO, criadoEm: true },
     });
     let congelado: {
       contratoPreviaPath: string;
       contratoPreviaSha256: string;
       contratoPreviaModeloVersao: number | null;
       contratoPreviaEm: Date;
+      levantamentoPdfPath: string;
+      levantamentoPdfSha256: string;
     } | null = null;
     if (paraContrato?.modalidade === 'LOCACAO') {
       const completa = await comSkus(this.prisma, paraContrato);
@@ -212,16 +211,26 @@ export class PropostaAceiteService {
           `O contrato não pôde ser montado: ${montagem.ok ? 'sem documento' : montagem.motivo}.`,
         );
       }
+      // E o LEVANTAMENTO TÉCNICO DE PROJETO, gerado pelo app com os mesmos
+      // dados que a página de aceite mostra — congelado junto, pela mesma regra:
+      // é ele que vai anexado no envelope. Não gerou ou não guardou = sem link.
+      const pdf = await this.levantamentoPdf.gerar(
+        empresaId,
+        resumoDaProposta(completa, paraContrato.criadoEm),
+      );
       const guardado = await this.previa.salvar(
         empresaId,
         propostaId,
         montagem.dados.documento.arquivo,
       );
+      const guardadoPdf = await this.previa.salvar(empresaId, propostaId, pdf, 'pdf');
       congelado = {
         contratoPreviaPath: guardado.path,
         contratoPreviaSha256: guardado.sha256,
         contratoPreviaModeloVersao: modelo.versao,
         contratoPreviaEm: new Date(),
+        levantamentoPdfPath: guardadoPdf.path,
+        levantamentoPdfSha256: guardadoPdf.sha256,
       };
     }
     const token = await new SignJWT({ pid: propostaId, eid: empresaId })
@@ -309,6 +318,54 @@ export class PropostaAceiteService {
     return { url: await this.previa.linkAssinado(p.contratoPreviaPath), nome: `${p.numero}.docx` };
   }
 
+  /**
+   * O Levantamento técnico de projeto pro PAINEL do rep. Proposta que já saiu:
+   * o PDF CONGELADO (o que o cliente viu e o que vai no envelope). Em rascunho:
+   * uma prévia gerada agora — o congelado nasce de novo no próximo link.
+   */
+  async levantamentoParaPainel(
+    propostaId: string,
+    empresaId: string,
+  ): Promise<{ filename: string; base64: string; congelado: boolean }> {
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: {
+        ...SELECT_PROPOSTA_CONTRATO,
+        criadoEm: true,
+        status: true,
+        levantamentoPdfPath: true,
+      },
+    });
+    if (!p) throw new NotFoundException('Proposta', propostaId);
+    if (p.modalidade !== 'LOCACAO') {
+      throw new BusinessRuleException('O levantamento técnico de projeto é da locação.');
+    }
+    const filename = `${p.numero}-levantamento-tecnico.pdf`;
+    if (p.levantamentoPdfPath && p.status !== 'RASCUNHO') {
+      const pdf = await this.previa.baixar(p.levantamentoPdfPath);
+      return { filename, base64: pdf.toString('base64'), congelado: true };
+    }
+    const pdf = await this.levantamentoPdf.gerar(
+      empresaId,
+      resumoDaProposta(await comSkus(this.prisma, p), p.criadoEm),
+    );
+    return { filename, base64: pdf.toString('base64'), congelado: false };
+  }
+
+  /** O PDF do Levantamento técnico de projeto congelado (só com token vigente). */
+  async linkDoLevantamento(token: string): Promise<{ url: string; nome: string }> {
+    const propostaId = await this.propostaDoTokenAberto(token);
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: { numero: true, levantamentoPdfPath: true },
+    });
+    if (!p?.levantamentoPdfPath) throw new NotFoundException('Levantamento', propostaId);
+    return {
+      url: await this.previa.linkAssinado(p.levantamentoPdfPath),
+      nome: `${p.numero}-levantamento-tecnico.pdf`,
+    };
+  }
+
   private async validarToken(token: string): Promise<AcceptPayload> {
     try {
       const { payload } = await jwtVerify(token, this.secret);
@@ -390,6 +447,7 @@ export class PropostaAceiteService {
       anexos,
       rodape: cfg.marca?.rodape?.trim() || null,
       temContrato: !jaRespondida && !!proposta.contratoPreviaPath,
+      temLevantamento: !jaRespondida && !!proposta.levantamentoPdfPath,
       // Já respondida: a tela só diz isso — sem os itens (F-6).
       itens: jaRespondida
         ? []
@@ -659,6 +717,8 @@ export class PropostaAceiteService {
           representanteId: true,
           contratoPreviaPath: true,
           contratoPreviaSha256: true,
+          levantamentoPdfPath: true,
+          levantamentoPdfSha256: true,
           contratoPreviaModeloVersao: true,
         },
       });
@@ -712,6 +772,18 @@ export class PropostaAceiteService {
         montagem.dados.documento = { arquivo, nome: `${p.numero}.docx` };
         versaoEnviada = p.contratoPreviaModeloVersao;
       }
+      // O Levantamento técnico de projeto vai ANEXADO no envelope — o PDF que o
+      // cliente viu no link, conferido pelo hash, pela mesma regra do contrato.
+      if (p.levantamentoPdfPath) {
+        const pdf = await this.previa.baixar(p.levantamentoPdfPath);
+        if (sha256(pdf) !== p.levantamentoPdfSha256) {
+          const motivo = 'o levantamento técnico guardado no link não confere (hash diferente)';
+          this.logger.error(`Proposta ${p.numero} aceita, mas ${motivo} — contrato não enviado.`);
+          await this.avisarFalhaContrato(empresaId, p.representanteId, p.numero, motivo);
+          return;
+        }
+        montagem.dados.anexos = [{ arquivo: pdf, nome: `${p.numero}-levantamento-tecnico.pdf` }];
+      }
 
       const envelope = await this.clicksign.enviarParaAssinatura(empresaId, montagem.dados);
 
@@ -742,6 +814,7 @@ export class PropostaAceiteService {
               modeloVersao: versaoEnviada,
               // Hash do arquivo que saiu — o mesmo que o cliente leu no link.
               sha256: p.contratoPreviaSha256 ?? null,
+              levantamentoSha256: p.levantamentoPdfSha256 ?? null,
             },
           ],
         },

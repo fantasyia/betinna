@@ -144,6 +144,24 @@ describe('PropostaAceitePage', () => {
     vi.unstubAllGlobals();
   });
 
+  /** Léo, 25/09: o app GERA o levantamento; a página abre o PDF congelado. */
+  it('LEVANTAMENTO gerado: abre o PDF congelado do token (e o anexo antigo some)', async () => {
+    apiGet.mockImplementation(async (url: string) =>
+      url.endsWith('/levantamento')
+        ? { url: 'https://storage/lev.pdf', nome: 'PROP-0027-levantamento-tecnico.pdf' }
+        : { ...PREVIEW, temLevantamento: true },
+    );
+    const abrir = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<PropostaAceitePage />);
+    await waitFor(() => expect(screen.getByTestId('aceite-levantamento')).toBeTruthy());
+    expect(screen.queryByTestId('aceite-projeto')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('aceite-abrir-levantamento'));
+    await waitFor(() => expect(abrir).toHaveBeenCalledWith('https://storage/lev.pdf', '_blank', 'noopener'));
+    expect(apiGet).toHaveBeenCalledWith('/propostas/aceite/tok-27/levantamento', { skipAuth: true });
+    abrir.mockRestore();
+  });
+
   it('sem contrato congelado (ou venda): não oferece leitura', async () => {
     apiGet.mockResolvedValue({ ...PREVIEW, temContrato: false });
     render(<PropostaAceitePage />);

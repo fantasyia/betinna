@@ -12,6 +12,7 @@ import { ContratoEsteiraService } from './contrato-esteira.service';
 import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 import { ContratoReenvioService } from './contrato-reenvio.service';
+import { ContratoPreviaService } from '@modules/propostas/contrato-previa.service';
 
 /** Leitura dos contratos de locação — quem os cria é o aceite da proposta. */
 @Module({
@@ -30,6 +31,9 @@ import { ContratoReenvioService } from './contrato-reenvio.service';
     ContratoEsteiraService,
     ContratoMensalidadeSyncService,
     ContratoReenvioService,
+    // Só storage (sem dependências): o reenvio anexa o MESMO levantamento
+    // congelado no link. Importar o PropostasModule inteiro criaria ciclo.
+    ContratoPreviaService,
     ContratoAprovacaoJob,
   ],
   exports: [

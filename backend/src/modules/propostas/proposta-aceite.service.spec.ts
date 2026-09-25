@@ -102,7 +102,7 @@ function makeService(txProverbCount: number, recusaCount = 1) {
   // Contrato congelado no link: por padrão NÃO há (proposta de antes do 25/09).
   const previa = {
     salvar: vi.fn(async () => ({ path: 'emp-1/prop-1/1.docx', sha256: 'h' })),
-    baixar: vi.fn(async () => Buffer.from('docx-guardado')),
+    baixar: vi.fn(async (_path: string) => Buffer.from('docx-guardado')),
     linkAssinado: vi.fn(async () => 'https://storage/contrato.docx'),
   };
   const svc = new PropostaAceiteService(
@@ -117,6 +117,7 @@ function makeService(txProverbCount: number, recusaCount = 1) {
     { recalcular: vi.fn(async () => undefined) } as never,
     modelos as never,
     previa as never,
+    { gerar: vi.fn(async () => Buffer.from('%PDF')) } as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
   return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa, modelos, previa };
@@ -239,6 +240,7 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
         undefined as never, // comissoes
         undefined as never, // modelos
         undefined as never, // previa
+        undefined as never, // levantamentoPdf
       ) as unknown as { frontendUrl: () => string };
 
     it('usa FRONTEND_URL quando existe', () => {
@@ -408,6 +410,55 @@ describe('PropostaAceiteService — contrato do aceite é o documento pronto', (
     expect(dados.documento?.arquivo.equals(guardado)).toBe(true);
     const envio = contrato.create.mock.calls[0][0].data.enviosAssinatura[0];
     expect(envio).toMatchObject({ modeloVersao: 3, sha256: hash });
+  });
+
+  it('o envelope leva o LEVANTAMENTO TÉCNICO anexado — o PDF do link, pelo hash', async () => {
+    const guardado = Buffer.from('docx-guardado');
+    const hash = createHash('sha256').update(guardado).digest('hex');
+    const pdf = Buffer.from('%PDF levantamento');
+    const hashPdf = createHash('sha256').update(pdf).digest('hex');
+    const { svc, clicksign, contrato, previa } = comClickSign({
+      ...LOCACAO,
+      contratoPreviaPath: 'emp-1/prop-1/1.docx',
+      contratoPreviaSha256: hash,
+      contratoPreviaModeloVersao: 3,
+      levantamentoPdfPath: 'emp-1/prop-1/1.pdf',
+      levantamentoPdfSha256: hashPdf,
+    });
+    previa.baixar.mockImplementation(async (p: string) => (p.endsWith('.pdf') ? pdf : guardado));
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
+      anexos?: Array<{ arquivo: Buffer; nome: string }>;
+    };
+    expect(dados.anexos).toHaveLength(1);
+    expect(dados.anexos?.[0].arquivo.equals(pdf)).toBe(true);
+    expect(dados.anexos?.[0].nome).toMatch(/levantamento-tecnico\.pdf$/);
+    const envio = contrato.create.mock.calls[0][0].data.enviosAssinatura[0];
+    expect(envio).toMatchObject({ sha256: hash, levantamentoSha256: hashPdf });
+  });
+
+  it('levantamento guardado NÃO confere → não envia nada, e avisa', async () => {
+    const guardado = Buffer.from('docx-guardado');
+    const hash = createHash('sha256').update(guardado).digest('hex');
+    const { svc, clicksign, contrato, notificacoes, previa } = comClickSign({
+      ...LOCACAO,
+      contratoPreviaPath: 'emp-1/prop-1/1.docx',
+      contratoPreviaSha256: hash,
+      contratoPreviaModeloVersao: 3,
+      levantamentoPdfPath: 'emp-1/prop-1/1.pdf',
+      levantamentoPdfSha256: 'outro',
+    });
+    previa.baixar.mockImplementation(async (p: string) =>
+      p.endsWith('.pdf') ? Buffer.from('%PDF') : guardado,
+    );
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
+    expect(contrato.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(notificacoes.criarParaUsuario.mock.calls)).toContain('levantamento');
   });
 
   it('hash do guardado NÃO confere → não manda outro texto, e avisa', async () => {

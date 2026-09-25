@@ -89,6 +89,8 @@ interface AceitePreview {
   rodape?: string | null;
   /** Há contrato congelado pra ler (`aceite/:token/contrato`). */
   temContrato?: boolean;
+  /** Há o PDF do Levantamento técnico de projeto gerado pelo app. */
+  temLevantamento?: boolean;
 }
 
 /** Data "pura" (validade: 00:00 UTC) — no fuso de Brasília ela mostrava o dia anterior. */
@@ -250,6 +252,22 @@ export default function PropostaAceitePage() {
       setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** O PDF gerado pelo app — o MESMO que vai anexado ao contrato. */
+  async function abrirLevantamento() {
+    setAbrindo('levantamento');
+    setError(null);
+    try {
+      const l = await api.get<{ url: string }>(`/propostas/aceite/${token}/levantamento`, {
+        skipAuth: true,
+      });
+      window.open(l.url, '_blank', 'noopener');
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setAbrindo(null);
     }
   }
 
@@ -548,7 +566,31 @@ export default function PropostaAceitePage() {
                 )
               )}
 
-              {!data.jaRespondida && (data.anexos?.length ?? 0) > 0 && (
+              {!data.jaRespondida && data.temLevantamento && (
+                <section data-testid="aceite-levantamento">
+                  <div className="ac-eyebrow">Levantamento técnico de projeto · arquivo</div>
+                  <p className="ac-nota">
+                    O mesmo documento acima, em PDF. Ele vai anexado ao contrato que você assina.
+                  </p>
+                  <div className="ac-anexo">
+                    <div>
+                      <div className="nome">{data.numero}-levantamento-tecnico.pdf</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="ac-btn sec"
+                      data-testid="aceite-abrir-levantamento"
+                      disabled={abrindo !== null}
+                      onClick={() => void abrirLevantamento()}
+                    >
+                      {abrindo === 'levantamento' ? 'Abrindo…' : 'Abrir PDF'}
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {/* Anexo do rep: só propostas de antes de 25/09 (hoje o app gera). */}
+              {!data.jaRespondida && !data.temLevantamento && (data.anexos?.length ?? 0) > 0 && (
                 <section data-testid="aceite-projeto">
                   <div className="ac-eyebrow">Levantamento técnico de projeto · arquivo</div>
                   <p className="ac-nota">

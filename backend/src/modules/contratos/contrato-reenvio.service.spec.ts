@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { ContratoReenvioService, type EnvioAssinatura } from './contrato-reenvio.service';
@@ -79,12 +80,14 @@ function montar(contrato: Record<string, unknown> | null = CONTRATO) {
   const modelos = {
     emUso: vi.fn().mockResolvedValue({ arquivo: carregarModelo(), versao: null }),
   };
+  const previa = { baixar: vi.fn(async () => Buffer.from('%PDF levantamento')) };
   const svc = new ContratoReenvioService(
     prisma as never,
     clicksign as never,
     modelos as never,
+    previa as never,
   ) as ContratoReenvioService;
-  return { svc, prisma, clicksign, modelos };
+  return { svc, prisma, clicksign, modelos, previa };
 }
 
 const CHAMADA = {
@@ -254,6 +257,35 @@ describe('ContratoReenvioService', () => {
 });
 
 /** O modelo subido pela tela (24/09): qual versão saiu fica no rastro. */
+describe('ContratoReenvioService — o levantamento aprovado vai junto', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const pdf = Buffer.from('%PDF levantamento');
+  const hashPdf = createHash('sha256').update(pdf).digest('hex');
+
+  it('versão nova do contrato leva o MESMO levantamento anexado', async () => {
+    const { svc, clicksign, previa } = montar({
+      ...CONTRATO,
+      proposta: { ...PROPOSTA, levantamentoPdfPath: 'e1/p1/1.pdf', levantamentoPdfSha256: hashPdf },
+    });
+    await svc.reenviar(CHAMADA);
+    expect(previa.baixar).toHaveBeenCalledWith('e1/p1/1.pdf');
+    const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
+      anexos?: Array<{ arquivo: Buffer }>;
+    };
+    expect(dados.anexos?.[0].arquivo.equals(pdf)).toBe(true);
+  });
+
+  it('levantamento guardado não confere: recusa ANTES de matar o envelope do cliente', async () => {
+    const { svc, clicksign } = montar({
+      ...CONTRATO,
+      proposta: { ...PROPOSTA, levantamentoPdfPath: 'e1/p1/1.pdf', levantamentoPdfSha256: 'outro' },
+    });
+    await expect(svc.reenviar(CHAMADA)).rejects.toThrow(/levantamento/);
+    expect(clicksign.expirarEnvelope).not.toHaveBeenCalled();
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
+  });
+});
+
 describe('ContratoReenvioService — modelo do contrato em uso', () => {
   beforeEach(() => vi.clearAllMocks());
 

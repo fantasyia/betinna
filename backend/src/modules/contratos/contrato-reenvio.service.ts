@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ContratoPreviaService, sha256 } from '@modules/propostas/contrato-previa.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
@@ -31,6 +32,10 @@ export interface EnvioAssinatura {
    * diretor troca o modelo pela tela. Ausente nos envios anteriores a 24/09.
    */
   modeloVersao?: number | null;
+  /** sha256 do contrato congelado no link (só o envio do aceite tem). */
+  sha256?: string | null;
+  /** sha256 do Levantamento técnico de projeto anexado ao envelope. */
+  levantamentoSha256?: string | null;
 }
 
 /**
@@ -61,6 +66,7 @@ export class ContratoReenvioService {
     private readonly prisma: PrismaService,
     private readonly clicksign: ClickSignService,
     private readonly modelos: ModeloContratoService,
+    private readonly previa: ContratoPreviaService,
   ) {}
 
   /**
@@ -92,7 +98,13 @@ export class ContratoReenvioService {
         assinaturaUrl: true,
         assinadoEm: true,
         enviosAssinatura: true,
-        proposta: { select: SELECT_PROPOSTA_CONTRATO },
+        proposta: {
+          select: {
+            ...SELECT_PROPOSTA_CONTRATO,
+            levantamentoPdfPath: true,
+            levantamentoPdfSha256: true,
+          },
+        },
       },
     });
     if (!contrato) {
@@ -142,6 +154,24 @@ export class ContratoReenvioService {
       );
     }
 
+    // O Levantamento técnico de projeto é o que o cliente APROVOU — não muda
+    // na versão nova do contrato. Vai anexado de novo, o mesmo PDF, pelo hash.
+    const lev = contrato.proposta as {
+      levantamentoPdfPath?: string | null;
+      levantamentoPdfSha256?: string | null;
+      numero: string;
+    };
+    if (lev.levantamentoPdfPath) {
+      const pdf = await this.previa.baixar(lev.levantamentoPdfPath);
+      if (sha256(pdf) !== lev.levantamentoPdfSha256) {
+        throw new BusinessRuleException(
+          'Contrato não pode ser reenviado: o levantamento técnico guardado não confere (hash diferente).',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      montagem.dados.anexos = [{ arquivo: pdf, nome: `${lev.numero}-levantamento-tecnico.pdf` }];
+    }
+
     // ── 1. mata o anterior ANTES de criar o novo ──
     //
     // Nesta ordem de propósito: entre expirar e enviar existe uma janela em que
@@ -188,6 +218,7 @@ export class ContratoReenvioService {
         motivo: params.motivo?.trim() || null,
         desfecho: 'enviado',
         modeloVersao: modelo.versao,
+        levantamentoSha256: lev.levantamentoPdfSha256 ?? null,
       },
     ];
 

@@ -14,6 +14,7 @@ import { PropostaAceiteVencimentoJob } from './proposta-aceite-vencimento.job';
 import { PropostaAnexosController } from './proposta-anexos.controller';
 import { PropostaAnexosService } from './proposta-anexos.service';
 import { ContratoPreviaService } from './contrato-previa.service';
+import { LevantamentoPdfService } from './levantamento-pdf.service';
 import { PropostaErpService } from './proposta-erp.service';
 import { PropostaExportService } from './proposta-export.service';
 import { PropostasController } from './propostas.controller';
@@ -44,6 +45,7 @@ import { PropostasService } from './propostas.service';
     PropostaErpService,
     PropostaAnexosService,
     ContratoPreviaService,
+    LevantamentoPdfService,
     // Rede pro envio automático: contrato assinado que não chegou no ERP.
     ContratoErpPendenteJob,
     // Rede pro outro lado do silêncio: link de aceite que morre sem ninguém ver.

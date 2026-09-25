@@ -201,6 +201,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
     status: 'AGUARDANDO_ASSINATURA',
     aceiteToken: TOKEN,
     contratoPreviaPath: 'emp-1/prop-27/1.docx' as string | null,
+    levantamentoPdfPath: 'emp-1/prop-27/1.pdf' as string | null,
     modalidade: 'LOCACAO',
     criadoEm: new Date('2026-09-25T15:00:00Z'),
     validoAte: new Date('2026-10-24T00:00:00Z'),
@@ -229,6 +230,11 @@ function montarAceite(over: Record<string, unknown> = {}) {
             numero: linhaPreview.numero,
             contratoPreviaPath: linhaPreview.contratoPreviaPath,
           };
+        if (args.select?.levantamentoPdfPath)
+          return {
+            numero: linhaPreview.numero,
+            levantamentoPdfPath: linhaPreview.levantamentoPdfPath,
+          };
         return PARA_CONTRATO;
       }),
     },
@@ -253,6 +259,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
     {} as never,
     {} as never,
     previa as never,
+    {} as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-27', eid: 'emp-1' } });
   return { svc, prisma, previa };
@@ -306,6 +313,19 @@ describe('página de aceite — o que a prévia pública entrega', () => {
       nome: 'PROP-0027.docx',
     });
     expect(previa.linkAssinado).toHaveBeenCalledWith('emp-1/prop-27/1.docx');
+  });
+
+  it('LEVANTAMENTO TÉCNICO: a prévia avisa e o link abre O PDF congelado', async () => {
+    const { svc, previa } = montarAceite();
+    expect((await svc.resolverPreview(TOKEN)).temLevantamento).toBe(true);
+    expect(await svc.linkDoLevantamento(TOKEN)).toEqual({
+      url: 'https://storage/contrato.docx',
+      nome: 'PROP-0027-levantamento-tecnico.pdf',
+    });
+    expect(previa.linkAssinado).toHaveBeenCalledWith('emp-1/prop-27/1.pdf');
+    const aceita = montarAceite({ status: 'ACEITA', aceiteToken: null });
+    expect((await aceita.svc.resolverPreview(TOKEN)).temLevantamento).toBe(false);
+    await expect(aceita.svc.linkDoLevantamento(TOKEN)).rejects.toThrow();
   });
 
   it('contrato: sem arquivo congelado não há o que ler; respondida não abre', async () => {

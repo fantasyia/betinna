@@ -64,7 +64,7 @@ const corpoComCaminhoRelativo = () =>
 function montar(contrato: unknown = CONTRATO) {
   const prisma = {
     contrato: {
-      findFirst: vi.fn(async () => contrato),
+      findFirst: vi.fn(async (_args?: unknown) => contrato),
       update: vi.fn(async (_args: { data: Record<string, unknown> }) => ({})),
     },
     // A PROPOSTA acompanha o contrato: ACEITA → ASSINADA quando o documento volta.
@@ -108,6 +108,40 @@ beforeEach(() => {
 });
 
 describe('ClickSignAssinaturaService.registrarAssinado', () => {
+  /** Desde 25/09 o envelope tem 2 documentos: contrato + levantamento anexado. */
+  it('evento com a LISTA e o anexo primeiro: acha o contrato no documento certo', async () => {
+    const { svc, prisma } = montar();
+    prisma.contrato.findFirst.mockImplementation(async (a: unknown) =>
+      JSON.stringify(a).includes('doc-anexo') ? null : CONTRATO,
+    );
+    const lista = Buffer.from(
+      JSON.stringify({
+        event: { name: 'auto_close' },
+        document: [
+          {
+            key: 'doc-anexo',
+            status: 'closed',
+            downloads: { signed_file_url: 'https://arquivo/anexo.pdf' },
+          },
+          {
+            key: 'doc-1',
+            status: 'closed',
+            finished_at: '2026-09-04T16:13:30.000Z',
+            downloads: { signed_file_url: 'https://arquivo/contrato.pdf' },
+          },
+        ],
+      }),
+      'utf8',
+    );
+    await expect(svc.registrarAssinado(lista)).resolves.toBe('aplicado');
+    // O PDF guardado é o do CONTRATO, não o do anexo.
+    expect(prisma.contrato.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assinaturaUrl: 'https://arquivo/contrato.pdf' }),
+      }),
+    );
+  });
+
   it('a PROPOSTA passa de aceita pra ASSINADA — senão a lista não conta que o contrato voltou', async () => {
     const { svc, prisma } = montar();
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -123,14 +123,6 @@ function diaEHora(iso: string): string {
   const f = (o: Intl.DateTimeFormatOptions) =>
     d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', ...o });
   return `${f({ day: '2-digit', month: '2-digit' })} às ${f({ hour: '2-digit', minute: '2-digit' })}`;
-}
-
-interface AnexoProposta {
-  id: string;
-  nome: string;
-  mime: string;
-  tamanho: number;
-  criadoEm: string;
 }
 
 interface ClienteOpt {
@@ -784,10 +776,9 @@ export function PropostaDetailDrawer({
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div className="flex flex-col gap-5">
-            <ProjetoAnexos
-              propostaId={data.id}
-              bloqueado={data.status === 'ACEITA' || data.status === 'RECUSADA'}
-            />
+            {data.modalidade === 'LOCACAO' && (
+              <LevantamentoDoProjeto propostaId={data.id} status={data.status} />
+            )}
             {/* C2 — Barra de exportação/envio */}
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1642,138 +1633,63 @@ function ItemRow({
 }
 
 /**
- * O PROJETO do cliente anexado à proposta.
- *
- * Regra do Léo (04/09): a proposta não vai pro cliente aprovar sem ele — o que
- * o cliente aprova é o projeto, e mandar só preço e prazo é pedir aprovação de
- * meia informação. O backend recusa gerar o link sem anexo; aqui a tela diz
- * isso ANTES de a pessoa clicar e tomar um erro.
+ * O "Levantamento técnico de projeto" — GERADO pelo app (Léo, 25/09): o rep
+ * não anexa mais nada. É o que o cliente aprova na página de aceite e o que vai
+ * anexado ao contrato na ClickSign. Em rascunho é uma prévia; depois de enviada,
+ * é o arquivo congelado no link.
  */
-function ProjetoAnexos({
-  propostaId,
-  bloqueado,
-  onMudou,
-}: {
-  propostaId: string;
-  bloqueado: boolean;
-  onMudou?: () => void;
-}) {
-  const { data, loading, error, refetch } = useApiQuery<AnexoProposta[]>(
-    `/propostas/${propostaId}/anexos`,
-  );
-  const [enviando, setEnviando] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const toast = useToast();
+function LevantamentoDoProjeto({ propostaId, status }: { propostaId: string; status: string }) {
+  const [abrindo, setAbrindo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
-  async function enviar(arquivo: File) {
-    setEnviando(true);
+  async function abrir() {
+    setAbrindo(true);
+    setErro(null);
     try {
-      const form = new FormData();
-      form.append('file', arquivo);
-      await api.upload(`/propostas/${propostaId}/anexos`, form);
-      toast.success('Projeto anexado');
-      refetch();
-      onMudou?.();
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Não consegui anexar o arquivo.');
-    } finally {
-      setEnviando(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  }
-
-  async function abrir(anexoId: string) {
-    try {
-      const r = await api.get<{ url: string }>(
-        `/propostas/${propostaId}/anexos/${anexoId}/download`,
+      const r = await api.get<{ filename: string; base64: string }>(
+        `/propostas/${propostaId}/levantamento`,
       );
-      window.open(r.url, '_blank', 'noopener');
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Não consegui abrir o arquivo.');
+      const bytes = atob(r.base64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErro(err instanceof ApiError ? err.message : 'Falha ao gerar o levantamento');
+    } finally {
+      setAbrindo(false);
     }
   }
-
-  async function remover(anexoId: string) {
-    try {
-      await api.delete(`/propostas/${propostaId}/anexos/${anexoId}`);
-      refetch();
-      onMudou?.();
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Não consegui remover o arquivo.');
-    }
-  }
-
-  const vazio = !loading && !error && (data?.length ?? 0) === 0;
 
   return (
-    <div
-      className={cn(
-        'rounded-md border p-3',
-        vazio ? 'border-warning/40 bg-warning/5' : 'border-border bg-surface',
-      )}
-      data-testid="proposta-projeto"
-    >
-      <div className="flex items-center justify-between gap-2 mb-2">
+    <div className="rounded-md border border-border bg-surface p-3" data-testid="proposta-levantamento">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <p className="m-0 text-sm font-medium text-text">Levantamento técnico de projeto</p>
           <p className="m-0 text-[11px] text-muted">
-            {vazio
-              ? 'Sem o levantamento técnico de projeto anexado a proposta não vai pro cliente aprovar.'
-              : 'É o que o cliente aprova junto com o preço.'}
+            {status === 'RASCUNHO'
+              ? 'Gerado pelo app com os dados do levantamento. Prévia: sai de novo, com os dados atuais, quando a proposta for enviada.'
+              : 'Gerado pelo app: é o que o cliente aprova e vai anexado ao contrato.'}
           </p>
         </div>
-        {!bloqueado && (
-          <>
-            <input
-              ref={inputRef}
-              type="file"
-              className="hidden"
-              data-testid="proposta-projeto-input"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void enviar(f);
-              }}
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={enviando}
-              onClick={() => inputRef.current?.click()}
-              leftIcon={<Upload className="h-3.5 w-3.5" />}
-              data-testid="proposta-projeto-anexar"
-            >
-              Anexar
-            </Button>
-          </>
-        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          data-testid="proposta-levantamento-abrir"
+          loading={abrindo}
+          onClick={() => void abrir()}
+          leftIcon={<FileText className="h-3.5 w-3.5" />}
+        >
+          Baixar PDF
+        </Button>
       </div>
-      {data && data.length > 0 && (
-        <ul className="m-0 list-none p-0 flex flex-col gap-1">
-          {data.map((a) => (
-            <li key={a.id} className="flex items-center gap-2 text-sm">
-              <button
-                type="button"
-                onClick={() => void abrir(a.id)}
-                className="flex-1 truncate text-left text-info hover:underline"
-              >
-                {a.nome}
-              </button>
-              <span className="text-[11px] text-muted tabular">
-                {(a.tamanho / 1024 / 1024).toFixed(1)}MB
-              </span>
-              {!bloqueado && (
-                <IconButton
-                  size="sm"
-                  variant="ghost"
-                  aria-label="Remover projeto"
-                  icon={<Trash2 className="h-3.5 w-3.5" />}
-                  onClick={() => void remover(a.id)}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      {erro && <p className="m-0 mt-1.5 text-xs text-danger">{erro}</p>}
     </div>
   );
 }

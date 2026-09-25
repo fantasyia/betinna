@@ -68,9 +68,8 @@ export class ClickSignAssinaturaService implements OnModuleInit {
    * certo dela, não um defeito.
    */
   async registrarAssinado(cru: Buffer): Promise<'aplicado' | 'repetido' | 'sem-contrato'> {
-    const doc = this.documentoDo(cru);
+    const { doc, contrato } = await this.contratoDoWebhook(cru);
     if (!doc) return 'sem-contrato';
-    const contrato = await this.acharContrato(doc);
     if (!contrato) {
       // Não é erro: a conta ClickSign pode ter documento que não nasceu aqui.
       this.logger.warn(`Assinatura de documento ${doc.key ?? '?'} sem contrato correspondente`);
@@ -169,9 +168,8 @@ export class ClickSignAssinaturaService implements OnModuleInit {
    * semana que vem, quando alguém reparar que a cobrança não começou.
    */
   async registrarRecusa(cru: Buffer): Promise<'aplicado' | 'sem-contrato'> {
-    const doc = this.documentoDo(cru);
+    const { doc, contrato } = await this.contratoDoWebhook(cru);
     if (!doc) return 'sem-contrato';
-    const contrato = await this.acharContrato(doc);
     if (!contrato || contrato.status === 'ASSINADO') return 'sem-contrato';
 
     await this.prisma.contrato.update({
@@ -206,9 +204,8 @@ export class ClickSignAssinaturaService implements OnModuleInit {
    * olhando o contrato. Se um dia virar relatório, aí vale a coluna.
    */
   async registrarExpiracao(cru: Buffer): Promise<'aplicado' | 'sem-contrato'> {
-    const doc = this.documentoDo(cru);
+    const { doc, contrato } = await this.contratoDoWebhook(cru);
     if (!doc) return 'sem-contrato';
-    const contrato = await this.acharContrato(doc);
     // Assinado depois do prazo (ou webhook fora de ordem): a assinatura ganha.
     if (!contrato || contrato.status === 'ASSINADO' || contrato.status === 'ATIVO') {
       return 'sem-contrato';
@@ -283,20 +280,36 @@ export class ClickSignAssinaturaService implements OnModuleInit {
   }
 
   /**
+   * O documento DO CONTRATO no evento, e o contrato dele.
+   *
+   * Desde 25/09 o envelope leva o contrato + o Levantamento técnico de projeto
+   * anexado. Evento que lista os dois pegava o PRIMEIRO da lista — se fosse o
+   * anexo, o contrato não era achado e ficava sem "assinado", calado. Agora
+   * procura em todos; o anexo sozinho não acha nada (não leva metadata).
+   */
+  private async contratoDoWebhook(cru: Buffer) {
+    const docs = this.documentosDo(cru);
+    for (const doc of docs) {
+      const contrato = await this.acharContrato(doc);
+      if (contrato) return { doc, contrato };
+    }
+    return { doc: docs[0] ?? null, contrato: null };
+  }
+
+  /**
    * O campo `document` chega ora como objeto, ora como lista — a documentação
    * mostra as duas formas em eventos diferentes.
    */
-  private documentoDo(cru: Buffer): DocumentoWebhook | null {
+  private documentosDo(cru: Buffer): DocumentoWebhook[] {
     let payload: PayloadWebhook;
     try {
       payload = JSON.parse(cru.toString('utf8')) as PayloadWebhook;
     } catch {
       this.logger.error('Webhook do ClickSign com corpo que não é JSON');
-      return null;
+      return [];
     }
     const d = payload.document;
-    const doc = Array.isArray(d) ? d[0] : d;
-    return doc ?? null;
+    return (Array.isArray(d) ? d : d ? [d] : []).filter(Boolean);
   }
 
   /**

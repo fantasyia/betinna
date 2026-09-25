@@ -36,6 +36,12 @@ export interface ContratoParaAssinar {
    * variável de Modelo não consegue fazer (ver `contrato-documento.util`).
    */
   documento?: { arquivo: Buffer; nome: string };
+  /**
+   * PDFs que vão JUNTO no envelope (Léo, 25/09: o Levantamento técnico de
+   * projeto). O signatário concorda com cada um — é o que prende o anexo ao
+   * aceite. Sem `metadata`: o webhook acha o contrato pelo documento PRINCIPAL.
+   */
+  anexos?: Array<{ arquivo: Buffer; nome: string }>;
   /** O cliente. Assina primeiro. */
   cliente: SignatarioContrato;
 }
@@ -300,6 +306,26 @@ export class ClickSignService {
       },
     );
 
+    const anexosIds: string[] = [];
+    for (const anexo of dados.anexos ?? []) {
+      const criado = await this.chamar<{ data: { id: string } }>(
+        cfg,
+        'POST',
+        `/envelopes/${envelopeId}/documents`,
+        {
+          data: {
+            type: 'documents',
+            attributes: {
+              filename: anexo.nome,
+              content_base64: `data:application/pdf;base64,${anexo.arquivo.toString('base64')}`,
+            },
+          },
+        },
+      );
+      anexosIds.push(criado.data.id);
+    }
+    const documentos = [documento.data.id, ...anexosIds];
+
     // Ordem importa: o cliente assina primeiro, a casa confirma depois.
     //
     // A assinatura automática da casa depende de um **Termo de Assinatura
@@ -389,17 +415,21 @@ export class ClickSignService {
             { action: 'provide_evidence', auth: token },
             { action: 'agree', role: 'sign' },
           ];
-      for (const attributes of requisitos) {
-        await this.chamar(cfg, 'POST', `/envelopes/${envelopeId}/requirements`, {
-          data: {
-            type: 'requirements',
-            attributes,
-            relationships: {
-              document: { data: { type: 'documents', id: documento.data.id } },
-              signer: { data: { type: 'signers', id: s.id } },
+      // Requisito é POR documento: cada signatário concorda com o contrato E
+      // com cada anexo — senão o envelope não sai do rascunho.
+      for (const docId of documentos) {
+        for (const attributes of requisitos) {
+          await this.chamar(cfg, 'POST', `/envelopes/${envelopeId}/requirements`, {
+            data: {
+              type: 'requirements',
+              attributes,
+              relationships: {
+                document: { data: { type: 'documents', id: docId } },
+                signer: { data: { type: 'signers', id: s.id } },
+              },
             },
-          },
-        });
+          });
+        }
       }
     }
 

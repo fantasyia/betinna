@@ -68,9 +68,12 @@ describe('Enviar por e-mail — o painel mostra a prova de que foi', () => {
     expect(screen.getByTestId('proposta-enviar-email')).toBeTruthy();
     expect(screen.queryByTestId('proposta-enviar-aceite')).toBeNull();
     expect(document.body.textContent).not.toContain('Gerar link de aceite');
-    expect(screen.getByTestId('proposta-projeto').textContent).toContain(
+    // O levantamento é GERADO (Léo, 25/09): nada de "Anexar" no painel.
+    expect(screen.getByTestId('proposta-levantamento').textContent).toContain(
       'Levantamento técnico de projeto',
     );
+    expect(screen.queryByTestId('proposta-projeto')).toBeNull();
+    expect(screen.queryByTestId('proposta-projeto-input')).toBeNull();
   });
 
   it('reabrir o painel de proposta já enviada: mostra pra quem, quando, e o link — sem reenviar', () => {

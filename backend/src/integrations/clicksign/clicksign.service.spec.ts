@@ -210,6 +210,49 @@ describe('ClickSignService.enviarParaAssinatura — de onde vem o documento', ()
     expect(attrs).not.toHaveProperty('template');
   });
 
+  /** Léo, 25/09: o envelope leva o contrato + o Levantamento técnico de projeto. */
+  it('anexo sobe como 2º documento (PDF), sem metadata, e o signatário concorda com CADA um', async () => {
+    const { svc, post } = montarEnvio({ CLICKSIGN_ACCESS_TOKEN: TOKEN });
+    let n = 0;
+    post.mockImplementation(async (url: string) => ({
+      data: {
+        data: {
+          id: url.includes('/signers')
+            ? 'sig-1'
+            : url.includes('/documents')
+              ? `doc-${++n}`
+              : 'env-1',
+        },
+      },
+    }));
+    const pdf = Buffer.from('%PDF levantamento');
+    const r = await svc.enviarParaAssinatura('emp-1', {
+      titulo: 'Contrato',
+      cliente,
+      documento: { arquivo, nome: 'PROP-0042.docx' },
+      metadata: { proposta: 'PROP-0042' },
+      anexos: [{ arquivo: pdf, nome: 'PROP-0042-levantamento-tecnico.pdf' }],
+    });
+    // O documento PRINCIPAL continua sendo o contrato (é por ele que o webhook acha).
+    expect(r.documentoId).toBe('doc-1');
+    const docs = post.mock.calls.filter(([url]) => url.includes('/documents'));
+    expect(docs).toHaveLength(2);
+    const anexo = (docs[1][1].body as { data: { attributes: Record<string, unknown> } }).data
+      .attributes;
+    expect(anexo.filename).toBe('PROP-0042-levantamento-tecnico.pdf');
+    expect(anexo.content_base64).toBe(`data:application/pdf;base64,${pdf.toString('base64')}`);
+    expect(anexo).not.toHaveProperty('metadata');
+    const reqs = post.mock.calls
+      .filter(([url]) => url.includes('/requirements'))
+      .map(
+        ([, o]) =>
+          (o.body as { data: { relationships: { document: { data: { id: string } } } } }).data
+            .relationships.document.data.id,
+      );
+    expect(new Set(reqs)).toEqual(new Set(['doc-1', 'doc-2']));
+    expect(reqs.filter((d) => d === 'doc-2').length).toBe(reqs.filter((d) => d === 'doc-1').length);
+  });
+
   it('documento pronto NÃO exige o Modelo da ClickSign configurado', async () => {
     const { svc } = montarEnvio({ CLICKSIGN_ACCESS_TOKEN: TOKEN });
     await expect(

@@ -1290,6 +1290,10 @@ model Proposta {
   contratoPreviaSha256       String?
   contratoPreviaModeloVersao Int?
   contratoPreviaEm           DateTime?
+  /// O PDF do "Levantamento técnico de projeto", gerado pelo app e congelado no
+  /// mesmo momento do contrato. Vai anexado no envelope (Léo, 25/09).
+  levantamentoPdfPath        String?
+  levantamentoPdfSha256      String?
   aceitoEm       DateTime?
   aceitoDoIp     String? // auditoria do aceite
 

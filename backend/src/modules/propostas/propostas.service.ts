@@ -1106,6 +1106,12 @@ export class PropostasService {
     }
   }
 
+  /** O Levantamento técnico de projeto (PDF) — o congelado, ou a prévia em rascunho. */
+  async levantamentoPdf(user: AuthenticatedUser, id: string) {
+    const alvo = await this.findById(user, id); // valida tenant + scope
+    return this.aceiteSvc.levantamentoParaPainel(alvo.id, alvo.empresaId);
+  }
+
   /** O que o painel mostra do envio: o link valendo e, se foi, pra quem e quando. */
   async envioAoCliente(user: AuthenticatedUser, id: string): Promise<EnvioAoCliente | null> {
     const alvo = await this.findById(user, id); // valida tenant + scope

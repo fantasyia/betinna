@@ -65,6 +65,14 @@ export class PropostasController {
   }
 
   @Public()
+  @Get('aceite/:token/levantamento')
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @ApiOperation({ summary: 'Link temporário do PDF do Levantamento técnico de projeto congelado.' })
+  aceiteLevantamento(@Param('token') token: string) {
+    return this.aceite.linkDoLevantamento(token);
+  }
+
+  @Public()
   @Get('aceite/:token/anexos/:anexoId')
   @Throttle({ default: { limit: 30, ttl: seconds(60) } })
   @ApiOperation({ summary: 'Link temporário do PROJETO anexado, pro cliente na página de aceite.' })
@@ -140,6 +148,15 @@ export class PropostasController {
   @ApiOperation({ summary: 'Envia a proposta (PDF anexo) por email pro cliente via Resend.' })
   enviarEmail(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.propostas.enviarPorEmail(user, id);
+  }
+
+  @Get(':id/levantamento')
+  @RequirePermissions({ module: 'propostas', action: 'view' })
+  @ApiOperation({
+    summary: 'PDF do Levantamento técnico de projeto ({ filename, base64, congelado }).',
+  })
+  levantamento(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.propostas.levantamentoPdf(user, id);
   }
 
   @Get(':id/envio')

@@ -13,6 +13,7 @@ import { carregarModelo } from './contrato-documento.util';
 const COMPLETA = {
   id: 'prop-27',
   numero: 'PROP-0027',
+  criadoEm: new Date('2026-09-25T15:00:00Z'),
   valor: 1528,
   modalidade: 'LOCACAO',
   signatarioNome: 'Marina Torres Aguiar',
@@ -61,7 +62,13 @@ function montar(proposta: Record<string, unknown>, anexos = 1) {
   };
   const etapa = { mover: vi.fn(async () => 'movido' as const) };
   const modelos = { emUso: vi.fn(async () => ({ arquivo: carregarModelo(), versao: 4 })) };
-  const previa = { salvar: vi.fn(async () => ({ path: 'emp-1/prop-27/1.docx', sha256: 'abc' })) };
+  const previa = {
+    salvar: vi.fn(async (_e: string, _p: string, _a: Buffer, tipo = 'docx') => ({
+      path: `emp-1/prop-27/1.${tipo}`,
+      sha256: tipo === 'pdf' ? 'hash-pdf' : 'abc',
+    })),
+  };
+  const levantamentoPdf = { gerar: vi.fn(async () => Buffer.from('%PDF-1.7 levantamento')) };
   const svc = new PropostaAceiteService(
     prisma as never,
     { get: vi.fn(() => 'k'.repeat(64)) } as never,
@@ -73,8 +80,9 @@ function montar(proposta: Record<string, unknown>, anexos = 1) {
     {} as never,
     modelos as never,
     previa as never,
+    levantamentoPdf as never,
   );
-  return { svc, prisma, previa };
+  return { svc, prisma, previa, levantamentoPdf };
 }
 
 describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato', () => {
@@ -91,7 +99,7 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
   it('congela o CONTRATO no link: guarda o .docx e grava caminho, hash e versão', async () => {
     const { svc, prisma, previa } = montar(COMPLETA);
     await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
-    expect(previa.salvar).toHaveBeenCalledTimes(1);
+    expect(previa.salvar).toHaveBeenCalledTimes(2); // contrato + levantamento
     const [, , arquivo] = previa.salvar.mock.calls[0] as unknown as [string, string, Buffer];
     expect(arquivo.subarray(0, 2).toString()).toBe('PK'); // é um .docx de verdade
     expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
@@ -178,9 +186,35 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
     expect(rascunho.prisma.proposta.update).toHaveBeenCalledTimes(1);
   });
 
-  it('sem projeto anexado continua recusando antes de tudo', async () => {
+  /** Léo, 25/09: o app GERA o levantamento; o rep não anexa mais nada. */
+  it('sem anexo do rep: o link SAI — o levantamento é gerado pelo app', async () => {
     const { svc, prisma } = montar(COMPLETA, 0);
-    await expect(svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO')).rejects.toThrow(/projeto/);
+    await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
+    expect(prisma.proposta.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('congela o LEVANTAMENTO TÉCNICO DE PROJETO (PDF) junto com o contrato', async () => {
+    const { svc, prisma, previa, levantamentoPdf } = montar(COMPLETA);
+    await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
+    // Gerado com os dados do resumo da proposta (os mesmos da página de aceite).
+    const [emp, resumo] = levantamentoPdf.gerar.mock.calls[0] as unknown as [
+      string,
+      { numero: string; aluguelMensalTotal: number },
+    ];
+    expect(emp).toBe('emp-1');
+    expect(resumo).toMatchObject({ numero: 'PROP-0027', aluguelMensalTotal: 1528 });
+    const pdf = previa.salvar.mock.calls.find((c) => c[3] === 'pdf');
+    expect(String(pdf?.[2])).toContain('%PDF');
+    expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
+      levantamentoPdfPath: 'emp-1/prop-27/1.pdf',
+      levantamentoPdfSha256: 'hash-pdf',
+    });
+  });
+
+  it('levantamento não gerou → NÃO sai link', async () => {
+    const { svc, prisma, levantamentoPdf } = montar(COMPLETA);
+    levantamentoPdf.gerar.mockRejectedValueOnce(new Error('pdf quebrou'));
+    await expect(svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO')).rejects.toThrow();
     expect(prisma.proposta.update).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,10 @@ import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
 const BUCKET = 'contratos-previa';
+const TIPOS = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pdf: 'application/pdf',
+} as const;
 const URL_EXPIRA_S = 10 * 60;
 
 export const sha256 = (b: Buffer): string => createHash('sha256').update(b).digest('hex');
@@ -20,6 +24,9 @@ export const sha256 = (b: Buffer): string => createHash('sha256').update(b).dige
  *
  * Por isso o .docx é montado UMA vez, ao gerar o link, e guardado aqui com o
  * sha256. No aprovar, sai ESTE arquivo — conferido pelo hash.
+ *
+ * O PDF do "Levantamento técnico de projeto" mora aqui também, pela mesma
+ * regra: congela junto, e é ele que vai anexado no envelope.
  */
 @Injectable()
 export class ContratoPreviaService implements OnModuleInit {
@@ -43,10 +50,11 @@ export class ContratoPreviaService implements OnModuleInit {
     empresaId: string,
     propostaId: string,
     arquivo: Buffer,
+    tipo: keyof typeof TIPOS = 'docx',
   ): Promise<{ path: string; sha256: string }> {
-    const path = `${empresaId}/${propostaId}/${Date.now()}.docx`;
+    const path = `${empresaId}/${propostaId}/${Date.now()}.${tipo}`;
     const { error } = await this.storage.storage.from(BUCKET).upload(path, arquivo, {
-      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      contentType: TIPOS[tipo],
       upsert: false,
     });
     if (error) {
