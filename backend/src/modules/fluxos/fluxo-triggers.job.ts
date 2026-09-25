@@ -12,6 +12,7 @@ import { MullerWhatsappService } from '@modules/mullerbot/muller-whatsapp.servic
 import { CronMetricsService } from './cron-metrics.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { proximaExecucaoCrons, CRON_TZ_PADRAO } from './cron.util';
+import { MAX_DISPAROS_GUARDADOS, chaveDisparosCron } from './cron-disparos.util';
 import { ehFeriadoNacional } from './feriados.util';
 
 /**
@@ -998,12 +999,30 @@ export class FluxoTriggersJob {
           }
           // Métrica de latência: atraso entre o horário agendado e o disparo real.
           await this.cronMetrics.registrar(agora.getTime() - slot.getTime());
+          // Rastro do slot pro dashboard: se a execução terminar sem efeito ela é
+          // APAGADA, e sem isto não sobraria prova de que o robô rodou.
+          await this.gravarDisparo(f.id, { slot: slot.toISOString(), execId: exec.id });
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
         } else if (noFeriado) {
+          await this.gravarDisparo(f.id, { slot: slot.toISOString(), feriado: true });
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" pulado (feriado nacional)`);
         }
       }
     }
+  }
+
+  /** Best-effort: rastro não pode derrubar o disparo que já aconteceu. */
+  private async gravarDisparo(
+    fluxoId: string,
+    d: { slot: string; execId?: string; feriado?: boolean },
+  ): Promise<void> {
+    await this.redis
+      .lpushCapped(chaveDisparosCron(fluxoId), JSON.stringify(d), MAX_DISPAROS_GUARDADOS)
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Cron do fluxo ${fluxoId}: rastro do disparo não gravado: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
   }
 
   /**

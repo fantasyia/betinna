@@ -1,11 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { proximaExecucaoCrons } from '@modules/fluxos/cron.util';
+import {
+  chaveDisparosCron,
+  horariosDoDia,
+  lerDisparos,
+  resultadoDoSlot,
+  type DisparoCron,
+  type ResultadoSlot,
+} from '@modules/fluxos/cron-disparos.util';
 import type { GraficosDto } from './relatorios.dto';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -41,7 +50,26 @@ export class DashboardResumoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
+    // Opcional: sem Redis a agenda do robô ainda mostra os horários, só sem o
+    // resultado de cada um.
+    @Optional() private readonly redis?: RedisService,
   ) {}
+
+  /** Rastro dos disparos do cron por fluxo (mais recente primeiro). */
+  private async disparosDoCron(fluxoIds: string[]): Promise<Map<string, DisparoCron[]>> {
+    const out = new Map<string, DisparoCron[]>();
+    if (!this.redis) return out;
+    await Promise.all(
+      fluxoIds.map(async (id) => {
+        try {
+          out.set(id, lerDisparos(await this.redis!.lrange(chaveDisparosCron(id))));
+        } catch {
+          out.set(id, []);
+        }
+      }),
+    );
+    return out;
+  }
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
@@ -323,6 +351,8 @@ export class DashboardResumoService {
       tipo: 'compromisso' | 'robo';
       detalhe: string | null;
       link: string;
+      /** Só robô: o que aconteceu naquele horário (ou "agendado"). */
+      resultado?: ResultadoSlot;
     }> = agendaEventos.map((a) => ({
       hora: a.data.toISOString(),
       titulo: a.titulo,
@@ -330,29 +360,65 @@ export class DashboardResumoService {
       detalhe: a.tipo,
       link: '/agenda',
     }));
+    // Rastro dos disparos do cron — alimenta a agenda (cada horário com o que
+    // aconteceu) e o "último disparo" da sala de fluxos.
+    const cronsAtivos = ehGestao
+      ? fluxosLista.filter((f) => f.status === 'ATIVO' && f.triggerTipo === 'CRON_AGENDADO')
+      : [];
+    const disparosPorFluxo = await this.disparosDoCron(cronsAtivos.map((f) => f.id));
+    const execIds = [...disparosPorFluxo.values()]
+      .flat()
+      .map((d) => d.execId)
+      .filter((x): x is string => !!x);
+    const execsDoCron = execIds.length
+      ? await this.prisma.fluxoExecucao.findMany({
+          // `teste: false` pela regra do painel — execução do cron nunca é de teste.
+          where: { id: { in: execIds }, teste: false },
+          select: { id: true, status: true, erroMsg: true },
+        })
+      : [];
+    const execPorId = new Map(execsDoCron.map((e) => [e.id, e]));
+
     if (ehGestao) {
-      // Disparos do ROBÔ hoje: fluxos ATIVOS com CRON_AGENDADO cuja próxima
-      // execução ainda cai hoje.
-      for (const f of fluxosLista) {
-        if (f.status !== 'ATIVO' || f.triggerTipo !== 'CRON_AGENDADO') continue;
+      // Disparos do ROBÔ hoje: TODOS os horários do dia, não só o próximo — o
+      // que já passou mostra o resultado (Léo, 25/09: "isso não me diz que tem
+      // algo certo"). Antes a linha sumia quando o horário passava.
+      for (const f of cronsAtivos) {
         const cfg = (f.triggerConfig ?? {}) as {
           expressoes?: string[];
           expressao?: string;
           timezone?: string;
+          pularFeriados?: boolean;
         };
         const exprs = cfg.expressoes?.length
           ? cfg.expressoes
           : cfg.expressao
             ? [cfg.expressao]
             : [];
+        const tz = cfg.timezone ?? TZ_PADRAO;
+        const disparos = disparosPorFluxo.get(f.id) ?? [];
+        const porSlot = new Map(disparos.map((d) => [new Date(d.slot).getTime(), d]));
+        const maisAntigo = disparos.length
+          ? new Date(Math.min(...disparos.map((d) => new Date(d.slot).getTime())))
+          : null;
         try {
-          const prox = proximaExecucaoCrons(exprs, cfg.timezone ?? TZ_PADRAO, agora);
-          if (prox && prox.getTime() < fimDoDia.getTime()) {
+          for (const slot of horariosDoDia(exprs, tz, agora)) {
+            const disparo = porSlot.get(slot.getTime());
+            const { resultado, detalhe } = resultadoDoSlot({
+              slot,
+              agora,
+              tz,
+              pularFeriados: cfg.pularFeriados === true,
+              disparo,
+              exec: disparo?.execId ? (execPorId.get(disparo.execId) ?? null) : undefined,
+              registroDesde: maisAntigo,
+            });
             agendaHoje.push({
-              hora: prox.toISOString(),
+              hora: slot.toISOString(),
               titulo: f.nome,
               tipo: 'robo',
-              detalhe: 'disparo automático',
+              detalhe,
+              resultado,
               // /fluxos/:id NÃO é rota — o editor é overlay dentro de /fluxos
               // (aberto por state via ?edit=). Link direto quebrava o clique.
               link: `/fluxos?edit=${f.id}`,
@@ -645,6 +711,16 @@ export class DashboardResumoService {
     const ultimoDisparoMap = new Map(
       ultimoDisparoPorFluxo.map((u) => [u.fluxoId, { em: u.em.toISOString(), status: u.status }]),
     );
+    // O banco só guarda o disparo que FEZ algo (o sem efeito é apagado). O
+    // rastro do cron diz quando o robô rodou de verdade — vale o mais recente.
+    for (const [fluxoId, disparos] of disparosPorFluxo) {
+      const ultimo = disparos.find((d) => !d.feriado && d.execId);
+      if (!ultimo) continue;
+      const doBanco = ultimoDisparoMap.get(fluxoId);
+      if (doBanco && new Date(doBanco.em).getTime() >= new Date(ultimo.slot).getTime()) continue;
+      const exec = execPorId.get(ultimo.execId!);
+      ultimoDisparoMap.set(fluxoId, { em: ultimo.slot, status: exec ? exec.status : 'SEM_EFEITO' });
+    }
     const ultimoErroPorFluxo = new Map<string, string>();
     for (const f of falhas7d) {
       if (!ultimoErroPorFluxo.has(f.fluxoId)) {
@@ -701,7 +777,21 @@ export class DashboardResumoService {
       };
     });
 
-    return { pulso, triagem, prontidao, fluxosSala, agendaHoje, mensagens };
+    // Falhas das últimas 72h, uma por linha, pra tratar rápido (Léo, 25/09). Sai
+    // da mesma busca da triagem (7d, as mais recentes primeiro, até 30).
+    const limite72h = agora.getTime() - 3 * DIA_MS;
+    const falhas72h = falhas7d
+      .filter((f) => f.criadoEm.getTime() >= limite72h)
+      .map((f) => ({
+        id: f.id,
+        fluxoId: f.fluxoId,
+        fluxoNome: f.fluxo.nome,
+        erro: (f.erroMsg ?? 'erro sem mensagem').slice(0, 200),
+        em: (f.terminouEm ?? f.criadoEm).toISOString(),
+        link: `/fluxos?edit=${f.fluxoId}`,
+      }));
+
+    return { pulso, triagem, prontidao, fluxosSala, agendaHoje, mensagens, falhas72h };
   }
 
   /**

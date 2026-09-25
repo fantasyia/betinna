@@ -38,11 +38,34 @@ export interface FluxoSalaRow {
   ultimoDisparo: { em: string; status: string } | null;
 }
 
+export type ResultadoSlot =
+  | 'agendado'
+  | 'ok'
+  | 'sem_efeito'
+  | 'falhou'
+  | 'rodando'
+  | 'cancelado'
+  | 'feriado'
+  | 'nao_disparou'
+  | 'sem_registro';
+
 export interface AgendaHojeItem {
   hora: string;
   titulo: string;
   tipo: 'compromisso' | 'robo';
   detalhe: string | null;
+  link: string;
+  /** Só robô: o que aconteceu naquele horário (ou "agendado"). */
+  resultado?: ResultadoSlot;
+}
+
+/** Execução que falhou nas últimas 72h — uma por linha, pra tratar rápido. */
+export interface FalhaRecente {
+  id: string;
+  fluxoId: string;
+  fluxoNome: string;
+  erro: string;
+  em: string;
   link: string;
 }
 
@@ -64,6 +87,7 @@ export interface DashboardResumo {
   fluxosSala: FluxoSalaRow[];
   agendaHoje: AgendaHojeItem[];
   mensagens: MensagemInterna[];
+  falhas72h?: FalhaRecente[];
 }
 
 /** "há 3d" / "há 5h" / "agora" — curto de propósito (densidade do cockpit). */

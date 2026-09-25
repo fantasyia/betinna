@@ -99,6 +99,8 @@ function classeUltimo(status: string): string {
   if (status === 'FALHOU') return 'text-danger';
   if (status === 'CONCLUIDO') return 'text-success';
   if (status === 'CANCELADO') return 'text-muted';
+  // Rodou e não tinha nada a fazer (ex.: lote sem lead elegível) — não é erro.
+  if (status === 'SEM_EFEITO') return 'text-muted';
   return 'text-info'; // PENDENTE / EM_EXECUCAO / AGUARDANDO — em andamento
 }
 

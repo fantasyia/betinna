@@ -245,7 +245,7 @@ export default function DashboardPage() {
                 {prefs.precisa &&
                   (resumo ? <PrecisaDeVoce itens={resumo.triagem} /> : <SkeletonCard />)}
                 {prefs.agenda &&
-                  (resumo ? <AgendaHoje itens={resumo.agendaHoje ?? []} /> : <SkeletonCard />)}
+                  (resumo ? <AgendaHoje itens={resumo.agendaHoje ?? []} falhas={resumo.falhas72h ?? []} /> : <SkeletonCard />)}
                 {prefs.mensagens &&
                   ehGestao &&
                   (resumo ? (

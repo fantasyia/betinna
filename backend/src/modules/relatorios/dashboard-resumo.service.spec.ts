@@ -499,3 +499,111 @@ describe('painel "Precisa de você" — arquivado sai da frente', () => {
     expect(args.where.card.lista.arquivada).toBe(false);
   });
 });
+
+/**
+ * Agenda do robô e falhas de 72h (Léo, 25/09): "isso aqui não me diz que tem
+ * algo certo". A agenda mostrava só o PRÓXIMO horário do R2 e sumia com ele
+ * quando passava; o disparo sem efeito era apagado e ninguém via que rodou.
+ */
+describe('agenda do robô com o resultado de cada horário + falhas 72h', () => {
+  const AGORA = new Date('2026-09-25T15:30:00Z'); // quinta, 12:30 em Brasília
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AGORA);
+  });
+
+  function montar() {
+    const prisma = makePrisma();
+    prisma.fluxo.findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'fx-r2',
+        nome: 'R2 · Liberação de lote',
+        status: 'ATIVO',
+        triggerTipo: 'CRON_AGENDADO',
+        triggerConfig: { expressoes: ['0 9,11,13,15,17 * * 1-5'], timezone: 'America/Sao_Paulo' },
+      },
+    ]);
+    prisma.fluxoExecucao.findMany = vi.fn(async (args: { where: { id?: unknown } }) =>
+      args.where.id
+        ? // Só a das 11h existe: a das 9h foi APAGADA (cron sem efeito).
+          [{ id: 'e-11', status: 'FALHOU', erroMsg: 'Evolution 400' }]
+        : [
+            {
+              id: 'f-recente',
+              fluxoId: 'fx-e1',
+              erroMsg: 'timeout no envio',
+              terminouEm: new Date(AGORA.getTime() - 3_600_000),
+              criadoEm: new Date(AGORA.getTime() - 3_600_000),
+              fluxo: { nome: 'E1' },
+            },
+            {
+              id: 'f-velha',
+              fluxoId: 'fx-e1',
+              erroMsg: 'antiga',
+              terminouEm: new Date(AGORA.getTime() - 5 * 86_400_000),
+              criadoEm: new Date(AGORA.getTime() - 5 * 86_400_000),
+              fluxo: { nome: 'E1' },
+            },
+          ],
+    );
+    const redis = {
+      // LPUSH: o mais recente vem primeiro.
+      lrange: vi
+        .fn()
+        .mockResolvedValue([
+          JSON.stringify({ slot: '2026-09-25T14:00:00.000Z', execId: 'e-11' }),
+          JSON.stringify({ slot: '2026-09-25T12:00:00.000Z', execId: 'e-9' }),
+        ]),
+    };
+    const svc = new DashboardResumoService(
+      prisma as never,
+      makeRepScope(null) as never,
+      redis as never,
+    );
+    return { svc, redis };
+  }
+
+  it('mostra TODOS os horários do dia, cada um com o que aconteceu', async () => {
+    const { svc } = montar();
+    const r = (await svc.resumo(user())) as unknown as {
+      agendaHoje: Array<{ hora: string; tipo: string; resultado?: string; detalhe: string }>;
+    };
+    const robo = r.agendaHoje.filter((i) => i.tipo === 'robo');
+    expect(robo.map((i) => [i.hora.slice(11, 16), i.resultado])).toEqual([
+      ['12:00', 'sem_efeito'],
+      ['14:00', 'falhou'],
+      ['16:00', 'agendado'],
+      ['18:00', 'agendado'],
+      ['20:00', 'agendado'],
+    ]);
+    expect(robo[0].detalhe).toBe('rodou — nada a fazer');
+    expect(robo[1].detalhe).toBe('falhou — Evolution 400');
+  });
+
+  it('o "último disparo" da sala é o do rastro, não o último que fez efeito', async () => {
+    const { svc } = montar();
+    const r = (await svc.resumo(user())) as unknown as {
+      fluxosSala: Array<{ id: string; ultimoDisparo: { em: string; status: string } | null }>;
+    };
+    const r2 = r.fluxosSala.find((f) => f.id === 'fx-r2');
+    expect(r2?.ultimoDisparo).toEqual({ em: '2026-09-25T14:00:00.000Z', status: 'FALHOU' });
+  });
+
+  it('falhas72h lista só as das últimas 72h, com fluxo, erro e link', async () => {
+    const { svc } = montar();
+    const r = (await svc.resumo(user())) as unknown as {
+      falhas72h: Array<{ id: string; fluxoNome: string; erro: string; link: string }>;
+    };
+    expect(r.falhas72h).toEqual([
+      expect.objectContaining({
+        id: 'f-recente',
+        fluxoNome: 'E1',
+        erro: 'timeout no envio',
+        link: '/fluxos?edit=fx-e1',
+      }),
+    ]);
+    vi.useRealTimers();
+  });
+});
