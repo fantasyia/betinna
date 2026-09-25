@@ -217,6 +217,22 @@ describe('renderizarDocumento — com o modelo REAL', () => {
     expect(t.split('Tecelagem Exemplo Ltda').length - 1).toBe(7);
   });
 
+  /**
+   * Cláusula de aceite da assinatura eletrônica (Léo, 25/09): fecha o § 2º do
+   * art. 10 da MP 2.200-2 — as partes aceitam a assinatura eletrônica e o log da
+   * plataforma como prova. Sem ela, a validade da assinatura fora da ICP-Brasil
+   * depende de discussão; com ela, o próprio contrato a reconhece.
+   */
+  it('traz a cláusula de aceite da assinatura eletrônica (MP 2.200-2, art. 10, § 2º)', () => {
+    const t = texto(renderizarDocumento(modelo, montar()));
+    expect(t).toContain('10 - Assinatura Eletrônica');
+    expect(t).toContain('nos termos do art. 10, § 2º, da Medida Provisória nº 2.200-2/2001');
+    expect(t).toContain('os registros da plataforma (trilha de auditoria)');
+    // Aprovações virou 11 — e continua ANTES das assinaturas.
+    expect(t.indexOf('10 - Assinatura Eletrônica')).toBeLessThan(t.indexOf('11 - Aprovações'));
+    expect(t).not.toContain('10 - Aprovações');
+  });
+
   it('o arquivo gerado é um .docx válido (XML bem formado)', () => {
     const out = renderizarDocumento(modelo, montar());
     const xml = new PizZip(out).file('word/document.xml')!.asText();
