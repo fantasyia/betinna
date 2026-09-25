@@ -1308,6 +1308,15 @@ export class ConversarIaService implements OnModuleDestroy {
      * Não há "mensagem do turno" — todo o contexto está no histórico.
      */
     let assumindoConversa = false;
+    /**
+     * O lead ACABOU de escrever — há fala dele sem resposta NESTE turno: texto no
+     * contexto (MENSAGEM_CANAL) ou a última mensagem da conversa é dele.
+     *
+     * Não é o mesmo que `reativo`: reativo é "conversa viva em 4h", e mover o lead
+     * de etapa numa conversa viva também é reativo. É isso que a guarda do A8
+     * precisa distinguir (reteste de 25/09).
+     */
+    let leadAcabouDeEscrever = false;
     if (reativo) {
       const textoLeadCtx =
         typeof (ctx as Record<string, unknown>)['texto'] === 'string'
@@ -1319,16 +1328,22 @@ export class ConversarIaService implements OnModuleDestroy {
         typeof (ctx as Record<string, unknown>)['conversationId'] === 'string'
           ? ((ctx as Record<string, unknown>)['conversationId'] as string)
           : null;
-      // Sem `conversationId` no contexto, acha a conversa pelo LEAD. É o caso do
-      // C1/C2 (LEAD_ETAPA_MUDOU) e do RB/RT (LEAD_RECEBEU_TAG): esses eventos
-      // carregam o lead, não a conversa — e sem isto o consultivo assumia CEGO,
-      // re-perguntando o que o cliente acabara de responder na triagem.
+      // Sem `conversationId` no contexto, acha a conversa pelo LEAD (RB/RT por
+      // LEAD_RECEBEU_TAG, e evento antigo). ⚠️ O LEAD_ETAPA_MUDOU passou a TRAZER
+      // `conversationId` (conferido em 25/09) — então "ter conversationId" NÃO
+      // quer dizer "o lead acabou de escrever": ver `leadAcabouDeEscrever`.
+      // Sem isto o consultivo assumia CEGO, re-perguntando o que o cliente
+      // acabara de responder na triagem.
       const convId = convIdCtx ?? (await this.conversaDaEmpresaDoLead(empresaId, leadId));
       historicoInicial = convId
         ? await this.montarHistorico(convId, limiteHistIni, empresaId).catch(() => [])
         : [];
       // Quem ASSUME não tem mensagem-do-turno: ninguém acabou de escrever.
       assumindoConversa = !convIdCtx && !textoLeadCtx && historicoInicial.length > 0;
+      leadAcabouDeEscrever =
+        !!textoLeadCtx ||
+        (historicoInicial.length > 0 &&
+          historicoInicial[historicoInicial.length - 1].role === 'user');
       if (assumindoConversa) {
         // 🔴 A sentinela `(inicie)` NÃO pode ir como turno do cliente.
         //
@@ -1549,10 +1564,19 @@ export class ConversarIaService implements OnModuleDestroy {
     // vai pro log do passo. Numa importação em lote, uma "frase de retomada"
     // seriam centenas de mensagens que ninguém pediu.
     //
-    // ⚠️ Só quando ninguém acabou de escrever: abordagem fria, ou quem ASSUME a
-    // conversa por etapa/etiqueta. Se o lead mandou mensagem agora, calar é
-    // deixá-lo sem resposta — e se ele PEDIU o link de novo, reenviar é o certo.
-    if ((!reativo || assumindoConversa) && !pediuOLinkDeNovo(mensagemDoTurno)) {
+    // ⚠️ Só quando ninguém acabou de escrever: abordagem fria, quem ASSUME a
+    // conversa por etapa/etiqueta, e o lead MOVIDO de etapa numa conversa viva
+    // sem ter escrito nada novo. Se ele mandou mensagem agora (e ninguém
+    // respondeu), calar é deixá-lo sem resposta — e se PEDIU o link de novo,
+    // reenviar é o certo.
+    //
+    // 🔴 Reteste de 25/09: a exceção era "reativo com conversationId", e o
+    // LEAD_ETAPA_MUDOU traz conversationId. Qualquer lead que conversou nas
+    // últimas 4h e foi movido pra "Novo" recebia a sequência inteira de novo.
+    if (
+      (!reativo || assumindoConversa || !leadAcabouDeEscrever) &&
+      !pediuOLinkDeNovo(mensagemDoTurno)
+    ) {
       const convAbertura = await this.conversaDaAbertura(empresaId, leadId, ctx);
       const repetido = convAbertura
         ? await this.linkJaNoHistorico(convAbertura, aberturaTexto)

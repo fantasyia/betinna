@@ -618,6 +618,49 @@ describe('ConversarIaService', () => {
         expect(whatsapp.enviarTexto).toHaveBeenCalled();
       });
 
+      /**
+       * 🔴 Reteste de 25/09, pelo CAMINHO REAL (lead movido pra "Novo" pelo
+       * contatos_atualizar_etapa): o LEAD_ETAPA_MUDOU traz `conversationId`, a
+       * conversa estava viva (inbound em 4h) — e a exceção "acabou de escrever"
+       * era só "reativo com conversationId". O lead não escreveu nada e recebeu
+       * a sequência inteira de novo.
+       */
+      it('🔴 movido de etapa numa conversa VIVA, sem escrever nada novo → calado', async () => {
+        preparar(JSON.stringify({ resposta: comLink, classificou: false }));
+        // desc: a mais nova primeiro. A última é NOSSA (a despedida com o link).
+        prisma.message.findMany.mockResolvedValue([
+          { direction: 'OUTBOUND', conteudo: `Segue: ${LINK}`, criadoEm: new Date(3) },
+          { direction: 'INBOUND', conteudo: '105A, 220V', criadoEm: new Date(2) },
+        ]);
+        linkJaSaiu();
+        const r = await svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1' }) as never,
+          { leadId: 'lead-1', conversationId: 'conv-empresa' },
+          'emp-1',
+          true,
+        );
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+        expect(r).toMatchObject({ pulado: true });
+      });
+
+      it('movido de etapa com mensagem do lead SEM resposta → responde (ele escreveu)', async () => {
+        preparar(JSON.stringify({ resposta: comLink, classificou: false }));
+        prisma.message.findMany.mockResolvedValue([
+          { direction: 'INBOUND', conteudo: 'e agora, como fica?', criadoEm: new Date(3) },
+          { direction: 'OUTBOUND', conteudo: `Segue: ${LINK}`, criadoEm: new Date(2) },
+        ]);
+        linkJaSaiu();
+        await svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1' }) as never,
+          { leadId: 'lead-1', conversationId: 'conv-empresa' },
+          'emp-1',
+          true,
+        );
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
       it('quem ASSUME a conversa por etapa também fica calado', async () => {
         preparar(JSON.stringify({ resposta: comLink, classificou: false }));
         prisma.message.findMany.mockResolvedValue([
