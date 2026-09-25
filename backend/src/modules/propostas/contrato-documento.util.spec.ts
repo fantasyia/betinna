@@ -185,6 +185,13 @@ describe('renderizarDocumento — com o modelo REAL', () => {
     expect(t).toContain(`(vigência de ${prazoMeses} meses)`);
     expect(t).toContain(`iniciando-se no dia ${dia}`);
     expect(t).toContain(`vencendo-se todos os demais no dia ${dia}`);
+    // O resumo do cliente (página de aceite e e-mail) também sai daqui.
+    const { garantiaMeses, primeiroAluguelNoMes } = TERMOS_DO_CONTRATO;
+    expect(t).toContain(
+      `garantia de funcionamento de ${garantiaMeses} (${porExtenso(garantiaMeses)}) meses`,
+    );
+    expect(primeiroAluguelNoMes).toBe(2);
+    expect(t).toContain('do segundo mês subsequente');
   });
 
   it('a tabela cresce: 40 quadros → 40 linhas no item 06, nada cortado', () => {

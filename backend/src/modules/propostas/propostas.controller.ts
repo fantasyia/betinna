@@ -26,6 +26,7 @@ import {
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostasService } from './propostas.service';
 import { PropostaErpService } from './proposta-erp.service';
+import { PropostaAnexosService } from './proposta-anexos.service';
 
 const decidirAceiteSchema = z.object({
   decisao: z.enum(['ACEITA', 'RECUSADA']),
@@ -39,6 +40,7 @@ export class PropostasController {
     private readonly propostas: PropostasService,
     private readonly aceite: PropostaAceiteService,
     private readonly erp: PropostaErpService,
+    private readonly anexos: PropostaAnexosService,
   ) {}
 
   // ─── C3 — Aceite externo (PÚBLICO, sem login) ───────────────────────────
@@ -50,6 +52,15 @@ export class PropostasController {
   @ApiOperation({ summary: 'Preview público da proposta via token de aceite (sem login).' })
   aceitePreview(@Param('token') token: string) {
     return this.aceite.resolverPreview(token);
+  }
+
+  @Public()
+  @Get('aceite/:token/anexos/:anexoId')
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @ApiOperation({ summary: 'Link temporário do PROJETO anexado, pro cliente na página de aceite.' })
+  async aceiteAnexo(@Param('token') token: string, @Param('anexoId') anexoId: string) {
+    const propostaId = await this.aceite.propostaDoTokenAberto(token);
+    return this.anexos.linkAssinado(propostaId, anexoId);
   }
 
   @Public()

@@ -86,6 +86,9 @@ interface Proposta {
 
 interface PropostaItemDetail {
   id: string;
+  /** Nome gravado no item — é o que a API devolve (a relação `produto` não vem). */
+  produtoNome?: string | null;
+  quadroPainel?: string | null;
   produto?: { id: string; nome: string; sku?: string };
   quantidade: number;
   precoUnitario: number;
@@ -194,6 +197,16 @@ function fmtDate(d: string | null | undefined) {
   } catch {
     return d;
   }
+}
+
+/**
+ * Data "pura" (validade, gravada 00:00 UTC). Formatar no fuso de Brasília
+ * mostrava o DIA ANTERIOR: gravava 24/10 e a tela dizia 23/10 (teste 25/09).
+ */
+export function fmtDataPura(d: string | null | undefined): string {
+  if (!d) return '—';
+  const [a, m, dia] = d.slice(0, 10).split('-');
+  return a && m && dia ? `${dia}/${m}/${a}` : '—';
 }
 
 // ─── Page principal ──────────────────────────────────────────
@@ -422,7 +435,7 @@ export default function PropostasPage() {
                         </Td>
                         <Td>
                           <span className="text-sm text-text-subtle tabular">
-                            {fmtDate(p.validoAte)}
+                            {fmtDataPura(p.validoAte)}
                           </span>
                         </Td>
                         <Td>
@@ -698,10 +711,13 @@ function PropostaDetailDrawer({
     setExportBusy('email');
     setActionError(null);
     try {
-      const res = await api.post<{ ok: boolean; enviadoPara: string }>(
+      const res = await api.post<{ ok: boolean; enviadoPara: string; url?: string }>(
         `/propostas/${id}/enviar-email`,
       );
       toast.success('Proposta enviada', `E-mail enviado pra ${res.enviadoPara}`);
+      // O e-mail leva o MESMO link — fica na tela pra copiar pro WhatsApp.
+      if (res.url) setAceiteLink(res.url);
+      onChanged();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar e-mail');
     } finally {
@@ -791,7 +807,11 @@ function PropostaDetailDrawer({
               >
                 Enviar por e-mail
               </Button>
-              {data.status !== 'RASCUNHO' && !data.orcamentoErpId && (
+              {/* É o FORÇAR da subida (a automática sai com o contrato assinado): antes
+                  do aceite o backend recusa, então o botão não convida (teste 25/09). */}
+              {!['RASCUNHO', 'AGUARDANDO_ASSINATURA', 'RECUSADA', 'EXPIRADA'].includes(
+                data.status,
+              ) && !data.orcamentoErpId && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -848,7 +868,7 @@ function PropostaDetailDrawer({
                   onClick={() => void gerarAceite()}
                   leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
                 >
-                  Enviar pra cliente aprovar
+                  Gerar link de aceite
                 </Button>
               )}
             </div>
@@ -920,7 +940,7 @@ function PropostaDetailDrawer({
               </h4>
               <div className="grid grid-cols-2 gap-2">
                 <InfoCell icon={<Calendar />} label="Criada em" value={fmtDate(data.criadoEm)} />
-                <InfoCell icon={<Calendar />} label="Validade" value={fmtDate(data.validoAte)} />
+                <InfoCell icon={<Calendar />} label="Validade" value={fmtDataPura(data.validoAte)} />
                 <InfoCell
                   icon={<CreditCard />}
                   label="Pagamento"
@@ -985,7 +1005,12 @@ function PropostaDetailDrawer({
                       {data.itens.map((it) => (
                         <tr key={it.id} className="border-b border-border last:border-b-0">
                           <td className="px-3 py-2">
-                            <div className="text-sm text-text">{it.produto?.nome ?? '—'}</div>
+                            <div className="text-sm text-text">
+                              {it.produtoNome ?? it.produto?.nome ?? '—'}
+                            </div>
+                            {it.quadroPainel && (
+                              <div className="text-[10px] text-muted">{it.quadroPainel}</div>
+                            )}
                             {it.produto?.sku && (
                               <div className="text-[10px] text-muted tabular">
                                 SKU {it.produto.sku}

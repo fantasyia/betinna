@@ -45,6 +45,8 @@ export interface PropostaParaEnvio {
     quantidade: number;
     total: Prisma.Decimal | number;
     sku: string | null;
+    /** Nome gravado no item — o resumo do cliente usa (opcional nos testes antigos). */
+    produtoNome?: string | null;
   }>;
   cliente: {
     nome: string;
@@ -57,6 +59,7 @@ export interface PropostaParaEnvio {
     bairro: string | null;
     cidade: string | null;
     uf: string | null;
+    cep?: string | null;
   };
 }
 
@@ -219,10 +222,12 @@ export const SELECT_PROPOSTA_CONTRATO = {
       correnteA: true,
       quantidade: true,
       total: true,
+      produtoNome: true,
     },
   },
   cliente: {
     select: {
+      cep: true,
       nome: true,
       email: true,
       cnpj: true,

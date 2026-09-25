@@ -33,7 +33,14 @@ import { porExtenso } from './proposta-tecnica-variaveis.util';
  * Se o texto do modelo mudar, é aqui que troca. O teste de coerência com o
  * modelo (contrato-documento.util.spec) acusa se um lado mudar sem o outro.
  */
-export const TERMOS_DO_CONTRATO = { prazoMeses: 60, diaVencimento: 5 } as const;
+export const TERMOS_DO_CONTRATO = {
+  prazoMeses: 60,
+  diaVencimento: 5,
+  /** "do segundo mês subsequente àquele em que … término da instalação" (item b). */
+  primeiroAluguelNoMes: 2,
+  /** "garantia de funcionamento de 60 (sessenta) meses" (item 04). */
+  garantiaMeses: 60,
+} as const;
 
 export const CAMINHO_MODELO = join(
   process.cwd(),
@@ -149,7 +156,7 @@ function enderecoEmLinha(e: DocumentoContratoEntrada['endereco']): string {
 }
 
 /** `MB-04_D.S.` → modelo `MB-04`, acompanhamento `Data Sense`. */
-function lerSku(sku: string | null): { modelo: string; acompanhamento: string | null } {
+export function lerSku(sku: string | null): { modelo: string; acompanhamento: string | null } {
   const s = (sku ?? '').trim();
   const modelo = s.split('_')[0];
   if (s.endsWith('_D.S.')) return { modelo, acompanhamento: 'Data Sense' };

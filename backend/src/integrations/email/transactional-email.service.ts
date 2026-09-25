@@ -12,6 +12,8 @@ import {
   templateRecuperarSenha,
   templateReenvioConvite,
   templatePedidoRastreio,
+  templatePropostaParaAprovar,
+  type PropostaParaAprovarParams,
   type MarcaEmail,
   rodapeDescadastro,
   linkDescadastroInline,
@@ -251,6 +253,20 @@ export class TransactionalEmailService {
       `rastreio:${params.pedidoId}`,
       params.empresaId,
     );
+  }
+
+  /** A proposta indo pro cliente aprovar — com a marca do tenant. */
+  async enviarPropostaParaAprovar(
+    params: Omit<PropostaParaAprovarParams, 'marca'> & {
+      para: string;
+      empresaId: string;
+      idempotencyKey: string;
+    },
+  ) {
+    const { para, empresaId, idempotencyKey, ...dados } = params;
+    const marca = await this.marcaDeEmail(empresaId);
+    const { assunto, html } = templatePropostaParaAprovar({ ...dados, marca });
+    return this.send(para, assunto, html, undefined, idempotencyKey, empresaId);
   }
 
   // ─── E-mail ad-hoc (sem template fixo) ───────────────────────────────

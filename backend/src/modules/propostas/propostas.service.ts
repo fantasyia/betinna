@@ -1,4 +1,3 @@
-import { escapeHtml } from '@shared/utils/interpolate';
 import { Injectable, Logger } from '@nestjs/common';
 import { anexarDescricaoDoProduto } from './descricao-do-produto.util';
 import { Prisma, type PropostaModalidade, type PropostaSecaoTecnica } from '@prisma/client';
@@ -21,6 +20,8 @@ import { vigenteAteFimDoDiaBrt } from '@shared/utils/data-brt.util';
 import { PedidosService } from '@modules/pedidos/pedidos.service';
 import { MarcaTenantService } from '@modules/empresas/marca-tenant.service';
 import { PropostaAceiteService } from './proposta-aceite.service';
+import { SELECT_PROPOSTA_CONTRATO, comSkus } from './contrato-envio.util';
+import { resumoDaProposta } from './proposta-resumo.util';
 import { PropostaExportService, type PropostaExportData } from './proposta-export.service';
 import type {
   ChangeStatusDto,
@@ -1022,11 +1023,22 @@ export class PropostasService {
   async enviarPorEmail(
     user: AuthenticatedUser,
     id: string,
-  ): Promise<{ ok: true; enviadoPara: string }> {
+  ): Promise<{ ok: true; enviadoPara: string; url: string; expiraEm: Date }> {
     const data = await this.dadosParaExport(user, id);
-    if (!data.cliente.email) {
+    const alvo = await this.findById(user, id);
+    const proposta = await this.prisma.proposta.findUnique({
+      where: { id },
+      select: SELECT_PROPOSTA_CONTRATO,
+    });
+    if (!proposta) throw new NotFoundException('Proposta', id);
+
+    // Vai pra QUEM ASSINA (Léo, 25/09): é a pessoa que aprova. O e-mail do
+    // cadastro do cliente é o da empresa — fica só de reserva.
+    const para = proposta.signatarioEmail?.trim() || data.cliente.email?.trim();
+    if (!para) {
       throw new BusinessRuleException(
-        'Cliente não tem e-mail cadastrado. Adicione um e-mail no cadastro do cliente pra enviar a proposta.',
+        'Sem e-mail pra enviar: preencha o e-mail de quem assina no levantamento ' +
+          '(ou um e-mail no cadastro do cliente).',
       );
     }
     // O e-mail leva o LINK DE ACEITE, não o PDF.
@@ -1037,44 +1049,45 @@ export class PropostasService {
     // dois canais sem o rep ter que fazer duas coisas diferentes.
     //
     // Sem link não há e-mail: mandar aviso de proposta sem forma de aceitar é
-    // pior que não mandar, porque queima o toque com o cliente.
-    const alvo = await this.findById(user, id);
+    // pior que não mandar, porque queima o toque com o cliente. E o link só sai
+    // com a proposta completa (`gerarLink` confere tudo que o contrato exige).
     const aceite = await this.aceiteSvc.gerarLink(alvo.id, alvo.empresaId, alvo.status);
 
-    const html =
-      `<p>Olá, ${escapeHtml(data.cliente.nome)}!</p>` + // nome vem do cadastro/site: escapado (C-2, 13/09)
-      `<p>Segue a proposta comercial <strong>${data.numero}</strong> da ${escapeHtml(data.empresa.nome)}.</p>` +
-      `<p>Valor total: <strong>${new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-      }).format(data.valor)}</strong></p>` +
-      (data.validoAte
-        ? `<p>Válida até ${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(data.validoAte)}.</p>`
-        : '') +
-      `<p style="margin:24px 0"><a href="${aceite.url}" ` +
-      'style="background:#008CC8;color:#fff;padding:12px 22px;border-radius:8px;' +
-      'text-decoration:none;font-weight:bold;display:inline-block">Ver e aceitar a proposta</a></p>' +
-      `<p style="font-size:12px;color:#666">Se o botão não abrir, use este endereço:<br>${aceite.url}</p>` +
-      `<p>Qualquer dúvida, estamos à disposição.</p>`;
+    const locacao = proposta.modalidade === 'LOCACAO';
+    const resumo = locacao
+      ? resumoDaProposta(await comSkus(this.prisma, proposta), alvo.criadoEm)
+      : null;
+    // Data "pura" (00:00 UTC): formatar no fuso de Brasília mostrava um dia antes.
+    const validade = proposta.validoAte
+      ? proposta.validoAte.toISOString().slice(0, 10).split('-').reverse().join('/')
+      : null;
 
-    const enviado = await this.emailSvc.enviarHtmlLivre({
-      para: data.cliente.email,
-      assunto: `Proposta ${data.numero} — ${data.empresa.nome}`,
-      html,
+    const enviado = await this.emailSvc.enviarPropostaParaAprovar({
+      para,
+      empresaId: alvo.empresaId,
       // Sem chave, um timeout na volta do Resend fazia o retry mandar o mesmo
       // e-mail de novo e o cliente recebia a proposta duplicada.
-      idempotencyKey: `proposta-email:${id}:${data.cliente.email}`,
-      // Sem isto saía como "Betinna.ai", sem reply-to do tenant (auditoria 13/09, C-6).
-      empresaId: alvo.empresaId,
+      idempotencyKey: `proposta-email:${id}:${para}:${aceite.expiraEm.getTime()}`,
+      nome: proposta.signatarioNome?.trim() || data.cliente.nome,
+      empresaNome: data.empresa.nome,
+      numero: data.numero,
+      aluguelMensal: resumo?.aluguelMensalTotal ?? null,
+      vigenciaMeses: resumo?.condicoes.vigenciaMeses ?? null,
+      servicosTotal: resumo?.servicos.total ?? null,
+      parcelas: resumo?.servicos.parcelas ?? null,
+      valorParcela: resumo?.servicos.valorParcela ?? null,
+      valorTotal: data.valor,
+      validade,
+      url: aceite.url,
     });
     if (!enviado.ok) {
       throw new BusinessRuleException(
         `Não foi possível enviar a proposta por e-mail: ${enviado.motivo ?? 'falha no provedor'}. ` +
-          'Verifique a configuração do Resend (RESEND_API_KEY + RESEND_FROM_EMAIL).',
+          'O link foi gerado — dá pra copiar e mandar pelo WhatsApp.',
       );
     }
 
-    this.logger.log(`Proposta ${data.numero} enviada por email ao cliente`);
-    return { ok: true, enviadoPara: data.cliente.email };
+    this.logger.log(`Proposta ${data.numero} enviada por e-mail a quem assina`);
+    return { ok: true, enviadoPara: para, url: aceite.url, expiraEm: aceite.expiraEm };
   }
 }

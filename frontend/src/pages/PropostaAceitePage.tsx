@@ -2,26 +2,68 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { carregarMarca, escurecer, marca, type Marca } from '@/lib/marca';
 
 /**
- * C3 (Lote 6) — Página pública de aceite de proposta.
+ * Página pública de aceite — o que o CLIENTE recebe (Léo, 25/09: "já precisa
+ * ficar tudo no formato de como o cliente vai receber mesmo").
  *
- * Cliente acessa via link /proposta/aceite/:token (sem login). Vê os dados
- * da proposta e pode Aceitar ou Recusar. Aceite gera pedido automático no
- * backend. Token é one-time (invalidado após decisão).
+ * Era uma tabela genérica produto/qtd/preço, sem o levantamento, sem prazos nem
+ * condições — e SEM O PROJETO, que é justamente o que o cliente aprova. Agora é
+ * o documento do levantamento (quadros, aluguel por mês, condições, serviços,
+ * prazos), o projeto pra abrir, e o aceite embaixo.
+ *
+ * ⛔ Marca do TENANT, resolvida pelo domínio (`/public/branding`): nenhuma cor
+ * nem nome de empresa escrito aqui. O rodapé vem da config do tenant, o mesmo
+ * dos e-mails.
  *
  * Todas as chamadas usam skipAuth (endpoints @Public no backend).
  */
 
 interface AceiteItem {
   produtoNome: string;
-  /** Descrição do produto vinda do ERP — o cliente lê o que está aceitando. */
   descricao?: string | null;
   quantidade: number;
   precoUnitario: number;
   desconto: number;
   total: number;
 }
+
+interface Resumo {
+  numero: string;
+  criadaEm: string;
+  validoAte: string | null;
+  cliente: { razaoSocial: string; cnpj: string | null; endereco: string };
+  signatarioNome: string | null;
+  quadros: Array<{
+    quadro: string;
+    principal: boolean;
+    tensaoV: number | null;
+    correnteA: number | null;
+    modelo: string;
+    aluguelMensal: number;
+  }>;
+  aluguelMensalTotal: number;
+  condicoes: {
+    vigenciaMeses: number;
+    diaVencimento: number;
+    primeiroAluguelNoMes: number;
+    garantiaMeses: number;
+  };
+  servicos: {
+    customizacao: { quantidade: number; unitario: number; total: number } | null;
+    total: number | null;
+    parcelas: number;
+    valorParcela: number | null;
+  };
+  prazos: {
+    entregaDias: number | null;
+    instalacaoDias: number | null;
+    verificacaoDias: number | null;
+    softwareDias: number | null;
+  };
+}
+
 interface AceitePreview {
   numero: string;
   empresaNome: string;
@@ -36,30 +78,121 @@ interface AceitePreview {
   observacoes: string | null;
   jaRespondida: boolean;
   itens: AceiteItem[];
+  resumo?: Resumo | null;
+  anexos?: Array<{ id: string; nome: string; mime: string; tamanho: number }>;
+  rodape?: string | null;
 }
 
-// Página aberta pelo CLIENTE do tenant: a marca aqui é a da empresa que mandou
-// a proposta, não a do produto. Resolvida pelo domínio, como no login.
-const NAVY = 'var(--navy)';
-const CYAN = 'var(--secondary)';
+/** Data "pura" (validade: 00:00 UTC) — no fuso de Brasília ela mostrava o dia anterior. */
+export function dataPura(iso: string | null): string {
+  if (!iso) return '—';
+  const [a, m, d] = iso.slice(0, 10).split('-');
+  return a && m && d ? `${d}/${m}/${a}` : '—';
+}
 
-function fmtDate(d: string | null): string {
-  if (!d) return '—';
-  try {
-    return new Date(d).toLocaleDateString('pt-BR');
-  } catch {
-    return d;
-  }
+/** Instante real (criação) — no fuso de Brasília. */
+function dataDoInstante(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+const dias = (n: number | null) => (n == null ? '—' : `${n} dia${n === 1 ? '' : 's'}`);
+const dois = (n: number) => String(n).padStart(2, '0');
+
+function tamanhoLegivel(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`;
+}
+
+function estilos(m: Marca): string {
+  const { primaria, secundaria, acao } = m.cores;
+  return `
+  .ac { min-height:100vh; background:#e9eef3; color:#0B1620; padding:24px 12px 40px;
+        font-family:'Source Sans 3','Segoe UI',Roboto,Arial,sans-serif; font-size:15px; line-height:1.45; }
+  .ac * { box-sizing:border-box; }
+  .ac-doc { max-width:860px; margin:0 auto; background:#fff; box-shadow:0 8px 30px rgba(0,0,0,.08); }
+  .ac-topo { background:${escurecer(primaria, 0.35)}; padding:22px 32px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+  .ac-topo img { height:44px; width:auto; display:block; }
+  .ac-topo .nome { color:#fff; font-family:'Poppins',sans-serif; font-weight:600; font-size:20px; }
+  .ac-ref { text-align:right; color:#fff; font-family:'Poppins',sans-serif; }
+  .ac-ref .num { font-size:22px; font-weight:600; letter-spacing:-.01em; }
+  .ac-eyebrow { font-family:'Poppins',sans-serif; font-weight:600; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:${primaria}; }
+  .ac-ref .ac-eyebrow { color:#9ED6F0; }
+  .ac-corpo { padding:8px 32px 28px; }
+  .ac h1 { font-family:'Poppins',sans-serif; font-weight:600; font-size:28px; letter-spacing:-.02em; line-height:1.1; margin:26px 0 4px; color:${primaria}; }
+  .ac .sub { color:#636363; margin:0 0 18px; }
+  .ac section { margin-bottom:22px; }
+  .ac-grade { display:grid; grid-template-columns:1.4fr 1fr; gap:10px 28px; margin-top:10px; }
+  .ac-campo .rot { font-size:12px; color:#636363; }
+  .ac-campo .val { font-weight:600; }
+  .ac table { width:100%; border-collapse:collapse; margin-top:10px; }
+  .ac th { font-family:'Poppins',sans-serif; font-weight:600; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:${primaria}; text-align:left; padding:9px 12px; }
+  .ac td { padding:9px 12px; border-bottom:1px solid #D0D0D0; vertical-align:top; }
+  .ac td.n, .ac th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ac-tabela { overflow-x:auto; }
+  .ac-tag { display:inline-block; font-size:11px; font-weight:600; color:${escurecer(secundaria, 0.25)}; border:1px solid ${secundaria}; border-radius:3px; padding:0 6px; margin-left:6px; }
+  .ac-total { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:12px; padding:14px 20px; background:#F5F5F5; border-left:8px solid ${acao}; }
+  .ac-total .rot { font-family:'Poppins',sans-serif; font-weight:600; color:${primaria}; }
+  .ac-total .val { font-family:'Poppins',sans-serif; font-weight:600; font-size:26px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ac-total .val small { font-size:13px; font-weight:500; color:#636363; }
+  .ac-cond { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:12px; }
+  .ac-cond > div { border-top:2px solid ${secundaria}; padding-top:8px; }
+  .ac-cond .v { font-family:'Poppins',sans-serif; font-weight:600; font-size:18px; font-variant-numeric:tabular-nums; color:${primaria}; }
+  .ac-cond .r { font-size:13px; color:#636363; }
+  .ac-nota { font-size:13px; color:#636363; margin-top:8px; }
+  .ac-anexo { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid #D0D0D0; margin-top:8px; }
+  .ac-anexo .nome { font-weight:600; word-break:break-all; }
+  .ac-anexo .tam { font-size:12px; color:#636363; }
+  .ac-btn { border:none; cursor:pointer; font-family:'Poppins',sans-serif; font-weight:600; font-size:15px; padding:14px 22px; border-radius:6px; }
+  .ac-btn:disabled { opacity:.6; cursor:default; }
+  .ac-btn.acao { background:${acao}; color:#fff; }
+  .ac-btn.sec { background:#fff; color:${primaria}; border:1px solid ${primaria}; }
+  .ac-btn.leve { background:#fff; color:#636363; border:1px solid #D0D0D0; }
+  .ac-btn.perigo { background:#c43c3c; color:#fff; }
+  .ac-decisao { border-top:3px solid ${primaria}; margin-top:8px; padding-top:18px; }
+  .ac-decisao .linha { display:flex; gap:10px; margin-top:12px; }
+  .ac-decisao .linha > * { flex:1; }
+  .ac-decisao .linha > .acao { flex:2; }
+  .ac-aviso { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; padding:12px 14px; font-size:14px; margin:18px 0 0; }
+  .ac-erro { color:#c43c3c; font-size:14px; margin-top:10px; }
+  .ac-rodape { border-top:3px solid ${primaria}; padding:16px 32px; font-size:12px; color:#636363; white-space:pre-line; }
+  .ac-centro { text-align:center; padding:48px 20px; }
+  @media (max-width: 640px) {
+    .ac { padding:0 0 24px; }
+    .ac-topo, .ac-corpo, .ac-rodape { padding-left:16px; padding-right:16px; }
+    .ac-grade { grid-template-columns:1fr; }
+    .ac-cond { grid-template-columns:repeat(2,1fr); }
+    .ac h1 { font-size:24px; }
+    .ac-total .val { font-size:22px; }
+  }`;
 }
 
 export default function PropostaAceitePage() {
   const { token = '' } = useParams<{ token: string }>();
+  const [m, setM] = useState<Marca>(marca());
   const [data, setData] = useState<AceitePreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [abrindo, setAbrindo] = useState<string | null>(null);
   const [resultado, setResultado] = useState<'ACEITA' | 'RECUSADA' | null>(null);
   const [confirmarRecusa, setConfirmarRecusa] = useState(false);
+
+  useEffect(() => {
+    // A marca vem pelo domínio; no 1º acesso (sem cache) ela chega depois do render.
+    void carregarMarca()
+      .then(setM)
+      .catch(() => undefined);
+    // Tipografia do documento (títulos e números / corpo).
+    const id = 'fontes-proposta';
+    if (!document.getElementById(id)) {
+      const l = document.createElement('link');
+      l.id = id;
+      l.rel = 'stylesheet';
+      l.href =
+        'https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Source+Sans+3:wght@400;600&display=swap';
+      document.head.appendChild(l);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,243 +225,329 @@ export default function PropostaAceitePage() {
     }
   }
 
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: `linear-gradient(135deg, ${NAVY} 0%, var(--surface-elevated) 100%)`,
-        padding: '2rem 1rem',
-        fontFamily: 'Cabin, system-ui, sans-serif',
-      }}
-    >
-      <div style={{ maxWidth: 680, margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 700, margin: 0 }}>
-            {data?.empresaNome ?? 'Proposta Comercial'}
-          </h1>
-          {data && (
-            <p style={{ color: CYAN, fontSize: 14, margin: '0.25rem 0 0' }}>
-              Proposta {data.numero}
-            </p>
-          )}
-        </div>
+  async function abrirProjeto(anexoId: string) {
+    setAbrindo(anexoId);
+    setError(null);
+    try {
+      const r = await api.get<{ url: string }>(`/propostas/aceite/${token}/anexos/${anexoId}`, {
+        skipAuth: true,
+      });
+      window.open(r.url, '_blank', 'noopener');
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setAbrindo(null);
+    }
+  }
 
-        <div
-          style={{
-            background: '#fff',
-            // A cor do texto é EXPLÍCITA no cartão porque a página tem fundo
-            // escuro: sem isto, o que não declara cor herda o branco do fundo e
-            // some no cartão branco. Foi o que aconteceu com a tabela de itens —
-            // o cliente só via a proposta passando o mouse por cima.
-            color: '#1f2937',
-            borderRadius: 10,
-            padding: '1.75rem',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
-          }}
-        >
-          {loading && <p style={{ textAlign: 'center', color: '#666' }}>Carregando proposta…</p>}
+  const r = data?.resumo ?? null;
+  const logo = m.logoNegativoUrl ?? m.logoUrl;
+
+  return (
+    <div className="ac">
+      <style>{estilos(m)}</style>
+      <div className="ac-doc">
+        <header className="ac-topo">
+          {logo ? (
+            <img src={logo} alt={data?.empresaNome ?? m.nome} />
+          ) : (
+            <span className="nome">{data?.empresaNome ?? m.nome}</span>
+          )}
+          {data && (
+            <div className="ac-ref">
+              <div className="ac-eyebrow">{r ? 'Proposta de locação' : 'Proposta'}</div>
+              <div className="num" data-testid="aceite-numero">
+                {data.numero}
+              </div>
+            </div>
+          )}
+        </header>
+
+        <div className="ac-corpo">
+          {loading && <p className="ac-centro">Carregando proposta…</p>}
 
           {!loading && error && !data && (
-            <div style={{ textAlign: 'center', padding: '1rem' }}>
-              <div style={{ fontSize: 40 }}>⚠️</div>
-              <h2 style={{ color: NAVY, fontSize: 18 }}>Link inválido ou expirado</h2>
-              <p style={{ color: '#666', fontSize: 14 }}>{error}</p>
+            <div className="ac-centro">
+              <h1>Link inválido ou expirado</h1>
+              <p className="sub">{error}</p>
             </div>
           )}
 
-          {/* Resultado da decisão */}
           {resultado && (
-            <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
-              <div style={{ fontSize: 48 }}>{resultado === 'ACEITA' ? '✅' : '❌'}</div>
-              <h2 style={{ color: NAVY, fontSize: 20, margin: '0.5rem 0' }}>
-                {resultado === 'ACEITA' ? 'Proposta aceita!' : 'Proposta recusada'}
-              </h2>
-              <p style={{ color: '#666', fontSize: 14 }}>
+            <div className="ac-centro" data-testid="aceite-resultado">
+              <h1>{resultado === 'ACEITA' ? 'Proposta aprovada' : 'Proposta recusada'}</h1>
+              <p className="sub">
                 {resultado === 'ACEITA'
-                  ? 'Obrigado! O responsável foi notificado e dará sequência ao seu pedido.'
-                  : 'Tudo bem. O responsável foi notificado da sua decisão.'}
+                  ? 'Obrigado! Em seguida você recebe o contrato para assinar eletronicamente.'
+                  : 'Tudo bem. O responsável foi avisado da sua decisão.'}
               </p>
             </div>
           )}
 
-          {/* Conteúdo da proposta (quando carregada, não respondida e sem resultado ainda) */}
           {data && !resultado && (
             <>
               {data.jaRespondida && (
-                <div
-                  style={{
-                    background: '#fff7ed',
-                    border: '1px solid #fed7aa',
-                    borderRadius: 8,
-                    padding: '0.75rem 1rem',
-                    marginBottom: '1rem',
-                    color: '#9a3412',
-                    fontSize: 13,
-                  }}
-                >
+                <div className="ac-aviso" data-testid="aceite-ja-respondida">
                   Esta proposta já foi respondida ou o link expirou. Caso precise, peça um novo link
                   ao responsável.
                 </div>
               )}
 
-              <p style={{ color: '#444', fontSize: 14, marginTop: 0 }}>
-                Olá, <strong>{data.clienteNome}</strong>! Segue sua proposta:
-              </p>
-              {data.validoAte && (
-                <p style={{ color: '#888', fontSize: 12 }}>Válida até {fmtDate(data.validoAte)}</p>
+              {r ? (
+                <>
+                  <h1>Levantamento técnico</h1>
+                  <p className="sub">
+                    Medição feita quadro a quadro. O modelo de cada quadro é definido pela corrente
+                    medida.
+                  </p>
+
+                  <section>
+                    <div className="ac-eyebrow">Cliente</div>
+                    <div className="ac-grade">
+                      <Campo rot="Razão social" val={r.cliente.razaoSocial} />
+                      <Campo rot="CNPJ" val={r.cliente.cnpj ?? '—'} />
+                      <Campo rot="Endereço" val={r.cliente.endereco || '—'} />
+                      <Campo rot="Quem assina pelo cliente" val={r.signatarioNome ?? '—'} />
+                      <Campo rot="Data do levantamento" val={dataDoInstante(r.criadaEm)} />
+                      <Campo rot="Proposta válida até" val={dataPura(r.validoAte)} />
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="ac-eyebrow">Quadros medidos</div>
+                    <div className="ac-tabela">
+                      <table data-testid="aceite-quadros">
+                        <thead>
+                          <tr>
+                            <th>Quadro / painel</th>
+                            <th className="n">Tensão</th>
+                            <th className="n">Corrente</th>
+                            <th>Modelo</th>
+                            <th className="n">Aluguel mensal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {r.quadros.map((q, i) => (
+                            <tr key={i}>
+                              <td>
+                                {q.quadro}
+                                {q.principal && <span className="ac-tag">principal</span>}
+                              </td>
+                              <td className="n">{q.tensaoV != null ? `${q.tensaoV} V` : '—'}</td>
+                              <td className="n">{q.correnteA != null ? `${q.correnteA} A` : '—'}</td>
+                              <td>{q.modelo}</td>
+                              <td className="n">{fmtBRL(q.aluguelMensal)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {r.quadros.some((q) => q.principal) && (
+                      <p className="ac-nota">
+                        Com acompanhamento, o quadro principal recebe o concentrador de dados e os
+                        demais se comunicam com ele.
+                      </p>
+                    )}
+                    <div className="ac-total" data-testid="aceite-total-mensal">
+                      <span className="rot">Aluguel mensal total</span>
+                      <span className="val">
+                        {fmtBRL(r.aluguelMensalTotal)} <small>/ mês</small>
+                      </span>
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="ac-eyebrow">Condições da locação</div>
+                    <div className="ac-cond" data-testid="aceite-condicoes">
+                      <Cartao v={`${r.condicoes.vigenciaMeses} meses`} r="vigência do contrato" />
+                      <Cartao v={`dia ${dois(r.condicoes.diaVencimento)}`} r="vencimento mensal" />
+                      <Cartao
+                        v={`${r.condicoes.primeiroAluguelNoMes}º mês`}
+                        r="1º aluguel, após o término da instalação"
+                      />
+                      <Cartao
+                        v={`${r.condicoes.garantiaMeses} meses`}
+                        r="garantia, a partir do término da instalação"
+                      />
+                    </div>
+                  </section>
+
+                  {r.servicos.total != null && (
+                    <section>
+                      <div className="ac-eyebrow">
+                        Serviços de implantação · pagamento único, fora do aluguel
+                      </div>
+                      <div className="ac-tabela">
+                        <table data-testid="aceite-servicos">
+                          <thead>
+                            <tr>
+                              <th>Serviço</th>
+                              <th className="n">Qtd</th>
+                              <th className="n">Valor unitário</th>
+                              <th className="n">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.servicos.customizacao && (
+                              <tr>
+                                <td>Customização do software</td>
+                                <td className="n">{r.servicos.customizacao.quantidade}</td>
+                                <td className="n">{fmtBRL(r.servicos.customizacao.unitario)}</td>
+                                <td className="n">{fmtBRL(r.servicos.customizacao.total)}</td>
+                              </tr>
+                            )}
+                            <tr>
+                              <td>
+                                <b>Instalação, materiais e customização</b> (total)
+                              </td>
+                              <td className="n" />
+                              <td className="n" />
+                              <td className="n">
+                                <b>{fmtBRL(r.servicos.total)}</b>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      {r.servicos.valorParcela != null && (
+                        <p className="ac-nota">
+                          Pago em {r.servicos.parcelas} parcelas de {fmtBRL(r.servicos.valorParcela)}.
+                        </p>
+                      )}
+                    </section>
+                  )}
+
+                  <section>
+                    <div className="ac-eyebrow">Prazos combinados</div>
+                    <div className="ac-cond" data-testid="aceite-prazos">
+                      <Cartao v={dias(r.prazos.entregaDias)} r="entrega" />
+                      <Cartao v={dias(r.prazos.instalacaoDias)} r="instalação" />
+                      <Cartao
+                        v={dias(r.prazos.verificacaoDias)}
+                        r="verificação, depois do fim da obra"
+                      />
+                      <Cartao v={dias(r.prazos.softwareDias)} r="software" />
+                    </div>
+                  </section>
+                </>
+              ) : (
+                !data.jaRespondida && (
+                  <>
+                    <h1>Proposta {data.numero}</h1>
+                    <p className="sub">Válida até {dataPura(data.validoAte)}</p>
+                    <section>
+                      <div className="ac-tabela">
+                        <table data-testid="aceite-itens">
+                          <thead>
+                            <tr>
+                              <th>Produto</th>
+                              <th className="n">Qtd</th>
+                              <th className="n">Preço</th>
+                              <th className="n">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.itens.map((it, i) => (
+                              <tr key={i}>
+                                <td>
+                                  {it.produtoNome}
+                                  {it.descricao && <div className="ac-nota">{it.descricao}</div>}
+                                </td>
+                                <td className="n">{it.quantidade}</td>
+                                <td className="n">{fmtBRL(it.precoUnitario)}</td>
+                                <td className="n">{fmtBRL(it.total)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="ac-total">
+                        <span className="rot">Total</span>
+                        <span className="val">{fmtBRL(data.valor)}</span>
+                      </div>
+                    </section>
+                  </>
+                )
               )}
 
-              {/* Itens */}
-              <div style={{ overflowX: 'auto', margin: '1rem 0' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: NAVY, color: '#fff' }}>
-                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>Produto</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Qtd</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Preço</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.itens.map((it, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #eee', color: '#1f2937' }}>
-                        <td style={{ padding: '0.5rem' }}>
-                          {it.produtoNome}
-                          {it.descricao && (
-                            <div
-                              style={{
-                                fontSize: '0.8em',
-                                color: '#6b7280',
-                                marginTop: '0.15rem',
-                                whiteSpace: 'pre-line',
-                              }}
-                            >
-                              {it.descricao}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>{it.quantidade}</td>
-                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                          {fmtBRL(it.precoUnitario)}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                          {fmtBRL(it.total)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Totais */}
-              <div style={{ textAlign: 'right', fontSize: 14, marginBottom: '1rem' }}>
-                <div style={{ color: '#666' }}>Subtotal: {fmtBRL(data.subtotal)}</div>
-                {data.descontoGeral > 0 && (
-                  <div style={{ color: '#666' }}>Desconto: {data.descontoGeral}%</div>
-                )}
-                <div style={{ fontSize: 22, fontWeight: 700, color: NAVY, marginTop: 4 }}>
-                  Total: {fmtBRL(data.valor)}
-                </div>
-              </div>
-
-              {/* Condições */}
-              <p style={{ fontSize: 12, color: '#666' }}>
-                Pagamento: {data.formaPagamento}
-                {data.condicaoPagamento ? ` · ${data.condicaoPagamento}` : ''}
-              </p>
-              {data.observacoes && (
-                <p style={{ fontSize: 12, color: '#666' }}>Obs: {data.observacoes}</p>
-              )}
-
-              {error && (
-                <p style={{ color: '#c43c3c', fontSize: 13, textAlign: 'center' }}>{error}</p>
-              )}
-
-              {/* Botões de decisão (só quando não respondida) */}
-              {!data.jaRespondida && (
-                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-                  {!confirmarRecusa ? (
-                    <>
+              {!data.jaRespondida && (data.anexos?.length ?? 0) > 0 && (
+                <section data-testid="aceite-projeto">
+                  <div className="ac-eyebrow">Projeto</div>
+                  <p className="ac-nota">
+                    É o projeto que você aprova: onde entra cada equipamento, em qual quadro.
+                  </p>
+                  {data.anexos!.map((a) => (
+                    <div className="ac-anexo" key={a.id}>
+                      <div>
+                        <div className="nome">{a.nome}</div>
+                        <div className="tam">{tamanhoLegivel(a.tamanho)}</div>
+                      </div>
                       <button
                         type="button"
+                        className="ac-btn sec"
+                        data-testid={`aceite-abrir-projeto-${a.id}`}
+                        disabled={abrindo !== null}
+                        onClick={() => void abrirProjeto(a.id)}
+                      >
+                        {abrindo === a.id ? 'Abrindo…' : 'Abrir projeto'}
+                      </button>
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {error && <p className="ac-erro">{error}</p>}
+
+              {!data.jaRespondida && (
+                <div className="ac-decisao" data-testid="aceite-decisao">
+                  <div className="ac-eyebrow">Aprovação</div>
+                  <p className="ac-nota">
+                    Ao aprovar, você recebe o contrato para assinar eletronicamente.
+                  </p>
+                  {!confirmarRecusa ? (
+                    <div className="linha">
+                      <button
+                        type="button"
+                        className="ac-btn leve"
                         onClick={() => setConfirmarRecusa(true)}
                         disabled={busy}
-                        style={{
-                          flex: 1,
-                          padding: '0.875rem',
-                          borderRadius: 10,
-                          border: '1px solid #ddd',
-                          background: '#fff',
-                          color: '#666',
-                          fontSize: 15,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
                       >
                         Recusar
                       </button>
                       <button
                         type="button"
+                        className="ac-btn acao"
+                        data-testid="aceite-aprovar"
                         onClick={() => void decidir('ACEITA')}
                         disabled={busy}
-                        style={{
-                          flex: 2,
-                          padding: '0.875rem',
-                          borderRadius: 10,
-                          border: 'none',
-                          background: busy ? '#9ca3af' : NAVY,
-                          color: '#fff',
-                          fontSize: 15,
-                          fontWeight: 700,
-                          cursor: busy ? 'default' : 'pointer',
-                        }}
                       >
-                        {busy ? 'Enviando…' : 'Aceitar proposta'}
+                        {busy ? 'Enviando…' : 'Aprovar proposta'}
                       </button>
-                    </>
+                    </div>
                   ) : (
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 13, color: '#444', margin: '0 0 0.5rem' }}>
+                    <>
+                      <p style={{ margin: '12px 0 0' }}>
                         Tem certeza que deseja recusar esta proposta?
                       </p>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div className="linha">
                         <button
                           type="button"
+                          className="ac-btn leve"
                           onClick={() => setConfirmarRecusa(false)}
                           disabled={busy}
-                          style={{
-                            flex: 1,
-                            padding: '0.75rem',
-                            borderRadius: 10,
-                            border: '1px solid #ddd',
-                            background: '#fff',
-                            color: '#666',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                          }}
                         >
                           Voltar
                         </button>
                         <button
                           type="button"
+                          className="ac-btn perigo"
                           onClick={() => void decidir('RECUSADA')}
                           disabled={busy}
-                          style={{
-                            flex: 1,
-                            padding: '0.75rem',
-                            borderRadius: 10,
-                            border: 'none',
-                            background: busy ? '#9ca3af' : '#c43c3c',
-                            color: '#fff',
-                            fontWeight: 700,
-                            cursor: busy ? 'default' : 'pointer',
-                          }}
                         >
                           {busy ? 'Enviando…' : 'Confirmar recusa'}
                         </button>
                       </div>
-                    </div>
+                    </>
                   )}
                 </div>
               )}
@@ -336,17 +555,30 @@ export default function PropostaAceitePage() {
           )}
         </div>
 
-        <p
-          style={{
-            textAlign: 'center',
-            color: 'rgba(255,255,255,0.6)',
-            fontSize: 11,
-            marginTop: '1.5rem',
-          }}
-        >
-          Powered by Betinna.ai
-        </p>
+        {data?.rodape && (
+          <footer className="ac-rodape" data-testid="aceite-rodape">
+            {data.rodape}
+          </footer>
+        )}
       </div>
+    </div>
+  );
+}
+
+function Campo({ rot, val }: { rot: string; val: string }) {
+  return (
+    <div className="ac-campo">
+      <div className="rot">{rot}</div>
+      <div className="val">{val}</div>
+    </div>
+  );
+}
+
+function Cartao({ v, r }: { v: string; r: string }) {
+  return (
+    <div>
+      <div className="v">{v}</div>
+      <div className="r">{r}</div>
     </div>
   );
 }

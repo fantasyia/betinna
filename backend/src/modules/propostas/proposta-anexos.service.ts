@@ -47,6 +47,24 @@ interface ArquivoEntrada {
  * Arquivo no Storage (bucket privado); aqui fica o metadado e a leitura sai por
  * link assinado, igual aos documentos de cliente.
  */
+/**
+ * O projeto é o que o cliente aprova. Congela quando o link de aceite existe
+ * (AGUARDANDO_ASSINATURA) e, claro, depois da resposta.
+ */
+function assertProjetoEditavel(status: string): void {
+  if (status === 'AGUARDANDO_ASSINATURA') {
+    throw new BusinessRuleException(
+      'O link de aceite já foi gerado: o cliente pode estar vendo este projeto agora. ' +
+        'Para trocar o projeto, volte a proposta para rascunho e gere um link novo.',
+    );
+  }
+  if (['ACEITA', 'RECUSADA'].includes(status)) {
+    throw new BusinessRuleException(
+      `Proposta ${status.toLowerCase()} — o projeto é histórico e não pode mais ser trocado.`,
+    );
+  }
+}
+
 @Injectable()
 export class PropostaAnexosService implements OnModuleInit {
   private readonly logger = new Logger(PropostaAnexosService.name);
@@ -84,12 +102,10 @@ export class PropostaAnexosService implements OnModuleInit {
   ): Promise<PropostaAnexo> {
     const proposta = await this.propostas.findById(user, propostaId);
     // Proposta já respondida é histórico: trocar o projeto depois do aceite
-    // faria o app dizer que o cliente aprovou uma coisa que ele não viu.
-    if (['ACEITA', 'RECUSADA'].includes(proposta.status)) {
-      throw new BusinessRuleException(
-        `Proposta ${proposta.status.toLowerCase()} — o projeto não pode mais ser trocado.`,
-      );
-    }
+    // faria o app dizer que o cliente aprovou uma coisa que ele não viu. E com o
+    // link de aceite JÁ gerado, o cliente pode estar lendo agora: trocar o
+    // projeto por baixo dele é o mesmo problema (os itens já congelam aí).
+    assertProjetoEditavel(proposta.status);
     if (arquivo.size > MAX_BYTES) {
       throw new BusinessRuleException(
         `Arquivo de ${(arquivo.size / 1024 / 1024).toFixed(1)}MB — o limite é 20MB.`,
@@ -125,6 +141,18 @@ export class PropostaAnexosService implements OnModuleInit {
     anexoId: string,
   ): Promise<{ url: string; nome: string; expiraEmSegundos: number }> {
     await this.propostas.findById(user, propostaId);
+    return this.linkAssinado(propostaId, anexoId);
+  }
+
+  /**
+   * Link assinado SEM checagem de usuário — quem chama já validou o acesso. É o
+   * caminho do cliente na página pública de aceite (validado pelo TOKEN): ele
+   * "aprova o projeto", então precisa conseguir abrir o projeto.
+   */
+  async linkAssinado(
+    propostaId: string,
+    anexoId: string,
+  ): Promise<{ url: string; nome: string; expiraEmSegundos: number }> {
     const anexo = await this.prisma.propostaAnexo.findFirst({
       where: { id: anexoId, propostaId },
     });
@@ -141,11 +169,7 @@ export class PropostaAnexosService implements OnModuleInit {
 
   async remove(user: AuthenticatedUser, propostaId: string, anexoId: string): Promise<void> {
     const proposta = await this.propostas.findById(user, propostaId);
-    if (['ACEITA', 'RECUSADA'].includes(proposta.status)) {
-      throw new BusinessRuleException(
-        'Proposta já respondida — o projeto dela é histórico e não se apaga.',
-      );
-    }
+    assertProjetoEditavel(proposta.status);
     const anexo = await this.prisma.propostaAnexo.findFirst({ where: { id: anexoId, propostaId } });
     if (!anexo) throw new NotFoundException('Anexo', anexoId);
 

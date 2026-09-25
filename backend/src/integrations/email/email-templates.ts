@@ -584,6 +584,82 @@ export function templatePedidoRastreio(p: PedidoRastreioParams): {
   };
 }
 
+export interface PropostaParaAprovarParams {
+  /** Nome de QUEM ASSINA (a pessoa), não a razão social. */
+  nome: string;
+  empresaNome: string;
+  numero: string;
+  /** Locação: aluguel mensal e vigência. `null` = proposta de venda. */
+  aluguelMensal: number | null;
+  vigenciaMeses: number | null;
+  /** Serviços de implantação (pagamento único), em parcelas. */
+  servicosTotal: number | null;
+  parcelas: number | null;
+  valorParcela: number | null;
+  /** Venda: o valor total da proposta. */
+  valorTotal: number;
+  /** `dd/mm/aaaa`, já formatada (a data é "pura", sem fuso). */
+  validade: string | null;
+  url: string;
+  marca?: MarcaEmail;
+}
+
+const brl = (v: number): string =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/**
+ * Template: a proposta indo para o cliente aprovar (Léo, 25/09).
+ *
+ * Saudava a RAZÃO SOCIAL ("Olá, INDÚSTRIA …") e dizia "Valor total R$ 1.528",
+ * sem dizer que era POR MÊS, sem serviços, vigência nem prazos. Quem aprova é a
+ * pessoa que assina, e o número que ela precisa ler é o aluguel mensal.
+ *
+ * Resumo curto de propósito: o detalhe (quadros, prazos, o projeto) está na
+ * página do link — e-mail longo não é lido, e duas fontes de verdade divergem.
+ * ⛔ Sem nome de produto aqui: serve qualquer tenant.
+ */
+export function templatePropostaParaAprovar(p: PropostaParaAprovarParams): {
+  assunto: string;
+  html: string;
+} {
+  const linha = (rotulo: string, valor: string) =>
+    `<tr><td style="padding:8px 0;border-bottom:1px solid ${COLOR_BORDER};color:${COLOR_MUTED};font-size:14px;">${rotulo}</td>` +
+    `<td align="right" style="padding:8px 0;border-bottom:1px solid ${COLOR_BORDER};color:${COLOR_TEXT};font-size:14px;font-weight:600;">${valor}</td></tr>`;
+  const linhas: string[] = [];
+  if (p.aluguelMensal != null) {
+    linhas.push(linha('Aluguel mensal', `${brl(p.aluguelMensal)} / mês`));
+    if (p.vigenciaMeses) linhas.push(linha('Vigência', `${p.vigenciaMeses} meses`));
+    if (p.servicosTotal != null) {
+      const parcelas =
+        p.parcelas && p.valorParcela != null ? ` (${p.parcelas}× de ${brl(p.valorParcela)})` : '';
+      linhas.push(linha('Serviços de implantação', `${brl(p.servicosTotal)}${parcelas}`));
+    }
+  } else {
+    linhas.push(linha('Valor total', brl(p.valorTotal)));
+  }
+  if (p.validade) linhas.push(linha('Proposta válida até', escapeHtml(p.validade)));
+
+  return {
+    assunto: `Proposta ${p.numero} — ${p.empresaNome}`,
+    html: layout({
+      marca: p.marca,
+      preheader:
+        p.aluguelMensal != null
+          ? `Aluguel de ${brl(p.aluguelMensal)} por mês · veja o projeto e aprove pelo link`
+          : `Veja a proposta e aprove pelo link`,
+      title: `Sua proposta ${escapeHtml(p.numero)} está pronta`,
+      bodyHtml: `
+        <p style="margin:0 0 12px 0;">Olá, ${escapeHtml(p.nome)}.</p>
+        <p style="margin:0 0 16px 0;">Preparamos a proposta com o levantamento feito nos seus quadros. O resumo:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px 0;">${linhas.join('')}</table>
+        <p style="margin:0 0 12px 0;">No link você vê cada quadro medido, os prazos e o projeto, e aprova por lá mesmo.</p>`,
+      ctaText: 'Ver a proposta e aprovar',
+      ctaUrl: p.url,
+      footerNote: `Você está recebendo este e-mail porque solicitou uma proposta à ${escapeHtml(p.empresaNome)}.`,
+    }),
+  };
+}
+
 export const SLOT_DESCADASTRO = '<!-- SLOT_DESCADASTRO -->';
 
 /**

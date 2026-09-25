@@ -12,6 +12,7 @@ import {
   pendenciasDoContrato,
 } from './contrato-envio.util';
 import { TERMOS_DO_CONTRATO } from './contrato-documento.util';
+import { resumoDaProposta, type ResumoProposta } from './proposta-resumo.util';
 import {
   ModeloContratoService,
   type ModeloEmUso,
@@ -67,6 +68,12 @@ export interface AceitePreview {
   valor: number;
   observacoes: string | null;
   jaRespondida: boolean; // true se status final (ACEITA/RECUSADA/EXPIRADA)
+  /** Locação: tudo que o cliente precisa ler antes de aprovar (null em venda ou já respondida). */
+  resumo: ResumoProposta | null;
+  /** O PROJETO anexado — o que ele aprova. Baixa por `aceite/:token/anexos/:id`. */
+  anexos: Array<{ id: string; nome: string; mime: string; tamanho: number }>;
+  /** Rodapé oficial do tenant (`config.marca.rodape`), o mesmo dos e-mails. */
+  rodape: string | null;
   itens: Array<{
     produtoNome: string;
     /** Descrição vigente do produto (ERP) — o cliente lê o que está aceitando. */
@@ -206,6 +213,22 @@ export class PropostaAceiteService {
     return { token, url: `${this.frontendUrl()}/proposta/aceite/${token}`, expiraEm };
   }
 
+  /**
+   * A proposta de um token de aceite AINDA aberto — o acesso do cliente ao
+   * projeto anexado. Link revogado ou proposta respondida não abre arquivo.
+   */
+  async propostaDoTokenAberto(token: string): Promise<string> {
+    const { propostaId } = await this.validarToken(token);
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: { aceiteToken: true, status: true },
+    });
+    if (!p || p.aceiteToken !== token || ['ACEITA', 'RECUSADA', 'EXPIRADA'].includes(p.status)) {
+      throw new NotFoundException('Proposta', propostaId);
+    }
+    return propostaId;
+  }
+
   private async validarToken(token: string): Promise<AcceptPayload> {
     try {
       const { payload } = await jwtVerify(token, this.secret);
@@ -233,7 +256,7 @@ export class PropostaAceiteService {
       include: {
         itens: true,
         cliente: { select: { nome: true } },
-        empresa: { select: { nome: true } },
+        empresa: { select: { nome: true, config: true } },
       },
     });
     if (!proposta) throw new NotFoundException('Proposta', propostaId);
@@ -246,6 +269,28 @@ export class PropostaAceiteService {
       throw new NotFoundException('Proposta', propostaId);
     }
     const jaRespondida = proposta.aceiteToken !== token || respondida;
+
+    // O que o cliente lê antes de aprovar: o levantamento, as condições e o
+    // PROJETO. Só com a proposta aberta — respondida, a tela só diz isso (F-6).
+    let resumo: ResumoProposta | null = null;
+    let anexos: AceitePreview['anexos'] = [];
+    if (!jaRespondida) {
+      if (proposta.modalidade === 'LOCACAO') {
+        const paraContrato = await this.prisma.proposta.findUnique({
+          where: { id: propostaId },
+          select: SELECT_PROPOSTA_CONTRATO,
+        });
+        if (paraContrato) {
+          resumo = resumoDaProposta(await comSkus(this.prisma, paraContrato), proposta.criadoEm);
+        }
+      }
+      anexos = await this.prisma.propostaAnexo.findMany({
+        where: { propostaId },
+        orderBy: { criadoEm: 'asc' },
+        select: { id: true, nome: true, mime: true, tamanho: true },
+      });
+    }
+    const cfg = (proposta.empresa.config ?? {}) as { marca?: { rodape?: string } };
 
     return {
       numero: proposta.numero,
@@ -261,6 +306,9 @@ export class PropostaAceiteService {
       valor: Number(proposta.valor),
       observacoes: jaRespondida ? null : proposta.observacoes,
       jaRespondida,
+      resumo,
+      anexos,
+      rodape: cfg.marca?.rodape?.trim() || null,
       // Já respondida: a tela só diz isso — sem os itens (F-6).
       itens: jaRespondida
         ? []
