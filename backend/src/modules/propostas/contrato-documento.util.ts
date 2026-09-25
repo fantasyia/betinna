@@ -24,6 +24,17 @@ import { porExtenso } from './proposta-tecnica-variaveis.util';
  * sem isso, um `{{nome}}` trocado no .docx sairia vazio em silêncio.
  */
 
+/**
+ * Os termos da locação que o CONTRATO escreve por extenso: "vigência mínima de
+ * 60 (sessenta) meses" e "no dia 05 (cinco)". Não são coletados por proposta
+ * (Léo, 25/09): o app usa ESTES números ao criar o contrato, e é dele que o ERP
+ * cobra. Assim cobrança e PDF assinado dizem a mesma coisa.
+ *
+ * Se o texto do modelo mudar, é aqui que troca. O teste de coerência com o
+ * modelo (contrato-documento.util.spec) acusa se um lado mudar sem o outro.
+ */
+export const TERMOS_DO_CONTRATO = { prazoMeses: 60, diaVencimento: 5 } as const;
+
 export const CAMINHO_MODELO = join(
   process.cwd(),
   'assets',

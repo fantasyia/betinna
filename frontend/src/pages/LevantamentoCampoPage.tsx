@@ -95,8 +95,6 @@ interface Proposta {
   servicosTotal?: number | null;
   customizacaoUnitario?: number | null;
   customizacaoQuantidade?: number | null;
-  prazoMeses?: number | null;
-  diaVencimento?: number | null;
   validoAte?: string | null;
   signatarioNome?: string | null;
   signatarioEmail?: string | null;
@@ -198,8 +196,6 @@ export default function LevantamentoCampoPage() {
   // Dados do CONTRATO (Léo, 24/09): antes só existiam no formulário de "Nova
   // proposta" — e o signatário em tela nenhuma. Proposta nascida do levantamento
   // chegava no aceite sem eles, e o contrato não saía.
-  const [prazoMeses, setPrazoMeses] = useState('');
-  const [diaVencimento, setDiaVencimento] = useState('');
   const [validoAte, setValidoAte] = useState('');
   const [signatarioNome, setSignatarioNome] = useState('');
   const [signatarioEmail, setSignatarioEmail] = useState('');
@@ -248,8 +244,6 @@ export default function LevantamentoCampoPage() {
         setServicosTotal(paraCampoDinheiro(p.servicosTotal));
         setCustomUnitario(paraCampoDinheiro(p.customizacaoUnitario));
         setCustomQuantidade(p.customizacaoQuantidade ? String(p.customizacaoQuantidade) : '1');
-        setPrazoMeses(p.prazoMeses ? String(p.prazoMeses) : '');
-        setDiaVencimento(p.diaVencimento ? String(p.diaVencimento) : '');
         setValidoAte(p.validoAte ? p.validoAte.slice(0, 10) : '');
         setSignatarioNome(p.signatarioNome ?? '');
         setSignatarioEmail(p.signatarioEmail ?? '');
@@ -415,16 +409,6 @@ export default function LevantamentoCampoPage() {
 
   async function salvarContrato() {
     if (!proposta) return;
-    const dia = Number(diaVencimento);
-    const meses = Number(prazoMeses);
-    if (diaVencimento && (dia < 1 || dia > 28)) {
-      setErro('Dia de vencimento vai de 1 a 28 — 29, 30 e 31 não existem em todo mês.');
-      return;
-    }
-    if (prazoMeses && (meses < 1 || meses > 120)) {
-      setErro('Prazo do contrato vai de 1 a 120 meses.');
-      return;
-    }
     if (signatarioNome.trim() && signatarioNome.trim().length < 3) {
       setErro('Quem assina é uma pessoa: informe nome e sobrenome.');
       return;
@@ -433,8 +417,6 @@ export default function LevantamentoCampoPage() {
     setErro(null);
     try {
       const atualizada = await api.patch<Proposta>(`/propostas/${proposta.id}`, {
-        prazoMeses: meses || undefined,
-        diaVencimento: dia || undefined,
         validoAte: validoAte || undefined,
         signatarioNome: signatarioNome.trim() || undefined,
         signatarioEmail: signatarioEmail.trim() || undefined,
@@ -458,7 +440,7 @@ export default function LevantamentoCampoPage() {
   const semPrazo = !prazoEntrega || !prazoInstalacao || !prazoVerificacao || !prazoSoftware;
   const semServicos = !servicosTotal || !customUnitario;
   const semContrato =
-    !prazoMeses || !diaVencimento || !validoAte || !signatarioNome.trim() || !signatarioEmail.trim();
+    !validoAte || !signatarioNome.trim() || !signatarioEmail.trim();
   const faltaCadastro = cadastro ? faltaNoCadastro(cadastro) : [];
   // III.a promete "2 parcelas de R$ X cada": centavo ímpar não divide igual, e o
   // contrato é recusado na montagem. Avisar aqui é mais barato que no aceite.
@@ -818,24 +800,6 @@ export default function LevantamentoCampoPage() {
               Sem estes dados o cliente aceita e o contrato não sai.
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Prazo do contrato (meses)">
-                <Input
-                  data-testid="contrato-prazo-meses"
-                  inputMode="numeric"
-                  value={prazoMeses}
-                  onChange={(e) => setPrazoMeses(e.target.value.replace(/\D/g, ''))}
-                  placeholder="36"
-                />
-              </Field>
-              <Field label="Dia de vencimento" hint="De 1 a 28">
-                <Input
-                  data-testid="contrato-dia-vencimento"
-                  inputMode="numeric"
-                  value={diaVencimento}
-                  onChange={(e) => setDiaVencimento(e.target.value.replace(/\D/g, '').slice(0, 2))}
-                  placeholder="10"
-                />
-              </Field>
               <Field label="Validade da proposta">
                 <Input
                   data-testid="contrato-validade"

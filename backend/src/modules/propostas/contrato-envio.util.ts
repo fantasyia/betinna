@@ -26,8 +26,6 @@ export interface PropostaParaEnvio {
   numero: string;
   valor: Prisma.Decimal | number;
   modalidade: string;
-  prazoMeses: number | null;
-  diaVencimento: number | null;
   signatarioNome: string | null;
   signatarioEmail: string | null;
   signatarioTelefone: string | null;
@@ -95,9 +93,6 @@ export function montarContratoParaAssinar(
 ): MontagemContrato {
   if (p.modalidade !== 'LOCACAO') {
     return { ok: false, motivo: 'a proposta não é de locação' };
-  }
-  if (!p.prazoMeses || !p.diaVencimento) {
-    return { ok: false, motivo: 'faltam o prazo em meses e/ou o dia de vencimento na proposta' };
   }
   // Signatário é PESSOA. A assinatura eletrônica recusa razão social como nome
   // ("formato inválido"), e o cadastro de Cliente só guarda a empresa — por isso
@@ -177,8 +172,6 @@ export const SELECT_PROPOSTA_CONTRATO = {
   numero: true,
   valor: true,
   modalidade: true,
-  prazoMeses: true,
-  diaVencimento: true,
   signatarioNome: true,
   signatarioEmail: true,
   signatarioTelefone: true,

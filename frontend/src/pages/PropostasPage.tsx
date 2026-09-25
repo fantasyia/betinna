@@ -1174,8 +1174,6 @@ function PropostaFormDialog({ onClose, onSaved }: { onClose: () => void; onSaved
   // Termos do CONTRATO. Locação vira contrato recorrente no ERP, e sem prazo,
   // dia de vencimento e carência não há contrato pra criar. Ficam vazios de
   // propósito: prazo e vencimento padrão são decisão comercial, não default meu.
-  const [prazoMeses, setPrazoMeses] = useState('');
-  const [diaVencimento, setDiaVencimento] = useState('');
   const [carenciaDias, setCarenciaDias] = useState('');
   // O REP vende locação sempre — a modalidade dele nem aparece na tela.
   const ehLocacao = !gestao || modalidade === 'LOCACAO';
@@ -1261,8 +1259,6 @@ function PropostaFormDialog({ onClose, onSaved }: { onClose: () => void; onSaved
     if (gestao && representante) payload.representanteId = representante.id;
     if (gestao) payload.modalidade = modalidade;
     if (ehLocacao) {
-      if (prazoMeses) payload.prazoMeses = Number(prazoMeses);
-      if (diaVencimento) payload.diaVencimento = Number(diaVencimento);
       if (carenciaDias) payload.carenciaDias = Number(carenciaDias);
     }
 
@@ -1328,28 +1324,8 @@ function PropostaFormDialog({ onClose, onSaved }: { onClose: () => void; onSaved
 
         {ehLocacao && (
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Prazo (meses)">
-              <Input
-                type="number"
-                min={1}
-                max={120}
-                data-testid="proposta-prazo-meses"
-                value={prazoMeses}
-                onChange={(e) => setPrazoMeses(e.target.value)}
-                placeholder="24"
-              />
-            </Field>
-            <Field label="Dia do vencimento">
-              <Input
-                type="number"
-                min={1}
-                max={28}
-                data-testid="proposta-dia-vencimento"
-                value={diaVencimento}
-                onChange={(e) => setDiaVencimento(e.target.value)}
-                placeholder="10"
-              />
-            </Field>
+            {/* Prazo e vencimento NÃO são por proposta (Léo, 25/09): são os do
+                texto do contrato, 60 meses e dia 05 — o app usa esses. */}
             <Field label="Carência (dias)">
               <Input
                 type="number"

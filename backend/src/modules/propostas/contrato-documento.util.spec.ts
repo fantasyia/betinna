@@ -8,11 +8,13 @@ import {
   carregarModelo,
   dadosDoDocumento,
   renderizarDocumento,
+  TERMOS_DO_CONTRATO,
   VariavelDesconhecidaNoModelo,
   type DadosDocumentoContrato,
   type DocumentoContratoEntrada,
   type LinhaLevantamento,
 } from './contrato-documento.util';
+import { porExtenso } from './proposta-tecnica-variaveis.util';
 
 /**
  * O documento único do Anexo I, montado pelo app.
@@ -169,6 +171,21 @@ describe('dadosDoDocumento — recusa em vez de sair pela metade', () => {
 
 describe('renderizarDocumento — com o modelo REAL', () => {
   const modelo = carregarModelo();
+
+  /**
+   * O ERP cobra por `TERMOS_DO_CONTRATO`; o cliente assina o TEXTO. Se alguém
+   * trocar um sem o outro, cobrança e PDF assinado passam a dizer coisas
+   * diferentes — este teste é o que impede.
+   */
+  it('TERMOS_DO_CONTRATO batem com o que o texto do modelo diz', () => {
+    const { prazoMeses, diaVencimento } = TERMOS_DO_CONTRATO;
+    const t = texto(modelo);
+    const dia = `${String(diaVencimento).padStart(2, '0')} (${porExtenso(diaVencimento)})`;
+    expect(t).toContain(`vigência mínima de ${prazoMeses} (${porExtenso(prazoMeses)}) meses`);
+    expect(t).toContain(`(vigência de ${prazoMeses} meses)`);
+    expect(t).toContain(`iniciando-se no dia ${dia}`);
+    expect(t).toContain(`vencendo-se todos os demais no dia ${dia}`);
+  });
 
   it('a tabela cresce: 40 quadros → 40 linhas no item 06, nada cortado', () => {
     const linhas = Array.from({ length: 40 }, (_, i) => quadro(i + 1));

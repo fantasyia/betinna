@@ -10,6 +10,7 @@ import {
   comSkus,
   montarContratoParaAssinar,
 } from './contrato-envio.util';
+import { TERMOS_DO_CONTRATO } from './contrato-documento.util';
 import {
   ModeloContratoService,
   type ModeloEmUso,
@@ -553,9 +554,10 @@ export class PropostaAceiteService {
           representanteId: p.representanteId,
           status: 'AGUARDANDO_ASSINATURA',
           valorMensal: p.valor,
-          // A montagem já garantiu que os dois existem — sem eles ela recusa.
-          prazoMeses: p.prazoMeses as number,
-          diaVencimento: p.diaVencimento as number,
+          // Os do TEXTO do contrato, não os da proposta (Léo, 25/09): o ERP
+          // cobra por estes e o PDF assinado diz estes — têm que ser os mesmos.
+          prazoMeses: TERMOS_DO_CONTRATO.prazoMeses,
+          diaVencimento: TERMOS_DO_CONTRATO.diaVencimento,
           assinaturaId: envelope.envelopeId,
           assinaturaDocumentoId: envelope.documentoId,
           enviosAssinatura: [

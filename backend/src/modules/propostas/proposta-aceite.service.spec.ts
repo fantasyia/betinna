@@ -356,6 +356,26 @@ describe('PropostaAceiteService — contrato do aceite é o documento pronto', (
     expect(contrato.create).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * Os termos do contrato são os do TEXTO (60 meses, dia 05), não os da
+   * proposta: o ERP cobra pelo que o contrato do app guarda, e o PDF assinado
+   * diz 60/05. Proposta antiga com 36/10 gravados não pode furar isso.
+   */
+  it('o contrato nasce com 60 meses e dia 05, qualquer que seja a proposta', async () => {
+    for (const termos of [
+      { prazoMeses: 36, diaVencimento: 10 },
+      { prazoMeses: null, diaVencimento: null },
+    ]) {
+      const { svc, contrato } = comClickSign({ ...LOCACAO, ...termos });
+      await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+      expect(contrato.create).toHaveBeenCalledTimes(1);
+      expect(contrato.create.mock.calls[0][0].data).toMatchObject({
+        prazoMeses: 60,
+        diaVencimento: 5,
+      });
+    }
+  });
+
   it('proposta sem os dados do documento NÃO manda nada e AVISA o responsável', async () => {
     const { svc, clicksign, contrato, notificacoes } = comClickSign({
       ...LOCACAO,

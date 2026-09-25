@@ -13,8 +13,6 @@ const BASE: PropostaParaEnvio = {
   numero: 'PROP-0042',
   valor: new Prisma.Decimal(4350),
   modalidade: 'LOCACAO',
-  prazoMeses: 60,
-  diaVencimento: 5,
   signatarioNome: 'Marina Torres Aguiar',
   signatarioEmail: 'marina@exemplo.com.br',
   signatarioTelefone: '(11) 99999-8888',
@@ -61,14 +59,10 @@ describe('montarContratoParaAssinar', () => {
     expect(r.dados.cliente.nome).toBe('Marina Torres Aguiar');
   });
 
-  it('RECUSA sem prazo ou dia de vencimento em vez de inventar', () => {
-    // São termo comercial: um default sairia impresso num documento que alguém
-    // assina, e ninguém saberia que o número veio do sistema.
-    expect(montarContratoParaAssinar({ ...BASE, prazoMeses: null })).toEqual({
-      ok: false,
-      motivo: 'faltam o prazo em meses e/ou o dia de vencimento na proposta',
-    });
-    expect(montarContratoParaAssinar({ ...BASE, diaVencimento: null }).ok).toBe(false);
+  it('NÃO trava por prazo nem vencimento — os termos são os do texto (Léo, 25/09)', () => {
+    // A proposta não coleta mais esses dois. Travar por eles faria todo
+    // levantamento novo chegar no aceite sem contrato.
+    expect(montarContratoParaAssinar(BASE).ok).toBe(true);
   });
 
   it('RECUSA sem signatário — a razão social não serve como nome', () => {
