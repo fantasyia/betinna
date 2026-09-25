@@ -387,6 +387,8 @@ export function desenharLevantamento(
         y = fim + 5 * MM;
       };
 
+      // Título junto com os cartões: sem isto ele ficava órfão no pé da página.
+      garantir(26 * MM);
       eyebrow('Condições da locação');
       cartoes([
         [`${r.condicoes.vigenciaMeses} meses`, 'vigência do contrato'],
