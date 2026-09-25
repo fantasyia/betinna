@@ -122,8 +122,6 @@ const DEZENAS = [
 export function porExtenso(n: number): string {
   if (!Number.isInteger(n) || n < 0) return String(n);
   if (n === 100) return 'cem';
-  // "cento e vinte" — prazo de contrato chega a 120 meses.
-  if (n > 100 && n < 200) return `cento e ${porExtenso(n - 100)}`;
   if (n > 99) return String(n);
   if (n < 20) return UNIDADES[n];
   const d = Math.floor(n / 10);

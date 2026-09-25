@@ -1230,12 +1230,7 @@ model Proposta {
   prazoMeses    Int?
   diaVencimento Int?
   /// Dias de carência antes da 1ª cobrança (o período grátis).
-  /// ⚠️ LEGADO: nenhum código lê. O documento usa `carenciaMeses` (25/09).
   carenciaDias  Int?
-  /// Meses GRÁTIS contados do término da instalação: o 1º aluguel vence no
-  /// (N+1)º mês subsequente (item b do documento). Sem padrão da casa — é por
-  /// proposta (Léo, 25/09).
-  carenciaMeses Int?
 
   /// QUEM assina o contrato pelo cliente — pessoa, não empresa.
   ///

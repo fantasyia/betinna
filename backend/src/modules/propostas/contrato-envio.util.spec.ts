@@ -15,7 +15,6 @@ const BASE: PropostaParaEnvio = {
   modalidade: 'LOCACAO',
   prazoMeses: 60,
   diaVencimento: 5,
-  carenciaMeses: 1,
   signatarioNome: 'Marina Torres Aguiar',
   signatarioEmail: 'marina@exemplo.com.br',
   signatarioTelefone: '(11) 99999-8888',

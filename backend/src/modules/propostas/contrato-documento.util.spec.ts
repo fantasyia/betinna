@@ -54,9 +54,6 @@ function entrada(extra: Partial<DocumentoContratoEntrada> = {}): DocumentoContra
     prazoInstalacaoDias: 15,
     prazoVerificacaoDias: 5,
     prazoSoftwareDias: 20,
-    prazoMeses: 60,
-    diaVencimento: 5,
-    carenciaMeses: 1,
     ...extra,
   };
 }
@@ -164,37 +161,6 @@ describe('dadosDoDocumento — recusa em vez de sair pela metade', () => {
     expect(r.faltando.join()).toMatch(/2 parcelas iguais/);
   });
 
-  it('sem prazo, vencimento ou carência o contrato não sai — não há padrão da casa', () => {
-    const r = dadosDoDocumento(
-      entrada({ prazoMeses: null, diaVencimento: null, carenciaMeses: null }),
-    );
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.faltando).toEqual(
-      expect.arrayContaining([
-        'prazo do contrato (meses)',
-        'dia de vencimento',
-        'carência (meses)',
-      ]),
-    );
-  });
-
-  it('prazo de 12 meses é recusado: o item d) promete a saída no 13º', () => {
-    const r = dadosDoDocumento(entrada({ prazoMeses: 12 }));
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.faltando.join()).toMatch(/o mínimo é 13/);
-    expect(dadosDoDocumento(entrada({ prazoMeses: 13 })).ok).toBe(true);
-  });
-
-  it('dia 29 e carência de 7 meses são recusados', () => {
-    const r = dadosDoDocumento(entrada({ diaVencimento: 29, carenciaMeses: 7 }));
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.faltando.join()).toMatch(/vai de 1 a 28/);
-    expect(r.faltando.join()).toMatch(/vai de 0 a 6/);
-  });
-
   it('customização maior que o total de serviços é recusada', () => {
     const r = dadosDoDocumento(entrada({ customUnitario: 5000, customQuantidade: 2 }));
     expect(r.ok).toBe(false);
@@ -232,36 +198,6 @@ describe('renderizarDocumento — com o modelo REAL', () => {
     // A razão social aparece em todos os lugares do texto (cabeçalho, 04, 05,
     // III.d, 08.II, 09 e assinatura).
     expect(t.split('Tecelagem Exemplo Ltda').length - 1).toBe(7);
-  });
-
-  /**
-   * 🔴 Até 25/09 o modelo imprimia "60 meses" e "dia 05" FIXOS, enquanto o ERP
-   * cobrava o que estava na proposta. Rep põe 36 meses e dia 10 → o PDF assinado
-   * tem que dizer 36 e dia 10, nos cinco lugares.
-   */
-  it('vigência, vencimento e carência saem DA PROPOSTA, não fixos', () => {
-    const t = texto(
-      renderizarDocumento(modelo, montar({ prazoMeses: 36, diaVencimento: 10, carenciaMeses: 2 })),
-    );
-    expect(t).toContain('(vigência de 36 (trinta e seis) meses)');
-    expect(t).toContain('vigência mínima de 36 (trinta e seis) meses');
-    expect(t).toContain(
-      'iniciando-se no dia 10 (dez), ou no dia útil imediatamente subsequente, do terceiro mês subsequente',
-    );
-    expect(t).toContain('vencendo-se todos os demais no dia 10 (dez),');
-    expect(t).toContain('até o dia 10 (dez) do 13º');
-    expect(t).toContain('remanescente de 24 (vinte e quatro) meses');
-    // Nada do texto antigo sobrou — e a GARANTIA de 60 meses é do produto, fica.
-    expect(t).not.toMatch(/dia 05 \(cinco\)|vigência mínima de 60|48 \(quarenta e oito\)/);
-    expect(t).toContain('garantia de funcionamento de 60 (sessenta) meses');
-  });
-
-  it('dia com dois dígitos e prazo acima de 100 por extenso', () => {
-    const d = montar({ prazoMeses: 120, diaVencimento: 5, carenciaMeses: 0 });
-    expect(d.dia_vencimento).toBe('05 (cinco)');
-    expect(d.vigencia_meses).toBe('120 (cento e vinte)');
-    expect(d.periodo_remanescente).toBe('108 (cento e oito)');
-    expect(d.carencia_mes_inicio).toBe('primeiro');
   });
 
   it('o arquivo gerado é um .docx válido (XML bem formado)', () => {

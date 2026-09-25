@@ -69,23 +69,7 @@ export interface DocumentoContratoEntrada {
   prazoInstalacaoDias: number | null;
   prazoVerificacaoDias: number | null;
   prazoSoftwareDias: number | null;
-  /**
-   * Termos da LOCAÇÃO — os mesmos que o contrato do ERP usa pra cobrar. Até
-   * 25/09 o documento imprimia "60 meses" e "dia 05" FIXOS: o rep punha 36 e
-   * dia 10, o ERP cobrava 36× no dia 10 e o PDF assinado dizia outra coisa.
-   */
-  prazoMeses: number | null;
-  diaVencimento: number | null;
-  /** Meses grátis contados do término da instalação (item b). */
-  carenciaMeses: number | null;
 }
-
-/**
- * O item d) dá 12 meses de avaliação e deixa rescindir no 13º. Prazo menor que
- * isso faz a cláusula prometer uma saída depois do fim do contrato (Léo, 25/09).
- */
-export const PRAZO_MINIMO_MESES = 13;
-const MESES_DE_AVALIACAO = 12;
 
 /** O que o .docx recebe. Nome de campo = nome da `{{variável}}` no modelo. */
 export interface DadosDocumentoContrato {
@@ -114,14 +98,6 @@ export interface DadosDocumentoContrato {
   prazo_instalacao: string;
   prazo_verificacao: string;
   prazo_software: string;
-  /** "60 (sessenta)" — título da tabela 7.1 e item c). */
-  vigencia_meses: string;
-  /** "05 (cinco)" — itens b) e d). */
-  dia_vencimento: string;
-  /** "segundo" — "do segundo mês subsequente" (item b). */
-  carencia_mes_inicio: string;
-  /** "48 (quarenta e oito)" = vigência − 12 (item d). */
-  periodo_remanescente: string;
 }
 
 export type MontagemDocumento =
@@ -147,11 +123,6 @@ function dataCurta(d: Date): string {
  * sair dessincronizadas (`15 (dez)`) num documento que alguém assina.
  */
 const prazo = (dias: number): string => `${dias} (${porExtenso(dias)})`;
-
-/** "05 (cinco)" — dia com dois dígitos, como o documento sempre escreveu. */
-const dia = (d: number): string => `${String(d).padStart(2, '0')} (${porExtenso(d)})`;
-
-const ORDINAIS = ['primeiro', 'segundo', 'terceiro', 'quarto', 'quinto', 'sexto', 'sétimo'];
 
 function enderecoEmLinha(e: DocumentoContratoEntrada['endereco']): string {
   const cidadeUf = [e.cidade?.trim(), e.uf?.trim().toUpperCase()].filter(Boolean).join('-');
@@ -227,22 +198,6 @@ export function dadosDoDocumento(p: DocumentoContratoEntrada): MontagemDocumento
   ] as const;
   for (const [nome, v] of prazos) if (v == null) faltando.push(nome);
 
-  if (p.prazoMeses == null) faltando.push('prazo do contrato (meses)');
-  else if (p.prazoMeses < PRAZO_MINIMO_MESES) {
-    faltando.push(
-      `prazo do contrato de ${p.prazoMeses} meses — o mínimo é ${PRAZO_MINIMO_MESES}, ` +
-        'porque o item d) dá 12 meses de avaliação e a saída no 13º',
-    );
-  }
-  if (p.diaVencimento == null) faltando.push('dia de vencimento');
-  else if (p.diaVencimento < 1 || p.diaVencimento > 28) {
-    faltando.push(`dia de vencimento ${p.diaVencimento} — vai de 1 a 28`);
-  }
-  if (p.carenciaMeses == null) faltando.push('carência (meses)');
-  else if (p.carenciaMeses < 0 || p.carenciaMeses >= ORDINAIS.length) {
-    faltando.push(`carência de ${p.carenciaMeses} meses — vai de 0 a ${ORDINAIS.length - 1}`);
-  }
-
   if (faltando.length) return { ok: false, faltando };
 
   // 7.1 — agrupa por descrição + preço efetivo. Dez quadros com MB-04 viram UMA
@@ -299,10 +254,6 @@ export function dadosDoDocumento(p: DocumentoContratoEntrada): MontagemDocumento
       prazo_instalacao: prazo(p.prazoInstalacaoDias!),
       prazo_verificacao: prazo(p.prazoVerificacaoDias!),
       prazo_software: prazo(p.prazoSoftwareDias!),
-      vigencia_meses: prazo(p.prazoMeses!),
-      dia_vencimento: dia(p.diaVencimento!),
-      carencia_mes_inicio: ORDINAIS[p.carenciaMeses!],
-      periodo_remanescente: prazo(p.prazoMeses! - MESES_DE_AVALIACAO),
     },
   };
 }

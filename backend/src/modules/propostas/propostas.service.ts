@@ -356,7 +356,6 @@ export class PropostasService {
               prazoMeses: dto.prazoMeses ?? null,
               diaVencimento: dto.diaVencimento ?? null,
               carenciaDias: dto.carenciaDias ?? null,
-              carenciaMeses: dto.carenciaMeses ?? null,
               signatarioNome: dto.signatarioNome ?? null,
               signatarioEmail: dto.signatarioEmail ?? null,
               signatarioTelefone: dto.signatarioTelefone ?? null,

@@ -41,10 +41,6 @@ export const MARCACOES: ReadonlyArray<
   'prazo_instalacao',
   'prazo_verificacao',
   'prazo_software',
-  'vigencia_meses',
-  'dia_vencimento',
-  'carencia_mes_inicio',
-  'periodo_remanescente',
 ];
 
 /** As duas listas que viram LINHAS de tabela — e o que cada linha tem. */
@@ -104,9 +100,6 @@ export function entradaDeExemplo(n = 40): DocumentoContratoEntrada {
     prazoInstalacaoDias: 15,
     prazoVerificacaoDias: 5,
     prazoSoftwareDias: 20,
-    prazoMeses: 60,
-    diaVencimento: 5,
-    carenciaMeses: 1,
   };
 }
 
