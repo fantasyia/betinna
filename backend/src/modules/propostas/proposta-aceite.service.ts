@@ -9,6 +9,7 @@ import {
   SELECT_PROPOSTA_CONTRATO,
   comSkus,
   montarContratoParaAssinar,
+  pendenciasDoContrato,
 } from './contrato-envio.util';
 import { TERMOS_DO_CONTRATO } from './contrato-documento.util';
 import {
@@ -162,6 +163,21 @@ export class PropostaAceiteService {
       throw new BusinessRuleException(
         'Anexe o projeto do cliente antes de mandar a proposta — é o projeto que ele aprova.',
       );
+    }
+    // E a LOCAÇÃO não sai sem o que o contrato exige (Léo, 25/09): conferir só
+    // no aceite deixava o cliente aceitar uma proposta que não vira contrato.
+    // Mesma lista da montagem (`pendenciasDoContrato`) — uma checagem só.
+    const paraContrato = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: SELECT_PROPOSTA_CONTRATO,
+    });
+    if (paraContrato?.modalidade === 'LOCACAO') {
+      const falta = pendenciasDoContrato(await comSkus(this.prisma, paraContrato));
+      if (falta.length) {
+        throw new BusinessRuleException(
+          `A proposta ainda não pode ir pro cliente. Falta: ${falta.join('; ')}.`,
+        );
+      }
     }
     const token = await new SignJWT({ pid: propostaId, eid: empresaId })
       .setProtectedHeader({ alg: 'HS256' })

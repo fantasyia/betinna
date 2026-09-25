@@ -4,6 +4,7 @@ import PizZip from 'pizzip';
 import {
   comSkus,
   montarContratoParaAssinar,
+  pendenciasDoContrato,
   telefoneDeAssinatura,
   type PropostaParaEnvio,
 } from './contrato-envio.util';
@@ -67,7 +68,34 @@ describe('montarContratoParaAssinar', () => {
 
   it('RECUSA sem signatário — a razão social não serve como nome', () => {
     const r = montarContratoParaAssinar({ ...BASE, signatarioNome: '   ' });
-    expect(r).toEqual({ ok: false, motivo: 'sem signatário definido' });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.motivo).toContain('nome de quem assina pelo cliente');
+  });
+
+  /** Léo, 25/09: sem o celular de quem assina a proposta não sobe. */
+  it('RECUSA sem celular de quem assina — o do cadastro do cliente NÃO serve', () => {
+    for (const signatarioTelefone of [null, '  ', '9999-8888']) {
+      const r = montarContratoParaAssinar({ ...BASE, signatarioTelefone });
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.motivo).toContain('celular de quem assina (DDD + número)');
+    }
+  });
+
+  it('pendenciasDoContrato lista TUDO de uma vez — vazia quando está pronta', () => {
+    expect(pendenciasDoContrato(BASE)).toEqual([]);
+    const falta = pendenciasDoContrato({
+      ...BASE,
+      signatarioTelefone: null,
+      servicosTotal: null,
+    });
+    expect(falta).toEqual(
+      expect.arrayContaining([
+        'celular de quem assina (DDD + número)',
+        'valor total de instalação, materiais e customização',
+      ]),
+    );
   });
 
   it('cai pro e-mail do cliente quando a proposta não tem um', () => {

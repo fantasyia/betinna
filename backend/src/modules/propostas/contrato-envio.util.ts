@@ -87,22 +87,8 @@ export function telefoneDeAssinatura(
 
 const num = (v: Prisma.Decimal | number | null): number | null => (v == null ? null : Number(v));
 
-export function montarContratoParaAssinar(
-  p: PropostaParaEnvio,
-  opcoes?: { criadoEm?: Date; titulo?: string; modelo?: Buffer },
-): MontagemContrato {
-  if (p.modalidade !== 'LOCACAO') {
-    return { ok: false, motivo: 'a proposta não é de locação' };
-  }
-  // Signatário é PESSOA. A assinatura eletrônica recusa razão social como nome
-  // ("formato inválido"), e o cadastro de Cliente só guarda a empresa — por isso
-  // o nome vem da proposta, preenchido por quem montou o negócio.
-  const nome = p.signatarioNome?.trim();
-  const email = p.signatarioEmail?.trim() || p.cliente.email?.trim();
-  if (!nome || !email) {
-    return { ok: false, motivo: 'sem signatário definido' };
-  }
-
+/** A proposta como o documento a lê. */
+function entradaDoDocumento(p: PropostaParaEnvio, criadoEm: Date) {
   const linhas: LinhaLevantamento[] = p.itens.map((i) => ({
     quadroPainel: i.quadroPainel,
     tensaoV: i.tensaoV,
@@ -111,9 +97,9 @@ export function montarContratoParaAssinar(
     quantidade: i.quantidade,
     total: Number(i.total),
   }));
-  const documento = dadosDoDocumento({
+  return {
     numero: p.numero,
-    emitidaEm: opcoes?.criadoEm ?? new Date(),
+    emitidaEm: criadoEm,
     validoAte: p.validoAte,
     clienteNome: p.cliente.nome,
     cnpj: p.cliente.cnpj,
@@ -133,7 +119,49 @@ export function montarContratoParaAssinar(
     prazoInstalacaoDias: p.prazoInstalacaoDias,
     prazoVerificacaoDias: p.prazoVerificacaoDias,
     prazoSoftwareDias: p.prazoSoftwareDias,
-  });
+  };
+}
+
+/**
+ * TUDO que falta pra proposta virar contrato — a lista inteira, de uma vez.
+ * Vazia = pronta.
+ *
+ * É A checagem, e mora num lugar só (Léo, 25/09): o link de aceite a usa ANTES
+ * de a proposta ir pro cliente, e a montagem a usa DEPOIS do aceite. Antes o
+ * link só conferia o projeto anexado, e o resto era descoberto no aceite — o
+ * cliente aceitava e o contrato não saía. Duas listas divergiriam em silêncio.
+ *
+ * Signatário é PESSOA. A assinatura eletrônica recusa razão social como nome
+ * ("formato inválido"), e o cadastro de Cliente só guarda a empresa — por isso
+ * nome, e-mail e CELULAR vêm da proposta. O celular é de quem ASSINA: o do
+ * cadastro do cliente é o da empresa, e a autenticação vai pra pessoa.
+ */
+export function pendenciasDoContrato(p: PropostaParaEnvio, criadoEm = new Date()): string[] {
+  const falta: string[] = [];
+  if (!p.signatarioNome?.trim()) falta.push('nome de quem assina pelo cliente (a pessoa)');
+  if (!(p.signatarioEmail?.trim() || p.cliente.email?.trim())) falta.push('e-mail de quem assina');
+  if (!telefoneDeAssinatura(p.signatarioTelefone)) {
+    falta.push('celular de quem assina (DDD + número)');
+  }
+  const documento = dadosDoDocumento(entradaDoDocumento(p, criadoEm));
+  if (!documento.ok) falta.push(...documento.faltando);
+  return falta;
+}
+
+export function montarContratoParaAssinar(
+  p: PropostaParaEnvio,
+  opcoes?: { criadoEm?: Date; titulo?: string; modelo?: Buffer },
+): MontagemContrato {
+  if (p.modalidade !== 'LOCACAO') {
+    return { ok: false, motivo: 'a proposta não é de locação' };
+  }
+  const criadoEm = opcoes?.criadoEm ?? new Date();
+  const falta = pendenciasDoContrato(p, criadoEm);
+  if (falta.length) return { ok: false, motivo: `falta na proposta: ${falta.join('; ')}` };
+
+  const nome = p.signatarioNome!.trim();
+  const email = (p.signatarioEmail?.trim() || p.cliente.email?.trim())!;
+  const documento = dadosDoDocumento(entradaDoDocumento(p, criadoEm));
   if (!documento.ok) {
     return { ok: false, motivo: `falta na proposta: ${documento.faltando.join('; ')}` };
   }
@@ -157,7 +185,7 @@ export function montarContratoParaAssinar(
       cliente: {
         nome,
         email,
-        telefone: telefoneDeAssinatura(p.signatarioTelefone, p.cliente.telefone),
+        telefone: telefoneDeAssinatura(p.signatarioTelefone),
       },
       // Volta no webhook de assinatura — rastro que não depende de id.
       metadata: { proposta: p.numero, proposta_id: p.id },

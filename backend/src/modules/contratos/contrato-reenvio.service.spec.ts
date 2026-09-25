@@ -194,7 +194,7 @@ describe('ContratoReenvioService', () => {
         cliente: { ...PROPOSTA.cliente, email: null },
       },
     });
-    await expect(svc.reenviar(CHAMADA)).rejects.toThrow(/signatário/);
+    await expect(svc.reenviar(CHAMADA)).rejects.toThrow(/quem assina/);
     // E não mata o envelope que o cliente tem em mãos por causa de um envio que
     // não vai acontecer.
     expect(clicksign.expirarEnvelope).not.toHaveBeenCalled();

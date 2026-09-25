@@ -563,6 +563,33 @@ describe('dados do contrato e cadastro do cliente', () => {
     expect(screen.queryByTestId('contrato-dia-vencimento')).toBeNull();
   });
 
+  /** Léo, 25/09: celular de quem assina é obrigatório — e com DDD. */
+  it('celular sem DDD é recusado na tela, sem chamar a API', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas({ ...proposta(), signatarioTelefone: '+55999998888' });
+    render(<LevantamentoCampoPage />);
+    await waitFor(() => expect(screen.getByTestId('levantamento-contrato')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('salvar-contrato'));
+
+    expect(screen.getByTestId('levantamento-erro').textContent).toContain('DDD + número');
+    expect(apiPatch).not.toHaveBeenCalled();
+  });
+
+  it('sem celular, o rodapé avisa que os dados do contrato estão pendentes', async () => {
+    busca = new URLSearchParams('proposta=prop-9');
+    rotas({
+      ...proposta(),
+      validoAte: '2026-10-31T00:00:00.000Z',
+      signatarioNome: 'Marina Aguiar',
+      signatarioEmail: 'pedido@somatecblocking.com.br',
+    });
+    render(<LevantamentoCampoPage />);
+    await waitFor(() =>
+      expect(screen.getByText(/dados do contrato pendentes/)).toBeTruthy(),
+    );
+  });
+
   it('retomando, carrega os dados do contrato já gravados', async () => {
     busca = new URLSearchParams('proposta=prop-9');
     rotas({

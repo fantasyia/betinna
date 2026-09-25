@@ -409,6 +409,13 @@ export default function LevantamentoCampoPage() {
 
   async function salvarContrato() {
     if (!proposta) return;
+    // Celular de quem assina: obrigatório (Léo, 25/09) — a assinatura
+    // eletrônica autentica a PESSOA por ele. O campo já vem com o +55.
+    const digitosCelular = signatarioTelefone.replace(/\D/g, '').replace(/^55/, '');
+    if (signatarioTelefone && digitosCelular.length > 0 && digitosCelular.length < 10) {
+      setErro('Celular de quem assina: informe DDD + número.');
+      return;
+    }
     if (signatarioNome.trim() && signatarioNome.trim().length < 3) {
       setErro('Quem assina é uma pessoa: informe nome e sobrenome.');
       return;
@@ -440,7 +447,10 @@ export default function LevantamentoCampoPage() {
   const semPrazo = !prazoEntrega || !prazoInstalacao || !prazoVerificacao || !prazoSoftware;
   const semServicos = !servicosTotal || !customUnitario;
   const semContrato =
-    !validoAte || !signatarioNome.trim() || !signatarioEmail.trim();
+    !validoAte ||
+    !signatarioNome.trim() ||
+    !signatarioEmail.trim() ||
+    signatarioTelefone.replace(/\D/g, '').replace(/^55/, '').length < 10;
   const faltaCadastro = cadastro ? faltaNoCadastro(cadastro) : [];
   // III.a promete "2 parcelas de R$ X cada": centavo ímpar não divide igual, e o
   // contrato é recusado na montagem. Avisar aqui é mais barato que no aceite.
@@ -829,7 +839,7 @@ export default function LevantamentoCampoPage() {
                   placeholder={cadastro?.email ?? 'nome@empresa.com.br'}
                 />
               </Field>
-              <Field label="Celular de quem assina">
+              <Field label="Celular de quem assina" required>
                 <PhoneInput
                   testId="contrato-signatario-telefone"
                   value={signatarioTelefone}

@@ -420,7 +420,7 @@ describe('PropostaAceiteService — modelo do contrato subido pela tela', () => 
         diaVencimento: 5,
         signatarioNome: 'Marina Torres Aguiar',
         signatarioEmail: 'marina@exemplo.com.br',
-        signatarioTelefone: null,
+        signatarioTelefone: '11999998888',
         validoAte: new Date('2026-10-24T12:00:00Z'),
         prazoEntregaDias: 10,
         prazoInstalacaoDias: 15,
