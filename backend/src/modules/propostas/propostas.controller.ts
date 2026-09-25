@@ -65,6 +65,26 @@ export class PropostasController {
   }
 
   @Public()
+  @Get('aceite/:token/documentos')
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @ApiOperation({
+    summary: 'Links temporários dos DOIS PDFs congelados (levantamento + contrato).',
+  })
+  aceiteDocumentos(@Param('token') token: string) {
+    return this.aceite.documentosDoAceite(token);
+  }
+
+  @Public()
+  @Get('aceite/:token/documento-completo')
+  @Throttle({ default: { limit: 10, ttl: seconds(60) } })
+  @ApiOperation({
+    summary: 'UM PDF com levantamento + contrato, pra baixar ou imprimir ({ filename, base64 }).',
+  })
+  aceiteDocumentoCompleto(@Param('token') token: string) {
+    return this.aceite.documentoCompleto(token);
+  }
+
+  @Public()
   @Get('aceite/:token/levantamento')
   @Throttle({ default: { limit: 30, ttl: seconds(60) } })
   @ApiOperation({ summary: 'Link temporário do PDF do Levantamento técnico de projeto congelado.' })

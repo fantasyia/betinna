@@ -118,6 +118,7 @@ function makeService(txProverbCount: number, recusaCount = 1) {
     modelos as never,
     previa as never,
     { gerar: vi.fn(async () => Buffer.from('%PDF')) } as never,
+    { converter: vi.fn(async () => Buffer.from('%PDF')) } as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
   return { svc, prisma, tx, notificacoes, pedidoPricing, clicksign, etapa, modelos, previa };
@@ -241,6 +242,7 @@ describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (audito
         undefined as never, // modelos
         undefined as never, // previa
         undefined as never, // levantamentoPdf
+        undefined as never, // docxPdf
       ) as unknown as { frontendUrl: () => string };
 
     it('usa FRONTEND_URL quando existe', () => {
@@ -410,6 +412,48 @@ describe('PropostaAceiteService — contrato do aceite é o documento pronto', (
     expect(dados.documento?.arquivo.equals(guardado)).toBe(true);
     const envio = contrato.create.mock.calls[0][0].data.enviosAssinatura[0];
     expect(envio).toMatchObject({ modeloVersao: 3, sha256: hash });
+  });
+
+  /** Léo, 25/09: com o contrato em PDF congelado, a ClickSign recebe ESSE PDF. */
+  it('com contrato em PDF congelado: o envelope leva O PDF (não o .docx), pelo hash', async () => {
+    const docx = Buffer.from('docx-guardado');
+    const pdf = Buffer.from('%PDF contrato');
+    const hashPdf = createHash('sha256').update(pdf).digest('hex');
+    const { svc, clicksign, contrato, previa } = comClickSign({
+      ...LOCACAO,
+      contratoPreviaPath: 'emp-1/prop-1/1.docx',
+      contratoPreviaSha256: createHash('sha256').update(docx).digest('hex'),
+      contratoPreviaModeloVersao: 3,
+      contratoPdfPath: 'emp-1/prop-1/1-contrato.pdf',
+      contratoPdfSha256: hashPdf,
+    });
+    previa.baixar.mockImplementation(async (p: string) => (p.endsWith('.pdf') ? pdf : docx));
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
+      documento?: { arquivo: Buffer; nome: string; mime?: string };
+    };
+    expect(dados.documento?.arquivo.equals(pdf)).toBe(true);
+    expect(dados.documento?.mime).toBe('application/pdf');
+    expect(dados.documento?.nome).toMatch(/contrato\.pdf$/);
+    const envio = contrato.create.mock.calls[0][0].data.enviosAssinatura[0];
+    expect(envio).toMatchObject({ modeloVersao: 3, sha256: hashPdf });
+  });
+
+  it('contrato em PDF guardado NÃO confere → não envia nada, e avisa', async () => {
+    const { svc, clicksign, contrato, notificacoes, previa } = comClickSign({
+      ...LOCACAO,
+      contratoPdfPath: 'emp-1/prop-1/1-contrato.pdf',
+      contratoPdfSha256: 'outro',
+    });
+    previa.baixar.mockResolvedValue(Buffer.from('%PDF'));
+
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
+    expect(contrato.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(notificacoes.criarParaUsuario.mock.calls)).toContain('não confere');
   });
 
   it('o envelope leva o LEVANTAMENTO TÉCNICO anexado — o PDF do link, pelo hash', async () => {

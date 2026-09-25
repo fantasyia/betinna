@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
 import { carregarMarca, escurecer, marca, type Marca } from '@/lib/marca';
+import { PdfPaginas } from '@/components/PdfPaginas';
 
 /**
  * Página pública de aceite — o que o CLIENTE recebe (Léo, 25/09: "já precisa
@@ -91,6 +92,8 @@ interface AceitePreview {
   temContrato?: boolean;
   /** Há o PDF do Levantamento técnico de projeto gerado pelo app. */
   temLevantamento?: boolean;
+  /** Os DOIS PDFs congelados (levantamento + contrato): a página mostra os dois. */
+  temDocumentos?: boolean;
 }
 
 /** Data "pura" (validade: 00:00 UTC) — no fuso de Brasília ela mostrava o dia anterior. */
@@ -178,6 +181,15 @@ function estilos(m: Marca): string {
   .ac-erro { color:#c43c3c; font-size:14px; margin-top:10px; }
   .ac-rodape { border-top:3px solid ${primaria}; padding:16px 32px; font-size:12px; color:#636363; white-space:pre-line; }
   .ac-centro { text-align:center; padding:48px 20px; }
+  .ac-docs-acoes { display:flex; gap:10px; flex-wrap:wrap; margin:4px 0 18px; }
+  .ac-doc-rot { display:flex; align-items:baseline; gap:10px; border-bottom:2px solid ${primaria}; padding-bottom:6px; margin:26px 0 12px; }
+  .ac-doc-rot .n { font-family:'Poppins',sans-serif; font-weight:600; font-size:13px; color:#fff; background:${primaria}; border-radius:50%; width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; flex:none; align-self:center; }
+  .ac-doc-rot .t { font-family:'Poppins',sans-serif; font-weight:600; font-size:18px; color:${primaria}; }
+  .ac-doc-rot small { color:#636363; font-size:13px; }
+  .pdf-paginas { background:#e9eef3; padding:10px; }
+  .pdf-pagina { display:block; width:100%; height:auto; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.12); margin:0 auto 12px; }
+  .pdf-pagina:last-child { margin-bottom:0; }
+  .pdf-aviso { color:#636363; font-size:14px; margin:8px 0; }
   .ac-contrato-acoes { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
   .ac-contrato-leitor { margin-top:12px; border:1px solid #D0D0D0; background:#f3f3f3; max-height:75vh; overflow:auto; }
   .ac-contrato-leitor .docx-wrapper { padding:16px !important; background:#f3f3f3 !important; }
@@ -188,6 +200,8 @@ function estilos(m: Marca): string {
     .ac-grade { grid-template-columns:1fr; }
     .ac-cond { grid-template-columns:repeat(2,1fr); }
     .ac h1 { font-size:24px; }
+    .pdf-paginas { padding:4px; }
+    .ac-doc-rot { flex-wrap:wrap; }
     .ac-total .val { font-size:22px; }
     .ac-contrato-leitor .docx-wrapper { padding:0 !important; }
     .ac-contrato-leitor .docx-wrapper > section.docx { width:100% !important; min-height:0 !important; padding:20px 16px !important; }
@@ -205,6 +219,11 @@ export default function PropostaAceitePage() {
   const [resultado, setResultado] = useState<'ACEITA' | 'RECUSADA' | null>(null);
   const [confirmarRecusa, setConfirmarRecusa] = useState(false);
   const [contrato, setContrato] = useState<'fechado' | 'carregando' | 'aberto'>('fechado');
+  const [documentos, setDocumentos] = useState<{
+    levantamento: { url: string; nome: string };
+    contrato: { url: string; nome: string };
+  } | null>(null);
+  const [baixandoTudo, setBaixandoTudo] = useState(false);
   const leitor = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -241,6 +260,52 @@ export default function PropostaAceitePage() {
       cancelled = true;
     };
   }, [token]);
+
+  // Os dois PDFs congelados — os links só saem com a proposta ainda aberta.
+  useEffect(() => {
+    if (!data?.temDocumentos || data.jaRespondida) return;
+    let cancelado = false;
+    api
+      .get<NonNullable<typeof documentos>>(`/propostas/aceite/${token}/documentos`, {
+        skipAuth: true,
+      })
+      .then((d) => {
+        if (!cancelado) setDocumentos(d);
+      })
+      .catch((err) => {
+        if (!cancelado) setError(apiErrorMessage(err));
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [data?.temDocumentos, data?.jaRespondida, token]);
+
+  /** UM PDF com os dois documentos — pra guardar ou imprimir de uma vez. */
+  async function baixarTudo() {
+    setBaixandoTudo(true);
+    setError(null);
+    try {
+      const r = await api.get<{ filename: string; base64: string }>(
+        `/propostas/aceite/${token}/documento-completo`,
+        { skipAuth: true },
+      );
+      const bytes = atob(r.base64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBaixandoTudo(false);
+    }
+  }
 
   async function decidir(decisao: 'ACEITA' | 'RECUSADA') {
     setBusy(true);
@@ -389,7 +454,48 @@ export default function PropostaAceitePage() {
                 </div>
               )}
 
-              {r ? (
+              {data.temDocumentos && !data.jaRespondida ? (
+                <>
+                  <h1>Proposta e contrato</h1>
+                  <p className="sub">
+                    São dois documentos, no formato em que você recebe e assina. Leia os dois —
+                    a aprovação fica no fim da página.
+                  </p>
+                  <div className="ac-docs-acoes">
+                    <button
+                      type="button"
+                      className="ac-btn sec"
+                      data-testid="aceite-baixar-tudo"
+                      disabled={baixandoTudo}
+                      onClick={() => void baixarTudo()}
+                    >
+                      {baixandoTudo ? 'Preparando…' : 'Baixar tudo em PDF (para imprimir)'}
+                    </button>
+                  </div>
+
+                  <section>
+                    <div className="ac-doc-rot">
+                      <span className="n">1</span>
+                      <span className="t">Levantamento técnico de projeto</span>
+                      <small>a proposta: quadros, valores, condições e prazos</small>
+                    </div>
+                    {documentos && (
+                      <PdfPaginas url={documentos.levantamento.url} testid="aceite-doc-levantamento" />
+                    )}
+                  </section>
+
+                  <section>
+                    <div className="ac-doc-rot">
+                      <span className="n">2</span>
+                      <span className="t">Contrato de locação</span>
+                      <small>vai para assinatura eletrônica, com o levantamento anexado</small>
+                    </div>
+                    {documentos && (
+                      <PdfPaginas url={documentos.contrato.url} testid="aceite-doc-contrato" />
+                    )}
+                  </section>
+                </>
+              ) : r ? (
                 <>
                   <h1>Levantamento técnico de projeto</h1>
                   <p className="sub">
@@ -566,7 +672,7 @@ export default function PropostaAceitePage() {
                 )
               )}
 
-              {!data.jaRespondida && data.temLevantamento && (
+              {!data.jaRespondida && !data.temDocumentos && data.temLevantamento && (
                 <section data-testid="aceite-levantamento">
                   <div className="ac-eyebrow">Levantamento técnico de projeto · arquivo</div>
                   <p className="ac-nota">
@@ -616,7 +722,7 @@ export default function PropostaAceitePage() {
                 </section>
               )}
 
-              {!data.jaRespondida && data.temContrato && (
+              {!data.jaRespondida && !data.temDocumentos && data.temContrato && (
                 <section data-testid="aceite-contrato">
                   <div className="ac-eyebrow">Contrato</div>
                   <p className="ac-nota">
@@ -657,7 +763,9 @@ export default function PropostaAceitePage() {
                 <div className="ac-decisao" data-testid="aceite-decisao">
                   <div className="ac-eyebrow">Aprovação</div>
                   <p className="ac-nota">
-                    Ao aprovar, você recebe o contrato para assinar eletronicamente.
+                    {data.temDocumentos
+                      ? 'Ao aprovar, você recebe o contrato acima para assinar eletronicamente — o mesmo arquivo, com o levantamento anexado.'
+                      : 'Ao aprovar, você recebe o contrato para assinar eletronicamente.'}
                   </p>
                   {!confirmarRecusa ? (
                     <div className="linha">

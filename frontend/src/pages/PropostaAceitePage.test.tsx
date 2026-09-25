@@ -21,6 +21,12 @@ vi.mock('react-router-dom', () => ({ useParams: () => ({ token: 'tok-27' }) }));
 const renderAsync = vi.fn(async (_b: Blob, alvo: HTMLElement) => {
   alvo.innerHTML = '<section class="docx">CLÁUSULA PRIMEIRA — OBJETO</section>';
 });
+// pdf.js não roda no jsdom: o componente vira um marcador com a URL recebida.
+vi.mock('@/components/PdfPaginas', () => ({
+  PdfPaginas: ({ url, testid }: { url: string; testid?: string }) => (
+    <div data-testid={testid} data-url={url} />
+  ),
+}));
 vi.mock('docx-preview', () => ({ renderAsync: (...a: unknown[]) => renderAsync(...(a as [Blob, HTMLElement])) }));
 vi.mock('@/lib/marca', async () => {
   const real = await vi.importActual<typeof import('@/lib/marca')>('@/lib/marca');
@@ -160,6 +166,58 @@ describe('PropostaAceitePage', () => {
     await waitFor(() => expect(abrir).toHaveBeenCalledWith('https://storage/lev.pdf', '_blank', 'noopener'));
     expect(apiGet).toHaveBeenCalledWith('/propostas/aceite/tok-27/levantamento', { skipAuth: true });
     abrir.mockRestore();
+  });
+
+  /** Léo, 25/09: proposta e contrato no mesmo lugar, no mesmo formato, pra imprimir. */
+  it('DOCUMENTOS: mostra os dois PDFs congelados, um embaixo do outro, e mais nada', async () => {
+    apiGet.mockImplementation(async (url: string) =>
+      url.endsWith('/documentos')
+        ? {
+            levantamento: { url: 'https://storage/lev.pdf', nome: 'l.pdf' },
+            contrato: { url: 'https://storage/con.pdf', nome: 'c.pdf' },
+          }
+        : { ...PREVIEW, temDocumentos: true, temLevantamento: true, temContrato: true },
+    );
+    render(<PropostaAceitePage />);
+    await waitFor(() => expect(screen.getByTestId('aceite-doc-contrato')).toBeTruthy());
+    expect(screen.getByTestId('aceite-doc-levantamento').getAttribute('data-url')).toBe(
+      'https://storage/lev.pdf',
+    );
+    expect(screen.getByTestId('aceite-doc-contrato').getAttribute('data-url')).toBe(
+      'https://storage/con.pdf',
+    );
+    // O resumo em HTML e os leitores antigos saem: o documento É o PDF.
+    expect(screen.queryByTestId('aceite-quadros')).toBeNull();
+    expect(screen.queryByTestId('aceite-contrato')).toBeNull();
+    expect(screen.queryByTestId('aceite-levantamento')).toBeNull();
+    // Na ordem: levantamento, depois contrato.
+    const lev = screen.getByTestId('aceite-doc-levantamento');
+    const con = screen.getByTestId('aceite-doc-contrato');
+    expect(lev.compareDocumentPosition(con) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('aceite-aprovar')).toBeTruthy();
+  });
+
+  it('"Baixar tudo" pede o PDF único (levantamento + contrato) do token', async () => {
+    apiGet.mockImplementation(async (url: string) =>
+      url.endsWith('/documento-completo')
+        ? { filename: 'PROP-0027-proposta-e-contrato.pdf', base64: btoa('%PDF-1.7') }
+        : url.endsWith('/documentos')
+          ? {
+              levantamento: { url: 'https://storage/lev.pdf', nome: 'l.pdf' },
+              contrato: { url: 'https://storage/con.pdf', nome: 'c.pdf' },
+            }
+          : { ...PREVIEW, temDocumentos: true },
+    );
+    const criar = vi.fn(() => 'blob:x');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: criar, revokeObjectURL: vi.fn() }));
+    render(<PropostaAceitePage />);
+    await waitFor(() => expect(screen.getByTestId('aceite-baixar-tudo')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('aceite-baixar-tudo'));
+    await waitFor(() => expect(criar).toHaveBeenCalled());
+    expect(apiGet).toHaveBeenCalledWith('/propostas/aceite/tok-27/documento-completo', {
+      skipAuth: true,
+    });
+    vi.unstubAllGlobals();
   });
 
   it('sem contrato congelado (ou venda): não oferece leitura', async () => {

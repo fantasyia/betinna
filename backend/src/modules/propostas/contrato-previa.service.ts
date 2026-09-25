@@ -51,8 +51,11 @@ export class ContratoPreviaService implements OnModuleInit {
     propostaId: string,
     arquivo: Buffer,
     tipo: keyof typeof TIPOS = 'docx',
+    rotulo = 'contrato',
   ): Promise<{ path: string; sha256: string }> {
-    const path = `${empresaId}/${propostaId}/${Date.now()}.${tipo}`;
+    // Rótulo no nome: contrato e levantamento são os dois .pdf e saem no mesmo
+    // instante — com o nome só pelo relógio, o 2º upload colidia com o 1º.
+    const path = `${empresaId}/${propostaId}/${Date.now()}-${rotulo}.${tipo}`;
     const { error } = await this.storage.storage.from(BUCKET).upload(path, arquivo, {
       contentType: TIPOS[tipo],
       upsert: false,

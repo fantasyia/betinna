@@ -15,6 +15,8 @@ import { TERMOS_DO_CONTRATO } from './contrato-documento.util';
 import { resumoDaProposta, type ResumoProposta } from './proposta-resumo.util';
 import { ContratoPreviaService, sha256 } from './contrato-previa.service';
 import { LevantamentoPdfService } from './levantamento-pdf.service';
+import { DocxPdfService } from './docx-pdf.service';
+import { PDFDocument } from 'pdf-lib';
 import {
   ModeloContratoService,
   type ModeloEmUso,
@@ -80,6 +82,11 @@ export interface AceitePreview {
   temContrato: boolean;
   /** Há o PDF do Levantamento técnico de projeto congelado (`aceite/:token/levantamento`). */
   temLevantamento: boolean;
+  /**
+   * Os DOIS documentos em PDF congelados (levantamento + contrato): a página
+   * mostra os dois no mesmo formato, um embaixo do outro, e imprime junto.
+   */
+  temDocumentos: boolean;
   itens: Array<{
     produtoNome: string;
     /** Descrição vigente do produto (ERP) — o cliente lê o que está aceitando. */
@@ -109,6 +116,7 @@ export class PropostaAceiteService {
     private readonly modelos: ModeloContratoService,
     private readonly previa: ContratoPreviaService,
     private readonly levantamentoPdf: LevantamentoPdfService,
+    private readonly docxPdf: DocxPdfService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -191,6 +199,8 @@ export class PropostaAceiteService {
       contratoPreviaEm: Date;
       levantamentoPdfPath: string;
       levantamentoPdfSha256: string;
+      contratoPdfPath: string;
+      contratoPdfSha256: string;
     } | null = null;
     if (paraContrato?.modalidade === 'LOCACAO') {
       const completa = await comSkus(this.prisma, paraContrato);
@@ -218,12 +228,28 @@ export class PropostaAceiteService {
         empresaId,
         resumoDaProposta(completa, paraContrato.criadoEm),
       );
+      // O CONTRATO em PDF, convertido aqui: é o que o cliente lê na página E o
+      // que vai pra ClickSign. Não converteu = sem link (mesma regra).
+      const contratoPdf = await this.docxPdf.converter(montagem.dados.documento.arquivo);
       const guardado = await this.previa.salvar(
         empresaId,
         propostaId,
         montagem.dados.documento.arquivo,
       );
-      const guardadoPdf = await this.previa.salvar(empresaId, propostaId, pdf, 'pdf');
+      const guardadoContratoPdf = await this.previa.salvar(
+        empresaId,
+        propostaId,
+        contratoPdf,
+        'pdf',
+        'contrato',
+      );
+      const guardadoPdf = await this.previa.salvar(
+        empresaId,
+        propostaId,
+        pdf,
+        'pdf',
+        'levantamento',
+      );
       congelado = {
         contratoPreviaPath: guardado.path,
         contratoPreviaSha256: guardado.sha256,
@@ -231,6 +257,8 @@ export class PropostaAceiteService {
         contratoPreviaEm: new Date(),
         levantamentoPdfPath: guardadoPdf.path,
         levantamentoPdfSha256: guardadoPdf.sha256,
+        contratoPdfPath: guardadoContratoPdf.path,
+        contratoPdfSha256: guardadoContratoPdf.sha256,
       };
     }
     const token = await new SignJWT({ pid: propostaId, eid: empresaId })
@@ -352,6 +380,60 @@ export class PropostaAceiteService {
     return { filename, base64: pdf.toString('base64'), congelado: false };
   }
 
+  /**
+   * Os dois documentos em PDF (levantamento + contrato), pra página mostrar um
+   * embaixo do outro no mesmo formato. Links temporários, só com token vigente.
+   */
+  async documentosDoAceite(token: string): Promise<{
+    levantamento: { url: string; nome: string };
+    contrato: { url: string; nome: string };
+  }> {
+    const propostaId = await this.propostaDoTokenAberto(token);
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: { numero: true, levantamentoPdfPath: true, contratoPdfPath: true },
+    });
+    if (!p?.levantamentoPdfPath || !p.contratoPdfPath) {
+      throw new NotFoundException('Documentos', propostaId);
+    }
+    return {
+      levantamento: {
+        url: await this.previa.linkAssinado(p.levantamentoPdfPath),
+        nome: `${p.numero}-levantamento-tecnico.pdf`,
+      },
+      contrato: {
+        url: await this.previa.linkAssinado(p.contratoPdfPath),
+        nome: `${p.numero}-contrato.pdf`,
+      },
+    };
+  }
+
+  /**
+   * UM PDF com os dois (levantamento + contrato), pra baixar ou imprimir de uma
+   * vez (Léo, 25/09: "tudo no mesmo local e no mesmo tamanho pra ele imprimir").
+   * Junta os arquivos CONGELADOS — não gera nada novo.
+   */
+  async documentoCompleto(token: string): Promise<{ filename: string; base64: string }> {
+    const propostaId = await this.propostaDoTokenAberto(token);
+    const p = await this.prisma.proposta.findUnique({
+      where: { id: propostaId },
+      select: { numero: true, levantamentoPdfPath: true, contratoPdfPath: true },
+    });
+    if (!p?.levantamentoPdfPath || !p.contratoPdfPath) {
+      throw new NotFoundException('Documentos', propostaId);
+    }
+    const junto = await PDFDocument.create();
+    for (const caminho of [p.levantamentoPdfPath, p.contratoPdfPath]) {
+      const parte = await PDFDocument.load(await this.previa.baixar(caminho));
+      const paginas = await junto.copyPages(parte, parte.getPageIndices());
+      paginas.forEach((pg) => junto.addPage(pg));
+    }
+    return {
+      filename: `${p.numero}-proposta-e-contrato.pdf`,
+      base64: Buffer.from(await junto.save()).toString('base64'),
+    };
+  }
+
   /** O PDF do Levantamento técnico de projeto congelado (só com token vigente). */
   async linkDoLevantamento(token: string): Promise<{ url: string; nome: string }> {
     const propostaId = await this.propostaDoTokenAberto(token);
@@ -448,6 +530,7 @@ export class PropostaAceiteService {
       rodape: cfg.marca?.rodape?.trim() || null,
       temContrato: !jaRespondida && !!proposta.contratoPreviaPath,
       temLevantamento: !jaRespondida && !!proposta.levantamentoPdfPath,
+      temDocumentos: !jaRespondida && !!proposta.levantamentoPdfPath && !!proposta.contratoPdfPath,
       // Já respondida: a tela só diz isso — sem os itens (F-6).
       itens: jaRespondida
         ? []
@@ -719,6 +802,8 @@ export class PropostaAceiteService {
           contratoPreviaSha256: true,
           levantamentoPdfPath: true,
           levantamentoPdfSha256: true,
+          contratoPdfPath: true,
+          contratoPdfSha256: true,
           contratoPreviaModeloVersao: true,
         },
       });
@@ -761,7 +846,24 @@ export class PropostaAceiteService {
       // signatário; o documento é o guardado, conferido pelo hash. Hash que não
       // bate = não envia: mandar outro texto seria pior que não mandar.
       let versaoEnviada = modelo.versao;
-      if (p.contratoPreviaPath) {
+      let shaEnviado = p.contratoPreviaSha256 ?? null;
+      if (p.contratoPdfPath) {
+        // O PDF que o cliente LEU na página — o mesmo arquivo, página por página.
+        const arquivo = await this.previa.baixar(p.contratoPdfPath);
+        if (sha256(arquivo) !== p.contratoPdfSha256) {
+          const motivo = 'o contrato guardado no link não confere (hash diferente)';
+          this.logger.error(`Proposta ${p.numero} aceita, mas ${motivo} — contrato não enviado.`);
+          await this.avisarFalhaContrato(empresaId, p.representanteId, p.numero, motivo);
+          return;
+        }
+        montagem.dados.documento = {
+          arquivo,
+          nome: `${p.numero}-contrato.pdf`,
+          mime: 'application/pdf',
+        };
+        versaoEnviada = p.contratoPreviaModeloVersao;
+        shaEnviado = p.contratoPdfSha256;
+      } else if (p.contratoPreviaPath) {
         const arquivo = await this.previa.baixar(p.contratoPreviaPath);
         if (sha256(arquivo) !== p.contratoPreviaSha256) {
           const motivo = 'o contrato guardado no link não confere (hash diferente)';
@@ -813,7 +915,7 @@ export class PropostaAceiteService {
               desfecho: 'enviado',
               modeloVersao: versaoEnviada,
               // Hash do arquivo que saiu — o mesmo que o cliente leu no link.
-              sha256: p.contratoPreviaSha256 ?? null,
+              sha256: shaEnviado,
               levantamentoSha256: p.levantamentoPdfSha256 ?? null,
             },
           ],

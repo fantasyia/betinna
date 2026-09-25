@@ -63,11 +63,14 @@ function montar(proposta: Record<string, unknown>, anexos = 1) {
   const etapa = { mover: vi.fn(async () => 'movido' as const) };
   const modelos = { emUso: vi.fn(async () => ({ arquivo: carregarModelo(), versao: 4 })) };
   const previa = {
-    salvar: vi.fn(async (_e: string, _p: string, _a: Buffer, tipo = 'docx') => ({
-      path: `emp-1/prop-27/1.${tipo}`,
-      sha256: tipo === 'pdf' ? 'hash-pdf' : 'abc',
-    })),
+    salvar: vi.fn(
+      async (_e: string, _p: string, _a: Buffer, tipo = 'docx', rotulo = 'contrato') => ({
+        path: tipo === 'docx' ? 'emp-1/prop-27/1.docx' : `emp-1/prop-27/1-${rotulo}.pdf`,
+        sha256: tipo === 'docx' ? 'abc' : `hash-${rotulo}`,
+      }),
+    ),
   };
+  const docxPdf = { converter: vi.fn(async () => Buffer.from('%PDF-1.7 contrato')) };
   const levantamentoPdf = { gerar: vi.fn(async () => Buffer.from('%PDF-1.7 levantamento')) };
   const svc = new PropostaAceiteService(
     prisma as never,
@@ -81,8 +84,9 @@ function montar(proposta: Record<string, unknown>, anexos = 1) {
     modelos as never,
     previa as never,
     levantamentoPdf as never,
+    docxPdf as never,
   );
-  return { svc, prisma, previa, levantamentoPdf };
+  return { svc, prisma, previa, levantamentoPdf, docxPdf };
 }
 
 describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato', () => {
@@ -99,7 +103,7 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
   it('congela o CONTRATO no link: guarda o .docx e grava caminho, hash e versão', async () => {
     const { svc, prisma, previa } = montar(COMPLETA);
     await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
-    expect(previa.salvar).toHaveBeenCalledTimes(2); // contrato + levantamento
+    expect(previa.salvar).toHaveBeenCalledTimes(3); // contrato .docx + contrato .pdf + levantamento
     const [, , arquivo] = previa.salvar.mock.calls[0] as unknown as [string, string, Buffer];
     expect(arquivo.subarray(0, 2).toString()).toBe('PK'); // é um .docx de verdade
     expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
@@ -203,12 +207,34 @@ describe('gerarLink — a proposta só vai ao cliente pronta pra virar contrato'
     ];
     expect(emp).toBe('emp-1');
     expect(resumo).toMatchObject({ numero: 'PROP-0027', aluguelMensalTotal: 1528 });
-    const pdf = previa.salvar.mock.calls.find((c) => c[3] === 'pdf');
+    const pdf = previa.salvar.mock.calls.find((c) => c[4] === 'levantamento');
     expect(String(pdf?.[2])).toContain('%PDF');
     expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
-      levantamentoPdfPath: 'emp-1/prop-27/1.pdf',
-      levantamentoPdfSha256: 'hash-pdf',
+      levantamentoPdfPath: 'emp-1/prop-27/1-levantamento.pdf',
+      levantamentoPdfSha256: 'hash-levantamento',
     });
+  });
+
+  /** Léo, 25/09: o cliente lê e assina o MESMO PDF — convertido aqui, uma vez. */
+  it('congela o CONTRATO em PDF: converte o .docx montado e guarda com o hash', async () => {
+    const { svc, prisma, previa, docxPdf } = montar(COMPLETA);
+    await svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO');
+    const docx = previa.salvar.mock.calls.find((c) => c[3] === undefined || c[3] === 'docx');
+    // O MESMO .docx guardado (mesma referência — comparar 1 MB byte a byte estoura o tempo).
+    expect((docxPdf.converter.mock.calls[0] as unknown[])[0]).toBe(docx?.[2]);
+    const pdf = previa.salvar.mock.calls.find((c) => c[3] === 'pdf' && c[4] === 'contrato');
+    expect(String(pdf?.[2])).toContain('%PDF-1.7 contrato');
+    expect(prisma.proposta.update.mock.calls[0][0].data).toMatchObject({
+      contratoPdfPath: 'emp-1/prop-27/1-contrato.pdf',
+      contratoPdfSha256: 'hash-contrato',
+    });
+  });
+
+  it('Word → PDF falhou → NÃO sai link', async () => {
+    const { svc, prisma, docxPdf } = montar(COMPLETA);
+    docxPdf.converter.mockRejectedValueOnce(new Error('soffice fora'));
+    await expect(svc.gerarLink('prop-27', 'emp-1', 'RASCUNHO')).rejects.toThrow();
+    expect(prisma.proposta.update).not.toHaveBeenCalled();
   });
 
   it('levantamento não gerou → NÃO sai link', async () => {

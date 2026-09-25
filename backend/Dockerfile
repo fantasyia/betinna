@@ -39,6 +39,21 @@ FROM node:24-alpine AS runtime
 # curl para healthcheck
 RUN apk add --no-cache openssl libc6-compat curl postgresql-client redis
 
+# Word → PDF do contrato (Léo, 25/09): o cliente lê e assina o MESMO PDF, e o
+# navegador não desenha o .docx direito (imagens EMF somem, não há páginas).
+# Fontes: Liberation (Arial/Times), Carlito (Calibri), DejaVu (reserva) e a
+# Source Sans Pro, que é a do corpo do modelo e não tem pacote no Alpine —
+# baixada da release oficial da Adobe (OFL), com versão fixa.
+RUN apk add --no-cache libreoffice-writer fontconfig font-liberation font-carlito ttf-dejavu unzip && \
+    mkdir -p /usr/share/fonts/source-sans-pro && \
+    curl -fsSL -o /tmp/ssp.zip \
+      https://github.com/adobe-fonts/source-sans/releases/download/3.006R/source-sans-pro-3.006R.zip && \
+    unzip -q /tmp/ssp.zip -d /tmp/ssp && \
+    find /tmp/ssp -name '*.ttf' -exec cp {} /usr/share/fonts/source-sans-pro/ \; && \
+    rm -rf /tmp/ssp /tmp/ssp.zip
+COPY assets/fonts/60-contrato.conf /etc/fonts/conf.d/60-contrato.conf
+RUN fc-cache -f && fc-list | grep -q "Source Sans Pro"
+
 # Cria user não-root pra segurança
 RUN addgroup -g 1001 betinna && \
     adduser -u 1001 -G betinna -s /bin/sh -D betinna

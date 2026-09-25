@@ -1294,6 +1294,10 @@ model Proposta {
   /// mesmo momento do contrato. Vai anexado no envelope (Léo, 25/09).
   levantamentoPdfPath        String?
   levantamentoPdfSha256      String?
+  /// O CONTRATO em PDF (convertido do .docx no servidor, no mesmo momento). É o
+  /// que o cliente lê na página E o que vai pra ClickSign (Léo, 25/09).
+  contratoPdfPath            String?
+  contratoPdfSha256          String?
   aceitoEm       DateTime?
   aceitoDoIp     String? // auditoria do aceite
 

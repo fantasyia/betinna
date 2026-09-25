@@ -35,7 +35,7 @@ export interface ContratoParaAssinar {
    * não é usado — é o caminho das tabelas que crescem com o levantamento, que
    * variável de Modelo não consegue fazer (ver `contrato-documento.util`).
    */
-  documento?: { arquivo: Buffer; nome: string };
+  documento?: { arquivo: Buffer; nome: string; mime?: string };
   /**
    * PDFs que vão JUNTO no envelope (Léo, 25/09: o Levantamento técnico de
    * projeto). O signatário concorda com cada um — é o que prende o anexo ao
@@ -293,7 +293,7 @@ export class ClickSignService {
               ? {
                   filename: dados.documento.nome,
                   // A API quer o base64 COM o prefixo data URI.
-                  content_base64: `data:${MIME_DOCX};base64,${dados.documento.arquivo.toString('base64')}`,
+                  content_base64: `data:${dados.documento.mime ?? MIME_DOCX};base64,${dados.documento.arquivo.toString('base64')}`,
                 }
               : {
                   // A API exige extensão .docx aqui — é o formato do modelo.

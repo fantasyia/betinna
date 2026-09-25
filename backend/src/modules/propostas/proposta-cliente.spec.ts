@@ -202,6 +202,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
     aceiteToken: TOKEN,
     contratoPreviaPath: 'emp-1/prop-27/1.docx' as string | null,
     levantamentoPdfPath: 'emp-1/prop-27/1.pdf' as string | null,
+    contratoPdfPath: 'emp-1/prop-27/1-contrato.pdf' as string | null,
     modalidade: 'LOCACAO',
     criadoEm: new Date('2026-09-25T15:00:00Z'),
     validoAte: new Date('2026-10-24T00:00:00Z'),
@@ -225,6 +226,12 @@ function montarAceite(over: Record<string, unknown> = {}) {
         if (args.include) return linhaPreview;
         if (args.select?.aceiteToken)
           return { aceiteToken: linhaPreview.aceiteToken, status: linhaPreview.status };
+        if (args.select?.contratoPdfPath)
+          return {
+            numero: linhaPreview.numero,
+            levantamentoPdfPath: linhaPreview.levantamentoPdfPath,
+            contratoPdfPath: linhaPreview.contratoPdfPath,
+          };
         if (args.select?.contratoPreviaPath)
           return {
             numero: linhaPreview.numero,
@@ -247,7 +254,10 @@ function montarAceite(over: Record<string, unknown> = {}) {
         ]),
     },
   };
-  const previa = { linkAssinado: vi.fn(async () => 'https://storage/contrato.docx') };
+  const previa = {
+    linkAssinado: vi.fn(async (_path: string) => 'https://storage/contrato.docx'),
+    baixar: vi.fn(async (_path: string) => Buffer.from('')),
+  };
   const svc = new PropostaAceiteService(
     prisma as never,
     { get: vi.fn(() => 'k'.repeat(64)) } as never,
@@ -259,6 +269,7 @@ function montarAceite(over: Record<string, unknown> = {}) {
     {} as never,
     {} as never,
     previa as never,
+    {} as never,
     {} as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-27', eid: 'emp-1' } });
@@ -326,6 +337,52 @@ describe('página de aceite — o que a prévia pública entrega', () => {
     const aceita = montarAceite({ status: 'ACEITA', aceiteToken: null });
     expect((await aceita.svc.resolverPreview(TOKEN)).temLevantamento).toBe(false);
     await expect(aceita.svc.linkDoLevantamento(TOKEN)).rejects.toThrow();
+  });
+
+  /** Léo, 25/09: os dois documentos no mesmo lugar, no mesmo formato, e imprime junto. */
+  it('DOCUMENTOS: a prévia avisa, e os links abrem os DOIS PDFs congelados', async () => {
+    const { svc, previa } = montarAceite();
+    expect((await svc.resolverPreview(TOKEN)).temDocumentos).toBe(true);
+    previa.linkAssinado.mockImplementation(async (p: string) => `https://storage/${p}`);
+    const d = await svc.documentosDoAceite(TOKEN);
+    expect(d.levantamento).toEqual({
+      url: 'https://storage/emp-1/prop-27/1.pdf',
+      nome: 'PROP-0027-levantamento-tecnico.pdf',
+    });
+    expect(d.contrato).toEqual({
+      url: 'https://storage/emp-1/prop-27/1-contrato.pdf',
+      nome: 'PROP-0027-contrato.pdf',
+    });
+  });
+
+  it('DOCUMENTO COMPLETO: um PDF só, levantamento + contrato, nessa ordem', async () => {
+    const { PDFDocument } = await import('pdf-lib');
+    const umPdf = async (paginas: number) => {
+      const d = await PDFDocument.create();
+      for (let i = 0; i < paginas; i++) d.addPage();
+      return Buffer.from(await d.save());
+    };
+    const { svc, previa } = montarAceite();
+    const lev = await umPdf(1);
+    const con = await umPdf(3);
+    previa.baixar.mockImplementation(async (p: string) => (p.includes('contrato') ? con : lev));
+    const r = await svc.documentoCompleto(TOKEN);
+    expect(r.filename).toBe('PROP-0027-proposta-e-contrato.pdf');
+    const junto = await PDFDocument.load(Buffer.from(r.base64, 'base64'));
+    expect(junto.getPageCount()).toBe(4);
+    expect(previa.baixar.mock.calls.map((c) => c[0])).toEqual([
+      'emp-1/prop-27/1.pdf',
+      'emp-1/prop-27/1-contrato.pdf',
+    ]);
+  });
+
+  it('documentos: respondida ou sem o contrato em PDF não abre', async () => {
+    const aceita = montarAceite({ status: 'ACEITA', aceiteToken: null });
+    expect((await aceita.svc.resolverPreview(TOKEN)).temDocumentos).toBe(false);
+    await expect(aceita.svc.documentosDoAceite(TOKEN)).rejects.toThrow();
+    const semPdf = montarAceite({ contratoPdfPath: null });
+    expect((await semPdf.svc.resolverPreview(TOKEN)).temDocumentos).toBe(false);
+    await expect(semPdf.svc.documentoCompleto(TOKEN)).rejects.toThrow();
   });
 
   it('contrato: sem arquivo congelado não há o que ler; respondida não abre', async () => {
