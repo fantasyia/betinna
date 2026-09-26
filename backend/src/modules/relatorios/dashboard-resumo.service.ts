@@ -218,6 +218,9 @@ export class DashboardResumoService {
           etapaDesde: true,
           funilEtapa: { select: { nome: true } },
           etapa: true,
+          funilId: true,
+          representanteId: true,
+          ultimaMensagemEm: true,
         },
       }),
       this.prisma.fluxo.groupBy({
@@ -604,11 +607,22 @@ export class DashboardResumoService {
       if (jaNaFila.has(l.id)) continue;
       const dias = Math.floor((agora.getTime() - l.etapaDesde.getTime()) / DIA_MS);
       if (dias < 3) continue; // parado de verdade, não recém-chegado
+      // Lead da BASE que RESPONDEU (sem funil, sem dono, com mensagem dele):
+      // "Parado há 72d em NOVO" contava desde a importação e fazia o lead mais
+      // quente da base parecer frio esquecido (Léo, 26/09). O que importa é
+      // QUANDO ele respondeu — e que ninguém pegou.
+      const respondeuSemDono = !l.funilId && !l.representanteId && !!l.ultimaMensagemEm;
       triagem.push({
         tipo: 'parado',
         titulo: l.nome,
-        motivo: `Parado há ${dias}d em "${l.funilEtapa?.nome ?? l.etapa}"`,
-        desde: l.etapaDesde.toISOString(),
+        motivo: respondeuSemDono
+          ? `Respondeu em ${l.ultimaMensagemEm!.toLocaleDateString('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+              day: '2-digit',
+              month: '2-digit',
+            })} e ninguém pegou`
+          : `Parado há ${dias}d em "${l.funilEtapa?.nome ?? l.etapa}"`,
+        desde: (respondeuSemDono ? l.ultimaMensagemEm! : l.etapaDesde).toISOString(),
         link: '/leads',
         urgencia: 40 + Math.min(dias, 30),
       });

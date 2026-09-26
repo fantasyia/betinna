@@ -458,6 +458,47 @@ describe('painel "Precisa de você" — arquivado sai da frente', () => {
     ]);
   });
 
+  /** Léo, 26/09: lead da base que RESPONDEU não é "parado há 72d" — é o mais quente. */
+  it('lead da base que RESPONDEU: "Respondeu em DD/MM e ninguém pegou"; o de funil segue "Parado há"', async () => {
+    const velho = new Date(Date.now() - 72 * 86_400_000);
+    prisma.lead.findMany = vi.fn(async (a: { where: Record<string, unknown> }) =>
+      Array.isArray(a.where.AND)
+        ? [
+            {
+              id: 'l-base',
+              nome: 'Rakel',
+              etapaDesde: velho,
+              etapa: 'NOVO',
+              funilEtapa: null,
+              funilId: null,
+              representanteId: null,
+              // 17/09 às 18:27 UTC = 17/09 15:27 em Brasília.
+              ultimaMensagemEm: new Date('2026-09-17T18:27:21Z'),
+            },
+            {
+              id: 'l-funil',
+              nome: 'Indústria X',
+              etapaDesde: velho,
+              etapa: 'NOVO',
+              funilEtapa: { nome: 'Qualificação' },
+              funilId: 'fun-1',
+              representanteId: null,
+              ultimaMensagemEm: new Date('2026-09-17T18:27:21Z'),
+            },
+          ]
+        : [],
+    ) as never;
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+
+    const r = await svc.resumo(user());
+
+    const base = r.triagem.find((t) => t.titulo === 'Rakel');
+    expect(base?.motivo).toBe('Respondeu em 17/09 e ninguém pegou');
+    expect(base?.desde).toBe('2026-09-17T18:27:21.000Z');
+    const funil = r.triagem.find((t) => t.titulo === 'Indústria X');
+    expect(funil?.motivo).toBe('Parado há 72d em "Qualificação"');
+  });
+
   it('a busca de tarefas atrasadas exige card NÃO arquivado', async () => {
     const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
 
