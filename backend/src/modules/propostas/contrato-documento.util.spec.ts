@@ -329,3 +329,29 @@ describe('o timbrado e o rodapé', () => {
     expect(out.file('word/footer1.xml')?.asText()).toContain('comercial@somatecblocking.com.br');
   });
 });
+
+/**
+ * Léo, 25/09, lendo a PROP-0029 em PDF: na tabela do item 06 "ITEM" e "MODELO"
+ * quebravam no meio ("ITE/M", "MODEL/O") e sobrava uma linha escura vazia no fim.
+ */
+describe('tabela do item 06 no modelo', () => {
+  const tabela06 = () => {
+    const xml = new PizZip(carregarModelo()).file('word/document.xml')!.asText();
+    const i = xml.indexOf('QUADRO / PAINEL');
+    return xml.slice(xml.lastIndexOf('<w:tbl>', i), xml.indexOf('</w:tbl>', i));
+  };
+
+  it('só o cabeçalho e a linha que repete por quadro — sem linha vazia sobrando', () => {
+    const linhas = tabela06().match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) ?? [];
+    expect(linhas).toHaveLength(2);
+    expect(linhas[1]).toContain('{{#quadros}}');
+  });
+
+  it('ITEM e MODELO largos o bastante pra não quebrar a palavra', () => {
+    const cabecalho = (tabela06().match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) ?? [])[0];
+    const larguras = [...cabecalho.matchAll(/<w:tcW w:w="(\d+)"/g)].map((m) => Number(m[1]));
+    // ITEM é a 1ª coluna, MODELO a 5ª (em twips; 1440 = 1 polegada).
+    expect(larguras[0]).toBeGreaterThanOrEqual(1000);
+    expect(larguras[4]).toBeGreaterThanOrEqual(1500);
+  });
+});
