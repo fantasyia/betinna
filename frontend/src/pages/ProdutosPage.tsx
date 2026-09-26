@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
+import { aguardarSyncErp } from '@/lib/sync-erp';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { PageLayout } from '@/components/PageLayout';
@@ -83,6 +84,14 @@ export default function ProdutosPage() {
   // REP loca, não vende: a coluna de venda (e o custo dentro dela) não é dele.
   const podeVerVenda = role !== 'REP';
   const [sincronizandoErp, setSincronizandoErp] = useState(false);
+  // O acompanhamento do sync para quando a tela sai — o sync continua no servidor.
+  const montado = useRef(true);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+    };
+  }, []);
   const {
     data: pageResp,
     loading,
@@ -156,21 +165,39 @@ export default function ProdutosPage() {
   async function sincronizarErp() {
     if (sincronizandoErp) return;
     setSincronizandoErp(true);
-    toast.info('Sincronizando produtos do ERP (Tiny)… pode levar alguns segundos.');
     try {
       // ERP = Tiny (D50). Apontava pro ERP, que estava em modo DEMO e
       // despejou três produtos fictícios de mercearia no catálogo real.
-      const r = await api.post<{
-        lidos?: number;
-        criados?: number;
-        atualizados?: number;
-        erros?: number;
-      }>('/integracoes/tiny/sync/produtos?modo=completo', {});
-      toast.success(
-        `Produtos sincronizados do ERP — ${r.criados ?? 0} novos, ${r.atualizados ?? 0} atualizados` +
-          (r.erros ? `, ${r.erros} com erro` : '.'),
+      //
+      // O servidor responde 202 e o worker roda o sync (BETINNA-FRONT-9): antes o
+      // catálogo inteiro rodava DENTRO deste POST, passava dos 30s, e a tela dizia
+      // "falha" num sync que dava certo — e o clique seguinte disparava outro.
+      const { jobId, jaEmAndamento } = await api.post<{ jobId: string; jaEmAndamento: boolean }>(
+        '/integracoes/tiny/sync/produtos?modo=completo',
+        {},
       );
-      refetch();
+      toast.info(
+        jaEmAndamento
+          ? 'Já existe uma sincronização do ERP em andamento — acompanhando ela.'
+          : 'Sincronizando produtos do ERP (Tiny)… pode continuar usando o app, aviso quando terminar.',
+      );
+
+      const fim = await aguardarSyncErp(jobId, { cancelado: () => !montado.current });
+      if (fim.estado === 'concluido') {
+        const r = fim.resultado;
+        toast.success(
+          `Produtos sincronizados do ERP — ${r.criados ?? 0} novos, ${r.atualizados ?? 0} atualizados` +
+            (r.erros ? `, ${r.erros} com erro` : '.'),
+        );
+        refetch();
+      } else if (fim.estado === 'falhou') {
+        toast.error(`Falha ao sincronizar do ERP: ${fim.erro}`);
+      } else if (fim.estado === 'demorou') {
+        // Não é falha: o sync continua no servidor. Dizer "falha" aqui era o defeito.
+        toast.info(
+          'A sincronização do ERP ainda está rodando no servidor. Atualize a página daqui a pouco pra ver o resultado.',
+        );
+      }
     } catch (err) {
       toast.error(
         err instanceof ApiError

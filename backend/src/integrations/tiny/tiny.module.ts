@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
@@ -15,6 +16,10 @@ import { TinyClientesSyncService } from './tiny-clientes-sync.service';
 import { TinyContasService } from './tiny-contas.service';
 import { TinyPedidoPushService } from './tiny-pedido-push.service';
 import { TinyProdutosSyncService } from './tiny-produtos-sync.service';
+import { TinyProdutosSyncFilaService } from './tiny-produtos-sync-fila.service';
+import { TinyProdutosSyncProcessor } from './tiny-produtos-sync.processor';
+import { TINY_SYNC_PRODUTOS_QUEUE } from './tiny.types';
+import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 import { TinyOAuthController } from './tiny-oauth.controller';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyTokenRefreshJob } from './tiny-token-refresh.job';
@@ -30,7 +35,11 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
  * itens 4–7 do plano em `docs/erp-tiny-olist.md`.
  */
 @Module({
-  imports: [IntegracoesModule, NotificacoesModule],
+  imports: [
+    IntegracoesModule,
+    NotificacoesModule,
+    BullModule.registerQueue({ name: TINY_SYNC_PRODUTOS_QUEUE }),
+  ],
   controllers: [TinyOAuthController, TinyWebhookController],
   providers: [
     TinyNotasService,
@@ -50,6 +59,9 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
     TinyWebhookProcessorService,
     TinyPedidoPushService,
     TinyProdutosSyncService,
+    TinyProdutosSyncFilaService,
+    // Consumidor só no worker — a api só enfileira (mesmo padrão do RAG).
+    ...(RODAR_BACKGROUND ? [TinyProdutosSyncProcessor] : []),
     TinyTokenRefreshJob,
   ],
   exports: [

@@ -1,4 +1,15 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -13,7 +24,10 @@ import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
-import { TinyProdutosSyncService } from './tiny-produtos-sync.service';
+import {
+  TinyProdutosSyncFilaService,
+  type EstadoSyncProdutos,
+} from './tiny-produtos-sync-fila.service';
 import {
   importarProdutosSchema,
   listaPrecoSchema,
@@ -37,7 +51,7 @@ export class TinyOAuthController {
     private readonly conta: TinyContaService,
     private readonly produtos: TinyProdutosService,
     private readonly pedidos: TinyPedidosService,
-    private readonly sync: TinyProdutosSyncService,
+    private readonly syncFila: TinyProdutosSyncFilaService,
   ) {}
 
   @Get('oauth/start')
@@ -175,19 +189,44 @@ export class TinyOAuthController {
   /**
    * Puxa o catálogo do Tiny pra cá. Incremental por padrão (só o que mudou
    * desde o último sync); `?modo=completo` força tudo.
+   *
+   * **Responde 202 na hora e o worker roda o sync.** Rodando dentro da
+   * requisição, o catálogo completo passava dos 30s que o front espera por um
+   * POST: a tela mostrava "falha" enquanto o servidor terminava certinho, e o
+   * operador clicava de novo — outro catálogo inteiro contra o Tiny
+   * (BETINNA-FRONT-9). A tela acompanha por `GET sync/produtos/:jobId`.
    */
   @Post('sync/produtos')
+  @HttpCode(HttpStatus.ACCEPTED)
   @ApiBearerAuth()
   @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'SYNC', resource: 'tiny_produtos' })
-  @ApiOperation({ summary: 'Sincroniza produtos + estoque do Tiny para o app' })
-  async sincronizarProdutos(@CurrentUser() user: AuthenticatedUser, @Query('modo') modo?: string) {
+  @ApiOperation({ summary: 'Enfileira o sync de produtos + estoque do Tiny (202)' })
+  async sincronizarProdutos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('modo') modo?: string,
+  ): Promise<{ jobId: string; jaEmAndamento: boolean }> {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
-    return this.sync.sync(user.empresaIdAtiva, {
-      modo: modo === 'completo' ? 'completo' : 'incremental',
-    });
+    return this.syncFila.enfileirar(
+      user.empresaIdAtiva,
+      modo === 'completo' ? 'completo' : 'incremental',
+    );
+  }
+
+  @Get('sync/produtos/:jobId')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Estado de um sync de produtos enfileirado' })
+  async statusSincronizacaoProdutos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('jobId') jobId: string,
+  ): Promise<EstadoSyncProdutos> {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.syncFila.status(user.empresaIdAtiva, jobId);
   }
 
   @Post('produtos/imagens')

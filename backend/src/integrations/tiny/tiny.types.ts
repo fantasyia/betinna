@@ -31,3 +31,21 @@ export interface TinyCredenciais {
   /** Quando a última renovação bem-sucedida aconteceu (diagnóstico). */
   renovadoEm?: number;
 }
+
+/**
+ * Fila do sync de produtos disparado pela TELA ("Sincronizar do ERP").
+ *
+ * Existe porque o sync completo roda mais que os 30s que o front espera por um
+ * POST: rodando dentro da requisição, o navegador desistia e mostrava "falha"
+ * com o servidor terminando o trabalho certinho — e o operador clicava de novo,
+ * disparando OUTRO sync completo contra o Tiny em paralelo (BETINNA-FRONT-9).
+ *
+ * O sync diário (`erp-sync-diario.job`) NÃO passa por aqui: ele já roda no
+ * worker, sem ninguém esperando resposta.
+ */
+export const TINY_SYNC_PRODUTOS_QUEUE = 'tiny-sync-produtos';
+
+export interface TinySyncProdutosJobData {
+  empresaId: string;
+  modo: 'incremental' | 'completo';
+}
