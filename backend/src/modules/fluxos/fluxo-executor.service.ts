@@ -555,6 +555,7 @@ export class FluxoExecutorService {
     // Então o gatilho vira só atalho, e o critério de verdade é a conversa viva.
     // Falha FECHADO: sem inbound recente, é abordagem e espera.
     let ehResposta = false;
+    let transacional = false;
     // ENVIAR_EMAIL entrou aqui em 14/09 (Bateria 3, P4): a guarda testava só os
     // dois de WhatsApp, e nenhum e-mail era adiado pra janela — nunca.
     if (
@@ -565,8 +566,14 @@ export class FluxoExecutorService {
     ) {
       const fluxo = await this.prisma.fluxo.findUnique({
         where: { id: execucao.fluxoId },
-        select: { triggerTipo: true },
+        select: { triggerTipo: true, transacional: true },
       });
+      // TRANSACIONAL (Léo, 25/09): aviso de pedido sai na hora, fora da janela,
+      // e o WhatsApp não gasta o teto diário — que existe contra laço e
+      // campanha, não contra "seu pagamento foi confirmado". O RITMO entre
+      // mensagens continua valendo (vai pela faixa reativa do pacing). Vale só
+      // pra ENVIAR_WHATSAPP/ENVIAR_EMAIL: conversa com IA não é aviso.
+      transacional = !!fluxo?.transacional && no.acaoTipo !== 'CONVERSAR_IA';
       // O atalho do gatilho reativo vale só enquanto a resposta É recente: um
       // LEAD_RESPONDEU → DELAY 10h → ENVIAR saía à meia-noite como "resposta"
       // (auditoria 13/09, D-7). Depois da janela, o critério é a conversa viva.
@@ -586,7 +593,7 @@ export class FluxoExecutorService {
       // ficava horas EM_EXECUCAO sem ninguém entender. Teste com
       // enviarDeVerdade=true continua respeitando a janela: aí envia de fato.
       const esperaJanela =
-        ehResposta || this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
+        ehResposta || transacional || this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
           ? 0
           : await this.esperaDoCanal(no.acaoTipo, execucao.empresaId).catch((err) => {
               // Falha FECHADO: Redis/DB soluçando não pode virar mensagem fora da
@@ -740,7 +747,9 @@ export class FluxoExecutorService {
           execucao.empresaId,
           `fx:${execucaoId}:${noId}:p${passada}`,
           execucaoId,
-          ehResposta,
+          // Transacional passa pela faixa reativa do pacing: sem janela, sem
+          // teto de abordagens, com ritmo.
+          ehResposta || transacional,
         );
       }
     } catch (err) {

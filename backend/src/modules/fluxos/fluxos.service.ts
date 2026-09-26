@@ -927,6 +927,16 @@ export class FluxosService {
       const updateData: Prisma.FluxoUpdateInput = { versao: { increment: 1 } };
       if (dto.nome !== undefined) updateData.nome = dto.nome;
       if (dto.descricao !== undefined) updateData.descricao = dto.descricao;
+      if (dto.transacional !== undefined) {
+        // Furar a janela de envio é decisão da GESTÃO: fluxo pessoal de rep
+        // marcado como transacional mandaria prospecção de madrugada.
+        if (user.role === 'REP') {
+          throw new ForbiddenException(
+            'Só a gestão marca um fluxo como transacional (sai fora da janela de envio).',
+          );
+        }
+        updateData.transacional = dto.transacional;
+      }
       if (dto.remetenteEmail !== undefined) {
         // `existing.remetenteEmail` entra pra guarda saber o que é MUDANÇA e o
         // que é o mesmo valor vindo de carona no payload do editor.

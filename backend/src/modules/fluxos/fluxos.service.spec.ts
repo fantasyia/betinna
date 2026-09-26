@@ -1262,3 +1262,45 @@ describe('FluxosService — remetenteEmail: papel + allowlist de domínio', () =
     ).rejects.toThrow(/VAZIA nesta empresa/); // a mensagem passou a dizer o que fazer (15/09)
   });
 });
+
+/** Léo, 25/09: aviso de pedido sai fora da janela — marca do fluxo, da gestão. */
+describe('FluxosService — transacional (sai fora da janela de envio)', () => {
+  const build = () => {
+    const prisma = makePrismaMock();
+    prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ id: 'f1', status: 'ATIVO' }));
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn(prisma),
+    );
+    const svc = new FluxosService(
+      prisma as never,
+      { disparar: vi.fn() } as never,
+      { del: vi.fn().mockResolvedValue(1) } as never,
+      { uploadOutbound: vi.fn() } as never,
+    );
+    return { svc, prisma };
+  };
+
+  it('DIRECTOR liga: grava a marca e NÃO mexe no grafo nem no status', async () => {
+    const { svc, prisma } = build();
+    await svc
+      .update(fakeUser({ role: 'DIRECTOR' as UserRole }), 'f1', { transacional: true } as never)
+      .catch(() => undefined);
+    const chamada = prisma.fluxo.update.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(chamada.data).toMatchObject({ transacional: true });
+    expect(chamada.data).not.toHaveProperty('status');
+    expect(chamada.data).not.toHaveProperty('nos');
+  });
+
+  it('REP não liga nem no fluxo PESSOAL dele — 403, e nada é gravado', async () => {
+    const { svc, prisma } = build();
+    prisma.fluxo.findFirst.mockResolvedValue(
+      fakeFluxo({ id: 'f1', status: 'ATIVO', usuarioId: 'rep-1' }),
+    );
+    await expect(
+      svc.update(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), 'f1', {
+        transacional: true,
+      } as never),
+    ).rejects.toThrow(/Só a gestão/);
+    expect(prisma.fluxo.update).not.toHaveBeenCalled();
+  });
+});

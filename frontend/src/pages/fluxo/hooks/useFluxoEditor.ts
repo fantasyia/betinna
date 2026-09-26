@@ -105,6 +105,11 @@ export function useFluxoEditor({
    * reclamação de spam na prospecção derrubava a entrega de quem já comprou.
    */
   const [remetenteEmail, setRemetenteEmail] = useState('');
+  // TRANSACIONAL (Léo, 25/09): salva NA HORA e sozinho — é campo solto do
+  // fluxo, não vai no "Salvar" do grafo (que é full-replace e derrubaria um
+  // fluxo ATIVO pra rascunho só por ligar a marca).
+  const [transacional, setTransacional] = useState(false);
+  const [salvandoTransacional, setSalvandoTransacional] = useState(false);
   const [triggerTipo, setTriggerTipo] = useState<TriggerTipo | ''>('');
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, Edge> | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +195,7 @@ export function useFluxoEditor({
     const hidratado = hidratarFluxo(data);
     setName(hidratado.name);
     setRemetenteEmail(data?.remetenteEmail ?? '');
+    setTransacional(!!data?.transacional);
     setTriggerTipo(hidratado.triggerTipo);
     setNodes(hidratado.nodes);
     setEdges(hidratado.edges);
@@ -641,6 +647,27 @@ export function useFluxoEditor({
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
 
+  const alternarTransacional = useCallback(
+    async (valor: boolean) => {
+      setSalvandoTransacional(true);
+      try {
+        await api.put(`/fluxos/${fluxoId}`, { transacional: valor });
+        setTransacional(valor);
+        toast.success(
+          valor ? 'Fluxo transacional' : 'Fluxo volta a respeitar a janela',
+          valor
+            ? 'Os avisos deste fluxo saem na hora, mesmo fora do horário de envio.'
+            : 'Os envios deste fluxo esperam o horário de envio.',
+        );
+      } catch (err) {
+        toast.error('Não foi possível salvar', apiErrorMessage(err));
+      } finally {
+        setSalvandoTransacional(false);
+      }
+    },
+    [fluxoId, toast],
+  );
+
   return {
     // estado
     nodes,
@@ -649,6 +676,9 @@ export function useFluxoEditor({
     selectedNode,
     name,
     remetenteEmail,
+    transacional,
+    salvandoTransacional,
+    alternarTransacional,
     triggerTipo,
     dirty,
     saving,

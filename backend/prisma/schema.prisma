@@ -2320,6 +2320,11 @@ model Fluxo {
   /// ⚠️ O domínio precisa estar VERIFICADO no Resend, senão todo envio do fluxo
   /// falha — a validação de formato aqui não garante isso.
   remetenteEmail String?
+  /// TRANSACIONAL: aviso do que o cliente acabou de fazer (pagamento, rastreio)
+  /// sai NA HORA, fora da janela de envio, e não conta no teto diário de
+  /// abordagens (Léo, 25/09: "imagina o susto do cliente comprar de noite e
+  /// só receber a informação de dia"). Marca do FLUXO, ligada pela gestão.
+  transacional  Boolean           @default(false)
   criadoEm      DateTime          @default(now())
   atualizadoEm  DateTime          @updatedAt
 

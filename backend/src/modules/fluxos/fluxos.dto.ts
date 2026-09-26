@@ -181,6 +181,13 @@ export const updateFluxoSchema = z
     nome: z.string().min(1).max(150).optional(),
     descricao: z.string().max(500).optional(),
     /**
+     * TRANSACIONAL: WhatsApp e e-mail deste fluxo saem fora da janela de envio
+     * e o WhatsApp não conta no teto diário de abordagens. Pra aviso do que o
+     * cliente ACABOU de fazer (pagamento, rastreio) — não pra régua. Campo
+     * solto: não mexe no grafo nem no status.
+     */
+    transacional: z.boolean().optional(),
+    /**
      * Endereço de envio DESTE fluxo (vazio = o do ambiente).
      *
      * String vazia vira `null` de propósito: no formulário, apagar o campo é

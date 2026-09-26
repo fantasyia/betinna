@@ -1730,6 +1730,8 @@ interface FluxoResumo {
   descricao?: string | null;
   /** De onde os e-mails deste fluxo saem (null = padrão do sistema). */
   remetenteEmail?: string | null;
+  /** Transacional: sai fora da janela de envio e não conta no teto diário. */
+  transacional?: boolean;
 }
 
 // ─── Leitura ─────────────────────────────────────────────────────────────
@@ -1980,8 +1982,8 @@ server.registerTool(
       "PAUSADO — SÓ recusa ARQUIVADO (use fluxos_desarquivar antes). Nunca ativa sozinho. " +
       "⚠️ O rebaixamento ATIVO→RASCUNHO (que também cancela as execuções em voo) acontece " +
       "SÓ quando você manda o GRAFO (`nos`+`arestas`). Mexer só em campo solto — nome, " +
-      "descrição, remetenteEmail, trigger — é update parcial: grafo e status ficam intactos, " +
-      "e a régua ATIVA continua rodando.",
+      "descrição, remetenteEmail, transacional, trigger — é update parcial: grafo e status " +
+      "ficam intactos, e a régua ATIVA continua rodando.",
     inputSchema: {
       fluxoId: z.string(),
       nome: z.string().min(1).max(150).optional(),
@@ -1996,6 +1998,16 @@ server.registerTool(
             "Serve pra separar reputação: régua fria num subdomínio próprio, transacional " +
             "(pedido, rastreio, senha) no domínio raiz. O domínio precisa estar VERIFICADO no " +
             "provedor — senão todo envio do fluxo falha.",
+        ),
+      transacional: z
+        .boolean()
+        .optional()
+        .describe(
+          "TRANSACIONAL: WhatsApp e e-mail deste fluxo saem NA HORA, fora da janela de envio " +
+            "(8h–20h), e o WhatsApp não conta no teto diário de abordagens. Só pra AVISO do que " +
+            "o cliente acabou de fazer (pagamento confirmado, rastreio) — nunca pra régua, " +
+            "prospecção ou follow-up de dias depois. Nó CONVERSAR_IA continua na janela. " +
+            "Só a gestão pode ligar (REP recebe 403).",
         ),
       triggerTipo: FLUXO_TRIGGER_TIPO.optional(),
       triggerConfig: z.record(z.unknown()).optional(),
@@ -2028,7 +2040,7 @@ server.registerTool(
       );
       if (Object.keys(definidos).length === 0) {
         return erro(
-          "Informe pelo menos um campo (nome, descricao, remetenteEmail, triggerTipo, nos, arestas)",
+          "Informe pelo menos um campo (nome, descricao, remetenteEmail, transacional, triggerTipo, nos, arestas)",
         );
       }
       const f = await api.put<FluxoResumo>(`/fluxos/${seg(fluxoId)}`, definidos);
@@ -2037,6 +2049,7 @@ server.registerTool(
         nome: f.nome,
         status: f.status,
         remetenteEmail: f.remetenteEmail ?? null,
+        transacional: f.transacional ?? false,
         atualizado: Object.keys(definidos),
       });
     },

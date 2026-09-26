@@ -1,6 +1,7 @@
 import { Undo2, Redo2, Play, Save, X as XIcon, Network } from 'lucide-react';
 import { Button, Badge, IconButton, Input } from '@/components/ui';
 import type { FluxoEditorApi } from '@/pages/fluxo/hooks/useFluxoEditor';
+import { useRole } from '@/hooks/usePermission';
 
 /**
  * FluxoToolbar — a barra superior do editor de fluxos.
@@ -22,6 +23,9 @@ export function FluxoToolbar({
   onTestar: () => void;
   onMobilePanel: (p: 'palette' | 'inspector' | null) => void;
 }) {
+  // Furar a janela de envio é decisão da gestão (o backend recusa pro REP).
+  const role = useRole();
+  const gestao = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   // CAÇADA-BUG #45: fechar com alterações não salvas descartava tudo em silêncio.
   // O guard existia SÓ no X — o botão "Cancelar" ao lado do Salvar fechava direto.
   // Compartilhado pelos dois pra não divergir de novo.
@@ -74,6 +78,26 @@ export function FluxoToolbar({
             }
           />
         </label>
+        {gestao && (
+          <label
+            className="hidden lg:flex items-center gap-1.5 text-xs text-muted shrink-0 cursor-pointer"
+            title={
+              'Transacional: WhatsApp e e-mail deste fluxo saem NA HORA, mesmo fora do horário ' +
+              'de envio, e não contam no limite diário de abordagens. Só pra aviso do que o ' +
+              'cliente acabou de fazer (pagamento, rastreio) — nunca pra régua ou prospecção. ' +
+              'Salva na hora, sem mexer no fluxo.'
+            }
+          >
+            <input
+              type="checkbox"
+              checked={editor.transacional}
+              disabled={editor.salvandoTransacional}
+              onChange={(e) => void editor.alternarTransacional(e.target.checked)}
+              data-testid="fluxo-transacional"
+            />
+            Aviso transacional
+          </label>
+        )}
         <Badge
           variant={status === 'ATIVO' ? 'success' : 'neutral'}
           className="hidden sm:inline-flex"

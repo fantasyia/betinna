@@ -47,6 +47,8 @@ function makeService(opts: {
    * É a FONTE — o campo do Lead acima é só cache, e nasce null no 1º contato.
    */
   inboundNaConversaMin?: number;
+  /** Fluxo marcado como TRANSACIONAL (aviso de pedido). */
+  transacional?: boolean;
 }) {
   const prisma = {
     fluxoExecucao: {
@@ -60,7 +62,11 @@ function makeService(opts: {
       update: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
-    fluxo: { findUnique: vi.fn().mockResolvedValue({ triggerTipo: opts.triggerTipo }) },
+    fluxo: {
+      findUnique: vi
+        .fn()
+        .mockResolvedValue({ triggerTipo: opts.triggerTipo, transacional: !!opts.transacional }),
+    },
     fluxoNo: {
       findUnique: vi
         .fn()
@@ -171,6 +177,64 @@ describe('Janela de envio no motor de fluxos', () => {
     // Nem consulta a janela: o gatilho já resolve.
     expect(pacing.esperaAntesDoProativoMs).not.toHaveBeenCalled();
     expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalled();
+  });
+
+  /**
+   * Léo, 25/09: "imagina o susto do cliente comprar de noite e só receber a
+   * informação de dia". Aviso de pedido (fluxo TRANSACIONAL) sai na hora.
+   */
+  it('TRANSACIONAL fora da janela: sai NA HORA, pela faixa reativa (sem teto de abordagens)', async () => {
+    const { service, queue, prisma, pacing } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'PEDIDO_APROVADO',
+      transacional: true,
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).not.toHaveBeenCalledWith(
+      'step',
+      expect.anything(),
+      expect.objectContaining({ delay: expect.any(Number) as number }),
+    );
+    expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalled();
+    // reativo=true: o pacing não aplica janela nem gasta a cota diária — só o ritmo.
+    expect(pacing.aguardarSlot).toHaveBeenCalledWith('emp-1', true);
+  });
+
+  it('o MESMO gatilho SEM a marca continua esperando a janela', async () => {
+    const { service, queue, pacing } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'PEDIDO_APROVADO',
+      transacional: false,
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
+    expect(pacing.aguardarSlot).not.toHaveBeenCalled();
+  });
+
+  it('TRANSACIONAL não vale pra conversa com IA: o nó CONVERSAR_IA segue a janela', async () => {
+    const { service, queue, conversarIa } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'PEDIDO_APROVADO',
+      acaoTipo: 'CONVERSAR_IA',
+      transacional: true,
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
+    expect(conversarIa.iniciar).not.toHaveBeenCalled();
   });
 
   it('dentro da janela: executa normalmente', async () => {
