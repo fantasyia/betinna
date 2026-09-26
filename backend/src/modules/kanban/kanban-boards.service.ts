@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { KanbanBoard, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
@@ -110,8 +111,23 @@ export class KanbanBoardsService {
     return board;
   }
 
-  /** Board completo: listas ativas (com cards resumidos), etiquetas, membros. */
-  async findById(user: AuthenticatedUser, id: string) {
+  /**
+   * Board completo: listas ativas (com cards resumidos), etiquetas, membros.
+   *
+   * **Os cards vêm SEM a descrição.** Ela era 76% do quadro DEV (888 KB de
+   * 1,2 MB, 338 cards), e a tela do quadro não mostra: o modal busca o card
+   * inteiro em `/kanban/cards/:id`, e a busca de texto usa `/:id/busca`. Com o
+   * quadro recarregado a cada 15s, isso virou timeout recorrente
+   * (BETINNA-FRONT-A).
+   *
+   * **`assinatura` + `desde`:** a resposta leva o hash do conteúdo. Quem manda
+   * `?desde=<assinatura>` e nada mudou recebe só `{ inalterado: true }` — é
+   * assim que o polling de 15s da tela deixa de baixar o quadro inteiro à toa.
+   * O hash é do quadro MONTADO (inclusive os badges do card canônico), então
+   * qualquer mudança visível troca a assinatura. A URL assinada do fundo fica
+   * fora do hash: ela é gerada de novo a cada chamada e mudaria sempre.
+   */
+  async findById(user: AuthenticatedUser, id: string, desde?: string) {
     await this.acesso.verificarAcessoBoard(user, id);
     const board = await this.prisma.kanbanBoard.findUniqueOrThrow({
       where: { id },
@@ -127,6 +143,7 @@ export class KanbanBoardsService {
             cards: {
               where: { arquivado: false },
               orderBy: { posicao: 'asc' },
+              omit: { descricao: true },
               include: {
                 etiquetas: { include: { etiqueta: true } },
                 membros: { include: { usuario: USUARIO_RESUMO } },
@@ -175,10 +192,12 @@ export class KanbanBoardsService {
       }
     }
 
-    return {
-      ...board,
-      imagemFundoUrl: await this.fundo.signedUrl(board.imagemFundo),
-    };
+    const assinatura = createHash('sha1').update(JSON.stringify(board)).digest('hex');
+    const imagemFundoUrl = await this.fundo.signedUrl(board.imagemFundo);
+    if (desde && desde === assinatura) {
+      return { inalterado: true as const, assinatura, imagemFundoUrl };
+    }
+    return { ...board, assinatura, imagemFundoUrl };
   }
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateBoardDto): Promise<KanbanBoard> {

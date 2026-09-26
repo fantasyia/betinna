@@ -80,9 +80,17 @@ export class KanbanBoardsController {
 
   @Get(':id')
   @RequirePermissions({ module: 'quadros', action: 'view' })
-  @ApiOperation({ summary: 'Quadro completo: listas + cards + etiquetas + membros' })
-  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.boards.findById(user, id);
+  @ApiOperation({
+    summary:
+      'Quadro completo: listas + cards (sem descrição) + etiquetas + membros. ' +
+      '?desde=<assinatura> devolve { inalterado: true } quando nada mudou.',
+  })
+  findOne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('desde') desde?: string,
+  ) {
+    return this.boards.findById(user, id, desde);
   }
 
   @Patch(':id')

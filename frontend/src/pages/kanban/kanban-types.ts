@@ -27,7 +27,9 @@ export interface KCardResumo {
   id: string;
   listaId: string;
   titulo: string;
-  descricao: string | null;
+  // Sem `descricao` de propósito: a listagem do quadro não traz mais (era 76%
+  // do peso do quadro DEV — BETINNA-FRONT-A). Quem precisa do texto abre o card
+  // (`KCardCompleto`) ou usa a busca do servidor.
   posicao: number;
   dataInicio: string | null;
   dataEntrega: string | null;
@@ -70,6 +72,8 @@ export interface KBoardResumo {
 }
 
 export interface KBoardCompleto extends KBoardResumo {
+  /** Hash do conteúdo — o polling manda de volta em `?desde=` (ver kanban-board-carga). */
+  assinatura?: string;
   listas: KLista[];
   etiquetas: KEtiqueta[];
   campos: Array<{

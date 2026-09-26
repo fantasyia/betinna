@@ -41,6 +41,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { api, apiErrorMessage } from '@/lib/api';
 import { getSession } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { carregarBoard } from './kanban-board-carga';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
@@ -105,17 +106,62 @@ export function podeArquivarQuadro(
  *
  * IDs de drag: `card:<id>` e `lista:<id>` (um DndContext só pros dois tipos).
  */
+/**
+ * Filtro do quadro (client-side, estilo Trello: esconde quem não bate).
+ *
+ * O TEXTO casa pelo título aqui mesmo, ou pela presença do card em
+ * `idsDaBusca` — o resultado da busca do servidor, que é quem ainda enxerga a
+ * DESCRIÇÃO. A listagem do quadro deixou de trazer a descrição dos cards
+ * (BETINNA-FRONT-A: era 76% do peso do quadro DEV), então filtrar a descrição
+ * aqui já não é possível — e fingir que é esconderia cards que batem.
+ */
+export function filtrarListas(
+  listas: KLista[],
+  f: { texto: string; etiqueta: string; membro: string; vencimento: string },
+  idsDaBusca: ReadonlySet<string>,
+  agora: number,
+): KLista[] {
+  const em7dias = agora + 7 * 24 * 60 * 60 * 1000;
+  const q = f.texto.toLowerCase();
+  return listas.map((l) => ({
+    ...l,
+    cards: l.cards.filter((c) => {
+      if (q && !c.titulo.toLowerCase().includes(q) && !idsDaBusca.has(c.id)) return false;
+      if (f.etiqueta && !c.etiquetas.some((e) => e.etiqueta.id === f.etiqueta)) return false;
+      if (f.membro && !c.membros.some((m) => m.usuario.id === f.membro)) return false;
+      if (f.vencimento) {
+        const prazo = c.dataEntrega ? new Date(c.dataEntrega).getTime() : null;
+        if (f.vencimento === 'sem_data' && prazo !== null) return false;
+        if (f.vencimento === 'vencidos' && (c.concluido || prazo === null || prazo >= agora))
+          return false;
+        if (
+          f.vencimento === 'proximos7dias' &&
+          (c.concluido || prazo === null || prazo < agora || prazo > em7dias)
+        )
+          return false;
+      }
+      return true;
+    }),
+  }));
+}
+
 export default function KanbanBoardPage() {
   const { boardId } = useParams<{ boardId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
 
+  // O último quadro recebido vai como referência pro próximo fetch: o servidor
+  // responde "inalterado" e a tela não baixa 1,2 MB à toa a cada 15s.
+  const boardAtualRef = useRef<KBoardCompleto | null>(null);
   const {
     data: board,
     loading,
     error,
     refetch,
-  } = useApiQuery<KBoardCompleto>(boardId ? `/kanban/boards/${boardId}` : null);
+  } = useApiQuery<KBoardCompleto>(boardId ? `/kanban/boards/${boardId}` : null, {
+    queryFn: () => carregarBoard(boardId as string, boardAtualRef.current),
+  });
+  boardAtualRef.current = board;
 
   /**
    * Atalho "etiqueta do rep → quadro do rep" (só no quadro-espelho do Diretor).
@@ -315,6 +361,18 @@ export default function KanbanBoardPage() {
   const [fMembro, setFMembro] = useState('');
   const [fVencimento, setFVencimento] = useState('');
   const textoDebounced = useDebouncedValue(fTexto, 250);
+  // A descrição dos cards não vem mais na listagem do quadro. O título filtra
+  // aqui na hora; quem bate só pela DESCRIÇÃO vem da busca do servidor, que
+  // aparece em seguida sem esconder o que já bateu pelo título.
+  const { data: achadosNaBusca } = useApiQuery<Array<{ id: string }>>(
+    boardId && textoDebounced
+      ? `/kanban/boards/${boardId}/busca?q=${encodeURIComponent(textoDebounced)}`
+      : null,
+  );
+  const idsDaBusca = useMemo(
+    () => new Set((achadosNaBusca ?? []).map((c) => c.id)),
+    [achadosNaBusca],
+  );
   const temFiltro = !!(textoDebounced || fEtiqueta || fMembro || fVencimento);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   // Conta o que está ATIVO pra o botão dizer isso sem ser aberto — filtro
@@ -328,33 +386,18 @@ export default function KanbanBoardPage() {
     setFVencimento('');
   };
 
-  const listasVisiveis = useMemo(() => {
-    if (!temFiltro) return listas;
-    const agora = Date.now();
-    const em7dias = agora + 7 * 24 * 60 * 60 * 1000;
-    const q = textoDebounced.toLowerCase();
-    return listas.map((l) => ({
-      ...l,
-      cards: l.cards.filter((c) => {
-        if (q && !c.titulo.toLowerCase().includes(q) && !(c.descricao ?? '').toLowerCase().includes(q))
-          return false;
-        if (fEtiqueta && !c.etiquetas.some((e) => e.etiqueta.id === fEtiqueta)) return false;
-        if (fMembro && !c.membros.some((m) => m.usuario.id === fMembro)) return false;
-        if (fVencimento) {
-          const prazo = c.dataEntrega ? new Date(c.dataEntrega).getTime() : null;
-          if (fVencimento === 'sem_data' && prazo !== null) return false;
-          if (fVencimento === 'vencidos' && (c.concluido || prazo === null || prazo >= agora))
-            return false;
-          if (
-            fVencimento === 'proximos7dias' &&
-            (c.concluido || prazo === null || prazo < agora || prazo > em7dias)
+  const listasVisiveis = useMemo(
+    () =>
+      temFiltro
+        ? filtrarListas(
+            listas,
+            { texto: textoDebounced, etiqueta: fEtiqueta, membro: fMembro, vencimento: fVencimento },
+            idsDaBusca,
+            Date.now(),
           )
-            return false;
-        }
-        return true;
-      }),
-    }));
-  }, [listas, temFiltro, textoDebounced, fEtiqueta, fMembro, fVencimento]);
+        : listas,
+    [listas, temFiltro, textoDebounced, fEtiqueta, fMembro, fVencimento, idsDaBusca],
+  );
 
   const sensors = useSensoresDnd();
 
