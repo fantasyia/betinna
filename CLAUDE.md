@@ -1,5 +1,11 @@
 # CLAUDE.md — Instruções para Claude / IA assistant
 
+> 🏷️ **Cliente: Somatec Blocking.** Este repositório é da Somatec; as regras
+> gerais dela (ordem do pedido no ERP, Drive do marketing@, domínio e NOINDEX do
+> site) vêm do arquivo importado abaixo. Material de outro cliente não entra aqui.
+
+@~/.claude/github/leo-Skills-master/clients/somatec/REGRAS-GERAIS-SOMATEC.md
+
 Este arquivo é lido automaticamente pelo Claude Code em qualquer sessão neste repo.
 **Siga estas regras antes de qualquer mudança.**
 
