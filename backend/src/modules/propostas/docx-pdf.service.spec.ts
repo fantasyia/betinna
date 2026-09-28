@@ -37,6 +37,26 @@ describe('DocxPdfService', () => {
     await expect(new DocxPdfService().converter(Buffer.from('PK'))).rejects.toThrow(/PDF/);
   });
 
+  it('UMA conversão por vez no processo, mesmo com duas instâncias (aceite + reenvio)', async () => {
+    let terminarPrimeira: () => void = () => undefined;
+    execFile.mockImplementation((_bin, args, _o, cb) => {
+      const dir = args[args.indexOf('--outdir') + 1];
+      const gravar = () =>
+        void writeFile(`${dir}/contrato.pdf`, Buffer.from('%PDF-1.7 ok')).then(() => cb(null));
+      if (execFile.mock.calls.length === 1) terminarPrimeira = gravar;
+      else gravar();
+    });
+    const primeira = new DocxPdfService().converter(Buffer.from('PK a'));
+    const segunda = new DocxPdfService().converter(Buffer.from('PK b'));
+    await vi.waitFor(() => expect(execFile).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 50));
+    // A 2ª instância esperou a 1ª: o LibreOffice nunca roda dobrado.
+    expect(execFile).toHaveBeenCalledTimes(1);
+    terminarPrimeira();
+    await Promise.all([primeira, segunda]);
+    expect(execFile).toHaveBeenCalledTimes(2);
+  });
+
   it('saída que não é PDF é recusada', async () => {
     execFile.mockImplementation((_bin, args, _o, cb) => {
       const dir = args[args.indexOf('--outdir') + 1];

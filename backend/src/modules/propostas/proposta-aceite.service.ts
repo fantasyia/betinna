@@ -16,7 +16,7 @@ import { resumoDaProposta, type ResumoProposta } from './proposta-resumo.util';
 import { ContratoPreviaService, sha256 } from './contrato-previa.service';
 import { LevantamentoPdfService } from './levantamento-pdf.service';
 import { DocxPdfService } from './docx-pdf.service';
-import { PDFDocument } from 'pdf-lib';
+import { juntarPdfs } from './pdf-juntar.util';
 import {
   ModeloContratoService,
   type ModeloEmUso,
@@ -96,17 +96,6 @@ export interface AceitePreview {
     desconto: number;
     total: number;
   }>;
-}
-
-/** Junta PDFs num só, na ordem dada. */
-async function juntarPdfs(arquivos: Buffer[]): Promise<Buffer> {
-  const junto = await PDFDocument.create();
-  for (const arquivo of arquivos) {
-    const parte = await PDFDocument.load(arquivo);
-    const paginas = await junto.copyPages(parte, parte.getPageIndices());
-    paginas.forEach((pg) => junto.addPage(pg));
-  }
-  return Buffer.from(await junto.save());
 }
 
 @Injectable()

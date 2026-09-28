@@ -13,6 +13,7 @@ import { FiscalPendenciasService } from './fiscal-pendencias.service';
 import { ContratoMensalidadeSyncService } from './contrato-mensalidade-sync.service';
 import { ContratoReenvioService } from './contrato-reenvio.service';
 import { ContratoPreviaService } from '@modules/propostas/contrato-previa.service';
+import { DocxPdfService } from '@modules/propostas/docx-pdf.service';
 
 /** Leitura dos contratos de locação — quem os cria é o aceite da proposta. */
 @Module({
@@ -34,6 +35,9 @@ import { ContratoPreviaService } from '@modules/propostas/contrato-previa.servic
     // Só storage (sem dependências): o reenvio anexa o MESMO levantamento
     // congelado no link. Importar o PropostasModule inteiro criaria ciclo.
     ContratoPreviaService,
+    // Idem: o reenvio converte o contrato novo pra PDF (fila estática — uma
+    // conversão por vez no processo, somando o aceite).
+    DocxPdfService,
     ContratoAprovacaoJob,
   ],
   exports: [

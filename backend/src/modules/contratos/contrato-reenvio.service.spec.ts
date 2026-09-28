@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PDFDocument } from 'pdf-lib';
 import { Prisma } from '@prisma/client';
 import { ContratoReenvioService, type EnvioAssinatura } from './contrato-reenvio.service';
 import { carregarModelo } from '@modules/propostas/contrato-documento.util';
@@ -59,6 +60,21 @@ const CONTRATO = {
   proposta: PROPOSTA,
 };
 
+/** PDF de verdade com N páginas — o documento único é montado com pdf-lib. */
+async function umPdf(paginas: number): Promise<Buffer> {
+  const d = await PDFDocument.create();
+  for (let i = 0; i < paginas; i++) d.addPage();
+  return Buffer.from(await d.save());
+}
+let PDF_LEVANTAMENTO: Buffer;
+let PDF_CONTRATO: Buffer;
+let HASH_LEVANTAMENTO: string;
+beforeAll(async () => {
+  PDF_LEVANTAMENTO = await umPdf(1);
+  PDF_CONTRATO = await umPdf(7);
+  HASH_LEVANTAMENTO = createHash('sha256').update(PDF_LEVANTAMENTO).digest('hex');
+});
+
 function montar(contrato: Record<string, unknown> | null = CONTRATO) {
   const prisma = {
     contrato: {
@@ -80,14 +96,16 @@ function montar(contrato: Record<string, unknown> | null = CONTRATO) {
   const modelos = {
     emUso: vi.fn().mockResolvedValue({ arquivo: carregarModelo(), versao: null }),
   };
-  const previa = { baixar: vi.fn(async () => Buffer.from('%PDF levantamento')) };
+  const previa = { baixar: vi.fn(async () => PDF_LEVANTAMENTO) };
+  const docxPdf = { converter: vi.fn(async () => PDF_CONTRATO) };
   const svc = new ContratoReenvioService(
     prisma as never,
     clicksign as never,
     modelos as never,
     previa as never,
+    docxPdf as never,
   ) as ContratoReenvioService;
-  return { svc, prisma, clicksign, modelos, previa };
+  return { svc, prisma, clicksign, modelos, previa, docxPdf };
 }
 
 const CHAMADA = {
@@ -259,20 +277,58 @@ describe('ContratoReenvioService', () => {
 /** O modelo subido pela tela (24/09): qual versão saiu fica no rastro. */
 describe('ContratoReenvioService — o levantamento aprovado vai junto', () => {
   beforeEach(() => vi.clearAllMocks());
-  const pdf = Buffer.from('%PDF levantamento');
-  const hashPdf = createHash('sha256').update(pdf).digest('hex');
 
-  it('versão nova do contrato leva o MESMO levantamento anexado', async () => {
-    const { svc, clicksign, previa } = montar({
+  /** Léo, 25/09: "o correto não seria subir 1 só já completo?" — vale pro reenvio também. */
+  it('versão nova sai em UM PDF: o MESMO levantamento + o contrato novo, sem anexo', async () => {
+    const { svc, clicksign, previa, docxPdf, prisma } = montar({
       ...CONTRATO,
-      proposta: { ...PROPOSTA, levantamentoPdfPath: 'e1/p1/1.pdf', levantamentoPdfSha256: hashPdf },
+      proposta: {
+        ...PROPOSTA,
+        levantamentoPdfPath: 'e1/p1/1.pdf',
+        levantamentoPdfSha256: HASH_LEVANTAMENTO,
+      },
     });
     await svc.reenviar(CHAMADA);
     expect(previa.baixar).toHaveBeenCalledWith('e1/p1/1.pdf');
+    // O Word gerado AGORA (modelo em uso) é o que vira PDF — não o do aceite.
+    expect(docxPdf.converter).toHaveBeenCalledTimes(1);
+    const docx = (docxPdf.converter.mock.calls as unknown as Buffer[][])[0]?.[0];
+    expect(String(docx?.subarray(0, 2))).toBe('PK');
+
     const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
-      anexos?: Array<{ arquivo: Buffer }>;
+      documento: { arquivo: Buffer; nome: string; mime?: string };
+      anexos?: unknown[];
     };
-    expect(dados.anexos?.[0].arquivo.equals(pdf)).toBe(true);
+    expect(dados.documento.nome).toBe('PROP-0042-proposta-e-contrato.pdf');
+    expect(dados.documento.mime).toBe('application/pdf');
+    expect(dados.anexos ?? []).toHaveLength(0); // o levantamento já está DENTRO
+    const junto = await PDFDocument.load(dados.documento.arquivo);
+    expect(junto.getPageCount()).toBe(8); // 1 do levantamento + 7 do contrato
+
+    const rastro = prisma.contrato.update.mock.calls[0][0].data
+      .enviosAssinatura as EnvioAssinatura[];
+    expect(rastro.at(-1)?.documentoSha256).toBe(
+      createHash('sha256').update(dados.documento.arquivo).digest('hex'),
+    );
+  });
+
+  it('proposta sem levantamento guardado: vai só o contrato, em PDF', async () => {
+    const { svc, clicksign } = montar();
+    await svc.reenviar(CHAMADA);
+    const dados = clicksign.enviarParaAssinatura.mock.calls[0][1] as {
+      documento: { arquivo: Buffer; nome: string; mime?: string };
+    };
+    expect(dados.documento.arquivo).toBe(PDF_CONTRATO);
+    expect(dados.documento.nome).toBe('PROP-0042-contrato.pdf');
+    expect(dados.documento.mime).toBe('application/pdf');
+  });
+
+  it('Word → PDF falhou: recusa ANTES de matar o envelope do cliente', async () => {
+    const { svc, clicksign, docxPdf } = montar();
+    docxPdf.converter.mockRejectedValue(new Error('soffice morreu'));
+    await expect(svc.reenviar(CHAMADA)).rejects.toThrow(/não virou PDF/);
+    expect(clicksign.expirarEnvelope).not.toHaveBeenCalled();
+    expect(clicksign.enviarParaAssinatura).not.toHaveBeenCalled();
   });
 
   it('levantamento guardado não confere: recusa ANTES de matar o envelope do cliente', async () => {

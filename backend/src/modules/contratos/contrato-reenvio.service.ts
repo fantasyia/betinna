@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ContratoPreviaService, sha256 } from '@modules/propostas/contrato-previa.service';
+import { DocxPdfService } from '@modules/propostas/docx-pdf.service';
+import { juntarPdfs } from '@modules/propostas/pdf-juntar.util';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
@@ -36,6 +38,8 @@ export interface EnvioAssinatura {
   sha256?: string | null;
   /** sha256 do Levantamento técnico de projeto anexado ao envelope. */
   levantamentoSha256?: string | null;
+  /** sha256 do PDF único (levantamento + contrato) que foi pro envelope. */
+  documentoSha256?: string | null;
 }
 
 /**
@@ -67,6 +71,7 @@ export class ContratoReenvioService {
     private readonly clicksign: ClickSignService,
     private readonly modelos: ModeloContratoService,
     private readonly previa: ContratoPreviaService,
+    private readonly docxPdf: DocxPdfService,
   ) {}
 
   /**
@@ -147,30 +152,54 @@ export class ContratoReenvioService {
       await comSkus(this.prisma, contrato.proposta as PropostaDoBanco),
       { modelo: modelo.arquivo },
     );
-    if (!montagem.ok) {
+    if (!montagem.ok || !montagem.dados.documento) {
       throw new BusinessRuleException(
-        `Contrato não pode ser reenviado: ${montagem.motivo}.`,
+        `Contrato não pode ser reenviado: ${montagem.ok ? 'o contrato não foi gerado' : montagem.motivo}.`,
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
 
     // O Levantamento técnico de projeto é o que o cliente APROVOU — não muda
-    // na versão nova do contrato. Vai anexado de novo, o mesmo PDF, pelo hash.
+    // na versão nova do contrato. Vai o MESMO PDF, conferido pelo hash.
     const lev = contrato.proposta as {
       levantamentoPdfPath?: string | null;
       levantamentoPdfSha256?: string | null;
       numero: string;
     };
+    let levantamento: Buffer | null = null;
     if (lev.levantamentoPdfPath) {
-      const pdf = await this.previa.baixar(lev.levantamentoPdfPath);
-      if (sha256(pdf) !== lev.levantamentoPdfSha256) {
+      levantamento = await this.previa.baixar(lev.levantamentoPdfPath);
+      if (sha256(levantamento) !== lev.levantamentoPdfSha256) {
         throw new BusinessRuleException(
           'Contrato não pode ser reenviado: o levantamento técnico guardado não confere (hash diferente).',
           ErrorCode.BUSINESS_RULE_VIOLATION,
         );
       }
-      montagem.dados.anexos = [{ arquivo: pdf, nome: `${lev.numero}-levantamento-tecnico.pdf` }];
     }
+
+    // UM documento em PDF, como no aceite (Léo, 25/09: "o correto não seria
+    // subir 1 só já completo?"): o Word vira PDF aqui, e não do jeito da
+    // ClickSign, e o levantamento vai DENTRO — uma assinatura, e o PDF assinado
+    // que volta já traz os dois. Tudo ANTES de expirar o envelope: conversão
+    // que falha não pode deixar o cliente sem link nenhum.
+    let contratoPdf: Buffer;
+    try {
+      contratoPdf = await this.docxPdf.converter(montagem.dados.documento.arquivo);
+    } catch (err) {
+      throw new BusinessRuleException(
+        `Contrato não pode ser reenviado: o Word não virou PDF (${
+          err instanceof Error ? err.message : String(err)
+        }).`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    const documento = levantamento ? await juntarPdfs([levantamento, contratoPdf]) : contratoPdf;
+    montagem.dados.documento = {
+      arquivo: documento,
+      nome: `${lev.numero}-${levantamento ? 'proposta-e-contrato' : 'contrato'}.pdf`,
+      mime: 'application/pdf',
+    };
+    montagem.dados.anexos = [];
 
     // ── 1. mata o anterior ANTES de criar o novo ──
     //
@@ -219,6 +248,7 @@ export class ContratoReenvioService {
         desfecho: 'enviado',
         modeloVersao: modelo.versao,
         levantamentoSha256: lev.levantamentoPdfSha256 ?? null,
+        documentoSha256: sha256(documento),
       },
     ];
 

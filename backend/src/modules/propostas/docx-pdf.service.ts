@@ -18,16 +18,19 @@ const TEMPO_MAXIMO_MS = 90_000;
  * Convertido aqui, UMA vez, o PDF é o arquivo que ele lê E o que ele assina.
  *
  * Uma conversão por vez: o LibreOffice come memória, e o link de aceite é
- * gerado raramente — fila é mais barato que um pico derrubar a api.
+ * gerado raramente — fila é mais barato que um pico derrubar a api. A fila é
+ * ESTÁTICA: o aceite e o reenvio de contrato têm cada um a sua instância (o
+ * ContratosModule não importa o PropostasModule — ciclo), e fila por instância
+ * deixaria as duas converterem juntas.
  */
 @Injectable()
 export class DocxPdfService {
   private readonly logger = new Logger(DocxPdfService.name);
-  private fila: Promise<unknown> = Promise.resolve();
+  private static fila: Promise<unknown> = Promise.resolve();
 
   converter(docx: Buffer): Promise<Buffer> {
-    const vez = this.fila.then(() => this.converterAgora(docx));
-    this.fila = vez.catch(() => undefined);
+    const vez = DocxPdfService.fila.then(() => this.converterAgora(docx));
+    DocxPdfService.fila = vez.catch(() => undefined);
     return vez;
   }
 
