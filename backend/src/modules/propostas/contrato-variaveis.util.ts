@@ -38,7 +38,8 @@ const MESES = [
   'dezembro',
 ];
 
-const dinheiro = (v: Prisma.Decimal | number): string =>
+/** 1528 → "R$ 1.528,00". */
+export const dinheiro = (v: Prisma.Decimal | number): string =>
   `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const dataPorExtenso = (d: Date): string =>

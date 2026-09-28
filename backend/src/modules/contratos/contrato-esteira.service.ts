@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { posicaoNoFim } from '@modules/kanban/kanban-posicao.util';
+import { dinheiro, formatarCnpj } from '@modules/propostas/contrato-variaveis.util';
 
 /**
  * ESTEIRA PÓS-ASSINATURA — o que o Leandro toca depois que o cliente assina.
@@ -143,10 +144,12 @@ export class ContratoEsteiraService {
     const local = [c.cliente.cidade, c.cliente.uf].filter(Boolean).join('/');
     return [
       `**Cliente:** ${c.cliente.nome}`,
-      `**CNPJ:** ${c.cliente.cnpj ?? '— (não cadastrado)'}`,
+      // O banco guarda só os dígitos; o card é lido por gente (PROP-0030 saiu
+      // "76851812000102" e "R$ 1528/mês").
+      `**CNPJ:** ${c.cliente.cnpj ? formatarCnpj(c.cliente.cnpj) : '— (não cadastrado)'}`,
       local ? `**Local:** ${local}` : null,
       `**Proposta:** ${c.proposta.numero}`,
-      `**Locação:** R$ ${String(c.valorMensal)}/mês por ${c.prazoMeses} meses`,
+      `**Locação:** ${dinheiro(Number(c.valorMensal))}/mês por ${c.prazoMeses} meses`,
       `**Representante:** ${c.representante?.nome ?? '—'}`,
       c.assinadoEm ? `**Assinado em:** ${c.assinadoEm.toLocaleDateString('pt-BR')}` : null,
       '',

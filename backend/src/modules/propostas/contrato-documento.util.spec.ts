@@ -348,7 +348,7 @@ describe('tabela do item 06 no modelo', () => {
   });
 
   it('ITEM e MODELO largos o bastante pra não quebrar a palavra', () => {
-    const cabecalho = (tabela06().match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) ?? [])[0];
+    const cabecalho = (tabela06().match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) ?? [])[0] ?? '';
     const larguras = [...cabecalho.matchAll(/<w:tcW w:w="(\d+)"/g)].map((m) => Number(m[1]));
     // ITEM é a 1ª coluna, MODELO a 5ª (em twips; 1440 = 1 polegada).
     expect(larguras[0]).toBeGreaterThanOrEqual(1000);

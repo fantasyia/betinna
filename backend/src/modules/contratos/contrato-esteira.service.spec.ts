@@ -19,7 +19,9 @@ const CONTRATO = {
   valorMensal: '2961.00',
   prazoMeses: 36,
   assinadoEm: new Date('2026-09-17T12:00:00Z'),
-  cliente: { nome: 'Metalúrgica Alfa', cnpj: '12.345.678/0001-90', cidade: 'Joinville', uf: 'SC' },
+  // Como o banco guarda: só dígitos. Com a máscara já no fixture, o card saía
+  // "76851812000102" em produção e o teste passava.
+  cliente: { nome: 'Metalúrgica Alfa', cnpj: '12345678000190', cidade: 'Joinville', uf: 'SC' },
   proposta: { numero: 'PROP-0042' },
   representante: { nome: 'Marcelo Harada' },
 };
@@ -164,6 +166,7 @@ describe('esteira pós-assinatura', () => {
     expect(card.titulo).toContain('PROP-0042');
     // O CNPJ é o insumo da primeira etapa: sem ele não dá pra consultar o Serasa.
     expect(card.descricao).toContain('12.345.678/0001-90');
+    expect(card.descricao).toContain('R$ 2.961,00/mês por 36 meses');
     expect(card.descricao).toContain('Marcelo Harada');
   });
 
