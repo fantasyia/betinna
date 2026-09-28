@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import type { ResumoProposta } from './proposta-resumo.util';
 
@@ -33,6 +35,29 @@ const LINHA = '#D0D0D0';
 const FUNDO = '#F5F5F5';
 const ALTURA_RODAPE = 24 * MM;
 const NBSP = String.fromCharCode(0xa0);
+
+/**
+ * As fontes da PÁGINA de aceite (Léo, 28/09): Poppins 600 nos títulos,
+ * cabeçalhos de tabela e números de destaque; Source Sans 3 no texto, com o
+ * semibold nos valores. Embutidas no PDF a partir de `assets/fonts` (OFL) —
+ * não dependem do que está instalado no servidor.
+ *
+ * Sem o arquivo (pasta de assets faltando), cai na Helvetica: documento com a
+ * fonte errada é melhor que link de aceite que não sai.
+ */
+const PASTA_FONTES = join(process.cwd(), 'assets', 'fonts');
+const FONTES = {
+  titulo: ['Poppins-SemiBold.ttf', 'Helvetica-Bold'],
+  texto: ['SourceSans3-Regular.ttf', 'Helvetica'],
+  forte: ['SourceSans3-Semibold.ttf', 'Helvetica-Bold'],
+} as const;
+
+function registrarFontes(doc: PDFKit.PDFDocument): void {
+  for (const [nome, [arquivo, reserva]] of Object.entries(FONTES)) {
+    const caminho = join(PASTA_FONTES, arquivo);
+    doc.registerFont(nome, existsSync(caminho) ? caminho : reserva);
+  }
+}
 
 const brl = (v: number) =>
   `R$ ${v
@@ -83,6 +108,7 @@ export function desenharLevantamento(
     doc.on('error', reject);
 
     try {
+      registrarFontes(doc);
       const W = doc.page.width;
       const H = doc.page.height;
       const CW = W - 2 * MARGEM;
@@ -114,13 +140,13 @@ export function desenharLevantamento(
       }
       if (!comLogo) {
         doc
-          .font('Helvetica-Bold')
+          .font('titulo')
           .fontSize(16)
           .fillColor(escuro ? '#FFFFFF' : marca.primaria)
           .text(marca.nome, x0, altCab - 7 * MM - 16, { width: CW / 2, lineBreak: false });
       }
       doc
-        .font('Helvetica-Bold')
+        .font('titulo')
         .fontSize(7.5)
         .fillColor(escuro ? '#9ED6F0' : marca.secundaria)
         .text('PROPOSTA DE LOCAÇÃO', x0, altCab - 7 * MM - 26, {
@@ -129,7 +155,7 @@ export function desenharLevantamento(
           characterSpacing: 1,
         });
       doc
-        .font('Helvetica-Bold')
+        .font('titulo')
         .fontSize(15)
         .fillColor(escuro ? '#FFFFFF' : marca.primaria)
         .text(r.numero, x0, altCab - 7 * MM - 15, { width: CW, align: 'right' });
@@ -137,13 +163,13 @@ export function desenharLevantamento(
 
       // ── Título ────────────────────────────────────────────────────────
       doc
-        .font('Helvetica-Bold')
+        .font('titulo')
         .fontSize(20)
         .fillColor(marca.primaria)
         .text('Levantamento técnico de projeto', x0, y, { width: CW });
       y = doc.y + 1 * MM;
       doc
-        .font('Helvetica')
+        .font('texto')
         .fontSize(10)
         .fillColor(CINZA)
         .text(
@@ -156,7 +182,7 @@ export function desenharLevantamento(
 
       const eyebrow = (t: string) => {
         doc
-          .font('Helvetica-Bold')
+          .font('titulo')
           .fontSize(7.5)
           .fillColor(marca.primaria)
           .text(t.toUpperCase(), x0, y, { width: CW, characterSpacing: 1.2 });
@@ -178,9 +204,9 @@ export function desenharLevantamento(
         ['Proposta válida até', dataPura(r.validoAte)],
       ];
       const campo = (rot: string, val: string, x: number, w: number, yy: number) => {
-        doc.font('Helvetica').fontSize(8).fillColor(CINZA).text(rot, x, yy, { width: w });
+        doc.font('texto').fontSize(8).fillColor(CINZA).text(rot, x, yy, { width: w });
         doc
-          .font('Helvetica-Bold')
+          .font('forte')
           .fontSize(10)
           .fillColor(TINTA)
           .text(val, x, doc.y + 1, { width: w });
@@ -205,10 +231,10 @@ export function desenharLevantamento(
         // (quadro, modelo) fica com o que sobra, e esse pode quebrar linha.
         const medida = colunas.map((c, i) => {
           if (!c.direita) return 0;
-          doc.font('Helvetica-Bold').fontSize(7.5);
+          doc.font('titulo').fontSize(7.5);
           const titulo = doc.widthOfString(c.titulo.toUpperCase(), { characterSpacing: 0.6 });
           const valores = linhas.map((l) => {
-            doc.font(l[i].negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+            doc.font(l[i].negrito ? 'forte' : 'texto').fontSize(10);
             return doc.widthOfString(l[i].texto);
           });
           return Math.ceil(Math.max(titulo, ...valores) + 2 * pad + 2);
@@ -222,7 +248,7 @@ export function desenharLevantamento(
           let x = x0;
           colunas.forEach((c, i) => {
             doc
-              .font('Helvetica-Bold')
+              .font('titulo')
               .fontSize(7.5)
               .fillColor('#FFFFFF')
               .text(c.titulo.toUpperCase(), x + pad, y + 2.3 * MM, {
@@ -244,14 +270,14 @@ export function desenharLevantamento(
           const etiquetas = linha.map((cel, i) => {
             if (!cel.tag) return null;
             const util = larg[i] - 2 * pad;
-            doc.font(cel.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+            doc.font(cel.negrito ? 'forte' : 'texto').fontSize(10);
             const wTexto = doc.widthOfString(cel.texto);
-            doc.font('Helvetica-Bold').fontSize(7.5);
+            doc.font('forte').fontSize(7.5);
             const wTag = doc.widthOfString(cel.tag) + 3 * MM;
             return { wTexto, wTag, aoLado: wTexto + 1.5 * MM + wTag <= util };
           });
           const alturas = linha.map((cel, i) => {
-            doc.font(cel.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+            doc.font(cel.negrito ? 'forte' : 'texto').fontSize(10);
             const h = doc.heightOfString(cel.texto || ' ', { width: larg[i] - 2 * pad });
             const e = etiquetas[i];
             return e && !e.aoLado ? h + 5.5 * MM : h;
@@ -265,7 +291,7 @@ export function desenharLevantamento(
           linha.forEach((cel, i) => {
             const c = colunas[i];
             doc
-              .font(cel.negrito ? 'Helvetica-Bold' : 'Helvetica')
+              .font(cel.negrito ? 'forte' : 'texto')
               .fontSize(10)
               .fillColor(TINTA)
               .text(cel.texto, x + pad, y + 2 * MM, {
@@ -282,7 +308,7 @@ export function desenharLevantamento(
                 .strokeColor(marca.secundaria)
                 .stroke();
               doc
-                .font('Helvetica-Bold')
+                .font('forte')
                 .fontSize(7.5)
                 .fillColor(escurecer(marca.secundaria, 0.25))
                 .text(cel.tag, tx + 1.5 * MM, ty + 0.8 * MM, { lineBreak: false });
@@ -301,7 +327,7 @@ export function desenharLevantamento(
 
       const nota = (t: string) => {
         doc
-          .font('Helvetica')
+          .font('texto')
           .fontSize(9)
           .fillColor(CINZA)
           .text(t, x0, y + 2.5 * MM, { width: CW });
@@ -339,16 +365,16 @@ export function desenharLevantamento(
       doc.rect(x0, y, CW, altTotal).fill(FUNDO);
       doc.rect(x0, y, 2 * MM, altTotal).fill(marca.acao);
       doc
-        .font('Helvetica-Bold')
+        .font('titulo')
         .fontSize(11)
         .fillColor(marca.primaria)
         .text('Aluguel mensal total', x0 + 7 * MM, y + altTotal / 2 - 5, { lineBreak: false });
-      doc.font('Helvetica').fontSize(9);
+      doc.font('texto').fontSize(9);
       const wMes = doc.widthOfString(' / mês');
       doc
         .fillColor(CINZA)
         .text(' / mês', x0 + CW - 5 * MM - wMes, y + altTotal / 2 - 1, { lineBreak: false });
-      doc.font('Helvetica-Bold').fontSize(18);
+      doc.font('titulo').fontSize(18);
       const valorTotal = brl(r.aluguelMensalTotal);
       const wValor = doc.widthOfString(valorTotal);
       doc
@@ -373,12 +399,12 @@ export function desenharLevantamento(
             .strokeColor(marca.secundaria)
             .stroke();
           doc
-            .font('Helvetica-Bold')
+            .font('titulo')
             .fontSize(12)
             .fillColor(marca.primaria)
             .text(v, x, y + 2.5 * MM, { width: w });
           doc
-            .font('Helvetica')
+            .font('texto')
             .fontSize(8.5)
             .fillColor(CINZA)
             .text(rot, x, doc.y + 1, { width: w });
@@ -448,7 +474,7 @@ export function desenharLevantamento(
         const yr = H - ALTURA_RODAPE + 4 * MM;
         doc.rect(0, yr, W, 3).fill(marca.primaria);
         doc
-          .font('Helvetica')
+          .font('texto')
           .fontSize(8)
           .fillColor(CINZA)
           .text(marca.rodape ?? marca.nome, x0, yr + 5 * MM, {

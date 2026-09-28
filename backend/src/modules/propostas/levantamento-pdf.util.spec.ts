@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+// pdf.js já vem no node_modules pelo officeparser (dependência de produção).
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { desenharLevantamento, escurecer } from './levantamento-pdf.util';
 import type { ResumoProposta } from './proposta-resumo.util';
 
@@ -55,16 +57,23 @@ const MARCA = {
   rodape: 'Empresa X · CNPJ 00 · contato@x',
 };
 
-/** O texto que o pdfkit escreveu (sem compressão): as strings hex dos TJ, em WinAnsi. */
-function textoDo(pdf: Buffer): string {
-  const bruto = pdf.toString('latin1');
+/**
+ * O texto do PDF, um trecho desenhado por linha — lido pelo pdf.js, como um
+ * leitor de verdade. Com fonte EMBUTIDA o pdfkit escreve ids de glifo (e o
+ * mapa ToUnicode), não mais o texto em WinAnsi: decodificar os TJ na mão não
+ * serve.
+ */
+async function textoDo(pdf: Buffer): Promise<string> {
+  const tarefa = getDocument({ data: new Uint8Array(pdf), useSystemFonts: false });
+  const d = await tarefa.promise;
   const pedacos: string[] = [];
-  for (const tj of bruto.matchAll(/\[(.*?)\] TJ/g)) {
-    const linha = [...tj[1].matchAll(/<([0-9a-fA-F]*)>/g)]
-      .map((m) => Buffer.from(m[1], 'hex').toString('latin1'))
-      .join('');
-    pedacos.push(linha);
+  for (let i = 1; i <= d.numPages; i++) {
+    const conteudo = await (await d.getPage(i)).getTextContent();
+    for (const item of conteudo.items) {
+      if ('str' in item && item.str.trim()) pedacos.push(item.str);
+    }
   }
+  await tarefa.destroy();
   return pedacos.join('\n');
 }
 
@@ -72,7 +81,7 @@ describe('desenharLevantamento', () => {
   it('é um PDF, com o título, o número e os valores da página de aceite', async () => {
     const pdf = await desenharLevantamento(RESUMO, MARCA, { comprimir: false });
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
-    const t = textoDo(pdf);
+    const t = await textoDo(pdf);
     expect(t).toContain('Levantamento técnico de projeto');
     expect(t).toContain('PROP-0028');
     expect(t).toContain('INDÚSTRIA TESTE CONTRATO LTDA');
@@ -104,7 +113,7 @@ describe('desenharLevantamento', () => {
       MARCA,
       { comprimir: false },
     );
-    const linhas = textoDo(pdf).split('\n');
+    const linhas = (await textoDo(pdf)).split('\n');
     for (const inteiro of [
       'TENSÃO',
       'CORRENTE',
@@ -123,7 +132,7 @@ describe('desenharLevantamento', () => {
       MARCA,
       { comprimir: false },
     );
-    expect(textoDo(pdf)).not.toContain('SERVIÇOS DE IMPLANTAÇÃO');
+    expect(await textoDo(pdf)).not.toContain('SERVIÇOS DE IMPLANTAÇÃO');
   });
 
   it('muitos quadros: quebra em páginas, e toda página tem o rodapé', async () => {
@@ -132,7 +141,7 @@ describe('desenharLevantamento', () => {
       quadro: `Quadro ${i + 1}`,
     }));
     const pdf = await desenharLevantamento({ ...RESUMO, quadros }, MARCA, { comprimir: false });
-    const t = textoDo(pdf);
+    const t = await textoDo(pdf);
     expect(t).toContain('Quadro 30');
     const paginas = (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
     expect(paginas).toBeGreaterThan(1);
@@ -145,7 +154,19 @@ describe('desenharLevantamento', () => {
       { ...MARCA, logoNegativo: Buffer.from('não é imagem') },
       { comprimir: false },
     );
-    expect(textoDo(pdf)).toContain('Empresa X');
+    expect(await textoDo(pdf)).toContain('Empresa X');
+  });
+
+  /** Léo, 28/09: o PDF com as fontes da página de aceite, não Helvetica. */
+  it('fontes da página: Poppins nos títulos e Source Sans 3 no texto, embutidas', async () => {
+    const pdf = await desenharLevantamento(RESUMO, MARCA, { comprimir: false });
+    const fontes = [
+      ...pdf.toString('latin1').matchAll(/\/BaseFont \/(?:[A-Z]{6}\+)?([\w-]+)/g),
+    ].map((m) => m[1]);
+    expect(fontes).toEqual(
+      expect.arrayContaining(['Poppins-SemiBold', 'SourceSans3-Regular', 'SourceSans3-Semibold']),
+    );
+    expect(fontes.filter((f) => f.startsWith('Helvetica'))).toEqual([]);
   });
 
   it('escurecer: primária mais funda pro cabeçalho; hex inválido volta igual', () => {
