@@ -3,8 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { FacebookService } from './facebook.service';
 import { InstagramService } from './instagram.service';
-import { MetaAppService } from './meta-app.service';
-import { MetaGraphClientService } from './meta-graph-client.service';
+import { MetaGraphModule } from './meta-graph.module';
 import { MetaLeadgenProcessor } from './meta-leadgen.processor';
 import { MetaLeadgenService } from './meta-leadgen.service';
 import { META_LEADGEN_QUEUE } from './meta-leadgen.types';
@@ -27,11 +26,9 @@ import { MetaWebhookController } from './meta-webhook.controller';
  * Os dois adapters auto-registram no `CanalAdapterRegistry` no boot.
  */
 @Module({
-  imports: [BullModule.registerQueue({ name: META_LEADGEN_QUEUE }), LeadsModule],
+  imports: [BullModule.registerQueue({ name: META_LEADGEN_QUEUE }), LeadsModule, MetaGraphModule],
   controllers: [MetaOAuthController, MetaWebhookController],
   providers: [
-    MetaAppService,
-    MetaGraphClientService,
     MetaOAuthService,
     MetaMediaService,
     MetaTokenRefreshJob,
@@ -41,7 +38,7 @@ import { MetaWebhookController } from './meta-webhook.controller';
     MetaLeadgenProcessor,
   ],
   exports: [
-    MetaGraphClientService,
+    MetaGraphModule,
     MetaOAuthService,
     MetaMediaService,
     FacebookService,

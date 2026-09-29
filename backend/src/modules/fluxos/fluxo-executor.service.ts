@@ -1553,6 +1553,11 @@ export class FluxoExecutorService {
             // condição é a mesma armadilha da etapa comparada por nome.
             origemCadastro: true,
             formularioOrigem: true,
+            // Atribuição (item 12, 29/09): o fluxo não enxergava de que campanha
+            // o lead veio — não dava pra rotear nem personalizar por anúncio.
+            utmSource: true,
+            utmMedium: true,
+            utmCampaign: true,
             variaveis: true,
             funilId: true,
             funilEtapaId: true,
@@ -1588,6 +1593,16 @@ export class FluxoExecutorService {
             // digitado. Use ESTES pra rotear por origem — nunca `segmento`.
             origem: lead.origemCadastro ?? '',
             formulario: lead.formularioOrigem ?? '',
+            // 1º toque (colunas) e último toque (variaveis.atribuicao.ultimo).
+            // Slug lowercase — é o nome da campanha no Meta/Google/site.
+            utm_source: lead.utmSource ?? '',
+            utm_medium: lead.utmMedium ?? '',
+            utm_campaign: lead.utmCampaign ?? '',
+            utm_campaign_ultimo:
+              ((leadVars.atribuicao as { ultimo?: { utmCampaign?: string } } | undefined)?.ultimo
+                ?.utmCampaign as string | undefined) ??
+              lead.utmCampaign ??
+              '',
             etapa_atual: lead.funilEtapa?.nome ?? lead.etapa,
             // IDs pra CONDICAO comparar de forma ESTÁVEL. `etapa_atual`/`funil`
             // são NOME e quebram silenciosamente quando alguém renomeia a etapa

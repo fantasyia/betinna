@@ -271,3 +271,99 @@ describe('OrquestracaoLeadEvents — grupo (@g.us) não dispara MENSAGEM_CANAL',
     );
   });
 });
+
+/**
+ * Itens 11 e 12 do card 📣 (29/09): o fluxo enxerga a campanha do anúncio, e
+ * quem já é lead e clica num anúncio novo ganha o toque (1º intacto, último = este).
+ */
+describe('OrquestracaoLeadEventsService — anúncio (CTWA)', () => {
+  const REF = {
+    sourceId: '120210000000001',
+    campanha: 'mb-industria-agosto',
+    campanhaFonte: 'meta',
+  };
+  const montar = (opts: { lead?: boolean; metadata?: unknown } = {}) => {
+    const prisma = {
+      ...makePrisma(),
+      conversation: { findFirst: vi.fn(async () => ({ metadata: opts.metadata ?? null })) },
+      $executeRaw: vi.fn().mockResolvedValue(1),
+    };
+    if (opts.lead) prisma.$queryRaw.mockResolvedValue([{ id: 'lead-9' }]);
+    const bus = makeBus();
+    const svc = new OrquestracaoLeadEventsService(
+      prisma as never,
+      bus as never,
+      makeInbox() as never,
+      makeConversarIa() as never,
+      makeRedis() as never,
+    );
+    return { svc, prisma, bus };
+  };
+  const mensagem = (comReferral: boolean) =>
+    ({
+      empresaId: 'emp-1',
+      peerTelefone: '+5511999990000',
+      conteudo: 'vi o anúncio',
+      canal: 'WHATSAPP',
+      peerId: '5511999990000@s.whatsapp.net',
+      meta: comReferral ? { ctwaReferral: { sourceId: REF.sourceId } } : {},
+    }) as never;
+
+  it('MENSAGEM_CANAL leva a campanha (nome do Meta) e o veioDeAnuncio', async () => {
+    const m = montar({ metadata: { atribuicao: REF } });
+    await m.svc.aoReceberMensagem(mensagem(true), resultado());
+    expect(m.bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'MENSAGEM_CANAL',
+      expect.objectContaining({
+        veioDeAnuncio: true,
+        utmSource: 'meta',
+        utmMedium: 'click_to_whatsapp',
+        utmCampaign: 'mb-industria-agosto',
+        campanhaFonte: 'meta',
+      }),
+    );
+  });
+
+  it('usa o toque MAIS RECENTE da conversa (atribuicaoUltima) quando houver', async () => {
+    const m = montar({
+      metadata: { atribuicao: REF, atribuicaoUltima: { ...REF, campanha: 'mb-comercio-setembro' } },
+    });
+    await m.svc.aoReceberMensagem(mensagem(true), resultado());
+    expect(m.bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'MENSAGEM_CANAL',
+      expect.objectContaining({ utmCampaign: 'mb-comercio-setembro' }),
+    );
+  });
+
+  it('lead que já existe e clicou num anúncio: grava o toque por merge jsonb (1º intacto)', async () => {
+    const m = montar({ lead: true, metadata: { atribuicao: REF } });
+    await m.svc.aoReceberMensagem(mensagem(true), resultado());
+    const sql = (m.prisma.$executeRaw.mock.calls[0]?.[0] as string[]).join('?');
+    expect(sql).toContain("jsonb_build_object('ultimo'");
+    expect(sql).toContain("WHEN variaveis->'atribuicao'->'primeiro' IS NULL");
+    expect(m.prisma.$executeRaw.mock.calls[0]).toContain('lead-9');
+  });
+
+  it('mensagem SEM referral (conversa orgânica ou já em andamento) não grava toque', async () => {
+    const m = montar({ lead: true, metadata: { atribuicao: REF } });
+    await m.svc.aoReceberMensagem(mensagem(false), resultado());
+    expect(m.prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(m.bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'MENSAGEM_CANAL',
+      expect.objectContaining({ veioDeAnuncio: false, utmCampaign: 'mb-industria-agosto' }),
+    );
+  });
+
+  it('conversa orgânica: campanha nula, sem estourar', async () => {
+    const m = montar();
+    await m.svc.aoReceberMensagem(mensagem(false), resultado());
+    expect(m.bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'MENSAGEM_CANAL',
+      expect.objectContaining({ utmCampaign: null, veioDeAnuncio: false }),
+    );
+  });
+});

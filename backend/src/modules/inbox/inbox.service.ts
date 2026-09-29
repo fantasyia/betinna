@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   type Conversation,
   type ConversationCategoria,
@@ -31,6 +31,7 @@ import type {
 } from './inbox.dto';
 import type { MensagemEntranteParams } from './inbox.types';
 import { type CtwaReferral, campanhaDoReferral } from '@integrations/evolution/ctwa-referral.util';
+import { CtwaCampanhaService } from '@integrations/meta/ctwa-campanha.service';
 import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 
 /**
@@ -160,6 +161,9 @@ export class InboxService {
     private readonly env: EnvService,
     private readonly eventos: InboxEventsService,
     private readonly notificacoes: NotificacoesService,
+    // Opcional: spec que monta o service na mão não precisa dele — sem ele, a
+    // campanha do CTWA fica na manchete marcada (o mesmo que sem conexão Meta).
+    @Optional() private readonly ctwaCampanha?: CtwaCampanhaService,
   ) {}
 
   /**
@@ -1808,9 +1812,20 @@ export class InboxService {
     // O cru do anúncio vai SÓ pra Conversation (junto da atribuição), nunca pra
     // Message — ver `metaDoReferral`.
     const cru = p.meta?.ctwaReferralCru as Record<string, unknown> | undefined;
-    const referral = referralSemCru
+    let referral: Record<string, unknown> | undefined = referralSemCru
       ? { ...referralSemCru, ...(cru ? { raw: cru } : {}) }
       : undefined;
+    // Item 9 (29/09): campanha = NOME da campanha no Meta, pelo sourceId — é o
+    // que soma com Lead Ads e site no relatório. Sem acesso, a manchete, MARCADA.
+    if (referral) {
+      const nomeMeta = await this.ctwaCampanha
+        ?.nomeDaCampanha(p.empresaId, referral.sourceId as string | undefined)
+        .catch(() => null);
+      const manchete = campanhaDoReferral(referral as CtwaReferral);
+      referral = nomeMeta
+        ? { ...referral, campanha: nomeMeta.toLowerCase().slice(0, 255), campanhaFonte: 'meta' }
+        : { ...referral, ...(manchete ? { campanha: manchete } : {}), campanhaFonte: 'manchete' };
+    }
     const campanha = referral ? campanhaDoReferral(referral as CtwaReferral) : undefined;
 
     // Guarda o LID do contato (quando o adapter informa) pra casar a mensagem
@@ -1870,6 +1885,10 @@ export class InboxService {
       const jaTemAtribuicao = !!existente.utmCampaign || !!metaAtual.atribuicao;
       const gravarAtrib = !!referral && !jaTemAtribuicao;
       if (gravarAtrib) metaPatch.atribuicao = referral;
+      // Item 11 (29/09): anúncio NOVO numa conversa que já tinha atribuição.
+      // O 1º toque fica intacto; o último vai pra `atribuicaoUltima` — e o
+      // orquestrador leva o toque pro lead (1º intacto, último atualizado).
+      if (referral && jaTemAtribuicao) metaPatch.atribuicaoUltima = referral;
 
       const nextMetadata =
         Object.keys(metaPatch).length > 0 ? { ...metaAtual, ...metaPatch } : undefined;

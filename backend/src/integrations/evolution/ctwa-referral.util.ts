@@ -34,6 +34,14 @@ export interface CtwaReferral {
   conversionSource?: string;
   entryPointSource?: string;
   entryPointApp?: string;
+  /**
+   * Nome da campanha JÁ RESOLVIDO (lowercase) e de onde veio (29/09): 'meta' =
+   * nome real da campanha pelo sourceId (soma com Lead Ads e site); 'manchete' =
+   * sem acesso à Meta, a manchete do criativo no lugar — marcada, pra ninguém
+   * confundir com o nome da campanha.
+   */
+  campanha?: string;
+  campanhaFonte?: 'meta' | 'manchete';
   /** Bloco cru (externalAdReply + campos de conversão), pra não perder o que não mapeamos. */
   raw?: Record<string, unknown>;
 }
@@ -128,6 +136,7 @@ export function metaDoReferral(ref: CtwaReferral): Record<string, unknown> {
  */
 export function campanhaDoReferral(ref?: CtwaReferral): string | undefined {
   if (!ref) return undefined;
+  if (ref.campanha) return ref.campanha;
   const bruto = ref.headline ?? ref.sourceId;
   return bruto ? bruto.toLowerCase().slice(0, 255) : undefined;
 }
@@ -153,6 +162,7 @@ export function atribuicaoDeReferral(
   };
   const campanha = campanhaDoReferral(ref);
   if (campanha) bloco.utmCampaign = campanha;
+  bloco.campanhaFonte = ref.campanhaFonte ?? 'manchete';
   // sourceId = id do anúncio/criativo no Meta — é o que amarra ao gerenciador.
   if (ref.sourceId) bloco.utmContent = ref.sourceId;
   if (ref.sourceUrl) bloco.landingPage = ref.sourceUrl;

@@ -10,6 +10,7 @@ import { InboxMetricasService } from './inbox-metricas.service';
 import { InboxController } from './inbox.controller';
 import { InboxService } from './inbox.service';
 import { ConversaEsquecidaJob } from './conversa-esquecida.job';
+import { MetaGraphModule } from '@integrations/meta/meta-graph.module';
 
 /**
  * InboxModule é `@Global` porque adapters de canal (em outros módulos)
@@ -21,7 +22,14 @@ import { ConversaEsquecidaJob } from './conversa-esquecida.job';
  */
 @Global()
 @Module({
-  imports: [forwardRef(() => WhatsAppModule), forwardRef(() => MetaModule), NotificacoesModule],
+  imports: [
+    forwardRef(() => WhatsAppModule),
+    forwardRef(() => MetaModule),
+    NotificacoesModule,
+    // Nome da campanha do Click-to-WhatsApp pelo sourceId (29/09) — módulo
+    // leve, sem o ciclo do MetaModule.
+    MetaGraphModule,
+  ],
   controllers: [InboxController],
   providers: [
     InboxService,

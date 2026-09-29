@@ -1282,3 +1282,93 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
     expect(r.duplicada).toBe(true);
   });
 });
+
+/**
+ * Item 9 do card 📣 (29/09): a campanha da conversa de anúncio é o NOME da
+ * campanha no Meta (pelo sourceId); sem acesso, a manchete MARCADA. E o cru do
+ * anúncio vai só pra Conversation, não pra cada Message.
+ */
+describe('InboxService — campanha do Click-to-WhatsApp', () => {
+  const montar = (nomeMeta: string | null) => {
+    const prisma = makePrismaMock();
+    prisma.cliente.findFirst.mockResolvedValue(null);
+    prisma.conversation.findFirst.mockResolvedValue(null);
+    prisma.conversation.create.mockResolvedValue({ id: 'conv-1' });
+    prisma.message.create.mockResolvedValue({ id: 'msg-1' });
+    prisma.conversation.update.mockResolvedValue({});
+    const ctwa = { nomeDaCampanha: vi.fn(async () => nomeMeta) };
+    const svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar: () => Promise.resolve() } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
+      ctwa as never,
+    );
+    return { svc, prisma, ctwa };
+  };
+  const entrar = (svc: InboxService) =>
+    svc.processarMensagemEntrante({
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      peerId: '5511988887777@s.whatsapp.net',
+      peerTelefone: '5511988887777',
+      tipo: 'TEXT',
+      conteudo: 'vi o anúncio',
+      externalId: 'wamid-ctwa',
+      meta: {
+        ctwaReferral: { sourceId: '120210000000001', headline: 'Master Block Promo' },
+        ctwaReferralCru: { externalAdReply: { sourceId: '120210000000001' } },
+      },
+    });
+
+  it('com acesso à Meta: utmCampaign = nome da campanha, marcado fonte meta', async () => {
+    const m = montar('MB-Industria-Agosto');
+    await entrar(m.svc);
+    const data = m.prisma.conversation.create.mock.calls[0][0].data;
+    expect(data.utmCampaign).toBe('mb-industria-agosto');
+    expect(data.metadata.atribuicao).toMatchObject({
+      campanha: 'mb-industria-agosto',
+      campanhaFonte: 'meta',
+      raw: { externalAdReply: { sourceId: '120210000000001' } },
+    });
+    expect(m.ctwa.nomeDaCampanha).toHaveBeenCalledWith('emp-1', '120210000000001');
+  });
+
+  it('sem acesso: manchete MARCADA como manchete', async () => {
+    const m = montar(null);
+    await entrar(m.svc);
+    const data = m.prisma.conversation.create.mock.calls[0][0].data;
+    expect(data.utmCampaign).toBe('master block promo');
+    expect(data.metadata.atribuicao).toMatchObject({ campanhaFonte: 'manchete' });
+  });
+
+  it('o cru do anúncio NÃO vai pra Message', async () => {
+    const m = montar(null);
+    await entrar(m.svc);
+    const meta = m.prisma.message.create.mock.calls[0][0].data.meta as Record<string, unknown>;
+    expect(meta.ctwaReferralCru).toBeUndefined();
+    expect(meta.ctwaReferral).toBeDefined();
+  });
+
+  it('conversa que JÁ tinha atribuição: 1º toque intacto, o novo vai pra atribuicaoUltima', async () => {
+    const m = montar('MB-Comercio-Setembro');
+    m.prisma.conversation.findFirst.mockReset();
+    m.prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      categoria: 'GERAL',
+      utmCampaign: 'mb-industria-agosto',
+      metadata: { atribuicao: { campanha: 'mb-industria-agosto', campanhaFonte: 'meta' } },
+    });
+    await entrar(m.svc);
+    const upd = m.prisma.conversation.update.mock.calls.find(
+      (c) => (c[0] as { data: { metadata?: unknown } }).data.metadata,
+    )![0] as { data: { metadata: Record<string, { campanha: string }>; utmCampaign?: string } };
+    expect(upd.data.metadata.atribuicao.campanha).toBe('mb-industria-agosto');
+    expect(upd.data.metadata.atribuicaoUltima.campanha).toBe('mb-comercio-setembro');
+    expect(upd.data.utmCampaign).toBeUndefined(); // coluna = 1º toque, não muda
+  });
+});

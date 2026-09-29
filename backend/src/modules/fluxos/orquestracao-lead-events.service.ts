@@ -4,6 +4,11 @@ import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
+import {
+  type CtwaReferral,
+  atribuicaoDeReferral,
+} from '@integrations/evolution/ctwa-referral.util';
+import { registrarToqueNoLead } from '@modules/leads/atribuicao-toque';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService } from './conversar-ia.service';
 
@@ -34,6 +39,31 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       void this.aoReceberMensagem(params, resultado);
     });
     this.logger.log('Hook de eventos de lead registrado na Inbox (gatilho LEAD_RESPONDEU)');
+  }
+
+  /**
+   * Atribuição do anúncio que a conversa guarda (o Inbox já resolveu o nome da
+   * campanha): o toque MAIS RECENTE — `atribuicaoUltima` quando a pessoa clicou
+   * num anúncio de novo, senão o 1º. `null` = conversa orgânica.
+   */
+  private async atribuicaoDaConversa(
+    empresaId: string,
+    conversationId: string,
+  ): Promise<Record<string, string> | null> {
+    // Atribuição é enriquecimento: falhar aqui NUNCA pode derrubar o gatilho.
+    let meta: Record<string, unknown> = {};
+    try {
+      const c = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, empresaId },
+        select: { metadata: true },
+      });
+      meta = (c?.metadata as Record<string, unknown> | null) ?? {};
+    } catch {
+      return null;
+    }
+    const ref = (meta.atribuicaoUltima ?? meta.atribuicao) as CtwaReferral | undefined;
+    if (!ref || typeof ref !== 'object') return null;
+    return atribuicaoDeReferral(ref, new Date().toISOString()).ultimo;
   }
 
   /** Resolve o lead da mensagem entrante e dispara o gatilho LEAD_RESPONDEU. */
@@ -74,12 +104,24 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       // grupo na Inbox (decisão de 16/06) — o que muda é só o gatilho: antes cada
       // mensagem de grupo abria uma execução da triagem que morria sem lead.
       const ehGrupo = (params.peerId ?? '').endsWith('@g.us');
+      // De que anúncio a conversa veio (item 12, 29/09) — o fluxo não enxergava.
+      // `veioDeAnuncio` = ESTA mensagem trouxe referral (o clique agora).
+      const veioDeAnuncio = !!params.meta?.ctwaReferral;
+      const atribuicao = await this.atribuicaoDaConversa(
+        params.empresaId,
+        resultado.conversationId,
+      );
       if (primeira && !ehGrupo) {
         await this.bus.disparar(params.empresaId, 'MENSAGEM_CANAL', {
           canal: params.canal,
           conversationId: resultado.conversationId,
           texto: params.conteudo,
           leadId: lead?.id ?? null,
+          veioDeAnuncio,
+          utmSource: atribuicao?.utmSource ?? null,
+          utmMedium: atribuicao?.utmMedium ?? null,
+          utmCampaign: atribuicao?.utmCampaign ?? null,
+          campanhaFonte: atribuicao?.campanhaFonte ?? null,
           // Dual-owner (D38): null/ausente = WhatsApp CENTRAL da empresa;
           // preenchido = WhatsApp PESSOAL do rep dono da sessão. O gatilho filtra
           // por isso (`escopo`) — sem este campo, mensagem no celular do rep
@@ -89,6 +131,18 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       }
 
       if (!lead) return;
+
+      // Item 11 (29/09): quem JÁ é lead e clicou num anúncio novo ganha o toque
+      // — 1º toque intacto, último = este anúncio. Só no recado físico novo
+      // (`primeira`), senão o poll do Evolution gravaria duas vezes.
+      if (primeira && veioDeAnuncio && atribuicao) {
+        await registrarToqueNoLead(this.prisma, params.empresaId, lead.id, atribuicao).catch(
+          (err: unknown) =>
+            this.logger.warn(
+              `Toque de anúncio não gravado no lead ${lead.id}: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+        );
+      }
 
       // AUDITORIA (média): quando a pessoa tem lead DUPLICADO (mesmo telefone,
       // dois ids), `lead.id` é o mais recente — mas a execução viva pode estar no
