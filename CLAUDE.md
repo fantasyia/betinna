@@ -98,7 +98,9 @@ scripts/  — deploy helpers (start.js, deploy-migrations.js)
 ## 🔐 Permissões
 
 - ADMIN bypassa `PermissionsGuard` — tem acesso total dentro da própria empresa
-- Multi-tenant: ADMIN da empresa A NÃO vê dados da empresa B
+- ⚠️ **ADMIN é CROSS-TENANT:** entra em QUALQUER empresa pelo `X-Empresa-Id`, mesmo sem vínculo
+  (`auth.guard.ts`, `resolveEmpresaAtiva`, D48). O isolamento entre clientes vale pros outros papéis —
+  por isso login de cliente é DIRECTOR, nunca ADMIN (Ribelt, 28/09).
 - SuperAdmin é separado e cross-tenant (raro)
 
 ---
@@ -279,7 +281,7 @@ lugar — então fica aqui o apontamento, senão a próxima sessão que topar co
 erro de produção redescobre o Sentry investigando por conta própria.
 
 ```
-comando    C:\Users\TechD\.claude\commands\sentry.md   (global, /sentry)
+comando    .claude\commands\sentry.md   (deste repositório, /sentry — desde 28/09)
 bootstrap  leo-Skills-master\_sessions\triagem-sentry\CONTEXT.md
 rotina     tarefa agendada "🔎 Triagem diária do Sentry", 03:00
 ```
