@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type LeadEtapa, Prisma } from '@prisma/client';
+import { type CanalOrigem, type LeadEtapa, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
   BusinessRuleException,
@@ -399,6 +399,8 @@ export class LeadsService {
       utmCampaign?: string | null;
       origemCadastro?: string | null;
       formularioOrigem?: string | null;
+      /** Default SITE (o formulário do site é quem mais chama). Lead Ads manda FACEBOOK/INSTAGRAM. */
+      canalOrigem?: CanalOrigem;
     },
   ): Promise<{ id: string }> {
     const { funilId, funilEtapaId } = await this.resolverFunilInicial(
@@ -419,7 +421,7 @@ export class LeadsService {
         uf: dto.uf ?? null,
         segmento: dto.segmento ?? null,
         observacoes: dto.observacoes ?? null,
-        canalOrigem: 'SITE',
+        canalOrigem: dto.canalOrigem ?? 'SITE',
         funilId,
         funilEtapaId,
         etapaDesde: new Date(),

@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { EmailModule } from '@integrations/email/email.module';
 import { CAMPANHA_ENVIO_QUEUE } from '@modules/campanhas/campanha-envio.types';
 import { FLUXO_QUEUE } from '@modules/fluxos/fluxo-executor.types';
+import { META_LEADGEN_QUEUE } from '@integrations/meta/meta-leadgen.types';
 import { DeadLetterController } from './dead-letter.controller';
 import { DeadLetterProcessor } from './dead-letter.processor';
 import { DeadLetterService } from './dead-letter.service';
@@ -25,6 +26,8 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
       // de volta. (Forma robusta — não depende de quem registrou primeiro.)
       { name: CAMPANHA_ENVIO_QUEUE },
       { name: FLUXO_QUEUE },
+      // Lead Ads (29/09): lead de anúncio que esgotou a busca volta daqui.
+      { name: META_LEADGEN_QUEUE },
     ),
     EmailModule, // fachada TransactionalEmailService (alerta ao diretor)
   ],

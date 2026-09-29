@@ -427,10 +427,7 @@ ${carimbo}`
     });
   }
 
-  private async aplicarAtribuicaoEmLeadExistente(
-    leadId: string,
-    atribuicao?: Atribuicao,
-  ): Promise<void> {
+  async aplicarAtribuicaoEmLeadExistente(leadId: string, atribuicao?: Atribuicao): Promise<void> {
     if (!atribuicao) return;
     try {
       const lead = await this.prisma.lead.findUnique({
@@ -657,7 +654,11 @@ ${carimbo}`
    * Lead ABERTO da empresa com o mesmo telefone (sufixo-8, D18 — NUNCA
    * `contains`: quebra com telefone formatado) ou mesmo e-mail.
    */
-  private async acharLeadAberto(
+  /**
+   * Público: o Lead Ads (meta-leadgen.service) usa a MESMA regra de dedup —
+   * lead repetido por e-mail estourava o índice único e por telefone duplicava.
+   */
+  async acharLeadAberto(
     empresaId: string,
     telefone?: string,
     email?: string,

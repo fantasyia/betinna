@@ -6,6 +6,7 @@ import { Audit } from '@shared/decorators/audit.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
 import { CAMPANHA_ENVIO_QUEUE } from '@modules/campanhas/campanha-envio.types';
 import { FLUXO_QUEUE } from '@modules/fluxos/fluxo-executor.types';
+import { META_LEADGEN_QUEUE } from '@integrations/meta/meta-leadgen.types';
 import { DeadLetterService } from './dead-letter.service';
 
 /**
@@ -22,6 +23,7 @@ export class DeadLetterController {
     private readonly deadLetter: DeadLetterService,
     @InjectQueue(CAMPANHA_ENVIO_QUEUE) private readonly campanhaQueue: Queue,
     @InjectQueue(FLUXO_QUEUE) private readonly fluxoQueue: Queue,
+    @InjectQueue(META_LEADGEN_QUEUE) private readonly leadgenQueue: Queue,
   ) {}
 
   @Get()
@@ -43,6 +45,7 @@ export class DeadLetterController {
     const registry = new Map<string, Queue>([
       [CAMPANHA_ENVIO_QUEUE, this.campanhaQueue],
       [FLUXO_QUEUE, this.fluxoQueue],
+      [META_LEADGEN_QUEUE, this.leadgenQueue],
     ]);
     return this.deadLetter.retry(id, registry);
   }

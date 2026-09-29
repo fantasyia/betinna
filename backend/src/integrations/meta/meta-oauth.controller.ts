@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -27,6 +27,33 @@ export class MetaOAuthController {
     }
     const url = await this.oauth.buildAuthUrl(user.empresaIdAtiva);
     return { url };
+  }
+
+  /**
+   * Estado da assinatura da Página no app (Lead Ads precisa de `leadgen`),
+   * lido ao vivo da Meta. A tela de Integrações mostra.
+   */
+  @Get('assinatura')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Estado da assinatura da Página (subscribed_apps) — Lead Ads.' })
+  async assinatura(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.oauth.estadoAssinatura(user.empresaIdAtiva);
+  }
+
+  /** Tenta assinar de novo (ex.: permissão concedida depois da conexão). */
+  @Post('assinatura/refazer')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Reassina a Página no app (Lead Ads + Messenger).' })
+  async reassinar(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.oauth.estadoAssinatura(user.empresaIdAtiva, true);
   }
 
   /**

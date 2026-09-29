@@ -31,10 +31,21 @@ export interface MetaInstagramBusinessAccount {
 
 // ─── Credenciais persistidas por empresa ─────────────────────────────
 
+/** Estado do `subscribed_apps` da Página (assinada ao conectar, 29/09). */
+export interface AssinaturaPagina {
+  /** O que importa pro Lead Ads: `leadgen` está entre os campos assinados. */
+  leadgen: boolean;
+  campos: string[];
+  /** ISO de quando foi conferido. */
+  em: string;
+  erro?: string;
+}
+
 export interface FacebookCredenciais {
   pageId: string;
   pageName: string;
   pageAccessToken: string;
+  assinatura?: AssinaturaPagina;
   /** User token (long-lived, ~60 dias). Mantemos pra renovar page token se necessário. */
   userAccessToken?: string;
   userTokenExpiresAt?: number;

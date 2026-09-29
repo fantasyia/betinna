@@ -39,6 +39,8 @@ export interface MetaLeadgenDados {
   ad_id?: string;
   form_id?: string;
   field_data?: Array<{ name: string; values: string[] }>;
+  /** `fb` | `ig` — onde o formulário foi preenchido. */
+  platform?: string;
 }
 
 /** Resposta do `GET /{ad_id}?fields=name,campaign{name},adset{name}`. */

@@ -99,6 +99,37 @@ export class MetaGraphClientService {
     return res.instagram_business_account ?? null;
   }
 
+  /**
+   * Assina o app na Página (`POST /{page}/subscribed_apps`). A lista SUBSTITUI
+   * a anterior — quem chama manda todos os campos que quer (mensagem + leadgen).
+   * Exige `pages_manage_metadata` e o Page Access Token.
+   */
+  async assinarAppNaPagina(
+    pageId: string,
+    pageAccessToken: string,
+    campos: string[],
+  ): Promise<void> {
+    const qs = new URLSearchParams({
+      access_token: pageAccessToken,
+      subscribed_fields: campos.join(','),
+    });
+    await this.callExpect<{ success?: boolean }>(
+      'POST',
+      `/${encodeURIComponent(pageId)}/subscribed_apps?${qs}`,
+    );
+  }
+
+  /** Campos que ESTE app tem assinados na Página (vazio = não assinado). */
+  async camposAssinadosNaPagina(pageId: string, pageAccessToken: string): Promise<string[]> {
+    const qs = new URLSearchParams({ access_token: pageAccessToken });
+    const r = await this.callExpect<{
+      data?: Array<{ id?: string; subscribed_fields?: string[] }>;
+    }>('GET', `/${encodeURIComponent(pageId)}/subscribed_apps?${qs}`);
+    const appId = this.env.get('META_GRAPH_APP_ID');
+    const app = (r.data ?? []).find((a) => !appId || a.id === appId) ?? null;
+    return app?.subscribed_fields ?? [];
+  }
+
   // ─── Envio (Messenger + IG) ──────────────────────────────────────────
 
   /**
@@ -146,7 +177,7 @@ export class MetaGraphClientService {
   async obterLead(leadgenId: string, pageAccessToken: string): Promise<MetaLeadgenDados> {
     const qs = new URLSearchParams({
       access_token: pageAccessToken,
-      fields: 'id,created_time,ad_id,form_id,field_data',
+      fields: 'id,created_time,ad_id,form_id,field_data,platform',
     });
     return this.callExpect<MetaLeadgenDados>('GET', `/${encodeURIComponent(leadgenId)}?${qs}`);
   }

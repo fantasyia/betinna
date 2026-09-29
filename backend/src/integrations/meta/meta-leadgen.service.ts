@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { Prisma } from '@prisma/client';
+import { Queue, UnrecoverableError } from 'bullmq';
+import { type CanalOrigem, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { LeadCaptureService } from '@modules/leads/lead-capture.service';
 import { LeadsService } from '@modules/leads/leads.service';
+import { normalizarTelefoneIntl } from '@shared/validators/br-validators';
 import { normalizarAtribuicao, type Atribuicao } from '@modules/leads/atribuicao.util';
 import { MetaGraphClientService } from './meta-graph-client.service';
 import { MetaOAuthService } from './meta-oauth.service';
@@ -59,6 +61,7 @@ export class MetaLeadgenService {
     private readonly oauth: MetaOAuthService,
     private readonly graph: MetaGraphClientService,
     private readonly leads: LeadsService,
+    private readonly captura: LeadCaptureService,
   ) {}
 
   /**
@@ -81,9 +84,12 @@ export class MetaLeadgenService {
 
     const resolved = await this.oauth.resolverPorAccount('facebook', data.pageId);
     if (!resolved) {
-      // Sem conexão ativa não há token — e isso não muda por retry.
-      this.logger.warn(`Lead Ads ${data.leadgenId}: página ${data.pageId} sem conexão — ignorado`);
-      return;
+      // Sem conexão ativa não há token — e isso não muda por retry. Mas lead de
+      // anúncio não some calado (29/09): vai direto pro dead-letter, onde dá pra
+      // reprocessar depois de reconectar a Página.
+      throw new UnrecoverableError(
+        `Lead Ads ${data.leadgenId}: página ${data.pageId} sem conexão ativa no Betinna`,
+      );
     }
     const cred = resolved.credenciais as FacebookCredenciais;
 
@@ -93,15 +99,45 @@ export class MetaLeadgenService {
 
     const campos = this.indexarCampos(dados);
     const nome = this.primeiro(campos, NOME) ?? this.nomeComposto(campos);
-    const telefone = this.primeiro(campos, TELEFONE);
+    // Mesmo formato do site (E.164): o fluxo manda WhatsApp pra este número, e o
+    // Meta entrega do jeito que a pessoa digitou. Inválido fica cru, não some.
+    const telefoneCru = this.primeiro(campos, TELEFONE);
+    const telefone = telefoneCru ? (normalizarTelefoneIntl(telefoneCru) ?? telefoneCru) : undefined;
     const email = this.primeiro(campos, EMAIL);
     if (!nome && !telefone && !email) {
-      this.logger.warn(`Lead Ads ${data.leadgenId} sem nome/telefone/e-mail — nada a importar`);
-      return;
+      throw new UnrecoverableError(
+        `Lead Ads ${data.leadgenId}: formulário sem nome, telefone nem e-mail`,
+      );
     }
 
     const atribuicao = await this.montarAtribuicao(data, cred.pageAccessToken);
     const empresaNome = this.primeiro(campos, EMPRESA);
+    const canalOrigem: CanalOrigem = dados.platform === 'ig' ? 'INSTAGRAM' : 'FACEBOOK';
+    const formId = data.formId ?? dados.form_id;
+
+    // Quem já é lead (mesma regra do site: telefone sufixo-8 em lead aberto, ou
+    // e-mail em qualquer etapa) NÃO vira lead novo — e-mail repetido estourava o
+    // índice único 6× e o lead se perdia; telefone repetido duplicava. Registra
+    // o toque novo no existente.
+    const existente = await this.captura.acharLeadAberto(resolved.empresaId, telefone, email);
+    if (existente) {
+      await this.registrarToqueEmExistente(resolved.empresaId, existente, {
+        leadgenId: data.leadgenId,
+        formId,
+        pageId: data.pageId,
+        campos,
+        atribuicao,
+        contatoNome: nome,
+        contatoEmail: email,
+        contatoTelefone: telefone,
+        cidade: this.primeiro(campos, CIDADE),
+        uf: this.primeiro(campos, UF),
+      });
+      this.logger.log(
+        `Lead Ads ${data.leadgenId}: lead já existia (${existente}) — toque registrado`,
+      );
+      return;
+    }
 
     const lead = await this.leads.createPublico(resolved.empresaId, {
       // O nome do LEAD é o da empresa quando o formulário pergunta; senão o da
@@ -129,6 +165,7 @@ export class MetaLeadgenService {
       utmCampaign: atribuicao.primeiro?.utmCampaign ?? null,
       origemCadastro: 'meta_lead_ads',
       formularioOrigem: 'lead_ads',
+      canalOrigem,
     });
 
     this.logger.log(
@@ -137,6 +174,71 @@ export class MetaLeadgenService {
   }
 
   // ─── Internos ────────────────────────────────────────────────────────
+
+  /**
+   * Lead que já existia preencheu um formulário do Lead Ads. Três coisas:
+   *  1. atribuição: 1º toque intacto, último = este anúncio (regra do site);
+   *  2. campo vazio é completado, campo preenchido NÃO é sobrescrito;
+   *  3. o toque fica em `observacoes` e o `metaLeadgenId` no `variaveis` — é o
+   *     que torna a reentrega do webhook idempotente (`jaImportado`).
+   * `variaveis` por MERGE jsonb, nunca read-modify-write: outro caminho pode
+   * estar gravando resposta de fluxo no mesmo lead agora.
+   */
+  private async registrarToqueEmExistente(
+    empresaId: string,
+    leadId: string,
+    t: {
+      leadgenId: string;
+      formId?: string;
+      pageId: string;
+      campos: Record<string, string>;
+      atribuicao: Atribuicao;
+      contatoNome?: string;
+      contatoEmail?: string;
+      contatoTelefone?: string;
+      cidade?: string;
+      uf?: string;
+    },
+  ): Promise<void> {
+    await this.captura.aplicarAtribuicaoEmLeadExistente(leadId, t.atribuicao);
+
+    const atual = await this.prisma.lead.findFirst({
+      where: { id: leadId, empresaId },
+      select: {
+        contatoNome: true,
+        contatoEmail: true,
+        contatoTelefone: true,
+        cidade: true,
+        uf: true,
+        observacoes: true,
+      },
+    });
+    if (!atual) return;
+    const dados: Prisma.LeadUpdateInput = {};
+    if (!atual.contatoNome && t.contatoNome) dados.contatoNome = t.contatoNome;
+    if (!atual.contatoEmail && t.contatoEmail) dados.contatoEmail = t.contatoEmail;
+    if (!atual.contatoTelefone && t.contatoTelefone) dados.contatoTelefone = t.contatoTelefone;
+    if (!atual.cidade && t.cidade) dados.cidade = t.cidade;
+    if (!atual.uf && t.uf) dados.uf = t.uf;
+    const campanha = t.atribuicao.ultimo?.utmCampaign;
+    const carimbo = `[${new Date().toLocaleDateString('pt-BR')}] Preencheu o formulário do Lead Ads${
+      campanha ? ` (${campanha})` : ''
+    }`;
+    dados.observacoes = atual.observacoes ? `${atual.observacoes}\n${carimbo}` : carimbo;
+    await this.prisma.lead.update({ where: { id: leadId }, data: dados });
+
+    const merge = {
+      metaLeadgenId: t.leadgenId,
+      metaFormId: t.formId,
+      metaPageId: t.pageId,
+      respostasFormulario: t.campos,
+    };
+    await this.prisma.$executeRaw`
+      UPDATE "Lead"
+      SET variaveis = COALESCE(variaveis, '{}'::jsonb) || ${JSON.stringify(merge)}::jsonb
+      WHERE id = ${leadId} AND "empresaId" = ${empresaId}
+    `;
+  }
 
   /**
    * O Meta REENTREGA webhook, e o job pode voltar depois de o `removeOnComplete`

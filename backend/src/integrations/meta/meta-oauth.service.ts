@@ -11,7 +11,7 @@ import {
   verifyOAuthState,
 } from '@shared/utils/oauth-state.util';
 import { MetaGraphClientService } from './meta-graph-client.service';
-import type { FacebookCredenciais, InstagramCredenciais } from './meta.types';
+import type { AssinaturaPagina, FacebookCredenciais, InstagramCredenciais } from './meta.types';
 
 const DEFAULT_SCOPE = [
   'public_profile',
@@ -23,7 +23,26 @@ const DEFAULT_SCOPE = [
   'instagram_basic',
   'instagram_manage_messages',
   'business_management',
+  // Lead Ads (29/09): sem `leads_retrieval` o `GET /{leadgen_id}` falha e o lead
+  // se perde; `pages_manage_ads` é exigida junto pra ler lead da Página; e
+  // `ads_read` resolve o ad_id no NOME da campanha (a atribuição).
+  'leads_retrieval',
+  'pages_manage_ads',
+  'ads_read',
 ].join(',');
+
+/**
+ * Campos que o app assina na Página (`subscribed_apps`). O POST SUBSTITUI a
+ * lista inteira — assinar só `leadgen` desligaria o Messenger. Por isso vão os
+ * de mensagem junto.
+ */
+export const CAMPOS_ASSINATURA_PAGINA = [
+  'messages',
+  'messaging_postbacks',
+  'message_deliveries',
+  'message_reads',
+  'leadgen',
+];
 
 interface ConectarPagesResult {
   pagesConectadas: Array<{
@@ -138,6 +157,10 @@ export class MetaOAuthService {
       userAccessToken: userToken,
       userTokenExpiresAt,
     };
+    // Assina a Página no app (Lead Ads + Messenger). Era passo MANUAL no painel
+    // da Meta — empresa nova ficava sem receber lead nenhum e sem aviso. Falha
+    // aqui NÃO derruba a conexão: fica gravada e a tela mostra o estado.
+    fbCreds.assinatura = await this.assinarPagina(page.id, page.access_token);
     await this.persistirConexao(empresaId, 'facebook', fbCreds, page.id, true);
 
     // Persiste Instagram (se houver)
@@ -275,6 +298,67 @@ export class MetaOAuthService {
 
   /** `true` só na volta do provedor (a pessoa autorizou). O refresh de token
    *  passa pelo mesmo caminho e NÃO pode carimbar. */
+  /**
+   * Assina o app na Página e devolve o estado pra gravar/mostrar. Nunca
+   * estoura: o erro vira texto no estado.
+   */
+  async assinarPagina(pageId: string, pageAccessToken: string): Promise<AssinaturaPagina> {
+    const em = new Date().toISOString();
+    try {
+      await this.graph.assinarAppNaPagina(pageId, pageAccessToken, CAMPOS_ASSINATURA_PAGINA);
+      const campos = await this.graph.camposAssinadosNaPagina(pageId, pageAccessToken);
+      return { leadgen: campos.includes('leadgen'), campos, em };
+    } catch (err) {
+      const erro = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Meta: não assinou a Página ${pageId} no app — ${erro}`);
+      return { leadgen: false, campos: [], em, erro: erro.slice(0, 300) };
+    }
+  }
+
+  /**
+   * Estado da assinatura da Página conectada, lido AO VIVO da Meta (a tela de
+   * Integrações mostra). `reassinar` tenta de novo antes de ler.
+   */
+  async estadoAssinatura(
+    empresaId: string,
+    reassinar = false,
+  ): Promise<(AssinaturaPagina & { pageId: string; pageName: string }) | null> {
+    let creds: FacebookCredenciais;
+    try {
+      const conn = await this.integracoes.obterCredenciaisInternas(empresaId, 'facebook');
+      creds = conn.credenciais as unknown as FacebookCredenciais;
+    } catch {
+      return null;
+    }
+    let estado: AssinaturaPagina;
+    if (reassinar) {
+      estado = await this.assinarPagina(creds.pageId, creds.pageAccessToken);
+      await this.persistirConexao(
+        empresaId,
+        'facebook',
+        { ...creds, assinatura: estado },
+        creds.pageId,
+      );
+    } else {
+      try {
+        const campos = await this.graph.camposAssinadosNaPagina(
+          creds.pageId,
+          creds.pageAccessToken,
+        );
+        estado = { leadgen: campos.includes('leadgen'), campos, em: new Date().toISOString() };
+      } catch (err) {
+        const erro = err instanceof Error ? err.message : String(err);
+        estado = {
+          leadgen: false,
+          campos: [],
+          em: new Date().toISOString(),
+          erro: erro.slice(0, 300),
+        };
+      }
+    }
+    return { ...estado, pageId: creds.pageId, pageName: creds.pageName };
+  }
+
   private async persistirConexao(
     empresaId: string,
     servico: 'facebook' | 'instagram',
