@@ -14,6 +14,11 @@ import { Select } from '@/components/FormField';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
 import { cn } from '@/lib/cn';
+import {
+  CampoResposta,
+  hora,
+  useMensagensMkt,
+} from '@/pages/marketplace/RespostaMarketplace';
 
 // Layout do badge legado (sem cor) — cor entra por inline style color-mix.
 const BADGE_CLS =
@@ -49,6 +54,27 @@ type Status =
   | 'EXPIRADO'
   | 'CANCELADO';
 
+/** O que o backend junta da reclamação no ML (`metadata.ml_detalhe`, 29/09). */
+interface DetalheML {
+  titulo: string | null;
+  descricao: string | null;
+  problema: string | null;
+  responsavel: string | null;
+  prazo: string | null;
+  motivo: string | null;
+  afetaReputacao: string | null;
+  acoesVendedor: string[];
+  pedido: {
+    id: string;
+    total: number | null;
+    itemId: string | null;
+    titulo: string | null;
+    variacao: string | null;
+    sku: string | null;
+    quantidade: number | null;
+  } | null;
+}
+
 interface Incident {
   id: string;
   externalId?: string | null;
@@ -56,16 +82,39 @@ interface Incident {
   tipo: Tipo;
   status: Status;
   cliente?: { id: string; nome: string } | null;
-  pedidoId?: string | null;
-  valor?: number | null;
-  valorReembolso?: number | null;
+  pedidoExternoId?: string | null;
+  // Decimal do Prisma chega como string no JSON.
+  valor?: number | string | null;
+  valorReembolso?: number | string | null;
   motivo?: string | null;
   prazoResposta?: string | null;
   resolvidoEm?: string | null;
-  criadoEm: string;
+  abertoEm: string;
   atualizadoEm: string;
-  conversation?: { id: string } | null;
-  metadata?: Record<string, unknown>;
+  conversations?: Array<{ id: string }>;
+  metadata?: { ml_detalhe?: DetalheML } & Record<string, unknown>;
+}
+
+const RESPONSAVEL_LABEL: Record<string, string> = {
+  respondent: 'Você (vendedor)',
+  complainant: 'Comprador',
+  mediator: 'Mercado Livre (mediação)',
+};
+
+const REPUTACAO_LABEL: Record<string, string> = {
+  not_affected: 'Não afeta sua reputação',
+  affected: 'Afeta sua reputação',
+};
+
+function valorNum(v: number | string | null | undefined): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Anúncio no ML a partir do id (MLB123 → MLB-123). */
+function linkAnuncio(itemId: string): string {
+  return `https://produto.mercadolivre.com.br/${itemId.replace(/^([A-Z]+)(\d+)$/, '$1-$2')}`;
 }
 
 interface Resumo {
@@ -195,28 +244,49 @@ export default function MarketplaceIncidentsPage() {
       render: (i) => TIPO_LABEL[i.tipo],
     },
     {
-      key: 'cliente',
-      header: 'Cliente',
-      render: (i) => (
-        <div>
-          <div>{i.cliente?.nome ?? <em className="text-muted">—</em>}</div>
-          {i.externalId && (
-            <div className="text-[11px] text-muted">ID {i.externalId}</div>
-          )}
-        </div>
-      ),
+      key: 'produto',
+      header: 'Produto / motivo',
+      render: (i) => {
+        const d = i.metadata?.ml_detalhe;
+        return (
+          <div className="max-w-[340px]">
+            <div className="truncate">
+              {d?.pedido?.titulo ?? i.cliente?.nome ?? <em className="text-muted">—</em>}
+            </div>
+            {d?.pedido?.variacao && (
+              <div className="text-[11px] text-muted truncate">{d.pedido.variacao}</div>
+            )}
+            {(d?.titulo || i.motivo) && (
+              <div className="text-[12px] text-muted truncate">{d?.titulo ?? i.motivo}</div>
+            )}
+            {i.externalId && <div className="text-[11px] text-muted">ID {i.externalId}</div>}
+          </div>
+        );
+      },
     },
     {
       key: 'valor',
       header: 'Valor',
-      render: (i) =>
-        i.valor !== null && i.valor !== undefined ? fmtBRL(i.valor) : '—',
+      render: (i) => {
+        const v = valorNum(i.valor);
+        return v !== null ? fmtBRL(v) : '—';
+      },
     },
     {
       key: 'prazo',
       header: 'Prazo',
       render: (i) => {
-        if (['RESOLVIDO', 'CANCELADO', 'EXPIRADO'].includes(i.status) || !i.prazoResposta) {
+        if (['RESOLVIDO', 'CANCELADO', 'EXPIRADO'].includes(i.status)) return '—';
+        const d = i.metadata?.ml_detalhe;
+        if (!i.prazoResposta) {
+          // prazo de outra parte (ex.: comprador devolver) — informativo, sem alarme
+          if (d?.prazo && d.responsavel && d.responsavel !== 'respondent') {
+            return (
+              <span className="text-[12px] text-muted">
+                {RESPONSAVEL_LABEL[d.responsavel] ?? d.responsavel} até {hora(d.prazo)}
+              </span>
+            );
+          }
           return '—';
         }
         const h = hoursUntil(i.prazoResposta);
@@ -418,13 +488,19 @@ function StatBox({
 
 function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, loading, error, refetch } = useApiQuery<Incident>(`/marketplace/incidentes/${id}`);
+  const d = data?.metadata?.ml_detalhe;
+  const convId = data?.conversations?.[0]?.id ?? null;
+  const podeMandar = (d?.acoesVendedor ?? []).some((a) => a.startsWith('send_message_to_'));
+  const encerrado = data ? ['RESOLVIDO', 'CANCELADO', 'EXPIRADO'].includes(data.status) : false;
+  const valor = valorNum(data?.valor);
+  const reembolso = valorNum(data?.valorReembolso);
 
   return (
     <Dialog
       open
       onClose={onClose}
       size="lg"
-      title="Incidente"
+      title={d?.titulo ?? `${data ? TIPO_LABEL[data.tipo] : 'Reclamação'}`}
       footer={
         <button type="button" onClick={onClose} className={BTN_SECONDARY_CLS}>
           Fechar
@@ -433,8 +509,8 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
     >
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
-          <div>
-            <header className="flex gap-2 flex-wrap mb-4">
+          <div data-testid="inc-detalhe">
+            <header className="flex gap-2 flex-wrap mb-3">
               <span className={BADGE_CLS} style={badgeStyle(CANAL_COLOR[data.canal])}>
                 {CANAL_LABEL[data.canal]}
               </span>
@@ -444,54 +520,166 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
               <span className={BADGE_CLS} style={badgeStyle(STATUS_COLOR[data.status])}>
                 {STATUS_LABEL[data.status]}
               </span>
+              {d?.afetaReputacao && (
+                <span
+                  className={BADGE_CLS}
+                  style={badgeStyle(
+                    d.afetaReputacao === 'not_affected' ? 'var(--success)' : 'var(--danger)',
+                  )}
+                >
+                  {REPUTACAO_LABEL[d.afetaReputacao] ?? d.afetaReputacao}
+                </span>
+              )}
             </header>
 
-            <dl className="grid grid-cols-2 gap-3 text-[14px]">
-              <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
-              <Info label="External ID">{data.externalId ?? '—'}</Info>
-              <Info label="Valor">
-                {data.valor !== null && data.valor !== undefined ? fmtBRL(data.valor) : '—'}
-              </Info>
-              <Info label="Reembolso">
-                {data.valorReembolso !== null && data.valorReembolso !== undefined
-                  ? fmtBRL(data.valorReembolso)
-                  : '—'}
-              </Info>
-              <Info label="Prazo resposta">{fmtDate(data.prazoResposta)}</Info>
-              <Info label="Criado">{fmtDate(data.criadoEm)}</Info>
-              {data.resolvidoEm && <Info label="Resolvido">{fmtDate(data.resolvidoEm)}</Info>}
-              {data.pedidoId && <Info label="Pedido">{data.pedidoId}</Info>}
-            </dl>
-
-            {data.motivo && (
-              <div className="mt-4">
-                <h3 className="m-0 text-[12px] text-muted uppercase tracking-[0.3px]">
-                  Motivo
-                </h3>
-                <p className="mt-1 p-3 bg-bg-alt border border-border rounded-md whitespace-pre-wrap">
-                  {data.motivo}
-                </p>
+            {(d?.descricao || d?.responsavel) && (
+              <div className="mb-4 p-3 bg-bg-alt border border-border rounded-md text-[14px]">
+                {d?.descricao && <p className="m-0 whitespace-pre-wrap">{d.descricao}</p>}
+                {d?.responsavel && !encerrado && (
+                  <p className="m-0 mt-2 text-[13px]">
+                    <strong>Próxima ação:</strong>{' '}
+                    {RESPONSAVEL_LABEL[d.responsavel] ?? d.responsavel}
+                    {d.prazo && <> · até {fmtDate(d.prazo)}</>}
+                    {d.responsavel !== 'respondent' && (
+                      <span className="text-muted"> — você não precisa fazer nada agora.</span>
+                    )}
+                  </p>
+                )}
               </div>
             )}
 
-            {data.conversation?.id && (
-              <p className="text-[13px] mt-4">
-                💬 Conversa vinculada:{' '}
-                <a href={`/inbox?conversa=${data.conversation.id}`} className="text-primary">
-                  abrir no Inbox →
-                </a>
-              </p>
-            )}
+            <dl className="grid grid-cols-2 gap-3 text-[14px]">
+              {d?.pedido?.titulo && (
+                <div className="col-span-2">
+                  <Info label="Produto">
+                    {d.pedido.itemId ? (
+                      <a
+                        href={linkAnuncio(d.pedido.itemId)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary"
+                      >
+                        {d.pedido.titulo}
+                      </a>
+                    ) : (
+                      d.pedido.titulo
+                    )}
+                    {(d.pedido.variacao || d.pedido.sku) && (
+                      <div className="text-[12px] text-muted">
+                        {[d.pedido.variacao, d.pedido.sku && `SKU ${d.pedido.sku}`]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        {d.pedido.quantidade ? ` · ${d.pedido.quantidade} un.` : ''}
+                      </div>
+                    )}
+                  </Info>
+                </div>
+              )}
+              <Info label="Motivo do comprador">{data.motivo ?? d?.problema ?? '—'}</Info>
+              <Info label="Valor da venda">{valor !== null ? fmtBRL(valor) : '—'}</Info>
+              {reembolso !== null && <Info label="Reembolso">{fmtBRL(reembolso)}</Info>}
+              <Info label="Pedido">
+                {data.pedidoExternoId ? (
+                  <a
+                    href={`https://www.mercadolivre.com.br/vendas/${data.pedidoExternoId}/detalhe`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary"
+                  >
+                    {data.pedidoExternoId} ↗
+                  </a>
+                ) : (
+                  '—'
+                )}
+              </Info>
+              <Info label="Reclamação">{data.externalId ?? '—'}</Info>
+              <Info label="Entrou no app">{fmtDate(data.abertoEm)}</Info>
+              {data.resolvidoEm && <Info label="Resolvido">{fmtDate(data.resolvidoEm)}</Info>}
+            </dl>
 
-            <p className="text-[12px] text-muted mt-4 leading-[1.5]">
-              <strong>Nota:</strong> ações específicas (responder, aceitar oferta, abrir disputa)
-              dependem do marketplace. Use a Inbox vinculada quando aplicável, ou o Seller Center
-              do marketplace correspondente. Ações via API serão habilitadas em fases futuras.
-            </p>
+            {convId && (
+              <MensagensReclamacao
+                conversationId={convId}
+                podeMandar={podeMandar && !encerrado}
+                onEnviada={refetch}
+              />
+            )}
           </div>
         )}
       </StateView>
     </Dialog>
+  );
+}
+
+const PAPEL_MSG: Record<string, string> = {
+  mediator: 'Mercado Livre',
+  complainant: 'Comprador',
+  respondent: 'Você',
+};
+
+/** Mensagens da reclamação e resposta direto daqui (vai pro ML pelo mesmo caminho da Inbox). */
+function MensagensReclamacao({
+  conversationId,
+  podeMandar,
+  onEnviada,
+}: {
+  conversationId: string;
+  podeMandar: boolean;
+  onEnviada: () => void;
+}) {
+  const { lista, refetch } = useMensagensMkt(conversationId);
+  // O evento "sistêmico" (resumo técnico da claim) não é conversa.
+  const msgs = lista.filter((m) => m.tipo !== 'SYSTEM');
+  return (
+    <div className="mt-5">
+      <h3 className="m-0 mb-2 text-[12px] text-muted uppercase tracking-[0.3px]">Mensagens</h3>
+      {msgs.length === 0 ? (
+        <p className="text-[13px] text-muted m-0">Nenhuma mensagem nesta reclamação.</p>
+      ) : (
+        <ul className="m-0 p-0 list-none flex flex-col gap-2 max-h-[320px] overflow-y-auto">
+          {msgs.map((m) => (
+            <li
+              key={m.id}
+              className={cn(
+                'rounded-md border px-3 py-2 text-[13px]',
+                m.direction === 'OUTBOUND'
+                  ? 'border-border bg-surface ml-8'
+                  : 'border-border bg-bg-alt mr-8',
+                m.status === 'FAILED' && 'border-danger',
+              )}
+            >
+              <div className="flex justify-between gap-2 text-[11px] text-muted mb-0.5">
+                <span>
+                  {m.direction === 'OUTBOUND'
+                    ? m.status === 'FAILED'
+                      ? '⚠ Você — não enviada'
+                      : 'Você'
+                    : (PAPEL_MSG[m.meta?.ml_sender_role ?? ''] ?? 'Comprador')}
+                </span>
+                <span>{hora(m.criadoEm)}</span>
+              </div>
+              <div className="whitespace-pre-wrap">{m.conteudo}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {podeMandar ? (
+        <CampoResposta
+          conversationId={conversationId}
+          testId="inc-msg"
+          placeholder="Mensagem pro Mercado Livre / comprador…"
+          onEnviada={() => {
+            refetch();
+            onEnviada();
+          }}
+        />
+      ) : (
+        <p data-testid="inc-sem-acao" className="text-[12px] text-muted mt-2 mb-0">
+          O Mercado Livre não libera mensagem sua nesta etapa — quando precisar de você, o campo
+          de resposta aparece aqui.
+        </p>
+      )}
+    </div>
   );
 }
 

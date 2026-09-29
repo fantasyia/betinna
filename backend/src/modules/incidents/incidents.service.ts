@@ -119,6 +119,8 @@ export class IncidentsService {
 
   /** Resumo rápido — usado pra widgets no dashboard. */
   async resumo(user: AuthenticatedUser): Promise<{
+    total: number;
+    aguardandoVendedor: number;
     aguardandoMim: number;
     prazoUrgente: number;
     emMediacao: number;
@@ -167,7 +169,11 @@ export class IncidentsService {
       porCanalAguardando.map((c) => [c.canal, c._count._all] as const),
     );
 
+    // `total` e `aguardandoVendedor` são os nomes que a aba Marketplaces lê — a
+    // tela mostrava "undefined" (29/09). `aguardandoMim` fica pro dashboard.
     return {
+      total: porCanal.reduce((s, c) => s + c._count._all, 0),
+      aguardandoVendedor: aguardando,
       aguardandoMim: aguardando,
       prazoUrgente: urgente,
       emMediacao: mediacao,

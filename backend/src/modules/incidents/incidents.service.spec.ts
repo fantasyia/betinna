@@ -252,6 +252,9 @@ describe('IncidentsService', () => {
       const result = await service.resumo(fakeUser());
 
       expect(result.aguardandoMim).toBe(5);
+      // nomes que a aba Marketplaces lê (mostrava "undefined", 29/09)
+      expect(result.aguardandoVendedor).toBe(5);
+      expect(result.total).toBe(5);
       expect(result.prazoUrgente).toBe(2);
       expect(result.emMediacao).toBe(1);
       expect(result.porCanal).toHaveLength(2);
