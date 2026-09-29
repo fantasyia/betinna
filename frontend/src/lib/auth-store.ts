@@ -147,6 +147,9 @@ export function iniciarSincroniaDeLogout(): void {
 }
 
 export function clearSession(): void {
+  // Guarda o access ANTES de limpar: o backend precisa dele pra revogar a sessão
+  // no Supabase (sem ele o logout é só local e o cookie antigo segue valendo).
+  const accessToken = getSession()?.accessToken;
   encerrarSessaoLocal();
   // Avisa as outras abas ANTES do fetch (não depende da rede).
   try {
@@ -159,6 +162,7 @@ export function clearSession(): void {
   void fetch(`${API_BASE}/api/v1/auth/signout`, {
     method: 'POST',
     credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
   }).catch(() => {
     /* best-effort */
   });

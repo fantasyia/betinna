@@ -585,10 +585,10 @@ describe('UsersService', () => {
 
       const result = await service.resendInvite(fakeUser(), 'user-1');
 
-      // O link agora VOLTA na resposta (o e-mail é o elo frágil — ver o describe
-      // "link na resposta"), então a asserção passa a olhar os campos que importam.
+      // E-mail saiu → o link NÃO volta (credencial de uso único; só volta quando o
+      // e-mail falha — ver o describe "link na resposta"). Auditoria 29/09/2026.
       expect(result).toMatchObject({ ok: true, sentTo: 'novo@empresa.com', emailEnviado: true });
-      expect(result.inviteUrl).toBeTruthy();
+      expect(result.inviteUrl).toBeNull();
       // Agora usa generateLink (não mais inviteUserByEmail) — U2 fix 2026-05-23
       expect(mockGenerateLink).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'invite', email: 'novo@empresa.com' }),
@@ -963,9 +963,9 @@ describe('UsersService.resendInvite — link na resposta', () => {
     return svc;
   }
 
-  it('e-mail OK: devolve o link e marca enviado', async () => {
+  it('e-mail OK: marca enviado e NÃO devolve o link (credencial de uso único)', async () => {
     const r = await montar(true).resendInvite(admin, 'u9');
-    expect(r.inviteUrl).toBe(LINK);
+    expect(r.inviteUrl).toBeNull();
     expect(r.emailEnviado).toBe(true);
   });
 

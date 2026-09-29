@@ -508,18 +508,27 @@ export class AuthSessionService {
 
   /** Logout: revoga no Supabase + apaga cookie. */
   async signout(req: Request, res: Response): Promise<void> {
-    const refreshToken = this.readRefreshCookie(req);
-    if (refreshToken) {
+    // O GoTrue só revoga com o ACCESS token no Authorization (`scope=global` derruba
+    // todas as sessões do usuário). Mandar o refresh dava 401 silencioso e o logout
+    // era só local — o cookie antigo seguia valendo no /auth/refresh até expirar.
+    // O front passou a mandar o access que tinha em memória; sem ele (sessão já
+    // expirada), só limpamos o cookie. Auditoria 29/09/2026.
+    const auth = req.headers.authorization ?? '';
+    const accessToken = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+    if (accessToken) {
       // Revoke é best-effort — mesmo se Supabase falhar, apagamos cookie local.
       try {
-        await fetch(`${this.supabaseUrl}/auth/v1/logout`, {
+        const r = await fetch(`${this.supabaseUrl}/auth/v1/logout?scope=global`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             apikey: this.supabaseAnonKey,
-            Authorization: `Bearer ${refreshToken}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         });
+        if (!r.ok) {
+          this.logger.warn(`Supabase logout respondeu ${r.status} (cookie apagado mesmo assim)`);
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Supabase logout falhou (cookie será apagado mesmo assim): ${msg}`);

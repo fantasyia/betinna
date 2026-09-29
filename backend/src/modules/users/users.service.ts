@@ -619,7 +619,8 @@ export class UsersService {
   ): Promise<{
     ok: true;
     sentTo: string;
-    inviteUrl: string;
+    /** Só vem preenchido quando o e-mail NÃO saiu (admin entrega por outro canal). */
+    inviteUrl: string | null;
     emailEnviado: boolean;
     motivo?: string;
   }> {
@@ -707,7 +708,10 @@ export class UsersService {
         motivo: `E-mail não enviado (${motivo}). Entregue o link abaixo por outro canal.`,
       };
     }
-    return { ok: true, sentTo: userScope.email, inviteUrl, emailEnviado: true };
+    // E-mail saiu: o link NÃO volta na resposta. É credencial de uso único que define
+    // a senha do alvo — passaria por devtools/HAR/proxy sem necessidade. Só volta no
+    // ramo acima, quando o admin precisa entregá-lo por outro canal. Auditoria 29/09/2026.
+    return { ok: true, sentTo: userScope.email, inviteUrl: null, emailEnviado: true };
   }
 
   /** Marca o usuário como ATIVO (chamado pelo onboarding após definir senha) */
