@@ -1,6 +1,7 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, Req, Res } from '@nestjs/common';
+import { conferirNavegador, vincularNavegador } from '@shared/utils/oauth-navegador';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Public } from '@shared/decorators/public.decorator';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -35,8 +36,13 @@ export class GoogleOAuthController {
   @ApiOperation({
     summary: 'Inicia OAuth com Google — retorna URL pra redirecionar o user',
   })
-  async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
+  async start(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ url: string }> {
     const url = await this.oauth.buildAuthUrl(user.id);
+    // Amarra o link a ESTE navegador (auditoria 29/09/2026 — oauth-navegador.ts).
+    vincularNavegador(res, url);
     return { url };
   }
 
@@ -55,6 +61,7 @@ export class GoogleOAuthController {
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
     @Query('error') error: string | undefined,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     if (error) {
@@ -63,6 +70,9 @@ export class GoogleOAuthController {
     if (!code || !state) {
       throw new BadRequestException('code e state são obrigatórios');
     }
+    // Navegador que voltou tem que ser o que clicou em "Conectar" (auditoria 29/09/2026).
+    const outroNavegador = conferirNavegador(req, state);
+    if (outroNavegador) return this.responder(res, false, 'Não deu pra conectar', outroNavegador);
     try {
       const { userId, email } = await this.oauth.exchangeCode(code, state);
       return this.responder(

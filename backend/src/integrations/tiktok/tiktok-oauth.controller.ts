@@ -1,6 +1,7 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, Req, Res } from '@nestjs/common';
+import { conferirNavegador, vincularNavegador } from '@shared/utils/oauth-navegador';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Public } from '@shared/decorators/public.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -19,11 +20,16 @@ export class TikTokOAuthController {
   @ApiBearerAuth()
   @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({ summary: 'Inicia shop authorization TikTok Shop. **DIRETOR-only (D45)**.' })
-  async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
+  async start(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ url: string }> {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const url = await this.oauth.buildAuthUrl(user.empresaIdAtiva);
+    // Amarra o link a ESTE navegador (auditoria 29/09/2026 — oauth-navegador.ts).
+    vincularNavegador(res, url);
     return { url };
   }
 
@@ -32,11 +38,15 @@ export class TikTokOAuthController {
   async callback(
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     if (!code || !state) {
       throw new BadRequestException('code e state são obrigatórios');
     }
+    // Navegador que voltou tem que ser o que clicou em "Conectar" (auditoria 29/09/2026).
+    const outroNavegador = conferirNavegador(req, state);
+    if (outroNavegador) return this.html(res, false, outroNavegador);
     try {
       const r = await this.oauth.processCallback(code, state);
       return this.html(res, true, `Loja TikTok shop_id=${r.shopId} conectada.`);
