@@ -52,7 +52,11 @@ function setup(opts?: {
     // precisa existir — o mock devolve a própria id pedida.
     evolutionInstancia: { findUnique: vi.fn().mockResolvedValue(null) },
     empresa: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => ({ id: where.id })),
+      findUnique: vi.fn(
+        async ({ where }: { where: { id: string } }): Promise<{ id: string } | null> => ({
+          id: where.id,
+        }),
+      ),
     },
   };
   const inbox = {

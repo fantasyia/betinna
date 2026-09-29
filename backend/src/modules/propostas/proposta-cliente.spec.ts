@@ -39,6 +39,7 @@ const TOKEN = 'tok-27';
 /** A PROP-0027 do teste do contrato — a referência aprovada pelo Léo. */
 const PARA_CONTRATO = {
   id: 'prop-27',
+  empresaId: 'emp-1',
   numero: 'PROP-0027',
   valor: 1528,
   modalidade: 'LOCACAO',

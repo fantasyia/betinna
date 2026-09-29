@@ -50,7 +50,7 @@ function construir() {
   let itensCanon = [{ concluido: false }];
   let urls = 0;
   const prisma = {
-    kanbanBoard: { findUniqueOrThrow: vi.fn(async () => structuredClone(board)) },
+    kanbanBoard: { findUniqueOrThrow: vi.fn(async (_args: unknown) => structuredClone(board)) },
     kanbanCard: {
       findMany: vi.fn(async () => [
         {

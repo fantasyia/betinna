@@ -11,6 +11,7 @@ import {
 
 const BASE: PropostaParaEnvio = {
   id: 'prop1',
+  empresaId: 'emp1',
   numero: 'PROP-0042',
   valor: new Prisma.Decimal(4350),
   modalidade: 'LOCACAO',
@@ -56,7 +57,14 @@ describe('montarContratoParaAssinar', () => {
     if (!r.ok) return;
     expect(r.dados.titulo).toBe('Proposta-Contrato PROP-0042 — Indústria Exemplo Ltda');
     // O metadata volta no webhook — é o que liga a assinatura ao contrato daqui.
-    expect(r.dados.metadata).toEqual({ proposta: 'PROP-0042', proposta_id: 'prop1' });
+    // `empresa_id` é o que deixa o webhook achar o contrato pelo NÚMERO sem cruzar
+    // tenant (o número se repete entre empresas). Sem ele, o fallback por número
+    // fica desligado — clicksign-assinatura.service.ts, auditoria de 29/09.
+    expect(r.dados.metadata).toEqual({
+      proposta: 'PROP-0042',
+      proposta_id: 'prop1',
+      empresa_id: 'emp1',
+    });
     expect(r.dados.cliente.nome).toBe('Marina Torres Aguiar');
   });
 
