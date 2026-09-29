@@ -19,7 +19,11 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Public } from '@shared/decorators/public.decorator';
-import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-exception';
+import {
+  ForbiddenException,
+  UnauthorizedException,
+  ValidationException,
+} from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -120,8 +124,18 @@ export class AuthController {
   @ApiOperation({ summary: 'Login com cookie httpOnly. Retorna accessToken+expiresAt.' })
   async login(
     @Body(new ZodValidationPipe(loginSchema)) dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
+    // Anti login-CSRF. Um <form> em site de terceiros consegue POSTar urlencoded
+    // aqui sem preflight (o parser urlencoded é global) e gravar o cookie de refresh
+    // do ATACANTE no navegador da vítima — SameSite=None em prod. Na próxima abertura
+    // do app, o bootstrap faz refresh e a vítima passa a operar na conta dele. JSON
+    // não sai de <form>, então exigir o content-type fecha a porta sem mexer no
+    // cookie; o front sempre manda JSON. Auditoria 29/09/2026.
+    if (!req.is('application/json')) {
+      throw new ValidationException([], 'Content-Type deve ser application/json');
+    }
     return this.authSession.login(dto.email, dto.password, res);
   }
 
