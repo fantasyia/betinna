@@ -8,12 +8,29 @@ import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { MLOAuthService } from './ml-oauth.service';
+import { MLQuestionsService } from './ml-questions.service';
 import { frontendOrigin } from '@shared/utils/frontend-origin';
 
 @ApiTags('integracoes/mercadolivre')
 @Controller('integracoes/mercadolivre')
 export class MLOAuthController {
-  constructor(private readonly oauth: MLOAuthService) {}
+  constructor(
+    private readonly oauth: MLOAuthService,
+    private readonly questions: MLQuestionsService,
+  ) {}
+
+  /** Diagnóstico só de leitura das perguntas pendentes da empresa ativa (ver o serviço). */
+  @Get('diagnostico/perguntas')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Diagnóstico das perguntas pendentes (só leitura).' })
+  async diagnosticoPerguntas(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    const creds = await this.oauth.getAccessToken(user.empresaIdAtiva);
+    return this.questions.diagnosticoPendentes(user.empresaIdAtiva, String(creds.userId));
+  }
 
   @Get('oauth/start')
   @ApiBearerAuth()

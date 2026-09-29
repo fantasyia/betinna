@@ -73,6 +73,74 @@ export class MLQuestionsService {
   }
 
   /**
+   * DIAGNÓSTICO (29/09, só leitura): por que a busca `status=UNANSWERED` traz 18
+   * perguntas e o painel do ML mostra 3 "a responder"? O filtro por anúncio
+   * ativo foi a hipótese errada (as 3 do painel estão num anúncio PAUSADO).
+   * Aqui o app devolve, pra cada pergunta pendente, os campos crus que o ML
+   * manda + o status do anúncio + se ela aparece em `/my/received_questions`
+   * (a busca do lado do vendedor) — pra achar o critério pelo dado, não chute.
+   */
+  async diagnosticoPendentes(empresaId: string, sellerId: string) {
+    const porSeller = await this.listarNaoRespondidas(empresaId, sellerId);
+    let meus: MLQuestion[] = [];
+    let erroMeus: string | null = null;
+    try {
+      const r = await this.ml.get<{ questions?: MLQuestion[] }>(
+        empresaId,
+        `/my/received_questions/search?status=UNANSWERED&limit=50&api_version=4`,
+      );
+      meus = r.questions ?? [];
+    } catch (err) {
+      erroMeus = err instanceof Error ? err.message : String(err);
+    }
+    const idsMeus = new Set(meus.map((q) => q.id));
+    const itens = [...new Set(porSeller.map((q) => String(q.item_id)))];
+    const statusItem = new Map<string, string>();
+    for (let i = 0; i < itens.length; i += 20) {
+      const lote = itens.slice(i, i + 20);
+      const r = await this.ml.get<Array<{ code: number; body?: { id?: string; status?: string } }>>(
+        empresaId,
+        `/items?ids=${lote.join(',')}&attributes=id,status,sub_status`,
+      );
+      for (const it of r ?? []) {
+        if (it.body?.id) statusItem.set(it.body.id, String(it.body.status));
+      }
+    }
+    return {
+      totalPorSeller: porSeller.length,
+      totalMeusRecebidos: meus.length,
+      erroMeusRecebidos: erroMeus,
+      perguntas: porSeller.map((q) => {
+        const cru = q as unknown as Record<string, unknown>;
+        return {
+          id: q.id,
+          data: q.date_created,
+          itemId: q.item_id,
+          statusAnuncio: statusItem.get(String(q.item_id)) ?? null,
+          status: q.status,
+          emMeusRecebidos: idsMeus.has(q.id),
+          // campos extras que o ML manda e o tipo não declara (hold, deleted_from_listing…)
+          extras: Object.fromEntries(
+            Object.entries(cru).filter(
+              ([k]) =>
+                ![
+                  'id',
+                  'text',
+                  'from',
+                  'answer',
+                  'date_created',
+                  'item_id',
+                  'seller_id',
+                  'status',
+                ].includes(k),
+            ),
+          ),
+        };
+      }),
+    };
+  }
+
+  /**
    * Busca perguntas não respondidas — usado pelo cron de fallback
    * (caso o webhook tenha falhado).
    */

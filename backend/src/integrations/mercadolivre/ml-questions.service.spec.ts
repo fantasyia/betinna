@@ -33,6 +33,58 @@ describe('MLQuestionsService', () => {
     service = new MLQuestionsService(ml as never, inbox as never);
   });
 
+  describe('diagnosticoPendentes (29/09, só leitura)', () => {
+    it('cruza a busca por seller com /my/received_questions e traz o status do anúncio + campos extras', async () => {
+      ml.get
+        .mockResolvedValueOnce({
+          questions: [
+            {
+              ...fakeQuestion({ id: 1, item_id: 'MLB1' }),
+              hold: false,
+              deleted_from_listing: false,
+            },
+            { ...fakeQuestion({ id: 2, item_id: 'MLB2' }), hold: true },
+          ],
+        })
+        .mockResolvedValueOnce({ questions: [fakeQuestion({ id: 1 })] })
+        .mockResolvedValueOnce([
+          { code: 200, body: { id: 'MLB1', status: 'paused' } },
+          { code: 200, body: { id: 'MLB2', status: 'active' } },
+        ]);
+
+      const r = await service.diagnosticoPendentes('emp-1', '999');
+
+      expect(r).toMatchObject({
+        totalPorSeller: 2,
+        totalMeusRecebidos: 1,
+        erroMeusRecebidos: null,
+      });
+      expect(r.perguntas[0]).toMatchObject({
+        id: 1,
+        statusAnuncio: 'paused',
+        emMeusRecebidos: true,
+        extras: { hold: false, deleted_from_listing: false },
+      });
+      expect(r.perguntas[1]).toMatchObject({
+        id: 2,
+        emMeusRecebidos: false,
+        extras: { hold: true },
+      });
+      // nada de texto do comprador nem credencial na saída
+      expect(JSON.stringify(r)).not.toMatch(/Qual o prazo|token/i);
+    });
+
+    it('/my/received_questions falhando não derruba o diagnóstico', async () => {
+      ml.get
+        .mockResolvedValueOnce({ questions: [fakeQuestion()] })
+        .mockRejectedValueOnce(new Error('403 forbidden'))
+        .mockResolvedValueOnce([]);
+      const r = await service.diagnosticoPendentes('emp-1', '999');
+      expect(r.erroMeusRecebidos).toBe('403 forbidden');
+      expect(r.totalPorSeller).toBe(1);
+    });
+  });
+
   describe('obter', () => {
     it('chama GET /questions/:id', async () => {
       ml.get.mockResolvedValue(fakeQuestion());
