@@ -28,6 +28,7 @@ interface ConversaMkt {
   ultimaMsgPreview?: string | null;
   ultimaMsgEm?: string | null;
   naoLidas?: number;
+  tagsInternas?: string[];
 }
 
 const CANAL_CURTO: Record<string, string> = {
@@ -119,7 +120,18 @@ function Pergunta({ c, onRespondida }: { c: ConversaMkt; onRespondida: () => voi
   return (
     <li className="px-4 py-3" data-testid="mkt-pergunta">
       <div className="flex items-start justify-between gap-3">
-        <Cabecalho c={c} />
+        <div className="flex items-center gap-2 min-w-0">
+          <Cabecalho c={c} />
+          {!enviada && c.tagsInternas?.some((t) => t.toLowerCase() === 'humano') && (
+            <span
+              data-testid="mkt-humano"
+              className="shrink-0 rounded-full border border-warning px-2 text-[11px] font-semibold text-warning"
+              title="A IA não achou a resposta no anúncio — precisa de um humano"
+            >
+              👤 Humano
+            </span>
+          )}
+        </div>
         <span className="text-[12px] text-muted shrink-0">{hora(c.ultimaMsgEm)}</span>
       </div>
       {(perguntas.length ? perguntas.map((m) => m.conteudo) : [c.ultimaMsgPreview ?? '—']).map(
@@ -138,13 +150,14 @@ function Pergunta({ c, onRespondida }: { c: ConversaMkt; onRespondida: () => voi
             conversationId={c.id}
             testId="mkt-pergunta"
             placeholder="Escreva a resposta pro comprador…"
-            sugerir={async () =>
-              (
-                await api.post<{ texto: string }>(
-                  `/integracoes/mercadolivre/perguntas/${c.id}/sugerir-resposta`,
-                )
-              ).texto
-            }
+            sugerir={async () => {
+              const r = await api.post<{ texto: string | null; precisaHumano: boolean }>(
+                `/integracoes/mercadolivre/perguntas/${c.id}/sugerir-resposta`,
+              );
+              // marcada pra humano: recarrega a lista pra etiqueta aparecer
+              if (r.precisaHumano) onRespondida();
+              return r.texto;
+            }}
             onEnviada={() => {
               refetch();
               onRespondida();

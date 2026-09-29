@@ -99,7 +99,7 @@ describe('ConversasMarketplace', () => {
 
   it('Sugerir com IA: o texto cai no campo e NADA é enviado sem clicar em Responder', async () => {
     mensagens = [pergunta];
-    post.mockResolvedValueOnce({ texto: 'Toda preta não temos, só branca.' });
+    post.mockResolvedValueOnce({ texto: 'Toda preta não temos, só branca.', precisaHumano: false });
     const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
     fireEvent.click(getByTestId('mkt-pergunta-ia'));
     await waitFor(() =>
@@ -111,6 +111,15 @@ describe('ConversasMarketplace', () => {
     expect(post).toHaveBeenCalledWith(
       '/integracoes/mercadolivre/perguntas/conv-1/sugerir-resposta',
     );
+  });
+
+  it('IA sem a informação: não preenche nada, avisa e mostra a etiqueta Humano', async () => {
+    mensagens = [pergunta];
+    post.mockResolvedValueOnce({ texto: null, precisaHumano: true });
+    const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    fireEvent.click(getByTestId('mkt-pergunta-ia'));
+    await waitFor(() => expect(getByTestId('mkt-pergunta-aviso').textContent).toContain('humano'));
+    expect((getByTestId('mkt-pergunta-texto') as HTMLTextAreaElement).value).toBe('');
   });
 
   it('já respondida: mostra a resposta num campo pequeno e esconde o campo de envio', () => {

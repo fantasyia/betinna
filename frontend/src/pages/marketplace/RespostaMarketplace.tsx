@@ -49,21 +49,29 @@ export function CampoResposta({
   testId: string;
   /**
    * Botão "Sugerir com IA" (Léo, 29/09): a IA escreve e o texto cai no campo
-   * pro vendedor revisar — nada é enviado sem o clique em Responder.
+   * pro vendedor revisar — nada é enviado sem o clique em Responder. `null` =
+   * a IA não achou a informação e a pergunta ficou marcada pra humano.
    */
-  sugerir?: () => Promise<string>;
+  sugerir?: () => Promise<string | null>;
 }) {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [sugerindo, setSugerindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const pedirSugestao = async () => {
     if (!sugerir || sugerindo) return;
     setSugerindo(true);
     setErro(null);
+    setAviso(null);
     try {
-      setTexto(await sugerir());
+      const t = await sugerir();
+      if (t) setTexto(t);
+      else
+        setAviso(
+          'A IA não achou essa informação no anúncio e não respondeu — ficou marcada pra um humano.',
+        );
     } catch (err) {
       setErro(apiErrorMessage(err));
     } finally {
@@ -125,6 +133,11 @@ export function CampoResposta({
           </Button>
         </div>
       </div>
+      {aviso && (
+        <p data-testid={`${testId}-aviso`} className="text-[12px] text-warning mt-1">
+          {aviso}
+        </p>
+      )}
       {erro && (
         <p data-testid={`${testId}-erro`} className="text-[12px] text-danger mt-1">
           {erro}
