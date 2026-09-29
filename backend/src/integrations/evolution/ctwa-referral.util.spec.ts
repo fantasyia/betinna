@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { campanhaDoReferral, extrairCtwaReferral } from './ctwa-referral.util';
+import { campanhaDoReferral, extrairCtwaReferral, metaDoReferral } from './ctwa-referral.util';
 
 describe('extrairCtwaReferral', () => {
   it('acha o externalAdReply em QUALQUER variante da mensagem (não só extendedText)', () => {
@@ -33,7 +33,40 @@ describe('extrairCtwaReferral', () => {
         contextInfo: { externalAdReply: { sourceId: 'x', campoNovoDoMeta: 'valor' } },
       },
     });
-    expect((r?.raw as Record<string, unknown>).campoNovoDoMeta).toBe('valor');
+    // desde 29/09 o cru agrupa o externalAdReply E os campos de conversão
+    expect(
+      ((r?.raw as Record<string, unknown>).externalAdReply as Record<string, unknown>)
+        .campoNovoDoMeta,
+    ).toBe('valor');
+  });
+
+  it('anúncio SEM externalAdReply, só com o entryPoint/conversionSource, ainda é anúncio', () => {
+    const r = extrairCtwaReferral({
+      conversation: 'oi',
+      extendedTextMessage: {
+        contextInfo: {
+          conversionSource: 'FB_Ads',
+          entryPointConversionSource: 'ctwa_ad',
+          entryPointConversionApp: 'instagram',
+          entryPointConversionDelaySeconds: 7,
+        },
+      },
+    });
+    expect(r).toMatchObject({
+      conversionSource: 'FB_Ads',
+      entryPointSource: 'ctwa_ad',
+      entryPointApp: 'instagram',
+    });
+    expect(r?.raw).toMatchObject({ entryPointConversionDelaySeconds: 7 });
+  });
+
+  it('metaDoReferral separa o cru (vai pra Conversation, não pra cada Message)', () => {
+    const r = extrairCtwaReferral({
+      extendedTextMessage: { contextInfo: { externalAdReply: { sourceId: '123', title: 'MB' } } },
+    })!;
+    const meta = metaDoReferral(r);
+    expect(meta.ctwaReferral).toEqual({ sourceId: '123', headline: 'MB' });
+    expect(meta.ctwaReferralCru).toMatchObject({ externalAdReply: { sourceId: '123' } });
   });
 
   it('SEM ctwaClid (limitação do Baileys/Web) ainda extrai o resto', () => {

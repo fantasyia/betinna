@@ -1609,6 +1609,8 @@ export class InboxService {
       ...(params.meta ?? {}),
       ...(params.senderName ? { senderName: params.senderName } : {}),
     };
+    // O cru do anúncio já foi pra Conversation — não pesa em cada mensagem.
+    delete metaFinal.ctwaReferralCru;
     let msg: { id: string; criadoEm: Date };
     try {
       msg = await this.prisma.message.create({
@@ -1802,7 +1804,13 @@ export class InboxService {
     // 1ª-VEZ-VENCE: uma conversa que já tem atribuição NUNCA é sobrescrita —
     // mesma semântica do 1º toque da UTM do site. É o dado que o Lead vai HERDAR
     // quando nascer na triagem; perder aqui = perder a campanha que trouxe.
-    const referral = p.meta?.ctwaReferral as Record<string, unknown> | undefined;
+    const referralSemCru = p.meta?.ctwaReferral as Record<string, unknown> | undefined;
+    // O cru do anúncio vai SÓ pra Conversation (junto da atribuição), nunca pra
+    // Message — ver `metaDoReferral`.
+    const cru = p.meta?.ctwaReferralCru as Record<string, unknown> | undefined;
+    const referral = referralSemCru
+      ? { ...referralSemCru, ...(cru ? { raw: cru } : {}) }
+      : undefined;
     const campanha = referral ? campanhaDoReferral(referral as CtwaReferral) : undefined;
 
     // Guarda o LID do contato (quando o adapter informa) pra casar a mensagem

@@ -6,7 +6,7 @@ import { WhatsAppSessionService } from '@integrations/whatsapp/whatsapp-session.
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { EvolutionInstanciaService } from './evolution-instancia.service';
 import { EvolutionService } from './evolution.service';
-import { extrairCtwaReferral } from './ctwa-referral.util';
+import { extrairCtwaReferral, metaDoReferral } from './ctwa-referral.util';
 import { normalizarJid } from './jid.util';
 
 /** Mensagem como o Evolution entrega no webhook messages.upsert (formato Baileys). */
@@ -346,10 +346,10 @@ export class EvolutionInboundService {
           // Click-to-WhatsApp: o referral do anúncio vem SÓ na 1ª mensagem da
           // conversa. Extraímos aqui (é onde o proto do Baileys chega inteiro) e
           // o InboxService grava na Conversation com 1ª-vez-vence.
-          // Sem o `raw` (proto inteiro do anúncio) — ele só custa linha em
-          // TODA mensagem da conversa; a atribuição já fica na Conversation
-          // (auditoria 13/09, A-11).
-          ...(ctwaReferral ? { ctwaReferral: { ...ctwaReferral, raw: undefined } } : {}),
+          // O `raw` vai À PARTE (`ctwaReferralCru`): o InboxService grava ele na
+          // Conversation (1ª vez) e o tira da Message — não custa linha em toda
+          // mensagem (auditoria 13/09, A-11), mas também não se perde (29/09).
+          ...(ctwaReferral ? metaDoReferral(ctwaReferral) : {}),
         },
       });
     }

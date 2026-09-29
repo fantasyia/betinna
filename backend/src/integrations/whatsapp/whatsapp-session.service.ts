@@ -20,6 +20,7 @@ import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.s
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { WhatsAppAuthState, ownerKey, type WhatsAppOwner } from './whatsapp-auth-state';
 import { WhatsAppMediaService } from './whatsapp-media.service';
+import { extrairCtwaReferral, metaDoReferral } from '@integrations/evolution/ctwa-referral.util';
 import type { WhatsAppSessionInfo, WhatsAppSessionStatus } from './whatsapp.types';
 
 /**
@@ -1079,6 +1080,11 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
           : (m.pushName ?? undefined);
       const senderName = isGroup && !fromMe ? (m.pushName ?? undefined) : undefined;
 
+      // Click-to-WhatsApp (29/09): o Baileys direto é o provider PADRÃO e
+      // descartava o referral do anúncio — só o Evolution lia. Mesma extração
+      // dos dois lados; só 1:1 INBOUND (grupo não vem de anúncio).
+      const ctwa = !isGroup && !fromMe ? extrairCtwaReferral(m.message as unknown) : undefined;
+
       await this.inbox.processarMensagemEntrante({
         empresaId: ctx.empresaId,
         canal: 'WHATSAPP',
@@ -1096,7 +1102,12 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         mediaUrl,
         proprietarioId,
         direction: fromMe ? 'OUTBOUND' : 'INBOUND',
-        meta: { jid: peerId, ownerKey: ownerKey(ctx.owner), ...(extras ?? {}) },
+        meta: {
+          jid: peerId,
+          ownerKey: ownerKey(ctx.owner),
+          ...(extras ?? {}),
+          ...(ctwa ? metaDoReferral(ctwa) : {}),
+        },
       });
     }
   }

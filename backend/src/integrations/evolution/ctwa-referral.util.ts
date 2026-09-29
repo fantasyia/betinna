@@ -25,7 +25,16 @@ export interface CtwaReferral {
   /** Título/corpo do criativo — útil pra reconhecer a campanha a olho. */
   headline?: string;
   body?: string;
-  /** Bloco cru do externalAdReply, pra não perder campo que a gente não mapeou. */
+  /**
+   * De onde a conversa veio, pelo `contextInfo` (29/09): `conversionSource`
+   * (ex.: "FB_Ads") e o `entryPointConversion*` (ex.: "ctwa_ad"). Às vezes a
+   * mensagem de anúncio chega SEM `externalAdReply` e só com estes — é o que
+   * ainda prova que a conversa veio de anúncio.
+   */
+  conversionSource?: string;
+  entryPointSource?: string;
+  entryPointApp?: string;
+  /** Bloco cru (externalAdReply + campos de conversão), pra não perder o que não mapeamos. */
   raw?: Record<string, unknown>;
 }
 
@@ -50,17 +59,24 @@ export function extrairCtwaReferral(message: unknown): CtwaReferral | undefined 
   if (!message || typeof message !== 'object') return undefined;
 
   let ad: Record<string, unknown> | undefined;
+  let ctxAnuncio: Record<string, unknown> | undefined;
   for (const variante of Object.values(message as Record<string, unknown>)) {
     if (!variante || typeof variante !== 'object') continue;
     const ctx = (variante as Record<string, unknown>).contextInfo;
     if (!ctx || typeof ctx !== 'object') continue;
-    const ear = (ctx as Record<string, unknown>).externalAdReply;
-    if (ear && typeof ear === 'object') {
-      ad = ear as Record<string, unknown>;
+    const c = ctx as Record<string, unknown>;
+    const ear = c.externalAdReply;
+    const temConversao =
+      texto(c.conversionSource) ||
+      texto(c.entryPointConversionSource) ||
+      texto(c.entryPointConversionApp);
+    if ((ear && typeof ear === 'object') || temConversao) {
+      ad = ear && typeof ear === 'object' ? (ear as Record<string, unknown>) : {};
+      ctxAnuncio = c;
       break;
     }
   }
-  if (!ad) return undefined;
+  if (!ad || !ctxAnuncio) return undefined;
 
   const ref: CtwaReferral = {
     // `ctwaClid` aparece com nomes diferentes conforme a versão do Baileys.
@@ -70,14 +86,36 @@ export function extrairCtwaReferral(message: unknown): CtwaReferral | undefined 
     sourceUrl: texto(ad.sourceUrl) ?? texto(ad.source_url),
     headline: texto(ad.title) ?? texto(ad.headline),
     body: texto(ad.body),
+    conversionSource: texto(ctxAnuncio.conversionSource),
+    entryPointSource: texto(ctxAnuncio.entryPointConversionSource),
+    entryPointApp: texto(ctxAnuncio.entryPointConversionApp),
   };
   for (const k of Object.keys(ref) as (keyof CtwaReferral)[]) {
     if (ref[k] === undefined) delete ref[k];
   }
   // Sem NENHUM campo útil → não inventa atribuição.
   if (Object.keys(ref).length === 0) return undefined;
-  ref.raw = ad;
+  ref.raw = {
+    externalAdReply: ad,
+    conversionSource: ctxAnuncio.conversionSource,
+    conversionData: ctxAnuncio.conversionData,
+    entryPointConversionSource: ctxAnuncio.entryPointConversionSource,
+    entryPointConversionApp: ctxAnuncio.entryPointConversionApp,
+    entryPointConversionDelaySeconds: ctxAnuncio.entryPointConversionDelaySeconds,
+    ctwaSignals: ctxAnuncio.ctwaSignals,
+  };
+  for (const k of Object.keys(ref.raw)) if (ref.raw[k] === undefined) delete ref.raw[k];
   return ref;
+}
+
+/**
+ * O que os adapters (Baileys e Evolution) põem no `meta` da mensagem: o
+ * referral SEM o cru, e o cru à parte — o InboxService grava o cru só na
+ * Conversation e tira da Message.
+ */
+export function metaDoReferral(ref: CtwaReferral): Record<string, unknown> {
+  const { raw, ...resto } = ref;
+  return { ctwaReferral: resto, ...(raw ? { ctwaReferralCru: raw } : {}) };
 }
 
 /**
