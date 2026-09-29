@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -9,6 +9,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { MLOAuthService } from './ml-oauth.service';
 import { MLQuestionsService } from './ml-questions.service';
+import { MLRespostaIaService } from './ml-resposta-ia.service';
 import { frontendOrigin } from '@shared/utils/frontend-origin';
 
 @ApiTags('integracoes/mercadolivre')
@@ -17,7 +18,26 @@ export class MLOAuthController {
   constructor(
     private readonly oauth: MLOAuthService,
     private readonly questions: MLQuestionsService,
+    private readonly respostaIa: MLRespostaIaService,
   ) {}
+
+  /**
+   * Sugere resposta pra uma pergunta de anúncio lendo o próprio anúncio (IA).
+   * Não envia nada — devolve o texto pro vendedor revisar (Léo, 29/09).
+   */
+  @Post('perguntas/:conversationId/sugerir-resposta')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
+  @ApiOperation({ summary: 'Sugestão de resposta (IA + dados do anúncio). Não envia.' })
+  async sugerirResposta(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('conversationId') conversationId: string,
+  ) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.respostaIa.sugerirPorConversa(user.empresaIdAtiva, conversationId);
+  }
 
   /** Diagnóstico só de leitura das perguntas pendentes da empresa ativa (ver o serviço). */
   @Get('diagnostico/perguntas')

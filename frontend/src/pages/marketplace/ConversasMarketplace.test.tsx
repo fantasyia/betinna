@@ -97,6 +97,22 @@ describe('ConversasMarketplace', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it('Sugerir com IA: o texto cai no campo e NADA é enviado sem clicar em Responder', async () => {
+    mensagens = [pergunta];
+    post.mockResolvedValueOnce({ texto: 'Toda preta não temos, só branca.' });
+    const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    fireEvent.click(getByTestId('mkt-pergunta-ia'));
+    await waitFor(() =>
+      expect((getByTestId('mkt-pergunta-texto') as HTMLTextAreaElement).value).toBe(
+        'Toda preta não temos, só branca.',
+      ),
+    );
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith(
+      '/integracoes/mercadolivre/perguntas/conv-1/sugerir-resposta',
+    );
+  });
+
   it('já respondida: mostra a resposta num campo pequeno e esconde o campo de envio', () => {
     // a API devolve da mais nova pra mais antiga
     mensagens = [

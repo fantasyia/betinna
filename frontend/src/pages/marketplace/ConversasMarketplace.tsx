@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { StateView } from '@/components/StateView';
 import { cn } from '@/lib/cn';
+import { api } from '@/lib/api';
 import {
   CampoResposta,
   RespostaEnviada,
@@ -137,6 +138,13 @@ function Pergunta({ c, onRespondida }: { c: ConversaMkt; onRespondida: () => voi
             conversationId={c.id}
             testId="mkt-pergunta"
             placeholder="Escreva a resposta pro comprador…"
+            sugerir={async () =>
+              (
+                await api.post<{ texto: string }>(
+                  `/integracoes/mercadolivre/perguntas/${c.id}/sugerir-resposta`,
+                )
+              ).texto
+            }
             onEnviada={() => {
               refetch();
               onRespondida();

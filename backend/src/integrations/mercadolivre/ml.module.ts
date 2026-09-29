@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
 import { MLClaimsService } from './ml-claims.service';
 import { MLClientService } from './ml-client.service';
 import { MLMessagesService } from './ml-messages.service';
@@ -6,6 +7,7 @@ import { MLOAuthController } from './ml-oauth.controller';
 import { MLOAuthService } from './ml-oauth.service';
 import { MLOrdersService } from './ml-orders.service';
 import { MLQuestionsService } from './ml-questions.service';
+import { MLRespostaIaService } from './ml-resposta-ia.service';
 import { MLService } from './ml.service';
 import { MLSyncJob } from './ml-sync.job';
 import { MLWebhookController } from './ml-webhook.controller';
@@ -24,8 +26,11 @@ import { MLWebhookController } from './ml-webhook.controller';
  *  - Cron 30min: fallback caso webhook falhe
  */
 @Module({
+  // MullerBot: a sugestão de resposta da pergunta usa a mesma chamada OpenAI do bot.
+  imports: [MullerBotModule],
   controllers: [MLOAuthController, MLWebhookController],
   providers: [
+    MLRespostaIaService,
     MLClientService,
     MLOAuthService,
     MLQuestionsService,
@@ -36,6 +41,7 @@ import { MLWebhookController } from './ml-webhook.controller';
     MLSyncJob,
   ],
   exports: [
+    MLRespostaIaService,
     MLClientService,
     MLOAuthService,
     MLQuestionsService,

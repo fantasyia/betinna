@@ -41,15 +41,35 @@ export function CampoResposta({
   placeholder,
   onEnviada,
   testId,
+  sugerir,
 }: {
   conversationId: string;
   placeholder: string;
   onEnviada: () => void;
   testId: string;
+  /**
+   * Botão "Sugerir com IA" (Léo, 29/09): a IA escreve e o texto cai no campo
+   * pro vendedor revisar — nada é enviado sem o clique em Responder.
+   */
+  sugerir?: () => Promise<string>;
 }) {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [sugerindo, setSugerindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  const pedirSugestao = async () => {
+    if (!sugerir || sugerindo) return;
+    setSugerindo(true);
+    setErro(null);
+    try {
+      setTexto(await sugerir());
+    } catch (err) {
+      setErro(apiErrorMessage(err));
+    } finally {
+      setSugerindo(false);
+    }
+  };
 
   const enviar = async () => {
     if (!texto.trim() || enviando) return;
@@ -82,14 +102,28 @@ export function CampoResposta({
           }}
           className="text-[13px] min-h-0"
         />
-        <Button
-          data-testid={`${testId}-enviar`}
-          size="sm"
-          disabled={!texto.trim() || enviando}
-          onClick={() => void enviar()}
-        >
-          {enviando ? 'Enviando…' : 'Responder'}
-        </Button>
+        <div className="flex flex-col gap-1 shrink-0">
+          {sugerir && (
+            <Button
+              data-testid={`${testId}-ia`}
+              size="sm"
+              variant="secondary"
+              disabled={sugerindo || enviando}
+              onClick={() => void pedirSugestao()}
+              title="A IA lê o anúncio e escreve uma resposta pra você revisar"
+            >
+              {sugerindo ? 'Pensando…' : '✨ Sugerir com IA'}
+            </Button>
+          )}
+          <Button
+            data-testid={`${testId}-enviar`}
+            size="sm"
+            disabled={!texto.trim() || enviando || sugerindo}
+            onClick={() => void enviar()}
+          >
+            {enviando ? 'Enviando…' : 'Responder'}
+          </Button>
+        </div>
       </div>
       {erro && (
         <p data-testid={`${testId}-erro`} className="text-[12px] text-danger mt-1">
