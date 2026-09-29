@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { MarcaTenantService } from '@modules/empresas/marca-tenant.service';
+import { safeRequest } from '@shared/utils/safe-request';
 import { desenharLevantamento } from './levantamento-pdf.util';
 import type { ResumoProposta } from './proposta-resumo.util';
 
@@ -51,7 +52,8 @@ export class LevantamentoPdfService {
     const u = url?.trim();
     if (!u || !/^https:\/\//i.test(u) || !/\.(png|jpe?g)(\?.*)?$/i.test(u)) return null;
     try {
-      const r = await fetch(u, { signal: AbortSignal.timeout(5000) });
+      // URL vem da config da marca do tenant: guard de SSRF igual ao do catálogo.
+      const r = await safeRequest(u, {}, { timeoutMs: 5000 });
       if (!r.ok) return null;
       const b = Buffer.from(await r.arrayBuffer());
       return b.length ? b : null;

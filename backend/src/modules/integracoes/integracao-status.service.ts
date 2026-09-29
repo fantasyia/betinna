@@ -169,7 +169,7 @@ export class IntegracaoStatusService {
         .slice(0, 13)}`,
       titulo: `Integração ${nomeServico} ${rotulo}`,
       mensagem:
-        `A integração <strong>${nomeServico}</strong> da empresa <strong>${nomeEmpresa}</strong> ` +
+        `A integração <strong>${this.escapeHtml(nomeServico)}</strong> da empresa <strong>${this.escapeHtml(nomeEmpresa)}</strong> ` +
         `está <strong>${status}</strong> e parou de funcionar.<br><br>` +
         (erro ? `<strong>Último erro:</strong> ${this.escapeHtml(erro)}<br><br>` : '') +
         `Acesse <em>Integrações</em> no betinna.ai e reconecte para voltar a receber mensagens/sincronizar. ` +

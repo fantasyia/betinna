@@ -69,7 +69,8 @@ export class KanbanComentariosController {
 
   @Post('cards/:id/anexos')
   @RequirePermissions({ module: 'quadros', action: 'edit' })
-  @UseInterceptors(FileInterceptor('file'))
+  // Teto no multer (mesmo MAX_SIZE_BYTES do KanbanAnexosService) — o guard de corpo pula multipart.
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiOperation({
     summary: 'Anexa ARQUIVO (multipart "file") ou LINK (JSON { nome, url })',

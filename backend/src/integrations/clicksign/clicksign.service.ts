@@ -72,6 +72,35 @@ const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 /** Conta padrão da ClickSign, quando o tenant não informa outra. */
 const BASE_PADRAO = 'https://app.clicksign.com';
 
+/** Únicos hosts que a ClickSign publica. Qualquer outro é erro de digitação — ou SSRF. */
+const HOSTS_CLICKSIGN = new Set(['app.clicksign.com', 'sandbox.clicksign.com']);
+
+/**
+ * A `apiUrl` vem das credenciais que o DIRECTOR digita. Sem esta trava, ela era
+ * usada crua como base de TODA chamada (e do download do PDF assinado): um
+ * `http://worker.railway.internal:3001` fazia o servidor bater na rede interna
+ * com o corpo do envelope e guardar a resposta como contrato. Auditoria 29/09/2026.
+ */
+function baseSegura(apiUrl: string): string {
+  if (!apiUrl) return BASE_PADRAO;
+  let u: URL;
+  try {
+    u = new URL(apiUrl);
+  } catch {
+    throw new IntegrationException(
+      `URL da API ClickSign inválida: "${apiUrl}"`,
+      ErrorCode.INTEGRATION_ERROR,
+    );
+  }
+  if (u.protocol !== 'https:' || !HOSTS_CLICKSIGN.has(u.hostname)) {
+    throw new IntegrationException(
+      `URL da API ClickSign fora dos hosts oficiais (${[...HOSTS_CLICKSIGN].join(', ')}): "${u.hostname}"`,
+      ErrorCode.INTEGRATION_ERROR,
+    );
+  }
+  return u.origin;
+}
+
 /** Configuração efetiva da assinatura eletrônica de UMA empresa. */
 export interface ConfigClickSign {
   base: string;
@@ -187,7 +216,7 @@ export class ClickSignService {
     const nome = limpar(c.signatarioNome);
     const email = limpar(c.signatarioEmail);
     return {
-      base: (limpar(c.apiUrl) || BASE_PADRAO).replace(/\/$/, ''),
+      base: baseSegura(limpar(c.apiUrl)),
       token: limpar(c.accessToken),
       modelo: limpar(c.templateKey),
       canalToken: canalDeToken(limpar(c.authCanal)),

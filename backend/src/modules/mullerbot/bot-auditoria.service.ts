@@ -89,8 +89,13 @@ export class BotAuditoriaService {
   private montarWhere(
     empresaId: string,
     f: Partial<ListarAuditoriaFiltros>,
+    proprietarioId?: string,
   ): Prisma.BotRespostaWhereInput {
     const where: Prisma.BotRespostaWhereInput = { empresaId };
+    // GERENTE (e REP) nunca veem o canal EMPRESARIAL — a Inbox força
+    // `proprietarioId = user.id` e esta listagem trazia pergunta/resposta de todas
+    // as conversas da empresa. Mesmo recorte aqui. Auditoria 29/09/2026.
+    if (proprietarioId) where.conversation = { proprietarioId };
     if (f.status) where.status = f.status;
     if (f.marcadaRevisao !== undefined) where.marcadaRevisao = f.marcadaRevisao;
     if (f.de || f.ate) {
@@ -103,8 +108,8 @@ export class BotAuditoriaService {
   }
 
   /** Lista paginada das respostas, com filtros. */
-  async listar(empresaId: string, f: ListarAuditoriaFiltros) {
-    const where = this.montarWhere(empresaId, f);
+  async listar(empresaId: string, f: ListarAuditoriaFiltros, proprietarioId?: string) {
+    const where = this.montarWhere(empresaId, f, proprietarioId);
     const [total, data] = await Promise.all([
       this.prisma.botResposta.count({ where }),
       this.prisma.botResposta.findMany({
@@ -121,8 +126,12 @@ export class BotAuditoriaService {
   }
 
   /** Gera um CSV do período filtrado (até EXPORT_MAX linhas). */
-  async exportarCsv(empresaId: string, f: Partial<ListarAuditoriaFiltros>): Promise<string> {
-    const where = this.montarWhere(empresaId, f);
+  async exportarCsv(
+    empresaId: string,
+    f: Partial<ListarAuditoriaFiltros>,
+    proprietarioId?: string,
+  ): Promise<string> {
+    const where = this.montarWhere(empresaId, f, proprietarioId);
     const rows = await this.prisma.botResposta.findMany({
       where,
       orderBy: { criadoEm: 'desc' },

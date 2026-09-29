@@ -48,7 +48,8 @@ export class PropostaAnexosController {
 
   @Post()
   @RequirePermissions({ module: 'propostas', action: 'edit' })
-  @UseInterceptors(FileInterceptor('file'))
+  // Teto no multer (mesmo MAX_BYTES do PropostaAnexosService) — o guard de corpo pula multipart.
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Projeto do cliente (máx. 20MB — PDF, imagem, planilha, DWG/DXF)',

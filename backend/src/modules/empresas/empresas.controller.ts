@@ -185,7 +185,8 @@ export class EmpresasController {
 
   @Post(':id/logo')
   @Roles('ADMIN', 'DIRECTOR')
-  @UseInterceptors(FileInterceptor('logo'))
+  // Teto no multer (mesmo MAX_SIZE_BYTES do EmpresaLogoService) — o guard de corpo pula multipart.
+  @UseInterceptors(FileInterceptor('logo', { limits: { fileSize: 2 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Logo da empresa (PNG/JPG/WebP/SVG, máx. 2MB)',

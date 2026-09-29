@@ -44,7 +44,9 @@ export class DocumentosController {
 
   @Post()
   @RequirePermissions({ module: 'clientes', action: 'edit' })
-  @UseInterceptors(FileInterceptor('file'))
+  // Teto no multer (mesmo MAX_SIZE_BYTES do service): sem `limits`, o memoryStorage
+  // engolia o corpo inteiro antes do service medir — o guard de tamanho pula multipart.
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Arquivo a anexar (máx. 10MB, PDF/img/xls/doc/csv)',

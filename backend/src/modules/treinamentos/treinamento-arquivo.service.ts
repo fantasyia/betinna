@@ -152,6 +152,16 @@ export class TreinamentoArquivoService implements OnModuleInit {
   }
 
   /**
+   * O caminho pertence a esta empresa? O bucket é compartilhado entre tenants e
+   * o prefixo `${empresaId}/` (montado em `permitirUpload`) é o único isolamento
+   * que o Storage conhece — o `create` e o `remove` conferem antes de assinar
+   * ou apagar qualquer caminho.
+   */
+  pertenceA(empresaId: string, caminho: string): boolean {
+    return caminho.startsWith(`${empresaId}/`) && !caminho.includes('..');
+  }
+
+  /**
    * Apaga o arquivo do Storage.
    *
    * Best-effort de propósito: se o registro sair do banco e o arquivo ficar, o

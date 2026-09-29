@@ -469,8 +469,24 @@ export class LeadsService {
         'Lead fechado não pode ser editado. Reabra movendo-o para outra etapa primeiro.',
       );
     }
-    if (dto.representanteId) {
+    if (dto.representanteId !== undefined && dto.representanteId !== existing.representanteId) {
+      // Mesma regra do clientes.update: transferir carteira é função gerencial.
+      // REP não reatribui; GERENTE só pra REP do próprio time. Sem isto o PATCH
+      // furava o escopo que `PUT /leads/:id/representante` aplica. Auditoria 29/09/2026.
+      if (user.role === 'REP') {
+        throw new ForbiddenException(
+          'REP não pode alterar o representante do lead — apenas ADMIN/DIRECTOR/GERENTE',
+          ErrorCode.TENANT_ACCESS_DENIED,
+        );
+      }
       await this.assertRepValido(existing.empresaId, dto.representanteId);
+      const escopo = await this.repScope.getRepIds(user);
+      if (escopo !== null && !escopo.includes(dto.representanteId)) {
+        throw new ForbiddenException(
+          'Você não pode atribuir o lead a um representante fora da sua gerência',
+          ErrorCode.TENANT_ACCESS_DENIED,
+        );
+      }
     }
     // Cross-tenant: funilId/funilEtapaId chegam como string livre no DTO — valida que
     // pertencem à empresa do lead ANTES de gravar (senão dá pra mover o lead pra um

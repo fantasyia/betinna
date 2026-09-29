@@ -90,6 +90,16 @@ export class TreinamentosService {
 
   async create(user: AuthenticatedUser, dto: CreateTreinamentoDto) {
     const empresaId = this.empresa(user);
+    // O caminho tem que ser o que `permitirUpload` devolveu — e ele começa pelo
+    // empresaId. O bucket é compartilhado entre tenants e a query não protege o
+    // Storage: sem esta trava, um caminho de OUTRA empresa virava URL assinada
+    // (e apagável) daqui. Auditoria 29/09/2026.
+    if (dto.arquivoPath && !this.arquivos.pertenceA(empresaId, dto.arquivoPath)) {
+      throw new ForbiddenException(
+        'O arquivo informado não pertence a esta empresa',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
     // O DTO já garantiu que vem UMA das duas fontes, nunca as duas nem nenhuma.
     const doYoutube = !!dto.video;
     const criado = await this.prisma.treinamento.create({
@@ -149,7 +159,11 @@ export class TreinamentosService {
     await this.prisma.treinamento.delete({ where: { id } });
     // O registro sai primeiro: o arquivo é best-effort, e um órfão no bucket é
     // melhor que um treinamento que não some porque o Storage está fora do ar.
-    if (alvo.arquivoPath) await this.arquivos.remover(alvo.arquivoPath);
+    // Só apaga do Storage o que está no prefixo desta empresa — registro antigo
+    // com caminho alheio não pode virar remoção do arquivo de outro tenant.
+    if (alvo.arquivoPath && this.arquivos.pertenceA(empresaId, alvo.arquivoPath)) {
+      await this.arquivos.remover(alvo.arquivoPath);
+    }
     return { ok: true };
   }
 

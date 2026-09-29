@@ -66,7 +66,8 @@ export class MateriaisController {
 
   @Post()
   @Roles('ADMIN', 'DIRECTOR')
-  @UseInterceptors(FileInterceptor('file'))
+  // Teto no multer (mesmo MAX_SIZE_BYTES do MateriaisService) — o guard de corpo pula multipart.
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {

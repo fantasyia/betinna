@@ -1282,6 +1282,19 @@ export class InboxService {
     // ter mediaUrl preenchido e a UI conseguir renderizar a imagem/áudio.
     // Sem isso, mensagens OUTBOUND apareciam só como "[imagem]" sem preview.
     let storagePath: string | null = params.storagePath ?? null;
+    // O caminho do Storage é `${empresaId}/${peer}/${id}.ext` e o bucket é compartilhado:
+    // um caminho de OUTRA empresa aqui fazia o servidor baixar a mídia dela, mandar
+    // pro contato e ainda gravar em `mediaUrl` (vira URL assinada no GET /media).
+    // Auditoria 29/09/2026.
+    if (
+      storagePath &&
+      (!storagePath.startsWith(`${conv.empresaId}/`) || storagePath.includes('..'))
+    ) {
+      throw new ForbiddenException(
+        'storagePath fora do espaço desta empresa',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
     if (!storagePath && buffer && whatsappMedia) {
       storagePath = await whatsappMedia.uploadOutbound(
         conv.empresaId,

@@ -117,7 +117,8 @@ export class KanbanBoardsController {
 
   @Post(':id/fundo')
   @RequirePermissions({ module: 'quadros', action: 'edit' })
-  @UseInterceptors(FileInterceptor('file'))
+  // Teto no multer (mesmo MAX_SIZE_BYTES do KanbanFundoService) — o guard de corpo pula multipart.
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Sobe/troca a imagem de fundo do quadro (JPG/PNG/WebP, 5MB)' })
   @Audit({ action: 'set_background', resource: 'kanban_board', resourceIdFrom: 'params.id' })

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import type { MarcaTenant } from '@modules/empresas/marca-tenant.service';
+import { safeRequest } from '@shared/utils/safe-request';
 
 export interface LinhaCatalogoPdf {
   nome: string;
@@ -366,10 +367,9 @@ export class CatalogoPdfService {
     await Promise.all(
       urls.map(async (url) => {
         try {
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), TIMEOUT_IMAGEM_MS);
-          const r = await fetch(url, { signal: ctrl.signal });
-          clearTimeout(timer);
+          // `Produto.imagem` é URL digitada pelo tenant: passa pelo guard de SSRF
+          // (sem IP privado/metadata, sem redirect automático) como o webhook de fluxo.
+          const r = await safeRequest(url, {}, { timeoutMs: TIMEOUT_IMAGEM_MS });
           if (!r.ok) return;
           const tipo = r.headers.get('content-type') ?? '';
           // pdfkit só embute PNG e JPEG. Qualquer outra coisa (webp, svg) seria

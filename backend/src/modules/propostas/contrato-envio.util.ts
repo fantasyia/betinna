@@ -23,6 +23,7 @@ import {
  */
 export interface PropostaParaEnvio {
   id: string;
+  empresaId: string;
   numero: string;
   valor: Prisma.Decimal | number;
   modalidade: string;
@@ -191,7 +192,9 @@ export function montarContratoParaAssinar(
         telefone: telefoneDeAssinatura(p.signatarioTelefone),
       },
       // Volta no webhook de assinatura — rastro que não depende de id.
-      metadata: { proposta: p.numero, proposta_id: p.id },
+      // `empresa_id` escopa o fallback por NÚMERO no webhook — o número se repete
+      // entre tenants, o par (empresa, número) não.
+      metadata: { proposta: p.numero, proposta_id: p.id, empresa_id: p.empresaId },
       documento: { arquivo, nome: `${p.numero}.docx` },
     },
   };
@@ -212,6 +215,7 @@ export const SELECT_PROPOSTA_CONTRATO = {
   prazoVerificacaoDias: true,
   prazoSoftwareDias: true,
   servicosTotal: true,
+  empresaId: true,
   customizacaoUnitario: true,
   customizacaoQuantidade: true,
   itens: {

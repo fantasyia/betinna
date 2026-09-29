@@ -312,7 +312,7 @@ export class UsersService {
     // pra sempre (o inviteUserByEmail recusa e-mail já existente). Toda validação
     // barata roda ANTES de tocar em sistema externo.
     if (dto.gerenteId) {
-      await this.assertGerenteValido(dto.gerenteId);
+      await this.assertGerenteValido(dto.gerenteId, dto.empresaIds);
     }
 
     // 3) Cria no Supabase Auth (envia convite por e-mail)
@@ -424,7 +424,10 @@ export class UsersService {
 
     // Validação hierarquia. Se dto.gerenteId for definido, exige que apontante seja REP.
     if (gerenteId) {
-      await this.assertGerenteValido(gerenteId);
+      await this.assertGerenteValido(
+        gerenteId,
+        empresaIds ?? user.empresas.map((e) => e.empresaId),
+      );
       const targetRole = dto.role ?? user.role;
       if (targetRole !== 'REP') {
         throw new BusinessRuleException('Apenas REP pode ter gerente atribuído');
@@ -716,9 +719,14 @@ export class UsersService {
     await this.invalidateAuthCache(id);
   }
 
-  private async assertGerenteValido(gerenteId: string): Promise<void> {
-    const g = await this.prisma.usuario.findUnique({
-      where: { id: gerenteId },
+  /**
+   * O gerente tem que dividir empresa com o REP que vai apontar pra ele. Sem isto
+   * um DIRECTOR ligava um REP seu a um GERENTE de OUTRO tenant — a carteira
+   * (`RepScopeService`) passava a atravessar empresas. Auditoria 29/09/2026.
+   */
+  private async assertGerenteValido(gerenteId: string, empresaIds: string[]): Promise<void> {
+    const g = await this.prisma.usuario.findFirst({
+      where: { id: gerenteId, empresas: { some: { empresaId: { in: empresaIds } } } },
       select: { role: true },
     });
     if (!g) throw new NotFoundException('Gerente', gerenteId);

@@ -1484,6 +1484,16 @@ export class FluxosService {
           ErrorCode.BUSINESS_RULE_VIOLATION,
         );
       }
+      // Mesma visibilidade da Inbox: REP/GERENTE só enxergam o próprio WhatsApp.
+      // Sem isto, um fluxo pessoal com CONVERSAR_IA semeado de uma conversa do canal
+      // EMPRESARIAL copiava o histórico dela pro contexto da execução — legível em
+      // GET /fluxos/:id/execucoes. Auditoria 29/09/2026.
+      if ((user.role === 'REP' || user.role === 'GERENTE') && conversa.proprietarioId !== user.id) {
+        throw new ForbiddenException(
+          'Escolha uma conversa do seu próprio WhatsApp para semear o teste',
+          ErrorCode.TENANT_ACCESS_DENIED,
+        );
+      }
       // MESMO formato do evento MENSAGEM_CANAL real (canal/conversationId/texto/
       // leadId/proprietarioId). Copiar o formato importa: teste que roda com um
       // contexto diferente do de produção valida o fluxo errado.

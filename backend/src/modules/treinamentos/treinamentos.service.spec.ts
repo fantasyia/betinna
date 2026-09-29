@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenException } from '@shared/errors/app-exception';
 import { TreinamentosService } from './treinamentos.service';
 import { createTreinamentoSchema } from './treinamentos.dto';
 
@@ -71,6 +72,11 @@ function build(itens: Linha[] = [ITEM]) {
       expiraEm: 'x',
     })),
     remover: vi.fn(),
+    // Mesma regra do service real: prefixo `${empresaId}/` e sem `..`.
+    pertenceA: vi.fn(
+      (empresaId: string, caminho: string) =>
+        caminho.startsWith(`${empresaId}/`) && !caminho.includes('..'),
+    ),
   };
   return { svc: new TreinamentosService(prisma as never, arquivos as never), prisma, arquivos };
 }
@@ -273,6 +279,29 @@ describe('treinamento com arquivo próprio', () => {
   it('apagar treinamento do YouTube não chama o Storage', async () => {
     const { svc, arquivos } = build();
     await svc.remove(user({ role: 'DIRECTOR' }), 't1');
+    expect(arquivos.remover).not.toHaveBeenCalled();
+  });
+
+  // Auditoria 29/09/2026: o bucket é compartilhado entre tenants e o caminho vinha
+  // solto do cliente — um caminho de OUTRA empresa virava URL assinada (e apagável).
+  it('create recusa arquivoPath fora do prefixo da empresa', async () => {
+    const { svc, prisma } = build();
+    await expect(
+      svc.create(user({ role: 'DIRECTOR' }), {
+        titulo: 'Aula alheia',
+        arquivoPath: 'emp-2/999_video.mp4',
+      } as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.treinamento.create).not.toHaveBeenCalled();
+  });
+
+  it('remove não apaga do Storage um caminho que não é da empresa', async () => {
+    const { svc, prisma, arquivos } = build();
+    prisma.treinamento.findFirst.mockResolvedValue({
+      id: 't9',
+      arquivoPath: 'emp-2/999_video.mp4',
+    });
+    await svc.remove(user({ role: 'DIRECTOR' }), 't9');
     expect(arquivos.remover).not.toHaveBeenCalled();
   });
 });

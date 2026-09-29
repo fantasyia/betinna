@@ -783,22 +783,30 @@ describe('UsersService', () => {
     });
 
     it('valida gerenteId: lança NotFoundException se gerente não existir', async () => {
-      prisma.usuario.findUnique
-        .mockResolvedValueOnce(null) // sem conflito de email
-        // assertGerenteValido → findUnique retorna null
-        .mockResolvedValueOnce(null);
+      prisma.usuario.findUnique.mockResolvedValueOnce(null); // sem conflito de email
+      // assertGerenteValido → findFirst (escopado por empresa) retorna null
+      prisma.usuario.findFirst.mockResolvedValueOnce(null);
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
 
       await expect(
         service.create(fakeUser(), { ...baseDto, gerenteId: 'gerente-fake' }),
       ).rejects.toBeInstanceOf(NotFoundException);
+      // Auditoria 29/09/2026: o gerente tem que dividir empresa com o REP novo —
+      // gerente de OUTRO tenant cai como "não encontrado".
+      expect(prisma.usuario.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'gerente-fake',
+            empresas: { some: { empresaId: { in: baseDto.empresaIds } } },
+          }),
+        }),
+      );
     });
 
     it('valida gerenteId: lança BusinessRuleException se apontado não for GERENTE', async () => {
-      prisma.usuario.findUnique
-        .mockResolvedValueOnce(null) // sem conflito de email
-        // assertGerenteValido → findUnique retorna REP (não é GERENTE)
-        .mockResolvedValueOnce({ role: 'REP' });
+      prisma.usuario.findUnique.mockResolvedValueOnce(null); // sem conflito de email
+      // assertGerenteValido → findFirst retorna REP (não é GERENTE)
+      prisma.usuario.findFirst.mockResolvedValueOnce({ role: 'REP' });
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
 
       await expect(
@@ -845,9 +853,8 @@ describe('UsersService', () => {
 
     it('gerenteId em REP → conecta gerente', async () => {
       const rep = fakeDbUser({ role: 'REP' });
-      prisma.usuario.findUnique
-        .mockResolvedValueOnce(rep) // loadAndAssertScope
-        .mockResolvedValueOnce({ role: 'GERENTE' }); // assertGerenteValido
+      prisma.usuario.findUnique.mockResolvedValueOnce(rep); // loadAndAssertScope
+      prisma.usuario.findFirst.mockResolvedValueOnce({ role: 'GERENTE' }); // assertGerenteValido
       prisma.usuario.update.mockResolvedValue(rep);
 
       await service.update(fakeUser(), 'user-1', { gerenteId: 'gerente-1' });
@@ -858,9 +865,8 @@ describe('UsersService', () => {
 
     it('gerenteId em role não-REP → BusinessRuleException', async () => {
       const gerente = fakeDbUser({ role: 'GERENTE' });
-      prisma.usuario.findUnique
-        .mockResolvedValueOnce(gerente) // loadAndAssertScope
-        .mockResolvedValueOnce({ role: 'GERENTE' }); // assertGerenteValido
+      prisma.usuario.findUnique.mockResolvedValueOnce(gerente); // loadAndAssertScope
+      prisma.usuario.findFirst.mockResolvedValueOnce({ role: 'GERENTE' }); // assertGerenteValido
 
       await expect(
         service.update(fakeUser(), 'user-1', { gerenteId: 'g-1', role: 'GERENTE' }),

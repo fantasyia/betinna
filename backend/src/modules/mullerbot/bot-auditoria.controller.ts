@@ -59,7 +59,12 @@ export class BotAuditoriaController {
     @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(listSchema)) q: ListDto,
   ) {
-    return this.auditoria.listar(this.empresaId(user), toFiltros(q));
+    return this.auditoria.listar(this.empresaId(user), toFiltros(q), this.soDoProprio(user));
+  }
+
+  /** GERENTE só vê o próprio WhatsApp (regra da Inbox); gestão vê a empresa toda. */
+  private soDoProprio(user: AuthenticatedUser): string | undefined {
+    return user.role === 'GERENTE' ? user.id : undefined;
   }
 
   @Get('auditoria/export')
@@ -69,7 +74,11 @@ export class BotAuditoriaController {
     @Query(new ZodValidationPipe(listSchema)) q: ListDto,
     @Res() res: Response,
   ): Promise<void> {
-    const csv = await this.auditoria.exportarCsv(this.empresaId(user), toFiltros(q));
+    const csv = await this.auditoria.exportarCsv(
+      this.empresaId(user),
+      toFiltros(q),
+      this.soDoProprio(user),
+    );
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="auditoria-bot.csv"');
     // BOM pra o Excel abrir acentos corretamente.

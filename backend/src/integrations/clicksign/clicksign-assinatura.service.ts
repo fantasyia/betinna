@@ -338,9 +338,12 @@ export class ClickSignAssinaturaService implements OnModuleInit {
       });
       if (porId) return porId;
     }
-    if (meta.proposta) {
+    // Número de proposta é sequência POR TENANT — sozinho colide entre empresas, e
+    // um `document_closed` legítimo marcaria ASSINADO o contrato homônimo de outro
+    // tenant. Só vale junto do `empresa_id` carimbado no envio. Auditoria 29/09/2026.
+    if (meta.proposta && meta.empresa_id) {
       return this.prisma.contrato.findFirst({
-        where: { proposta: { numero: meta.proposta } },
+        where: { empresaId: meta.empresa_id, proposta: { numero: meta.proposta } },
         include,
       });
     }

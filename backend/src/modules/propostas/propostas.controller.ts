@@ -276,7 +276,11 @@ export class PropostasController {
       'Sobe a proposta como ORÇAMENTO no ERP. Lá ela vira pedido com um clique, ' +
       'sem redigitação — o pedido herda o que o cliente aprovou.',
   })
-  enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  async enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    // Escopo de carteira: as outras rotas passam pelo findById (empresa + REP/GERENTE
+    // só os próprios); esta ia direto e deixava um REP subir pro ERP a proposta de
+    // outro rep — que ele nem consegue abrir. Auditoria 29/09/2026.
+    await this.propostas.findById(user, id);
     return this.erp.enviar(id, user.empresaIdAtiva!);
   }
 
