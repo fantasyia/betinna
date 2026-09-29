@@ -813,7 +813,8 @@ function InfoCell({
           mono && 'tabular',
         )}
       >
-        {href && value ? (
+        {/* href vem do ERP (URL de rastreio): só http(s) vira link — `javascript:` rodaria na origem do app */}
+        {href && /^https?:\/\//i.test(href) && value ? (
           <a href={href} target="_blank" rel="noreferrer" className="text-info hover:underline">
             {value}
           </a>

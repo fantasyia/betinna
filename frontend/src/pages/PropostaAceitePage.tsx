@@ -378,7 +378,19 @@ export default function PropostaAceitePage() {
       await new Promise((ok) => setTimeout(ok, 0));
       if (leitor.current) {
         leitor.current.innerHTML = '';
-        await renderAsync(blob, leitor.current, undefined, { inWrapper: true, ignoreLastRenderedPageBreak: true });
+        // Página PÚBLICA na origem do app: o .docx vem do modelo do tenant. Sem
+        // `renderAltChunks: false`, um altChunk vira <iframe srcdoc> sem sandbox
+        // (script roda na nossa origem e pega a sessão de quem abre); e link de
+        // relacionamento externo entra cru no href. Auditoria 29/09/2026.
+        await renderAsync(blob, leitor.current, undefined, {
+          inWrapper: true,
+          ignoreLastRenderedPageBreak: true,
+          renderAltChunks: false,
+        });
+        leitor.current.querySelectorAll('iframe, script').forEach((el) => el.remove());
+        leitor.current.querySelectorAll('a[href]').forEach((a) => {
+          if (!/^https?:\/\//i.test(a.getAttribute('href') ?? '')) a.removeAttribute('href');
+        });
       }
     } catch (err) {
       setContrato('fechado');

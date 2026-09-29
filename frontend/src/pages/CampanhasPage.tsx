@@ -14,6 +14,7 @@ import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { cn } from '@/lib/cn';
+import { neutralizarFormula } from '@/lib/csv';
 
 // ─── Style tokens (Tailwind — equivalentes exatos do styles.ts legado) ─────────
 
@@ -240,7 +241,9 @@ function destCount(c: { _count?: { destinatarios?: number } }): number | undefin
  */
 function exportarResultadosCsv(c: CampanhaDetail): void {
   const linhas = c.destinatarios ?? [];
-  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // neutralizarFormula: nome de lead vem do site/WhatsApp/import — `=HYPERLINK(...)`
+  // entre aspas o Excel ainda avalia (auditoria 29/09/2026).
+  const esc = (v: unknown) => `"${neutralizarFormula(String(v ?? '')).replace(/"/g, '""')}"`;
   const head = ['cliente', 'email', 'telefone', 'status', 'enviado_em', 'lido', 'erro'];
   const body = linhas.map((d) =>
     [d.cliente?.nome ?? d.clienteId, d.email, d.telefone, d.status, d.enviadoEm, d.lido ? 'sim' : 'não', d.erro]

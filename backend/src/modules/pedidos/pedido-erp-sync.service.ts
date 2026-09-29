@@ -399,8 +399,11 @@ export class PedidoErpSyncService {
 
     const status = this.statusDe(d.situacao);
     const rastreioCodigo = d.transportador?.codigoRastreamento?.trim() || null;
+    // Só http(s): o valor vem do ERP e vira link na tela e no WhatsApp do P2 —
+    // `javascript:` rodaria na origem do app (auditoria 29/09/2026).
+    const urlErp = d.transportador?.urlRastreamento?.trim();
     const rastreioUrl =
-      d.transportador?.urlRastreamento?.trim() ||
+      (urlErp && /^https?:\/\//i.test(urlErp) ? urlErp : null) ||
       linkPublicoRastreio(rastreioCodigo, d.transportador?.formaEnvio);
     const total = new Prisma.Decimal(d.valorTotalPedido ?? d.valorTotalProdutos ?? 0);
     // O total do ERP inclui o frete cotado lá. Guardar separado é o que deixa

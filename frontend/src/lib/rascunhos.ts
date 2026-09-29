@@ -158,6 +158,12 @@ export function descartarRascunhos(): void {
       if (k?.startsWith(PREFIXO)) mortos.push(k);
     }
     for (const k of mortos) window.localStorage.removeItem(k);
+    // Histórico do MullerBot fica no sessionStorage da aba: sem isto, quem logava
+    // depois na mesma aba via as 20 últimas perguntas/respostas do anterior —
+    // inclusive de outro tenant (auditoria 29/09/2026). Esta função roda no
+    // "Sair" e na troca de usuário.
+    window.sessionStorage.removeItem('mullerbot_history_v2');
+    window.localStorage.removeItem('mullerbot_session_v2');
   } catch {
     /* best-effort */
   }

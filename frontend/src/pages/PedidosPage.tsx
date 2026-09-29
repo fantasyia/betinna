@@ -1529,7 +1529,8 @@ function InfoCell({
       </div>
       <div className="flex items-center gap-1.5">
         {avatar && <Avatar name={avatar} size="xs" />}
-        {href ? (
+        {/* href vem do ERP (URL de rastreio): só http(s) vira link — `javascript:` rodaria na origem do app */}
+        {href && /^https?:\/\//i.test(href) ? (
           <a
             href={href}
             target="_blank"
