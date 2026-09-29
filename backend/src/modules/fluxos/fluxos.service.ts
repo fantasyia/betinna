@@ -1430,7 +1430,11 @@ export class FluxosService {
 
   // ─── Teste manual ────────────────────────────────────────────────
 
-  async testar(user: AuthenticatedUser, dto: TestarFluxoDto): Promise<{ execucaoId: string }> {
+  async testar(
+    user: AuthenticatedUser,
+    dto: TestarFluxoDto,
+    opts: { viaToken?: boolean } = {},
+  ): Promise<{ execucaoId: string }> {
     const fluxo = await this.findOne(user, dto.fluxoId);
     // Testar é MUTAÇÃO na prática (dispara efeitos): dono do pessoal, gestão
     // do da empresa. Gestão NÃO testa fluxo pessoal alheio — a separação que o
@@ -1520,6 +1524,13 @@ export class FluxosService {
           // Sem isto, o motor manda de verdade. A marca viaja no contexto porque
           // é ela que os nós de envio consultam na hora de decidir.
           _testeEnviaDeVerdade: dto.enviarDeVerdade === true,
+          // Teste pedido por TOKEN de API (MCP/agente): o envio de verdade só pode
+          // chegar em número/e-mail da PRÓPRIA empresa — WhatsApp conectado dela
+          // ou e-mail de usuário dela. É o que a bancada usa (linha de teste →
+          // número da empresa) e o que um texto malicioso lido pelo agente NÃO
+          // pode usar pra falar com cliente real. Gravado DEPOIS do spread: o
+          // `contexto` que vem no DTO não consegue desligar. Auditoria 29/09/2026.
+          ...(opts.viaToken ? { _testeViaToken: true } : {}),
         }),
       },
     });

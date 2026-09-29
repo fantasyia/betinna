@@ -9,7 +9,9 @@ import {
   Post,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Audit } from '@shared/decorators/audit.decorator';
@@ -268,8 +270,11 @@ export class FluxosController {
   testar(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(testarFluxoSchema)) dto: TestarFluxoDto,
+    @Req() req: Request,
   ) {
-    return this.svc.testar(user, dto);
+    // Por token de API (MCP), o envio de verdade só alcança números/e-mails da
+    // PRÓPRIA empresa — ver FluxosService.testar (auditoria 29/09/2026).
+    return this.svc.testar(user, dto, { viaToken: !!req.apiToken });
   }
 
   @Post('cron/preview')

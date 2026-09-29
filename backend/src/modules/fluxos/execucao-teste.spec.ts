@@ -218,4 +218,30 @@ describe('modo seco: teste NÃO manda mensagem pra pessoa', () => {
       .data.contexto as Record<string, unknown>;
     expect(ctx._testeEnviaDeVerdade).toBe(true);
   });
+
+  // Auditoria 29/09/2026: teste pedido por token de API (MCP) só manda de verdade
+  // pra dentro da empresa — a marca é o que o executor consulta.
+  it('por token de API: grava _testeViaToken, e o contexto do DTO não desliga', async () => {
+    const { svc, prisma } = makeService();
+
+    await svc.testar(
+      user,
+      { fluxoId: 'f1', contexto: { _testeViaToken: false }, enviarDeVerdade: true },
+      { viaToken: true },
+    );
+
+    const ctx = (prisma.fluxoExecucao.create.mock.calls[0][0] as { data: { contexto: unknown } })
+      .data.contexto as Record<string, unknown>;
+    expect(ctx._testeViaToken).toBe(true);
+  });
+
+  it('pela tela (sem token): não grava a marca', async () => {
+    const { svc, prisma } = makeService();
+
+    await svc.testar(user, { fluxoId: 'f1', contexto: {}, enviarDeVerdade: true });
+
+    const ctx = (prisma.fluxoExecucao.create.mock.calls[0][0] as { data: { contexto: unknown } })
+      .data.contexto as Record<string, unknown>;
+    expect(ctx._testeViaToken).toBeUndefined();
+  });
 });

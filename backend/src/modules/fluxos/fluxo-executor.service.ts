@@ -1238,6 +1238,53 @@ export class FluxoExecutorService {
     return c['_teste'] === true && c['_testeEnviaDeVerdade'] !== true;
   }
 
+  /** Teste de envio real pedido por token de API (ver FluxosService.testar). */
+  private testeViaToken(ctx: ExecucaoContexto): boolean {
+    const c = ctx as Record<string, unknown>;
+    return c['_teste'] === true && c['_testeViaToken'] === true;
+  }
+
+  /**
+   * Teste por token só manda de verdade pra dentro da empresa. WhatsApp: o
+   * destino tem que ser um número CONECTADO da própria empresa (instância da
+   * empresa ou de um usuário dela) — casado por sufixo de 8 (D18). Fora disso o
+   * passo FALHA, visível, em vez de simular: quem testou precisa saber que não
+   * saiu. Auditoria 29/09/2026.
+   */
+  private async assertDestinoInternoWhatsapp(empresaId: string, peerId: string): Promise<void> {
+    const sufixo = peerId.replace(/@.*$/, '').replace(/\D/g, '').slice(-8);
+    const instancias = await this.prisma.evolutionInstancia.findMany({
+      where: { empresaId, ownerJid: { not: null } },
+      select: { ownerJid: true },
+    });
+    const internos = new Set(
+      instancias.map((i) => (i.ownerJid ?? '').replace(/@.*$/, '').replace(/\D/g, '').slice(-8)),
+    );
+    if (sufixo.length < 8 || !internos.has(sufixo)) {
+      throw new Error(
+        'Teste por token de API: envio de verdade só para número da própria empresa ' +
+          '(WhatsApp conectado dela). Destino fora disso — nada enviado.',
+      );
+    }
+  }
+
+  /** Mesma regra pro e-mail: só endereço de usuário da própria empresa. */
+  private async assertDestinoInternoEmail(empresaId: string, emails: string[]): Promise<void> {
+    const alvos = emails.map((e) => e.trim().toLowerCase());
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { email: { in: alvos, mode: 'insensitive' }, empresas: { some: { empresaId } } },
+      select: { email: true },
+    });
+    const internos = new Set(usuarios.map((u) => u.email.toLowerCase()));
+    const fora = alvos.filter((e) => !internos.has(e));
+    if (fora.length > 0) {
+      throw new Error(
+        'Teste por token de API: e-mail de verdade só para usuário da própria empresa. ' +
+          `${fora.length} destinatário(s) fora disso — nada enviado.`,
+      );
+    }
+  }
+
   /**
    * Resolve — e VALIDA — de qual número a mensagem sai.
    *
@@ -1929,6 +1976,9 @@ export class FluxoExecutorService {
     // caminho de reagendamento — 3 tentativas curtas e depois espera crescente
     // até a porta abrir, em vez de queimar o passo.
     const enviar = async (peerId: string): Promise<Record<string, unknown>> => {
+      // Ponto ÚNICO de envio (lead, contato, número fixo, grupo): a trava do
+      // teste por token fica aqui pra cobrir todos os modos de destino.
+      if (this.testeViaToken(ctx)) await this.assertDestinoInternoWhatsapp(empresaId, peerId);
       const donoEnvio = remetente.proprietarioId ?? null;
       if (!(await this.whatsapp.estaDisponivel(empresaId, donoEnvio))) {
         throw new WhatsappIndisponivelError(
@@ -2312,6 +2362,7 @@ export class FluxoExecutorService {
         assunto,
       };
     }
+    if (this.testeViaToken(ctx)) await this.assertDestinoInternoEmail(empresaId, emails);
 
     // Resend sistêmico — envia 1 e-mail por destinatário resolvido. Chave de idempotência
     // por destinatário (Resend deduplica nativamente por 24h) → retry não duplica e-mail.
@@ -4088,7 +4139,9 @@ export class FluxoExecutorService {
     // Modo seco cobre TAMBÉM o webhook (auditoria 20/08): era a única saída
     // externa sem o gate — teste disparava POST real no sistema do cliente,
     // com payload interpolado de lead real. Mesmo padrão do WhatsApp/e-mail.
-    if (this.testeSemEnvio(ctx)) {
+    // Teste por token de API: webhook NUNCA dispara de verdade — URL e payload
+    // são livres, não há "destino da própria empresa" pra conferir.
+    if (this.testeSemEnvio(ctx) || this.testeViaToken(ctx)) {
       return {
         simulado: true,
         url,

@@ -1599,7 +1599,12 @@ export class ConversarIaService implements OnModuleDestroy {
     // que não pediu nada — e não tem desfazer. Roda tudo (IA inclusive), só não
     // entrega. Quem quiser entregar marca "enviar de verdade" ao testar.
     const ctxRec = ctx as Record<string, unknown>;
-    if (ctxRec['_teste'] === true && ctxRec['_testeEnviaDeVerdade'] !== true) {
+    // Teste por token de API (MCP) também não entrega o opener: o destino é o
+    // peer da conversa, e o agente escolhe a conversa (auditoria 29/09/2026).
+    if (
+      ctxRec['_teste'] === true &&
+      (ctxRec['_testeEnviaDeVerdade'] !== true || ctxRec['_testeViaToken'] === true)
+    ) {
       this.logger.log(
         `CONVERSAR_IA em TESTE (exec ${execucaoId}): opener NÃO enviado — "${aberturaTexto.slice(0, 60)}…"`,
       );
