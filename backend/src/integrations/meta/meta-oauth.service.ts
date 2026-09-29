@@ -10,6 +10,7 @@ import {
   signOAuthState,
   verifyOAuthState,
 } from '@shared/utils/oauth-state.util';
+import { CryptoUtil } from '@shared/utils/crypto.util';
 import { MetaAppService } from './meta-app.service';
 import { MetaGraphClientService } from './meta-graph-client.service';
 import type { AssinaturaPagina, FacebookCredenciais, InstagramCredenciais } from './meta.types';
@@ -45,14 +46,30 @@ export const CAMPOS_ASSINATURA_PAGINA = [
   'leadgen',
 ];
 
-interface ConectarPagesResult {
+export interface ConectarPagesResult {
   pagesConectadas: Array<{
     pageId: string;
     pageName: string;
     igUserId?: string;
     igUsername?: string;
   }>;
+  /**
+   * A conta administra MAIS DE UMA Página (item 3a, 29/09): nada foi conectado
+   * ainda — a tela de Integrações pergunta qual usar.
+   */
+  escolherPagina?: Array<{ id: string; name: string }>;
 }
+
+/** Escolha pendente (Redis, cifrada): o que o callback obteve e a tela confirma. */
+interface EscolhaPendente {
+  userToken: string;
+  userTokenExpiresAt: number;
+  pages: Array<{ id: string; name: string; access_token: string }>;
+}
+
+/** Tempo pra escolher a Página depois do login. */
+const TTL_ESCOLHA_S = 15 * 60;
+const chaveEscolha = (empresaId: string) => `meta:escolha-pagina:${empresaId}`;
 
 /**
  * OAuth da Meta (Facebook Login) + onboarding multi-page.
@@ -96,7 +113,12 @@ export class MetaOAuthService {
     private readonly apps: MetaAppService,
   ) {
     this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'meta-oauth-state');
+    // Só pra a escolha pendente no Redis (15 min, tem token). Credencial
+    // PERSISTIDA continua passando pelo IntegracoesService (D9).
+    this.cripto = new CryptoUtil(this.env.get('ENCRYPTION_KEY'));
   }
+
+  private readonly cripto: CryptoUtil;
 
   /** O redirect é o ÚNICO pedaço global: cada app da empresa libera essa URL no painel. */
   isConfigured(): boolean {
@@ -148,9 +170,75 @@ export class MetaOAuthService {
       );
     }
 
+    // Mais de uma Página: o admin escolhe (item 3a, 29/09). Antes pegava a 1ª
+    // da lista — a ordem é da Meta, e a empresa podia ficar ligada na Página
+    // errada sem perceber. A escolha fica 15 min no Redis, cifrada (tem token).
+    if (pages.length > 1) {
+      const pendente: EscolhaPendente = {
+        userToken,
+        userTokenExpiresAt,
+        pages: pages.map((p) => ({ id: p.id, name: p.name, access_token: p.access_token })),
+      };
+      await this.redis.setEx(
+        chaveEscolha(empresaId),
+        this.cripto.encrypt(JSON.stringify(pendente)),
+        TTL_ESCOLHA_S,
+      );
+      return {
+        pagesConectadas: [],
+        escolherPagina: pages.map((p) => ({ id: p.id, name: p.name })),
+      };
+    }
+    return this.conectarPagina(empresaId, pages[0], userToken, userTokenExpiresAt, app.appId);
+  }
+
+  /** Páginas esperando escolha pra esta empresa (vazio = nenhuma pendente). */
+  async paginasPendentes(empresaId: string): Promise<Array<{ id: string; name: string }>> {
+    const p = await this.lerEscolha(empresaId);
+    return (p?.pages ?? []).map((x) => ({ id: x.id, name: x.name }));
+  }
+
+  /** Confirma a Página escolhida na tela e conecta. */
+  async escolherPagina(empresaId: string, pageId: string): Promise<ConectarPagesResult> {
+    const p = await this.lerEscolha(empresaId);
+    if (!p) {
+      throw new BusinessRuleException(
+        'A escolha da Página expirou — clique em Conectar de novo no Facebook.',
+      );
+    }
+    const page = p.pages.find((x) => x.id === pageId);
+    if (!page) throw new BusinessRuleException('Essa Página não está entre as da sua conta.');
+    const app = await this.apps.obter(empresaId);
+    const r = await this.conectarPagina(
+      empresaId,
+      page,
+      p.userToken,
+      p.userTokenExpiresAt,
+      app.appId,
+    );
+    await this.redis.del(chaveEscolha(empresaId));
+    return r;
+  }
+
+  private async lerEscolha(empresaId: string): Promise<EscolhaPendente | null> {
+    const bruto = await this.redis.get(chaveEscolha(empresaId));
+    if (!bruto) return null;
+    try {
+      return JSON.parse(this.cripto.decrypt(bruto)) as EscolhaPendente;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Conecta UMA Página (e o IG vinculado a ela) na empresa. */
+  private async conectarPagina(
+    empresaId: string,
+    page: { id: string; name: string; access_token: string },
+    userToken: string,
+    userTokenExpiresAt: number,
+    appId: string,
+  ): Promise<ConectarPagesResult> {
     const resultado: ConectarPagesResult = { pagesConectadas: [] };
-    // MVP: usa primeira page. Multi-page → next iteration.
-    const page = pages[0];
     const igAccount = await this.graph
       .obterIgVinculadoPage(page.id, page.access_token)
       .catch(() => null);
@@ -166,7 +254,7 @@ export class MetaOAuthService {
     // Assina a Página no app (Lead Ads + Messenger). Era passo MANUAL no painel
     // da Meta — empresa nova ficava sem receber lead nenhum e sem aviso. Falha
     // aqui NÃO derruba a conexão: fica gravada e a tela mostra o estado.
-    fbCreds.assinatura = await this.assinarPagina(page.id, page.access_token, app.appId);
+    fbCreds.assinatura = await this.assinarPagina(page.id, page.access_token, appId);
     await this.persistirConexao(empresaId, 'facebook', fbCreds, page.id, true);
 
     // Persiste Instagram (se houver)

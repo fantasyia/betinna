@@ -8,6 +8,7 @@ import { SistemaTabs } from '@/components/SistemaTabs';
 import { LeadCaptureCard } from '@/components/LeadCaptureCard';
 import { PedidoSiteChaveCard } from '@/components/PedidoSiteChaveCard';
 import { EmailTransacionalCard } from '@/components/EmailTransacionalCard';
+import { AssinaturaPaginaMeta, EscolherPaginaMeta } from '@/components/MetaPaginaCards';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
@@ -278,6 +279,8 @@ export default function IntegracoesPage() {
     IntegracaoStatusRow[] | { data: IntegracaoStatusRow[] }
   >('/integracoes/status');
   const [connecting, setConnecting] = useState<ServicoEmpresa | null>(null);
+  const papel = useRole();
+  const podeEscolherPagina = papel === 'DIRECTOR' || papel === 'ADMIN';
   const [disconnecting, setDisconnecting] = useState<ServicoEmpresa | null>(null);
 
   // Normaliza shape — backend pode retornar array direto ou { data }
@@ -324,6 +327,16 @@ export default function IntegracoesPage() {
             />
           ))}
         </div>
+
+        {/* Conta com várias Páginas: o admin escolhe (item 3a) */}
+        {podeEscolherPagina && (
+          <EscolherPaginaMeta
+            onConectada={() => {
+              refetch();
+              refetchStatus();
+            }}
+          />
+        )}
 
         {/* E-mail transacional (Resend) — status + teste de envio */}
         <div className="mt-4">
@@ -496,6 +509,7 @@ function ServicoCard({
 
       <p className="m-0 text-[12px] text-muted leading-[1.4]">{meta.description}</p>
       {servico === 'meta_app' && <UrlWebhookMeta />}
+      {servico === 'facebook' && conectado && podeOperar && <AssinaturaPaginaMeta />}
 
       {conexao && (
         <dl className="m-0 text-[11px] text-muted">

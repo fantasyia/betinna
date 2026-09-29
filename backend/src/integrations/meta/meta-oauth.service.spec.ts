@@ -413,3 +413,90 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
     expect(salvo.userTokenExpiresAt).toBeGreaterThan(Date.now());
   });
 });
+
+/**
+ * Item 3a (29/09): conta com mais de uma Página — o admin escolhe. Antes pegava
+ * a 1ª da lista (ordem da Meta) e podia ligar a empresa na Página errada.
+ */
+describe('MetaOAuthService — escolher a Página', () => {
+  const montar = () => {
+    const mem = new Map<string, string>();
+    const redis = {
+      ...makeRedis(),
+      setEx: vi.fn(async (k: string, v: string) => void mem.set(k, v)),
+      get: vi.fn(async (k: string) => mem.get(k) ?? null),
+      del: vi.fn(async (k: string) => Number(mem.delete(k))),
+    };
+    const graph = {
+      ...makeGraph(),
+      assinarAppNaPagina: vi.fn(async () => undefined),
+      camposAssinadosNaPagina: vi.fn(async () => ['messages', 'leadgen']),
+    };
+    graph.exchangeCode.mockResolvedValue({ access_token: 'short' });
+    graph.exchangeLongLived.mockResolvedValue({ access_token: 'long', expires_in: 5_184_000 });
+    graph.listarPages.mockResolvedValue([
+      { id: 'page-a', name: 'Loja A', access_token: 'tok-a' },
+      { id: 'page-b', name: 'Loja B', access_token: 'tok-b' },
+    ]);
+    graph.obterIgVinculadoPage.mockResolvedValue(null);
+    const integ = makeIntegracoes();
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      graph as never,
+      makePrisma() as never,
+      integ as never,
+      redis as never,
+      makeApps() as never,
+    );
+    return { svc, integ, redis, mem };
+  };
+
+  it('duas Páginas: NÃO conecta nenhuma e devolve a lista (tokens ficam cifrados no Redis)', async () => {
+    const m = montar();
+    const url = await m.svc.buildAuthUrl('emp-1');
+    const state = new URL(url).searchParams.get('state')!;
+
+    const r = await m.svc.processCallback('code', state);
+
+    expect(r.pagesConectadas).toEqual([]);
+    expect(r.escolherPagina).toEqual([
+      { id: 'page-a', name: 'Loja A' },
+      { id: 'page-b', name: 'Loja B' },
+    ]);
+    expect(m.integ.salvarCredenciaisInternas).not.toHaveBeenCalled();
+    const guardado = [...m.mem.values()][0]!;
+    expect(guardado).not.toContain('tok-a'); // cifrado
+    expect(await m.svc.paginasPendentes('emp-1')).toHaveLength(2);
+  });
+
+  it('escolher conecta a Página ESCOLHIDA (não a 1ª) e apaga a pendência', async () => {
+    const m = montar();
+    const state = new URL(await m.svc.buildAuthUrl('emp-1')).searchParams.get('state')!;
+    await m.svc.processCallback('code', state);
+
+    const r = await m.svc.escolherPagina('emp-1', 'page-b');
+
+    expect(r.pagesConectadas[0]).toMatchObject({ pageId: 'page-b', pageName: 'Loja B' });
+    const [emp, servico, creds, ext] = m.integ.salvarCredenciaisInternas.mock
+      .calls[0] as unknown as SalvarArgs;
+    expect([emp, servico, ext]).toEqual(['emp-1', 'facebook', 'page-b']);
+    expect(creds.pageAccessToken).toBe('tok-b');
+    expect(await m.svc.paginasPendentes('emp-1')).toEqual([]);
+  });
+
+  it('Página fora da lista ou escolha expirada: erro claro', async () => {
+    const m = montar();
+    await expect(m.svc.escolherPagina('emp-1', 'page-a')).rejects.toThrow('expirou');
+    const state = new URL(await m.svc.buildAuthUrl('emp-1')).searchParams.get('state')!;
+    await m.svc.processCallback('code', state);
+    await expect(m.svc.escolherPagina('emp-1', 'page-zzz')).rejects.toThrow('não está entre');
+  });
+
+  it('a pendência é por EMPRESA: outra empresa não vê nem escolhe', async () => {
+    const m = montar();
+    const state = new URL(await m.svc.buildAuthUrl('emp-1')).searchParams.get('state')!;
+    await m.svc.processCallback('code', state);
+    expect(await m.svc.paginasPendentes('emp-2')).toEqual([]);
+    await expect(m.svc.escolherPagina('emp-2', 'page-a')).rejects.toThrow('expirou');
+  });
+});

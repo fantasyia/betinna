@@ -1,4 +1,6 @@
-import { BadRequestException, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
+import { z } from 'zod';
+import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import { conferirNavegador, vincularNavegador } from '@shared/utils/oauth-navegador';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
@@ -10,6 +12,8 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { MetaOAuthService } from './meta-oauth.service';
 import { frontendOrigin } from '@shared/utils/frontend-origin';
+
+const escolherPaginaSchema = z.object({ pageId: z.string().min(1).max(64) });
 
 @ApiTags('integracoes/meta')
 @Controller('integracoes/meta')
@@ -62,6 +66,32 @@ export class MetaOAuthController {
     return this.oauth.estadoAssinatura(user.empresaIdAtiva, true);
   }
 
+  /** Páginas esperando escolha (conta com mais de uma — item 3a). */
+  @Get('paginas-pendentes')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Páginas da conta Meta esperando o admin escolher qual conectar.' })
+  async paginasPendentes(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.oauth.paginasPendentes(user.empresaIdAtiva);
+  }
+
+  @Post('escolher-pagina')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Conecta a Página escolhida (entre as pendentes).' })
+  async escolherPagina(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(escolherPaginaSchema)) body: { pageId: string },
+  ) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.oauth.escolherPagina(user.empresaIdAtiva, body.pageId);
+  }
+
   /**
    * Callback do Facebook. PÚBLICO — autenticidade via state JWT assinado.
    * Persiste credenciais da page (e IG vinculado se houver) na IntegracaoConexao.
@@ -87,6 +117,13 @@ export class MetaOAuthController {
     if (outroNavegador) return this.html(res, false, outroNavegador);
     try {
       const r = await this.oauth.processCallback(code, state);
+      if (r.escolherPagina?.length) {
+        return this.html(
+          res,
+          true,
+          `Sua conta tem ${r.escolherPagina.length} Páginas. Volte ao Betinna e escolha qual conectar.`,
+        );
+      }
       const p = r.pagesConectadas[0];
       const msg = p
         ? `Página "${p.pageName}" conectada${p.igUsername ? ` + Instagram @${p.igUsername}` : ''}.`
