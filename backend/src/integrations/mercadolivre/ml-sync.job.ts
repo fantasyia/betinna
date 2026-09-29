@@ -112,11 +112,14 @@ export class MLSyncJob {
     // Perguntas não respondidas
     let questionsCount = 0;
     try {
-      const qs = await this.questions.listarNaoRespondidas(empresaId, sellerId);
-      for (const q of qs) {
-        await this.questions.processarQuestion(empresaId, q);
-        questionsCount++;
-      }
+      // Só pergunta de anúncio ATIVO — as de anúncio pausado/encerrado não
+      // aparecem no painel do ML e aqui viravam fila falsa (18 contra 3, 29/09).
+      const r = await this.questions.sincronizarPendentes(empresaId, sellerId);
+      questionsCount = r.importadas;
+      this.logger.log(
+        `Perguntas ML empresa=${empresaId}: ${r.importadas} importadas, ${r.arquivadas} arquivadas ` +
+          `(anúncio inativo) · por status ${JSON.stringify(r.porStatus)}`,
+      );
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Questions fallback empresa=${empresaId}: ${m}`);
