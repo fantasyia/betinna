@@ -1516,24 +1516,40 @@ server.registerTool(
             "com as pastas permitidas, separadas por ';'). Use url + nome.",
         );
       }
+      const norm = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
+      // Aceito = dentro de uma pasta permitida E sem nenhum segmento oculto ABAIXO
+      // dela (".claude\settings.json", ".ssh\…", ".env"). Só olha o trecho abaixo
+      // da pasta: ela mesma pode morar sob um oculto (os repos ficam em .claude\github).
+      const aceito = (alvo: string) =>
+        pastas.some((p) => {
+          const base = resolve(p);
+          const b = norm(base.endsWith(sep) ? base : base + sep);
+          const a = norm(alvo);
+          if (a !== norm(base) && !a.startsWith(b)) return false;
+          const abaixo = alvo.slice(base.length).split(/[\\/]/).filter(Boolean);
+          return !abaixo.some((s) => s.startsWith("."));
+        });
+      const recusa = erro(
+        `Arquivo fora das pastas permitidas (ou oculto): "${caminhoArquivo}". ` +
+          `Permitidas: ${pastas.join(", ")}.`,
+      );
+      // Checagem LÉXICA antes de tocar o disco (auditoria 29/09/2026): o realpath
+      // num caminho UNC (\\host\share) abre conexão SMB e vaza o hash NTLM do
+      // Windows antes da allowlist recusar. Caminho de rede nunca é aceito, e
+      // fora das pastas permitidas nem chega ao disco. Mesma mensagem nos dois
+      // casos: o erro não diz se o arquivo existe.
+      if (/^[\\/]{2}/.test(caminhoArquivo) || !aceito(resolve(caminhoArquivo))) {
+        return recusa;
+      }
       let real: string;
       try {
         real = await realpath(resolve(caminhoArquivo));
       } catch {
-        return erro(
-          `Não consegui ler o arquivo em "${caminhoArquivo}". Use caminho ABSOLUTO.`,
-        );
+        return recusa;
       }
-      const norm = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
-      const dentroDePastaPermitida = pastas.some((p) => {
-        const base = norm(resolve(p));
-        return norm(real) === base || norm(real).startsWith(base.endsWith(sep) ? base : base + sep);
-      });
-      if (!dentroDePastaPermitida || basename(real).startsWith(".")) {
-        return erro(
-          `Arquivo fora das pastas permitidas (ou oculto): "${caminhoArquivo}". ` +
-            `Permitidas: ${pastas.join(", ")}.`,
-        );
+      // Depois do realpath: junção/symlink que aponta pra fora também é recusado.
+      if (!aceito(real)) {
+        return recusa;
       }
       const ext = extname(real).toLowerCase();
       const mime = EXT_MIME[ext];
@@ -2025,7 +2041,7 @@ server.registerTool(
           "Full replace — envie SEMPRE junto com `nos` (ou omita os dois).",
         ),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async ({
@@ -2076,7 +2092,7 @@ server.registerTool(
         .optional()
         .describe("Filtro do gatilho (ver fluxoNoInput.config)"),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async ({
@@ -2143,7 +2159,7 @@ server.registerTool(
           "Conversa REAL contra a qual testar (chega no contexto da execução). Obrigatória no envio real.",
         ),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async ({
@@ -2193,7 +2209,7 @@ server.registerTool(
     inputSchema: {
       fluxoId: z.string().describe("ID do fluxo (use fluxos_listar)"),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
     await api.delete(`/fluxos/${seg(fluxoId)}`);
@@ -2241,7 +2257,7 @@ server.registerTool(
     inputSchema: {
       fluxoId: z.string().describe("ID do fluxo ATIVO (use fluxos_listar)"),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
     await api.post(`/fluxos/${seg(fluxoId)}/pausar`);
@@ -2848,7 +2864,7 @@ server.registerTool(
         .default([])
         .describe("Nomes de tags a remover"),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async (args: {
@@ -2897,7 +2913,7 @@ server.registerTool(
             "dias reais — ex: 10 dias atrás → o job pega na rodada seguinte. Recusa futuro.",
         ),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async (args: {
@@ -3091,7 +3107,7 @@ server.registerTool(
             '("nome: A | B | C") — vira enum e o modelo não CONSEGUE sair da lista.',
         ),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async (args: {
@@ -3154,7 +3170,7 @@ server.registerTool(
             '("nome: A | B | C") — vira enum e o modelo não CONSEGUE sair da lista.',
         ),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async ({
@@ -3289,7 +3305,7 @@ server.registerTool(
       saudacao: z.string().max(280).nullable().optional(),
       ativo: z.boolean().optional(),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async (rest: {
@@ -3533,7 +3549,7 @@ server.registerTool(
         .optional()
         .describe("Confirmação explícita exigida quando `podeEnviar: true`."),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async (args: {
@@ -3732,7 +3748,7 @@ server.registerTool(
         .optional()
         .describe("false = já nasce fora das respostas."),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async (args: {
@@ -3763,7 +3779,7 @@ server.registerTool(
       categoria: z.string().optional(),
       ativo: z.boolean().optional(),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   seguro(
     async ({

@@ -142,6 +142,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     // Sem timeout, uma API pendurada travava a tool (e o agente) pra sempre
     // (auditoria 13/09, H-6).
     signal: AbortSignal.timeout(TIMEOUT_MS),
+    // A API não redireciona; um 30x só apareceria por proxy/URL errada — e
+    // seguir levaria o Bearer junto pro destino (auditoria 29/09/2026).
+    redirect: 'error',
   });
   return interpretar<T>(res);
 }
@@ -153,6 +156,7 @@ async function postForm<T>(path: string, form: FormData): Promise<T> {
     headers: { Authorization: `Bearer ${API_TOKEN}` },
     body: form,
     signal: AbortSignal.timeout(TIMEOUT_UPLOAD_MS),
+    redirect: 'error',
   });
   return interpretar<T>(res);
 }
