@@ -253,6 +253,16 @@ export class InboxController {
     return this.metricas.metricas(user);
   }
 
+  // Rota literal ANTES de `:id`. Quais marketplaces têm conversa ativa e quantas
+  // em cada grupo (pré-venda / pós-venda / reclamações) — as abas da Inbox.
+  @Get('marketplace/resumo')
+  @ApiOperation({
+    summary: 'Conversas ativas de marketplace por canal e grupo (pré/pós-venda, reclamações)',
+  })
+  resumoMarketplace(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.resumoMarketplace(user);
+  }
+
   // Rota literal ANTES de `:id` pra não cair no param.
   @Get('contatos-whatsapp')
   @ApiOperation({ summary: 'Contatos WhatsApp (telefone + nome) pra dropdown de destinatário' })

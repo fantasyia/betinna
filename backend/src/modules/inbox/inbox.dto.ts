@@ -31,6 +31,12 @@ export const listConversationsSchema = z.object({
   /** true → apenas conversas ESQUECIDAS (bot desligado + sem resposta humana). */
   esquecidas: boolQuery.optional(),
   clienteId: z.string().cuid().optional(),
+  /**
+   * Grupo de atendimento de MARKETPLACE (Léo, 29/09): pré-venda (perguntas nos
+   * anúncios), pós-venda (mensagens de quem comprou) ou reclamações/mediações.
+   * Traduzido pra categorias em `GRUPOS_MARKETPLACE` (inbox.service).
+   */
+  grupo: z.enum(['pre_venda', 'pos_venda', 'reclamacoes']).optional(),
   search: z.string().min(1).max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(30),

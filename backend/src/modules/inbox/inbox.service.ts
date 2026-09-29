@@ -33,6 +33,24 @@ import type { MensagemEntranteParams } from './inbox.types';
 import { type CtwaReferral, campanhaDoReferral } from '@integrations/evolution/ctwa-referral.util';
 import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 
+/**
+ * Grupos da aba de marketplace → categorias da conversa (Léo, 29/09).
+ * GERAL entra em pós-venda: numa conversa de marketplace, o que não é pergunta
+ * de anúncio nem reclamação é assunto de quem já comprou.
+ */
+export const GRUPOS_MARKETPLACE = {
+  pre_venda: ['PRE_VENDA'],
+  pos_venda: ['POS_VENDA', 'GERAL'],
+  reclamacoes: ['RECLAMACAO', 'MEDIACAO', 'DEVOLUCAO', 'DISPUTA'],
+} as const satisfies Record<string, readonly ConversationCategoria[]>;
+
+const CANAIS_MARKETPLACE = [
+  'MARKETPLACE_ML',
+  'MARKETPLACE_SHOPEE',
+  'MARKETPLACE_AMAZON',
+  'MARKETPLACE_TIKTOK',
+] as const;
+
 const conversationInclude = {
   cliente: { select: { id: true, nome: true, telefone: true, cidade: true } },
   atribuido: { select: { id: true, nome: true, avatar: true } },
@@ -313,6 +331,41 @@ export class InboxService {
     return out;
   }
 
+  /**
+   * Resumo da aba de marketplace: por canal com conversa ATIVA (não resolvida
+   * nem arquivada), quantas há em cada grupo. Canal sem nenhuma não aparece —
+   * é o que decide quais abas de marketplace a tela mostra. Mesmo escopo da
+   * lista (baseWhere): REP não vê marketplace.
+   */
+  async resumoMarketplace(
+    user: AuthenticatedUser,
+  ): Promise<Array<{ canal: string; preVenda: number; posVenda: number; reclamacoes: number }>> {
+    const linhas = await this.prisma.conversation.groupBy({
+      by: ['canal', 'categoria'],
+      where: {
+        ...this.baseWhere(user),
+        canal: { in: [...CANAIS_MARKETPLACE] },
+        status: { notIn: ['RESOLVIDA', 'ARQUIVADA'] },
+      },
+      _count: { _all: true },
+    });
+    const porCanal = new Map<string, { preVenda: number; posVenda: number; reclamacoes: number }>();
+    for (const l of linhas) {
+      const c = porCanal.get(l.canal) ?? { preVenda: 0, posVenda: 0, reclamacoes: 0 };
+      const cat = l.categoria as ConversationCategoria;
+      const n = l._count._all;
+      if ((GRUPOS_MARKETPLACE.pre_venda as readonly string[]).includes(cat)) c.preVenda += n;
+      else if ((GRUPOS_MARKETPLACE.reclamacoes as readonly string[]).includes(cat))
+        c.reclamacoes += n;
+      else c.posVenda += n;
+      porCanal.set(l.canal, c);
+    }
+    return CANAIS_MARKETPLACE.filter((c) => porCanal.has(c)).map((canal) => ({
+      canal,
+      ...porCanal.get(canal)!,
+    }));
+  }
+
   // ─── Listagem / detalhes ─────────────────────────────────────────────
 
   async list(
@@ -328,6 +381,12 @@ export class InboxService {
     if (params.status) conds.push({ status: params.status });
     else conds.push({ status: { notIn: ['RESOLVIDA', 'ARQUIVADA'] } });
     if (params.clienteId) conds.push({ clienteId: params.clienteId });
+    if (params.grupo) {
+      // Grupo é conceito de MARKETPLACE: sem canal explícito, fica nos canais de
+      // marketplace — senão "pós-venda" (que inclui GERAL) puxaria o WhatsApp.
+      conds.push({ categoria: { in: [...GRUPOS_MARKETPLACE[params.grupo]] } });
+      if (!params.canal) conds.push({ canal: { in: [...CANAIS_MARKETPLACE] } });
+    }
     if (params.meu) conds.push({ atribuidoId: user.id });
     if (params.atribuidoId) conds.push({ atribuidoId: params.atribuidoId });
     if (params.naoAtribuidas) conds.push({ atribuidoId: null });

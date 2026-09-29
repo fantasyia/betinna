@@ -4,7 +4,12 @@ import { PageLayout } from '@/components/PageLayout';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
-import { Dialog } from '@/components/ui';
+import { Dialog, Tabs } from '@/components/ui';
+import { useSearchParams } from 'react-router-dom';
+import {
+  ConversasMarketplace,
+  type GrupoMarketplace,
+} from '@/pages/marketplace/ConversasMarketplace';
 import { Select } from '@/components/FormField';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
@@ -125,7 +130,34 @@ function hoursUntil(d: string | null | undefined): number | null {
   return Math.round((dt.getTime() - Date.now()) / 3_600_000);
 }
 
+type AbaMarketplace = GrupoMarketplace | 'reclamacoes';
+const ABAS: AbaMarketplace[] = ['pre_venda', 'pos_venda', 'reclamacoes'];
+
+interface ResumoCanal {
+  canal: string;
+  preVenda: number;
+  posVenda: number;
+  reclamacoes: number;
+}
+
+/**
+ * Aba Marketplaces (Léo, 29/09): três abas com contador — Pré-venda (perguntas
+ * nos anúncios), Pós-venda (mensagens de quem comprou) e Reclamações e mediações
+ * (a tabela de incidentes que já existia). A aba fica na URL (?aba=).
+ */
 export default function MarketplaceIncidentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const abaUrl = searchParams.get('aba') as AbaMarketplace | null;
+  const aba: AbaMarketplace = abaUrl && ABAS.includes(abaUrl) ? abaUrl : 'pre_venda';
+  const trocarAba = (v: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('aba', v);
+    setSearchParams(next, { replace: true });
+  };
+  const { data: resumoMkt } = useApiQuery<ResumoCanal[]>('/inbox/marketplace/resumo');
+  const total = (k: keyof Omit<ResumoCanal, 'canal'>) =>
+    (resumoMkt ?? []).reduce((s, r) => s + r[k], 0);
+
   const [page, setPage] = useState(1);
   const [canal, setCanal] = useState('');
   const [tipo, setTipo] = useState('');
@@ -225,9 +257,27 @@ export default function MarketplaceIncidentsPage() {
   return (
     <PageLayout
       title="Atendimento — Marketplaces"
-      description="Reclamações, devoluções, mediações e disputas vindas dos marketplaces."
+      description="Perguntas de pré-venda, mensagens de pós-venda e reclamações vindas dos marketplaces."
     >
       <AtendimentoTabs />
+      <div className="mb-4" data-testid="mkt-abas">
+        <Tabs
+          items={[
+            { value: 'pre_venda', label: 'Pré-venda', count: total('preVenda') },
+            { value: 'pos_venda', label: 'Pós-venda', count: total('posVenda') },
+            { value: 'reclamacoes', label: 'Reclamações e mediações', count: total('reclamacoes') },
+          ]}
+          value={aba}
+          onChange={trocarAba}
+        />
+      </div>
+
+      {aba !== 'reclamacoes' ? (
+        <div className={CARD_CLS + ' !p-0 overflow-hidden'}>
+          <ConversasMarketplace grupo={aba} />
+        </div>
+      ) : (
+      <>
       {resumo && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3 mb-4">
           <StatBox label="Total" value={String(resumo.total)} />
@@ -335,6 +385,8 @@ export default function MarketplaceIncidentsPage() {
           )}
         </StateView>
       </div>
+      </>
+      )}
 
       {selected && (
         <IncidentDetailModal id={selected} onClose={() => setSelected(null)} />
