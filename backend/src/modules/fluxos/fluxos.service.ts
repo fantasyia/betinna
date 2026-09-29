@@ -26,6 +26,7 @@ import type {
   DefinirGatilhoDto,
 } from './fluxos.dto';
 import { OPERADORES_FILTRO_PAYLOAD } from './match-payload-filtro.util';
+import { ACOES_PROIBIDAS_PESSOAL } from './fluxo-pessoal.constants';
 
 /** Fluxo serializado pro arquivo de export/import (.json). */
 export interface ExportedFluxo {
@@ -191,13 +192,6 @@ export class FluxosService {
     this.requireAdminOrDirector(user);
   }
 
-  /** Ações que um fluxo PESSOAL não pode ter — extrapolam a carteira do dono. */
-  private static readonly ACOES_PROIBIDAS_PESSOAL = new Set([
-    'ATRIBUIR_REP',
-    'TRANSFERIR_ATENDIMENTO',
-    'LIBERAR_LOTE',
-  ]);
-
   /**
    * Guarda-corpo do fluxo pessoal, na VALIDAÇÃO (não só escondido no editor —
    * senão qualquer um monta via API/import mesmo assim):
@@ -210,9 +204,12 @@ export class FluxosService {
   ): Promise<void> {
     for (const no of nos) {
       if (no.tipo !== 'ACAO' || !no.acaoTipo) continue;
-      if (FluxosService.ACOES_PROIBIDAS_PESSOAL.has(no.acaoTipo)) {
+      if (ACOES_PROIBIDAS_PESSOAL.has(no.acaoTipo)) {
         throw new BusinessRuleException(
-          `A ação ${no.acaoTipo} não é permitida em fluxo pessoal — ela age fora da sua carteira`,
+          no.acaoTipo === 'WEBHOOK_EXTERNO'
+            ? 'A ação WEBHOOK_EXTERNO não é permitida em fluxo pessoal — envio de dados pra ' +
+                'sistema externo só em fluxo da empresa (diretoria)'
+            : `A ação ${no.acaoTipo} não é permitida em fluxo pessoal — ela age fora da sua carteira`,
           ErrorCode.FLUXO_INVALIDO,
         );
       }

@@ -131,8 +131,10 @@ export function WebhookTriggerConfig({
             </button>
           </div>
           <p className="text-muted">
-            Header: <code className="text-text">x-betinna-webhook-signature</code> ={' '}
-            <code className="text-text">HMAC_SHA256(corpo, secret)</code> em hex.
+            Header <code className="text-text">x-betinna-webhook-timestamp</code> = hora atual
+            (unix, segundos). Header <code className="text-text">x-betinna-webhook-signature</code>{' '}
+            = <code className="text-text">HMAC_SHA256(timestamp + &quot;.&quot; + corpo, secret)</code>{' '}
+            em hex. Requisição com mais de 5 min de diferença é recusada.
           </p>
         </div>
       )}

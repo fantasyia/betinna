@@ -4,7 +4,7 @@ import { NotFoundException, UnauthorizedException } from '@shared/errors/app-exc
 import { ErrorCode } from '@shared/errors/error-codes';
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import { WebhookEntradaService } from './webhook-entrada.service';
+import { WebhookEntradaService, conteudoAssinado } from './webhook-entrada.service';
 
 const user: AuthenticatedUser = {
   id: 'u',
@@ -32,13 +32,15 @@ const makeAntiReplay = () => ({
   checkAndMarkWebhook: vi.fn().mockResolvedValue({ fresh: true, signatureHash: 'h' }),
 });
 
-/** Monta um input de receber com assinatura HMAC válida pro secret. */
+/** Monta um input de receber com assinatura HMAC válida (timestamp + corpo) pro secret. */
 function receberValido(payload: unknown, secret = SECRET, over: Record<string, unknown> = {}) {
   const rawBody = Buffer.from(JSON.stringify(payload));
+  const timestamp = String(Math.floor(Date.now() / 1000));
   return {
     token: 'tok',
     rawBody,
-    signature: WebhookSignatureUtil.signHmacSha256(rawBody, secret),
+    timestamp,
+    signature: WebhookSignatureUtil.signHmacSha256(conteudoAssinado(timestamp, rawBody), secret),
     ...over,
   };
 }
@@ -97,6 +99,39 @@ describe('WebhookEntradaService', () => {
     const input = { ...receberValido({ x: 1 }), signature: 'deadbeef' };
     await expect(svc.processar(input)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  // Auditoria 29/09/2026: a hora entra na assinatura — sem ela, o mesmo POST
+  // capturado valia pra sempre.
+  it('sem timestamp → 401, mesmo com a assinatura antiga (só do corpo) correta', async () => {
+    prisma.webhookEntrada.findUnique.mockResolvedValue(whAtivo);
+    const rawBody = Buffer.from(JSON.stringify({ x: 1 }));
+    const input = {
+      token: 'tok',
+      rawBody,
+      signature: WebhookSignatureUtil.signHmacSha256(rawBody, SECRET),
+    };
+    await expect(svc.processar(input)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  it('timestamp trocado depois de assinado → 401 (a hora está dentro do HMAC)', async () => {
+    prisma.webhookEntrada.findUnique.mockResolvedValue(whAtivo);
+    const valido = receberValido({ x: 1 });
+    const input = { ...valido, timestamp: String(Number(valido.timestamp) + 60) };
+    await expect(svc.processar(input)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  it('passa o timestamp assinado pro anti-replay (que recusa fora de ±5 min)', async () => {
+    prisma.webhookEntrada.findUnique.mockResolvedValue(whAtivo);
+    const input = receberValido({ x: 1 });
+    await svc.processar(input);
+    expect(antiReplay.checkAndMarkWebhook).toHaveBeenCalledWith(
+      'fluxo',
+      input.signature,
+      input.timestamp,
+    );
   });
 
   it('token inexistente → 401 uniforme (não revela existência), não dispara', async () => {

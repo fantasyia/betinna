@@ -19,8 +19,17 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 const RL_MAX_POR_MIN = 300;
 /** Secret dummy p/ o caminho de token inexistente — mantém o custo do HMAC constante. */
 const DUMMY_SECRET = '0'.repeat(64);
-/** Janela em que a mesma assinatura é tratada como replay (timestamp não entra no HMAC). */
-const REPLAY_TTL_S = 30 * 24 * 60 * 60;
+
+/**
+ * O que é assinado: `${timestamp}.${corpo cru}` (mesmo desenho do Stripe/Svix).
+ * Com a hora dentro do HMAC, um POST capturado não pode ser reenviado depois
+ * que sai da janela de 5 min do anti-replay — nem com o timestamp trocado, que
+ * invalida a assinatura. Até 29/09/2026 a assinatura cobria só o corpo e o
+ * timestamp era opcional: a mesma requisição valia pra sempre. Auditoria 29/09.
+ */
+export function conteudoAssinado(timestamp: string, rawBody: Buffer): Buffer {
+  return Buffer.concat([Buffer.from(`${timestamp}.`, 'utf8'), rawBody]);
+}
 
 export interface ReceberWebhookInput {
   token: string;
@@ -123,27 +132,24 @@ export class WebhookEntradaService {
     });
 
     // HMAC SEMPRE (mesmo p/ token inexistente, contra secret dummy) → sem oráculo
-    // de timing nem de existência de token.
+    // de timing nem de existência de token. O timestamp é OBRIGATÓRIO e entra na
+    // assinatura (ver `conteudoAssinado`); sem ele a verificação roda igual, contra
+    // uma string vazia, e falha — mesmo custo, mesmo 401.
     const secret = wh?.secret ?? DUMMY_SECRET;
     const rb = rawBody ?? Buffer.alloc(0);
+    const ts = (timestamp ?? '').trim();
     const assinaturaOk =
-      !!signature && WebhookSignatureUtil.verifyHmacSha256(rb, signature, secret);
+      !!signature &&
+      WebhookSignatureUtil.verifyHmacSha256(conteudoAssinado(ts, rb), signature, secret);
 
-    if (!wh || !wh.ativo || !wh.secret || !assinaturaOk) {
+    if (!wh || !wh.ativo || !wh.secret || !ts || !assinaturaOk) {
       throw new UnauthorizedException('Webhook inválido', ErrorCode.AUTH_INVALID_TOKEN);
     }
 
-    // Anti-replay por HMAC (+ timestamp opcional): mesmo POST reenviado → ACK sem processar.
-    // O timestamp NÃO entra no HMAC (mudar isso quebra quem já emite), então a
-    // janela de "assinatura vista" é longa: 30 dias em vez dos 10 min padrão —
-    // senão o mesmo POST capturado voltava a disparar o fluxo quando a chave
-    // expirava. Auditoria 29/09/2026.
-    const { fresh } = await this.antiReplay.checkAndMarkWebhook(
-      'fluxo',
-      signature,
-      timestamp,
-      REPLAY_TTL_S,
-    );
+    // Anti-replay: timestamp fora de ±5 min → 401; mesma assinatura dentro da
+    // janela → ACK sem processar. Como a hora está assinada, a janela padrão
+    // (10 min) cobre tudo que ainda pode ser aceito.
+    const { fresh } = await this.antiReplay.checkAndMarkWebhook('fluxo', signature, ts);
     if (!fresh) return { ok: true };
 
     // Idempotência forte (DB) quando o emissor manda Idempotency-Key — sobrevive a Redis frio.

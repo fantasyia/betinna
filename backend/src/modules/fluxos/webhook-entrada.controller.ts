@@ -29,8 +29,9 @@ export class WebhookEntradaController {
   constructor(private readonly svc: WebhookEntradaService) {}
 
   // ─── Receiver público (sistemas externos POSTam aqui) ────────────────
-  // Auth = HMAC-SHA256(rawBody) no header x-betinna-webhook-signature contra o
-  // secret POR-TENANT. O :token na URL é só ROTEADOR da empresa, não credencial.
+  // Auth = HMAC-SHA256(`${timestamp}.${rawBody}`) no header x-betinna-webhook-signature,
+  // com o timestamp (unix, segundos) OBRIGATÓRIO em x-betinna-webhook-timestamp,
+  // contra o secret POR-TENANT. O :token na URL é só ROTEADOR da empresa, não credencial.
   @Public()
   @Post('webhooks/fluxo/:token')
   @HttpCode(HttpStatus.OK)

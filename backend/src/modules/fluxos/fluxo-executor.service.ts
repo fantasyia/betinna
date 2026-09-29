@@ -44,6 +44,7 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 // os dois caminhos não divergirem (a IA solta "Nao e lead"/"Não é lead"
 // indistintamente; um acento a menos desviava tudo pro ramo errado).
 import { ehNaoSei, normalizarValor } from './normalizar-valor.util';
+import { ACOES_PROIBIDAS_PESSOAL } from './fluxo-pessoal.constants';
 import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
 import {
   FLUXO_QUEUE,
@@ -653,6 +654,17 @@ export class FluxoExecutorService {
       //    instância da EMPRESA.
       contexto['_donoFluxo'] = fluxoDono;
       if (contexto['proprietarioId'] == null) contexto['proprietarioId'] = fluxoDono;
+      // 0) Ação proibida em fluxo pessoal: a validação recusa na gravação, mas
+      //    fluxo gravado ANTES da regra (ex.: WEBHOOK_EXTERNO, proibido em 29/09)
+      //    nunca mais passa por ela. Aqui ele falha visível em vez de rodar.
+      if (no.tipo === 'ACAO' && no.acaoTipo && ACOES_PROIBIDAS_PESSOAL.has(no.acaoTipo)) {
+        await this.marcarFalhou(
+          execucaoId,
+          `Fluxo pessoal: a ação ${no.acaoTipo} não é permitida em fluxo pessoal — ` +
+            'nenhuma ação executada',
+        );
+        return;
+      }
       // 2) Carteira: ação sobre lead de OUTRO rep (ou da casa) não roda. O
       //    gate do bus já filtra na entrada; este cobre lead que TROCOU de
       //    dono no meio da execução (reatribuição durante um DELAY).

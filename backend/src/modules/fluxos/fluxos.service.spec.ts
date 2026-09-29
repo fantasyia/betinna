@@ -137,6 +137,28 @@ describe('FluxosService', () => {
       ).rejects.toThrow(/não é permitida em fluxo pessoal/);
     });
 
+    // Decisão do Léo (29/09/2026): webhook externo só em fluxo da empresa.
+    it('REP NÃO cria fluxo pessoal com WEBHOOK_EXTERNO (exportaria a carteira)', async () => {
+      await expect(
+        svc.create(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), {
+          nome: 'Manda pra fora',
+          nos: [
+            {
+              id: 'n1',
+              tipo: 'ACAO',
+              acaoTipo: 'WEBHOOK_EXTERNO',
+              titulo: 'Hook',
+              config: { url: 'https://example.com/x' },
+              posX: 0,
+              posY: 0,
+            },
+          ],
+          arestas: [],
+        } as never),
+      ).rejects.toThrow(/WEBHOOK_EXTERNO não é permitida em fluxo pessoal/);
+      expect(prisma.fluxo.create).not.toHaveBeenCalled();
+    });
+
     it('cria fluxo com status RASCUNHO', async () => {
       prisma.fluxo.create.mockResolvedValue({ id: 'f1' });
       const fluxoComRel = fakeFluxo({ id: 'f1', nome: 'Novo Fluxo' });
