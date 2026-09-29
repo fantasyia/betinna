@@ -27,6 +27,7 @@ const build = (
     /** Lead que já existe pela regra de dedup (telefone/e-mail) — id ou null. */
     dedup?: string | null;
     atual?: Record<string, unknown>;
+    config?: Record<string, unknown>;
     conexao?: unknown;
     dadosLead?: unknown;
     anuncioLanca?: boolean;
@@ -42,6 +43,13 @@ const build = (
       update: vi.fn().mockResolvedValue({}),
     },
     $executeRaw: vi.fn().mockResolvedValue(1),
+    // Item 6: etapa de entrada configurável (Empresa.config.entradaAnuncios).
+    empresa: { findUnique: vi.fn().mockResolvedValue({ config: opts.config ?? null }) },
+    funilEtapa: {
+      findFirst: vi.fn(async (a: { where: { id: string } }) =>
+        a.where.id.startsWith('etapa-') ? { id: a.where.id } : null,
+      ),
+    },
   };
   const captura = {
     acharLeadAberto: vi.fn().mockResolvedValue(opts.dedup ?? null),
@@ -164,6 +172,36 @@ describe('MetaLeadgenService', () => {
       });
       await svc.processar(JOB);
       expect(dto(leads).contatoTelefone).toBe('123');
+    });
+
+    describe('etapa de entrada do Lead Ads (item 6)', () => {
+      it('sem config: funil padrão (funilEtapaId vazio)', async () => {
+        const { svc, leads } = build();
+        await svc.processar(JOB);
+        expect(dto(leads).funilEtapaId).toBeUndefined();
+      });
+
+      it('etapa POR FORMULÁRIO vence a padrão do Lead Ads', async () => {
+        const { svc, leads } = build({
+          config: {
+            entradaAnuncios: {
+              leadAdsEtapaId: 'etapa-padrao',
+              leadAdsPorFormulario: { 'form-9': 'etapa-do-form' },
+            },
+          },
+        });
+        await svc.processar(JOB);
+        expect(dto(leads).funilEtapaId).toBe('etapa-do-form');
+      });
+
+      it('etapa configurada que não existe mais: cai no padrão (o lead não se perde)', async () => {
+        const { svc, leads } = build({
+          config: { entradaAnuncios: { leadAdsEtapaId: 'apagada' } },
+        });
+        await svc.processar(JOB);
+        expect(leads.createPublico).toHaveBeenCalled();
+        expect(dto(leads).funilEtapaId).toBeUndefined();
+      });
     });
 
     describe('lead que já existe (29/09)', () => {

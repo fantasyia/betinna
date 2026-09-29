@@ -3047,6 +3047,46 @@ export class FluxoExecutorService {
         jaTemLead: Boolean(conversa.leadId),
       };
     }
+    const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
+    return this.criarLeadDaConversa(empresaId, conversa, cfg, {
+      publicar: (leadId) => this.publicarLeadNoContexto(execucaoId, ctx, leadId),
+      hops,
+      marca: this.marcaDeTeste(ctx),
+    });
+  }
+
+  /**
+   * O miolo do CRIAR_LEAD, sem contexto de execução (item 10 do card 📣,
+   * 29/09): o nó do fluxo chama, e o orquestrador também — quando a conversa
+   * veio de ANÚNCIO, ele garante o lead antes de o gatilho sair, pra conversa
+   * de anúncio nunca terminar sem lead. Idempotente nos mesmos dois níveis
+   * (conversa já amarrada, telefone já é lead): quem chegar depois só amarra.
+   *
+   * `hooks.publicar` = o que fazer com o leadId (no fluxo, publicar no
+   * contexto; fora dele, nada). Sem etapa configurada → funil PADRÃO da empresa
+   * (antes nascia com funilId=null, fora de todo kanban).
+   */
+  async criarLeadDaConversa(
+    empresaId: string,
+    conversa: {
+      id: string;
+      peerId: string;
+      peerNome: string | null;
+      leadId: string | null;
+      clienteId: string | null;
+      proprietarioId: string | null;
+      utmCampaign: string | null;
+      metadata: Prisma.JsonValue;
+      ultimaMsgEm: Date | null;
+    },
+    cfg: CriarLeadConfig,
+    hooks: {
+      publicar: (leadId: string) => Promise<void>;
+      hops: number;
+      marca: Record<string, unknown>;
+    },
+  ): Promise<Record<string, unknown>> {
+    const conversationId = conversa.id;
     // Grupo não é contato comercial — não vira lead.
     if (conversa.peerId.includes('@g.us')) {
       return { criado: false, motivo: 'grupo', conversationId };
@@ -3063,7 +3103,7 @@ export class FluxoExecutorService {
         select: { id: true },
       });
       if (vivo) {
-        await this.publicarLeadNoContexto(execucaoId, ctx, conversa.leadId);
+        await hooks.publicar(conversa.leadId);
         return { criado: false, motivo: 'conversa_ja_tem_lead', leadId: conversa.leadId };
       }
       this.logger.warn(
@@ -3100,7 +3140,7 @@ export class FluxoExecutorService {
           where: { id: conversa.id, empresaId },
           data: { leadId: existente[0].id },
         });
-        await this.publicarLeadNoContexto(execucaoId, ctx, existente[0].id);
+        await hooks.publicar(existente[0].id);
         return { criado: false, motivo: 'telefone_ja_e_lead', leadId: existente[0].id };
       }
     }
@@ -3121,6 +3161,18 @@ export class FluxoExecutorService {
       funilId = etapa.funilId;
       funilEtapaId = etapa.id;
       etapaEnum = etapa.tipo === 'GANHO' ? 'GANHO' : etapa.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
+    } else {
+      // Item 10 (29/09): sem etapa → 1ª etapa ATIVA do funil PADRÃO. Antes o lead
+      // nascia com funilId=null e não aparecia em kanban nenhum.
+      const padrao = await this.prisma.funilEtapa.findFirst({
+        where: { funil: { empresaId, isPadrao: true, ativo: true } },
+        orderBy: { ordem: 'asc' },
+        select: { id: true, funilId: true },
+      });
+      if (padrao) {
+        funilId = padrao.funilId;
+        funilEtapaId = padrao.id;
+      }
     }
 
     // ── HERANÇA DA ATRIBUIÇÃO (o requisito crítico) ──────────────────────
@@ -3211,7 +3263,7 @@ export class FluxoExecutorService {
     // Publica o lead no contexto ANTES de qualquer coisa que dependa dele — é o que
     // deixa os nós seguintes (Mudar tag, Enviar WhatsApp, Mover etapa) enxergarem
     // o lead recém-nascido. Sem isso a ação não encadeia com nada.
-    await this.publicarLeadNoContexto(execucaoId, ctx, lead.id);
+    await hooks.publicar(lead.id);
 
     if (cfg.tagNome?.trim()) {
       const nomeTag = cfg.tagNome.trim();
@@ -3228,27 +3280,25 @@ export class FluxoExecutorService {
       // Mesmo buraco do MUDAR_TAG: o CRIAR_LEAD com etiqueta gravava o LeadTag
       // e seguia direto pro LEAD_CRIADO. Quem montasse "cria o lead já marcado
       // como setor:X" esperando o fluxo de nutrição pegar recebia silêncio.
-      const hopsTag = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
       await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', {
         leadId: lead.id,
         tagId: tag.id,
         tagNome: nomeTag,
-        _hops: hopsTag + 1,
-        ...this.marcaDeTeste(ctx),
+        _hops: hooks.hops + 1,
+        ...hooks.marca,
       });
     }
 
     // Mesmo evento que o lead do site dispara — fluxos de boas-vindas funcionam
     // igual pros dois. `_hops` propaga o corta-loop do FluxoEventBus.
-    const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,
       origemCadastro,
       lead: { id: lead.id, nome: lead.nome, etapa: lead.etapa, valorEstimado: 0 },
       clienteId: conversa.clienteId,
       representanteId: repConfigurado ?? conversa.proprietarioId ?? null,
-      _hops: hops + 1,
-      ...this.marcaDeTeste(ctx),
+      _hops: hooks.hops + 1,
+      ...hooks.marca,
     });
 
     return {

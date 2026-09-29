@@ -9,6 +9,7 @@ import { LeadCaptureCard } from '@/components/LeadCaptureCard';
 import { PedidoSiteChaveCard } from '@/components/PedidoSiteChaveCard';
 import { EmailTransacionalCard } from '@/components/EmailTransacionalCard';
 import { AssinaturaPaginaMeta, EscolherPaginaMeta } from '@/components/MetaPaginaCards';
+import { EntradaAnunciosCard } from '@/components/EntradaAnunciosCard';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
@@ -336,6 +337,13 @@ export default function IntegracoesPage() {
               refetchStatus();
             }}
           />
+        )}
+
+        {/* Onde o lead de anúncio (CTWA / Lead Ads) entra no funil — itens 6 e 10 */}
+        {podeEscolherPagina && (
+          <div className="mt-4">
+            <EntradaAnunciosCard />
+          </div>
         )}
 
         {/* E-mail transacional (Resend) — status + teste de envio */}

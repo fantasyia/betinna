@@ -697,6 +697,35 @@ describe('FluxoExecutorService', () => {
       expect(prisma.lead.create).not.toHaveBeenCalled();
     });
 
+    it('sem etapa configurada: nasce na 1ª etapa do funil PADRÃO (item 10, antes era funilId=null)', async () => {
+      prepararNo({});
+      prisma.conversation.findFirst.mockResolvedValue(conversaComAnuncio());
+      prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-padrao-1', funilId: 'funil-padrao' });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      const criado = prisma.lead.create.mock.calls[0][0].data;
+      expect(criado).toMatchObject({ funilId: 'funil-padrao', funilEtapaId: 'et-padrao-1' });
+      expect(prisma.funilEtapa.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { funil: { empresaId: 'emp-1', isPadrao: true, ativo: true } },
+          orderBy: { ordem: 'asc' },
+        }),
+      );
+    });
+
+    it('conversa que o orquestrador JÁ amarrou (anúncio): o CRIAR_LEAD do T1 só usa o lead, não duplica', async () => {
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(
+        conversaComAnuncio({ leadId: 'lead-do-anuncio' }),
+      );
+      prisma.lead.findFirst.mockResolvedValue({ id: 'lead-do-anuncio' });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.lead.create).not.toHaveBeenCalled();
+    });
+
     it('sem conversationId no contexto, falha explicando o gatilho certo', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(
         fakeExecucao({ status: 'EM_EXECUCAO', contexto: {} }),

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { InboxService } from '@modules/inbox/inbox.service';
@@ -9,6 +9,8 @@ import {
   atribuicaoDeReferral,
 } from '@integrations/evolution/ctwa-referral.util';
 import { registrarToqueNoLead } from '@modules/leads/atribuicao-toque';
+import { etapaDeEntradaAnuncio } from '@modules/leads/entrada-anuncios';
+import { FluxoExecutorService } from './fluxo-executor.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService } from './conversar-ia.service';
 
@@ -32,6 +34,8 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     private readonly inbox: InboxService,
     private readonly conversarIa: ConversarIaService,
     private readonly redis: RedisService,
+    // Opcional só pra spec antiga montar sem ele; no app o Nest sempre injeta.
+    @Optional() private readonly executor?: FluxoExecutorService,
   ) {}
 
   onModuleInit(): void {
@@ -39,6 +43,53 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       void this.aoReceberMensagem(params, resultado);
     });
     this.logger.log('Hook de eventos de lead registrado na Inbox (gatilho LEAD_RESPONDEU)');
+  }
+
+  /**
+   * Cria o lead da conversa de anúncio pelo MESMO miolo do CRIAR_LEAD (mesmos
+   * campos, mesma herança de atribuição, mesmo LEAD_CRIADO), na etapa de
+   * entrada configurada pra CTWA (`entradaAnuncios.ctwaEtapaId`; vazio = funil
+   * padrão). Trava por conversa: duas mensagens de anúncio seguidas não viram
+   * dois leads. Best-effort: falhar aqui não derruba o gatilho — o CRIAR_LEAD do
+   * fluxo, se houver, ainda cria.
+   */
+  private async garantirLeadDeAnuncio(empresaId: string, conversationId: string): Promise<void> {
+    if (!this.executor) return;
+    try {
+      const livre = await this.redis
+        .setNxEx(`ctwa:lead:${conversationId}`, '1', 60)
+        .catch(() => true);
+      if (!livre) return;
+      const conversa = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, empresaId },
+        select: {
+          id: true,
+          peerId: true,
+          peerNome: true,
+          leadId: true,
+          clienteId: true,
+          proprietarioId: true,
+          utmCampaign: true,
+          metadata: true,
+          ultimaMsgEm: true,
+        },
+      });
+      if (!conversa || conversa.leadId) return;
+      const funilEtapaId = await etapaDeEntradaAnuncio(this.prisma, this.logger, empresaId, 'ctwa');
+      const r = await this.executor.criarLeadDaConversa(
+        empresaId,
+        conversa,
+        { funilEtapaId },
+        { publicar: async () => undefined, hops: 0, marca: {} },
+      );
+      this.logger.log(
+        `Conversa de anúncio ${conversationId}: lead ${String(r.leadId ?? '-')} (${String(r.motivo ?? 'criado')})`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Lead da conversa de anúncio ${conversationId} não garantido: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**
@@ -111,6 +162,12 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
         params.empresaId,
         resultado.conversationId,
       );
+      // Item 10 (29/09): conversa de ANÚNCIO nunca termina sem lead. Garante o
+      // lead ANTES do MENSAGEM_CANAL sair — assim o CRIAR_LEAD do T1, quando
+      // rodar, acha a conversa já amarrada e só usa o lead (não duplica).
+      if (primeira && veioDeAnuncio && !ehGrupo && !lead) {
+        await this.garantirLeadDeAnuncio(params.empresaId, resultado.conversationId);
+      }
       if (primeira && !ehGrupo) {
         await this.bus.disparar(params.empresaId, 'MENSAGEM_CANAL', {
           canal: params.canal,

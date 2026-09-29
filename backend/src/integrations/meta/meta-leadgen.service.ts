@@ -4,6 +4,7 @@ import { Queue, UnrecoverableError } from 'bullmq';
 import { type CanalOrigem, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { LeadCaptureService } from '@modules/leads/lead-capture.service';
+import { etapaDeEntradaAnuncio } from '@modules/leads/entrada-anuncios';
 import { LeadsService } from '@modules/leads/leads.service';
 import { normalizarTelefoneIntl } from '@shared/validators/br-validators';
 import { normalizarAtribuicao, type Atribuicao } from '@modules/leads/atribuicao.util';
@@ -139,7 +140,18 @@ export class MetaLeadgenService {
       return;
     }
 
+    // Item 6 (29/09): a empresa escolhe onde o Lead Ads entra — por formulário,
+    // senão o padrão do Lead Ads, senão o funil padrão.
+    const funilEtapaId = await etapaDeEntradaAnuncio(
+      this.prisma,
+      this.logger,
+      resolved.empresaId,
+      'lead_ads',
+      formId,
+    );
+
     const lead = await this.leads.createPublico(resolved.empresaId, {
+      funilEtapaId,
       // O nome do LEAD é o da empresa quando o formulário pergunta; senão o da
       // pessoa. Mesma convenção da captura do site.
       nome: empresaNome ?? nome ?? telefone ?? email ?? 'Lead do Meta',

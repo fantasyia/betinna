@@ -492,6 +492,24 @@ const funilEtapasSchema = z
   .optional();
 
 /**
+ * Onde o lead de ANÚNCIO entra no funil (card 📣, itens 6 e 10, 29/09). Vazio =
+ * funil padrão da empresa. Ids de FunilEtapa — validados na hora de usar (etapa
+ * apagada ou de outra empresa cai no padrão, com aviso no log).
+ * - ctwaEtapaId: conversa de Click-to-WhatsApp (na Somatec, Triagem/Novo inbound,
+ *   a MESMA do CRIAR_LEAD do T1 — pra não disparar o funil de clientes antes);
+ * - leadAdsEtapaId: formulário do Lead Ads (padrão);
+ * - leadAdsPorFormulario: { <form_id do Meta>: <etapa> } quando há mais de um.
+ */
+const idEtapa = z.string().trim().min(1).max(64);
+const entradaAnunciosSchema = z
+  .object({
+    ctwaEtapaId: idEtapa.nullable().optional(),
+    leadAdsEtapaId: idEtapa.nullable().optional(),
+    leadAdsPorFormulario: z.record(z.string().trim().min(1).max(64), idEtapa).nullable().optional(),
+  })
+  .optional();
+
+/**
  * Integração com o ERP (Tiny): o que o pedido leva ao subir.
  * - ecommerceId: e-commerce cadastrado lá (amarra o pedido ao canal do site);
  * - formaEnvioId/formaFreteId: transportadora padrão — sem ela o pedido nasce
@@ -582,6 +600,7 @@ export const tenantConfigPatchSchema = z
     marca: marcaSchema.nullable(),
     branding: brandingSchema.nullable(),
     funilEtapas: funilEtapasSchema.nullable(),
+    entradaAnuncios: entradaAnunciosSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

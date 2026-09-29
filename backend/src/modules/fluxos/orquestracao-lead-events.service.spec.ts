@@ -367,3 +367,125 @@ describe('OrquestracaoLeadEventsService — anúncio (CTWA)', () => {
     );
   });
 });
+
+/**
+ * Item 10 (29/09): conversa de ANÚNCIO nunca termina sem lead — e não duplica
+ * com o CRIAR_LEAD do T1: o lead nasce ANTES do MENSAGEM_CANAL sair, então
+ * quando o T1 roda a conversa já está amarrada (conversa_ja_tem_lead).
+ */
+describe('OrquestracaoLeadEventsService — lead garantido na conversa de anúncio', () => {
+  const CONVERSA = {
+    id: 'conv-1',
+    peerId: '5511999990000@s.whatsapp.net',
+    peerNome: 'Ana',
+    leadId: null as string | null,
+    clienteId: null,
+    proprietarioId: null,
+    utmCampaign: 'mb-industria-agosto',
+    metadata: { atribuicao: { campanha: 'mb-industria-agosto', campanhaFonte: 'meta' } },
+    ultimaMsgEm: new Date(),
+  };
+  const montar = (
+    opts: {
+      leadPorTelefone?: boolean;
+      conversaComLead?: boolean;
+      travado?: boolean;
+      ctwaEtapa?: string;
+    } = {},
+  ) => {
+    const ordem: string[] = [];
+    const prisma = {
+      ...makePrisma(),
+      conversation: {
+        findFirst: vi.fn(async () => ({
+          ...CONVERSA,
+          leadId: opts.conversaComLead ? 'lead-ja' : null,
+        })),
+      },
+      empresa: {
+        findUnique: vi.fn(async () => ({
+          config: opts.ctwaEtapa ? { entradaAnuncios: { ctwaEtapaId: opts.ctwaEtapa } } : null,
+        })),
+      },
+      funilEtapa: {
+        findFirst: vi.fn(async (a: { where: { id: string } }) => ({ id: a.where.id })),
+      },
+      $executeRaw: vi.fn().mockResolvedValue(1),
+    };
+    if (opts.leadPorTelefone) prisma.$queryRaw.mockResolvedValue([{ id: 'lead-9' }]);
+    const bus = { disparar: vi.fn(async (_e: string, ev: string) => void ordem.push(ev)) };
+    const executor = {
+      criarLeadDaConversa: vi.fn(async () => {
+        ordem.push('CRIOU_LEAD');
+        return { criado: true, leadId: 'lead-novo' };
+      }),
+    };
+    const redis = {
+      setNxEx: vi.fn(async (k: string) => !(opts.travado && k.startsWith('ctwa:lead:'))),
+    };
+    const svc = new OrquestracaoLeadEventsService(
+      prisma as never,
+      bus as never,
+      makeInbox() as never,
+      makeConversarIa() as never,
+      redis as never,
+      executor as never,
+    );
+    return { svc, executor, ordem };
+  };
+  const msg = (comReferral = true) =>
+    ({
+      empresaId: 'emp-1',
+      peerTelefone: '+5511999990000',
+      conteudo: 'vi o anúncio',
+      canal: 'WHATSAPP',
+      peerId: CONVERSA.peerId,
+      meta: comReferral ? { ctwaReferral: { sourceId: '120210000000001' } } : {},
+    }) as never;
+
+  it('sem lead: cria na etapa de entrada do CTWA ANTES do MENSAGEM_CANAL sair', async () => {
+    const m = montar({ ctwaEtapa: 'etapa-triagem-novo' });
+    await m.svc.aoReceberMensagem(msg(), resultado());
+    expect(m.executor.criarLeadDaConversa).toHaveBeenCalledWith(
+      'emp-1',
+      expect.objectContaining({ id: 'conv-1' }),
+      { funilEtapaId: 'etapa-triagem-novo' },
+      expect.objectContaining({ hops: 0 }),
+    );
+    expect(m.ordem.indexOf('CRIOU_LEAD')).toBeLessThan(m.ordem.indexOf('MENSAGEM_CANAL'));
+  });
+
+  it('sem etapa configurada: funil padrão (funilEtapaId vazio)', async () => {
+    const m = montar();
+    await m.svc.aoReceberMensagem(msg(), resultado());
+    expect(m.executor.criarLeadDaConversa).toHaveBeenCalledWith(
+      'emp-1',
+      expect.anything(),
+      { funilEtapaId: undefined },
+      expect.anything(),
+    );
+  });
+
+  it('telefone que já é lead / conversa já amarrada / mensagem orgânica: NÃO cria', async () => {
+    for (const m of [montar({ leadPorTelefone: true }), montar({ conversaComLead: true })]) {
+      await m.svc.aoReceberMensagem(msg(), resultado());
+      expect(m.executor.criarLeadDaConversa).not.toHaveBeenCalled();
+    }
+    const org = montar();
+    await org.svc.aoReceberMensagem(msg(false), resultado());
+    expect(org.executor.criarLeadDaConversa).not.toHaveBeenCalled();
+  });
+
+  it('trava por conversa: segunda mensagem de anúncio em corrida não cria outro lead', async () => {
+    const m = montar({ travado: true });
+    await m.svc.aoReceberMensagem(msg(), resultado());
+    expect(m.executor.criarLeadDaConversa).not.toHaveBeenCalled();
+  });
+
+  it('falha ao criar NÃO derruba o gatilho (o CRIAR_LEAD do fluxo ainda tenta)', async () => {
+    const m = montar();
+    m.executor.criarLeadDaConversa.mockRejectedValueOnce(new Error('db fora'));
+    await m.svc.aoReceberMensagem(msg(), resultado());
+    expect(m.ordem).toContain('MENSAGEM_CANAL');
+  });
+});
