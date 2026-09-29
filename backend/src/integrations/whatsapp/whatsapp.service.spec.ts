@@ -45,6 +45,37 @@ describe('WhatsAppService', () => {
     });
   });
 
+  // Auditoria 29/09/2026: caminho do Storage vindo do inbox ou da config de nó de
+  // fluxo tem que ser da empresa — o bucket é compartilhado.
+  describe('enviarMidia — caminho do Storage', () => {
+    it('recusa storagePath de outra empresa sem baixar nada', async () => {
+      const media = makeMediaMock();
+      const svc = new WhatsAppService(
+        sessions as never,
+        registry as never,
+        media as never,
+        makeEnvMock() as never,
+        makeEvolutionMock() as never,
+      );
+      await expect(
+        svc.enviarMidia('emp-1', '5511@s.whatsapp.net', {
+          tipo: 'IMAGE',
+          storagePath: 'emp-2/fluxo/abc.jpg',
+        } as never),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(media.baixar).not.toHaveBeenCalled();
+    });
+
+    it('recusa storagePath com ".." mesmo começando pela empresa', async () => {
+      await expect(
+        service.enviarMidia('emp-1', '5511@s.whatsapp.net', {
+          tipo: 'IMAGE',
+          storagePath: 'emp-1/../emp-2/abc.jpg',
+        } as never),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+  });
+
   describe('enviarTexto — roteamento dual-owner', () => {
     it('sem ctx.proprietarioId → usa sessão EMPRESA', async () => {
       await service.enviarTexto('emp-1', '5511@s.whatsapp.net', 'Oi');

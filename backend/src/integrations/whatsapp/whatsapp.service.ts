@@ -172,6 +172,18 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
   ): Promise<{ externalId?: string }> {
     const owner = this.ownerDe(empresaId, ctx);
 
+    // O bucket de mídia é compartilhado e o caminho começa por `${empresaId}/`.
+    // Aqui chegam caminhos do inbox (DTO) e da config de nó de FLUXO — nenhum dos
+    // dois era conferido, então um fluxo (até pessoal de REP) podia mandar ao lead
+    // o arquivo de outra empresa. Ponto único: vale pra Evolution e Baileys.
+    // Auditoria 29/09/2026.
+    if (
+      params.storagePath &&
+      (!params.storagePath.startsWith(`${empresaId}/`) || params.storagePath.includes('..'))
+    ) {
+      throw new BusinessRuleException('Mídia fora do espaço desta empresa.');
+    }
+
     if (this.viaEvolution) {
       const instance = EvolutionService.instanceName(owner);
       // Resolve a mídia em URL ou base64 (Evolution aceita os dois).

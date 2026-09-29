@@ -13,6 +13,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { addBreadcrumb } from '@shared/observability/sentry';
+import { sanitizarTexto } from '@shared/utils/sanitize-pii';
 import { BrandingService } from '@shared/branding/branding.service';
 
 /**
@@ -243,18 +244,21 @@ export class AuthSessionService {
     email: string,
   ): Promise<{ enviado: boolean; motivo?: 'limite_diario'; restantes?: number }> {
     const alvo = email.trim().toLowerCase();
+    // E-mail mascarado no LOG (o Pino só redige por chave, não texto livre). As
+    // chaves do Redis seguem com o e-mail inteiro — elas precisam casar.
+    const alvoLog = sanitizarTexto(alvo);
     const neutro = { enviado: true as const };
 
     try {
       if (!(await this.redis.setNxEx(`auth:reset:debounce:${alvo}`, '1', RESET_DEBOUNCE_S))) {
-        this.logger.log(`[reset] ${alvo}: clique duplo (<${RESET_DEBOUNCE_S}s) — ignorado`);
+        this.logger.log(`[reset] ${alvoLog}: clique duplo (<${RESET_DEBOUNCE_S}s) — ignorado`);
         return neutro;
       }
       const doDia = await this.redis.incr(`auth:reset:dia:${alvo}`);
       if (doDia === 1) await this.redis.setEx(`auth:reset:dia:${alvo}`, '1', 24 * 60 * 60);
       if (doDia > resetMaxDia()) {
         this.logger.warn(
-          `[reset] ${alvo}: ${doDia}º pedido em 24h — teto de ${resetMaxDia()} atingido`,
+          `[reset] ${alvoLog}: ${doDia}º pedido em 24h — teto de ${resetMaxDia()} atingido`,
         );
         return { enviado: false, motivo: 'limite_diario', restantes: 0 };
       }
@@ -275,7 +279,7 @@ export class AuthSessionService {
       });
       // Desligado não redefine senha — seria porta de volta pra quem saiu.
       if (!usuario || usuario.status === 'INATIVO') {
-        this.logger.log(`[reset] ${alvo}: sem conta ativa — nada enviado (resposta neutra)`);
+        this.logger.log(`[reset] ${alvoLog}: sem conta ativa — nada enviado (resposta neutra)`);
         return mesmaRespostaSempre;
       }
 
@@ -303,7 +307,7 @@ export class AuthSessionService {
         tokenHash = data?.properties?.hashed_token ?? null;
         if (error || !tokenHash) {
           this.logger.error(
-            `[reset] ${alvo}: Supabase não gerou o token — ${error?.message ?? 'sem hashed_token'}`,
+            `[reset] ${alvoLog}: Supabase não gerou o token — ${error?.message ?? 'sem hashed_token'}`,
           );
           return mesmaRespostaSempre;
         }
@@ -312,7 +316,7 @@ export class AuthSessionService {
         // tentativa de usá-lo (com ou sem sucesso) precisa derrubar o cache.
         await this.redis.setEx(`auth:reset:v2:hash:${tokenHash}`, alvo, RESET_TOKEN_CACHE_S);
       } else {
-        this.logger.log(`[reset] ${alvo}: reenviando o MESMO link (ainda válido)`);
+        this.logger.log(`[reset] ${alvoLog}: reenviando o MESMO link (ainda válido)`);
       }
       const baseApp = await this.branding
         .urlDoApp(usuario.empresas?.[0]?.empresaId)
@@ -329,11 +333,11 @@ export class AuthSessionService {
       });
       if (!enviado.ok) {
         this.logger.error(
-          `[reset] ${alvo}: e-mail NÃO saiu — ${JSON.stringify(enviado).slice(0, 200)}`,
+          `[reset] ${alvoLog}: e-mail NÃO saiu — ${JSON.stringify(enviado).slice(0, 200)}`,
         );
         return mesmaRespostaSempre;
       }
-      this.logger.log(`[reset] ${alvo}: link enviado (${doDia}º de ${resetMaxDia()} hoje)`);
+      this.logger.log(`[reset] ${alvoLog}: link enviado (${doDia}º de ${resetMaxDia()} hoje)`);
       return { enviado: true, restantes };
     } catch (err) {
       // Nunca propaga: o retorno é neutro por desenho, e um 500 aqui já contaria
