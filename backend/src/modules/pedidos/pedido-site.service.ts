@@ -66,9 +66,10 @@ export class PedidoSiteService {
     apiKey: string | undefined,
     dto: PedidoDoSiteDto,
   ): Promise<{ pedidoId: string; numero: string; numeroErp: string | null; duplicado: boolean }> {
-    // Mesma chave do formulário de leads: duas chaves pro mesmo site seriam
-    // duas coisas pra girar, e a esquecida vira porta aberta.
-    const empresaId = await this.captura.autenticarChave(apiKey);
+    // Chave PRÓPRIA de pedidos (bpk_) desde 29/09/2026 — a de leads, se vazar,
+    // não pode criar pedido no ERP. A de leads ainda vale aqui só enquanto a
+    // empresa não gerou a de pedidos (transição sem derrubar o checkout).
+    const empresaId = await this.captura.autenticarChavePedidos(apiKey);
 
     const jaExiste = await this.prisma.pedido.findFirst({
       where: { empresaId, numeroSite: dto.numeroSite },

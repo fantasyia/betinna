@@ -390,6 +390,7 @@ model Empresa {
   variaveisCustomizadas VariavelCustomizada[]
   webhooksEntrada       WebhookEntrada[]
   leadCaptureChave      LeadCaptureChave?
+  pedidoSiteChave       PedidoSiteChave?
   formularios           Formulario[]
   metas                 Meta[]
   segmentos             Segmento[]
@@ -3379,6 +3380,23 @@ model LeadCaptureChave {
   /// SHA-256 hex da chave apresentada no header x-api-key.
   chaveHash   String    @unique
   /// Prefixo público (ex: "blc_a1b2c3d4…") pra exibição no painel.
+  prefixo     String
+  ativo       Boolean   @default(true)
+  criadoEm    DateTime  @default(now())
+  ultimoUsoEm DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
+/// Chave de API SÓ pra `POST /public/pedidos` (checkout do site → pedido no ERP).
+/// Separada da chave de leads (29/09/2026): a de leads, se vazar, cria lead; esta
+/// cria pedido real no Tiny. Mesmo formato (`bpk_<hex>`, só o SHA-256 no banco,
+/// mostrada UMA vez). Enquanto a empresa não gera esta, a rota de pedidos aceita
+/// a chave de leads (transição); depois de gerada, só ela vale.
+model PedidoSiteChave {
+  id          String    @id @default(cuid())
+  empresaId   String    @unique
+  chaveHash   String    @unique
   prefixo     String
   ativo       Boolean   @default(true)
   criadoEm    DateTime  @default(now())

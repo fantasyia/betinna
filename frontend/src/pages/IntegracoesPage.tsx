@@ -5,6 +5,7 @@ import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
 import { LeadCaptureCard } from '@/components/LeadCaptureCard';
+import { PedidoSiteChaveCard } from '@/components/PedidoSiteChaveCard';
 import { EmailTransacionalCard } from '@/components/EmailTransacionalCard';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
@@ -310,6 +311,11 @@ export default function IntegracoesPage() {
         {/* Captura de leads do site (chave de API pública por tenant) */}
         <div className="mt-4">
           <LeadCaptureCard />
+        </div>
+
+        {/* Pedidos do checkout do site — chave própria, separada da de leads */}
+        <div className="mt-4">
+          <PedidoSiteChaveCard />
         </div>
       </StateView>
 

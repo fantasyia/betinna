@@ -49,7 +49,7 @@ function build(
     },
     $queryRaw: vi.fn().mockResolvedValue(opts.clientePorDoc ?? []),
   };
-  const captura = { autenticarChave: vi.fn().mockResolvedValue('emp-1') };
+  const captura = { autenticarChavePedidos: vi.fn().mockResolvedValue('emp-1') };
   const sequence = { next: vi.fn().mockResolvedValue(9) };
   const erpPush = {
     enviarPedido: opts.pushFalha
@@ -267,7 +267,7 @@ describe('pedido do site', () => {
 
   it('chave inválida não passa', async () => {
     const { svc, captura } = build();
-    captura.autenticarChave.mockRejectedValue(new Error('Chave de API inválida'));
+    captura.autenticarChavePedidos.mockRejectedValue(new Error('Chave de API inválida'));
 
     await expect(svc.receber('errada', PEDIDO)).rejects.toThrow(/inválida/i);
   });

@@ -67,7 +67,8 @@ export class PedidoSiteController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary:
-      'Recebe o pedido do checkout do site (x-api-key, a mesma de /public/leads). ' +
+      'Recebe o pedido do checkout do site (x-api-key = chave de PEDIDOS bpk_; a de leads ' +
+      'só vale enquanto a empresa não gerou a de pedidos). ' +
       'Idempotente por numeroSite: reenvio devolve o pedido que já existe.',
   })
   receber(

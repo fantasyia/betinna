@@ -95,6 +95,57 @@ export class LeadCaptureService {
     return { ok: true };
   }
 
+  // ─── Chave de PEDIDOS do site (DIRECTOR/ADMIN) ───────────────────────
+
+  /** Gera (ou ROTACIONA) a chave de pedidos. A chave em claro sai UMA vez. */
+  async gerarChavePedidos(user: AuthenticatedUser): Promise<{ chave: string; prefixo: string }> {
+    const empresaId = this.requireEmpresa(user);
+    const chave = `bpk_${randomBytes(24).toString('hex')}`;
+    const prefixo = `${chave.slice(0, 12)}…`;
+    await this.prisma.pedidoSiteChave.upsert({
+      where: { empresaId },
+      update: { chaveHash: this.hash(chave), prefixo, ativo: true, ultimoUsoEm: null },
+      create: { empresaId, chaveHash: this.hash(chave), prefixo, ativo: true },
+    });
+    this.logger.log(`Chave de pedidos do site gerada/rotacionada (empresa ${empresaId})`);
+    return { chave, prefixo };
+  }
+
+  /** Status da chave de pedidos (só prefixo/uso — nunca a chave). */
+  async statusPedidos(user: AuthenticatedUser): Promise<{
+    configurada: boolean;
+    ativo: boolean;
+    prefixo: string | null;
+    criadoEm: Date | null;
+    ultimoUsoEm: Date | null;
+  }> {
+    const empresaId = this.requireEmpresa(user);
+    const row = await this.prisma.pedidoSiteChave.findUnique({
+      where: { empresaId },
+      select: { ativo: true, prefixo: true, criadoEm: true, ultimoUsoEm: true },
+    });
+    return {
+      configurada: !!row,
+      ativo: row?.ativo ?? false,
+      prefixo: row?.prefixo ?? null,
+      criadoEm: row?.criadoEm ?? null,
+      ultimoUsoEm: row?.ultimoUsoEm ?? null,
+    };
+  }
+
+  /**
+   * Desativa a chave de pedidos. O checkout para de criar pedido — e a chave de
+   * leads NÃO volta a valer pra pedido: a linha continua existindo de propósito.
+   */
+  async desativarPedidos(user: AuthenticatedUser): Promise<{ ok: true }> {
+    const empresaId = this.requireEmpresa(user);
+    await this.prisma.pedidoSiteChave.updateMany({
+      where: { empresaId },
+      data: { ativo: false },
+    });
+    return { ok: true };
+  }
+
   // ─── Receiver público ────────────────────────────────────────────────
 
   /**
@@ -484,14 +535,9 @@ ${carimbo}`
   }
 
   /**
-   * Valida a chave x-api-key (formato + rate-limit + lookup) → empresaId.
+   * Valida a chave x-api-key de LEADS (formato + rate-limit + lookup) → empresaId.
    * 401 uniforme pra chave inexistente/inativa (sem oráculo de existência).
-   */
-  /**
-   * Público porque o receptor de PEDIDOS do site usa a MESMA chave.
-   *
-   * Duas autenticações para o mesmo site significariam duas chaves pra girar, e
-   * a que ninguém lembrasse de girar viraria a porta esquecida aberta.
+   * Pedidos têm chave própria desde 29/09/2026 — ver `autenticarChavePedidos`.
    */
   async autenticarChave(chaveApresentada: string | undefined): Promise<string> {
     const chave = (chaveApresentada ?? '').trim();
@@ -512,6 +558,58 @@ ${carimbo}`
     if (!row || !row.ativo) {
       throw new UnauthorizedException('Chave de API inválida');
     }
+    return row.empresaId;
+  }
+
+  /**
+   * Autentica o `POST /public/pedidos` → empresaId.
+   *
+   * Até 29/09/2026 o pedido usava a MESMA chave dos formulários: um vazamento da
+   * chave de leads criava pedido real no ERP. Agora:
+   *  - `bpk_…` (chave de pedidos) → vale se ativa;
+   *  - `blc_…` (chave de leads) → vale SÓ enquanto a empresa não gerou a de
+   *    pedidos. É a ponte pra trocar sem derrubar o checkout: o site passa a
+   *    mandar a nova e, no instante em que ela existe, a antiga para de servir.
+   */
+  async autenticarChavePedidos(chaveApresentada: string | undefined): Promise<string> {
+    const chave = (chaveApresentada ?? '').trim();
+    if (chave.startsWith('blc_')) {
+      const empresaId = await this.autenticarChave(chave);
+      const propria = await this.prisma.pedidoSiteChave.findUnique({
+        where: { empresaId },
+        select: { id: true },
+      });
+      if (propria) {
+        throw new UnauthorizedException(
+          'Esta empresa tem chave própria de pedidos — use a chave bpk_ em /public/pedidos',
+        );
+      }
+      this.logger.warn(
+        `Pedido do site autenticado com a chave de LEADS (empresa ${empresaId}) — ` +
+          'gere a chave de pedidos em Integrações pra separar as duas',
+      );
+      return empresaId;
+    }
+    if (!chave.startsWith('bpk_') || chave.length < 20) {
+      throw new UnauthorizedException('Chave de API inválida');
+    }
+    if (!(await this.dentroDoLimite(chave))) {
+      throw new AppException(
+        ErrorCode.RATE_LIMIT_EXCEEDED,
+        'Muitas requisições',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const row = await this.prisma.pedidoSiteChave.findUnique({
+      where: { chaveHash: this.hash(chave) },
+      select: { empresaId: true, ativo: true },
+    });
+    if (!row || !row.ativo) {
+      throw new UnauthorizedException('Chave de API inválida');
+    }
+    void this.prisma.pedidoSiteChave
+      .updateMany({ where: { empresaId: row.empresaId }, data: { ultimoUsoEm: new Date() } })
+      .catch(() => undefined);
     return row.empresaId;
   }
 

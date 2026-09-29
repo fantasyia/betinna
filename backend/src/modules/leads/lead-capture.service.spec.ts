@@ -10,6 +10,11 @@ const makePrismaMock = () => ({
     findUnique: vi.fn().mockResolvedValue(null),
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
+  pedidoSiteChave: {
+    upsert: vi.fn().mockResolvedValue({}),
+    findUnique: vi.fn().mockResolvedValue(null),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  },
   lead: {
     findFirst: vi.fn().mockResolvedValue(null),
     findUnique: vi.fn().mockResolvedValue(null),
@@ -91,6 +96,51 @@ describe('LeadCaptureService', () => {
       // nunca grava a chave em claro
       expect(JSON.stringify(call)).not.toContain(r.chave);
       expect(call.create.chaveHash).toHaveLength(64);
+    });
+  });
+
+  // Auditoria 29/09/2026: pedido do site tem chave própria — a de leads, se
+  // vazar, não pode criar pedido no ERP.
+  describe('autenticarChavePedidos', () => {
+    const CHAVE_PED = `bpk_${'b'.repeat(48)}`;
+    const HASH_PED = createHash('sha256').update(CHAVE_PED).digest('hex');
+
+    it('gerarChavePedidos gera bpk_ e grava só o hash', async () => {
+      const r = await svc.gerarChavePedidos(fakeUser());
+      expect(r.chave).toMatch(/^bpk_[0-9a-f]{48}$/);
+      const call = prisma.pedidoSiteChave.upsert.mock.calls[0][0];
+      expect(JSON.stringify(call)).not.toContain(r.chave);
+      expect(call.create.chaveHash).toHaveLength(64);
+    });
+
+    it('chave de pedidos ativa → empresa', async () => {
+      prisma.pedidoSiteChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      await expect(svc.autenticarChavePedidos(CHAVE_PED)).resolves.toBe('emp-1');
+      expect(prisma.pedidoSiteChave.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { chaveHash: HASH_PED } }),
+      );
+    });
+
+    it('chave de pedidos desativada → 401', async () => {
+      prisma.pedidoSiteChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: false });
+      await expect(svc.autenticarChavePedidos(CHAVE_PED)).rejects.toThrow(/inválida/i);
+    });
+
+    it('chave de LEADS vale só enquanto a empresa não gerou a de pedidos (transição)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      prisma.pedidoSiteChave.findUnique.mockResolvedValue(null);
+      await expect(svc.autenticarChavePedidos(CHAVE)).resolves.toBe('emp-1');
+    });
+
+    it('chave de LEADS depois que a de pedidos existe → 401 (mesmo desativada)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      prisma.pedidoSiteChave.findUnique.mockResolvedValue({ id: 'p1' });
+      await expect(svc.autenticarChavePedidos(CHAVE)).rejects.toThrow(/chave própria de pedidos/);
+    });
+
+    it('formato desconhecido → 401 sem tocar o banco', async () => {
+      await expect(svc.autenticarChavePedidos('xyz_123')).rejects.toThrow(/inválida/i);
+      expect(prisma.pedidoSiteChave.findUnique).not.toHaveBeenCalled();
     });
   });
 

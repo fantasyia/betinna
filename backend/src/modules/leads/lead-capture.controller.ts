@@ -72,4 +72,29 @@ export class LeadCaptureController {
   desativar(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.desativar(user);
   }
+
+  // ─── Chave de PEDIDOS do site (separada da de leads desde 29/09/2026) ──
+  @ApiBearerAuth()
+  @Get('leads-capture/chave-pedidos')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Status da chave de pedidos do site (prefixo/uso — nunca a chave)' })
+  statusPedidos(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.statusPedidos(user);
+  }
+
+  @ApiBearerAuth()
+  @Post('leads-capture/chave-pedidos/gerar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Gera/rotaciona a chave de pedidos do site (mostrada UMA vez)' })
+  gerarPedidos(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.gerarChavePedidos(user);
+  }
+
+  @ApiBearerAuth()
+  @Post('leads-capture/chave-pedidos/desativar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Desativa a chave de pedidos (o checkout para de criar pedidos)' })
+  desativarPedidos(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.desativarPedidos(user);
+  }
 }
