@@ -705,8 +705,10 @@ export class InboxService {
 
     let cursorWhere: Prisma.MessageWhereInput = {};
     if (params.antesDe) {
-      const anchor = await this.prisma.message.findUnique({
-        where: { id: params.antesDe },
+      // Cursor amarrado à conversa: id de mensagem de outra conversa/empresa não
+      // serve de âncora (vazava só o `criadoEm`, mas não tem por que vazar).
+      const anchor = await this.prisma.message.findFirst({
+        where: { id: params.antesDe, conversationId },
         select: { criadoEm: true },
       });
       if (anchor) cursorWhere = { criadoEm: { lt: anchor.criadoEm } };

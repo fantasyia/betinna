@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { sanitizarTexto } from '@shared/utils/sanitize-pii';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
@@ -114,7 +115,9 @@ export class EmailInboundService {
     if (!empresaId) {
       // 200 mesmo assim: provedor que recebe erro reentrega pra sempre um
       // e-mail que a gente conscientemente ignora (spam, endereço velho).
-      this.logger.warn(`E-mail de entrada sem tenant (para: ${email.para.join(', ') || '?'})`);
+      this.logger.warn(
+        sanitizarTexto(`E-mail de entrada sem tenant (para: ${email.para.join(', ') || '?'})`),
+      );
       return { efeito: 'sem-tenant' };
     }
 

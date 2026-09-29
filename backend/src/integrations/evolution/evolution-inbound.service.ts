@@ -369,7 +369,28 @@ export class EvolutionInboundService {
     },
     instance?: string,
   ): Promise<string | undefined> {
-    if (dono.type === 'EMPRESA') return dono.id;
+    if (dono.type === 'EMPRESA') {
+      // O nome `emp_<id>` vinha direto como empresaId, sem conferir que a
+      // instância existe. O segredo do webhook é global (um por servidor
+      // Evolution), então quem o tem escolhia o tenant pelo nome. Agora a
+      // instância registrada manda; sem registro, a empresa precisa existir.
+      if (instance) {
+        try {
+          const inst = await this.prisma.evolutionInstancia.findUnique({
+            where: { instanceName: instance },
+            select: { empresaId: true },
+          });
+          if (inst?.empresaId) return inst.empresaId;
+        } catch {
+          /* tabela indisponível no mock/teste → fallback */
+        }
+      }
+      const emp = await this.prisma.empresa.findUnique({
+        where: { id: dono.id },
+        select: { id: true },
+      });
+      return emp?.id;
+    }
     // USUARIO: a empresa em que a instância foi PAREADA (EvolutionInstancia
     // guarda) — usuário em duas empresas / ADMIN via seletor caía na primeira
     // por ordem de id (auditoria 13/09, A-3). Sem registro, o fallback antigo.

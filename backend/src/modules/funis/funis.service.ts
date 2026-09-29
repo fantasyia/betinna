@@ -467,9 +467,12 @@ export class FunisService {
    * Base pra não apagar/renomear etapa sem saber o impacto real (card "MCP:
    * escrita de FUNIL e ETAPA", item 7 — evita quebrar fluxo silenciosamente).
    */
-  private async fluxosPorEtapaIds(etapaIds: string[]): Promise<Map<string, FluxoQueAponta[]>> {
+  private async fluxosPorEtapaIds(
+    etapaIds: string[],
+    empresaIds: string[],
+  ): Promise<Map<string, FluxoQueAponta[]>> {
     const mapa = new Map<string, FluxoQueAponta[]>();
-    if (etapaIds.length === 0) return mapa;
+    if (etapaIds.length === 0 || empresaIds.length === 0) return mapa;
     // TODAS as formas de um nó apontar pra uma etapa — cada tipo guarda numa
     // chave diferente. Só a 1ª era coberta: apagar uma etapa vazia que era
     // `paraEtapa` de um gatilho, ou origem/destino de um LIBERAR_LOTE, passava
@@ -505,6 +508,9 @@ export class FunisService {
          WHERE fn.tipo = 'CONDICAO' AND fn."config" ->> 'campo' = 'lead.etapa_id'
       ) refs
       WHERE "etapaId" IN (${Prisma.join(etapaIds)})
+        -- Só fluxos das empresas destes funis: config de nó de OUTRO tenant que
+        -- aponte pra esta etapa não pode expor {id, nome, status} daquele fluxo.
+        AND id IN (SELECT id FROM "Fluxo" WHERE "empresaId" IN (${Prisma.join(empresaIds)}))
     `);
     for (const r of rows) {
       const lista = mapa.get(r.etapaId) ?? [];
@@ -528,7 +534,7 @@ export class FunisService {
     const filtroCarteira =
       escopo !== null ? { representanteId: { in: escopo.length ? escopo : ['__none__'] } } : {};
     const [porFluxo, porLead] = await Promise.all([
-      this.fluxosPorEtapaIds(etapaIds),
+      this.fluxosPorEtapaIds(etapaIds, [...new Set(funis.map((f) => f.empresaId))]),
       etapaIds.length
         ? this.prisma.lead.groupBy({
             by: ['funilEtapaId'],

@@ -39,7 +39,7 @@ const corpo = (extra: Record<string, unknown> = {}) =>
         key: 'doc-1',
         status: 'closed',
         finished_at: '2026-09-04T16:13:30.000Z',
-        downloads: { signed_file_url: 'https://arquivo/contrato.pdf' },
+        downloads: { signed_file_url: 'https://app.clicksign.com/arquivo/contrato.pdf' },
         ...extra,
       },
     }),
@@ -121,13 +121,13 @@ describe('ClickSignAssinaturaService.registrarAssinado', () => {
           {
             key: 'doc-anexo',
             status: 'closed',
-            downloads: { signed_file_url: 'https://arquivo/anexo.pdf' },
+            downloads: { signed_file_url: 'https://app.clicksign.com/arquivo/anexo.pdf' },
           },
           {
             key: 'doc-1',
             status: 'closed',
             finished_at: '2026-09-04T16:13:30.000Z',
-            downloads: { signed_file_url: 'https://arquivo/contrato.pdf' },
+            downloads: { signed_file_url: 'https://app.clicksign.com/arquivo/contrato.pdf' },
           },
         ],
       }),
@@ -137,7 +137,9 @@ describe('ClickSignAssinaturaService.registrarAssinado', () => {
     // O PDF guardado é o do CONTRATO, não o do anexo.
     expect(prisma.contrato.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ assinaturaUrl: 'https://arquivo/contrato.pdf' }),
+        data: expect.objectContaining({
+          assinaturaUrl: 'https://app.clicksign.com/arquivo/contrato.pdf',
+        }),
       }),
     );
   });
@@ -257,7 +259,22 @@ describe('PDF assinado — a base vem da conta DA EMPRESA', () => {
     const { svc, clicksign } = montar();
     await svc.registrarAssinado(corpo());
     expect(clicksign.baseDaEmpresa).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledWith('https://arquivo/contrato.pdf', expect.anything());
+    expect(fetch).toHaveBeenCalledWith(
+      'https://app.clicksign.com/arquivo/contrato.pdf',
+      expect.anything(),
+    );
+  });
+
+  // Auditoria 29/09/2026: o que vier em `signed_file_url` é baixado e gravado como
+  // o PDF do contrato — só dos hosts da ClickSign.
+  it('URL completa fora dos hosts da ClickSign NÃO é baixada (contrato fica assinado, sem cópia)', async () => {
+    const { svc } = montar();
+    await expect(
+      svc.registrarAssinado(
+        corpo({ downloads: { signed_file_url: 'https://worker.railway.internal/x.pdf' } }),
+      ),
+    ).resolves.toBe('aplicado');
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

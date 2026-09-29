@@ -7,7 +7,7 @@ import { PrismaService } from '@database/prisma.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadEtapaSistemaService } from '@modules/leads/lead-etapa-sistema.service';
 import { PropostaErpService } from '@modules/propostas/proposta-erp.service';
-import { ClickSignService } from './clicksign.service';
+import { ClickSignService, HOSTS_CLICKSIGN } from './clicksign.service';
 
 /** O recorte do payload que interessa. O resto do documento a gente ignora. */
 interface DocumentoWebhook {
@@ -357,7 +357,16 @@ export class ClickSignAssinaturaService implements OnModuleInit {
    */
   private async urlAbsoluta(empresaId: string, url?: string): Promise<string | null> {
     if (!url) return null;
-    if (/^https?:\/\//i.test(url)) return url;
+    if (/^https?:\/\//i.test(url)) {
+      // URL absoluta só dos hosts da ClickSign: o que vier daqui é baixado e
+      // gravado como o PDF do contrato. Auditoria 29/09/2026.
+      try {
+        const u = new URL(url);
+        return u.protocol === 'https:' && HOSTS_CLICKSIGN.has(u.hostname) ? url : null;
+      } catch {
+        return null;
+      }
+    }
     // A base vem da conta DA EMPRESA: sandbox e produção são hosts diferentes,
     // e montar contra o host errado dá 404 num download best-effort — o
     // contrato fica assinado e sem cópia, sem nada acusando.

@@ -29,6 +29,7 @@ export type WebhookProvider =
   | 'iugu'
   | 'evolution'
   | 'resend'
+  | 'clicksign'
   | 'fluxo';
 
 export interface AntiReplayResult {
@@ -76,6 +77,11 @@ export class WebhookAntiReplayService {
     provider: WebhookProvider,
     signature: string,
     timestamp: number | string | Date | undefined,
+    // Quanto tempo a assinatura fica "vista". O padrão serve a provedor que
+    // assina timestamp junto (o skew de 5 min já barra o replay velho); quem
+    // assina só o corpo precisa de janela longa, senão o mesmo POST volta a
+    // valer quando a chave expira.
+    ttlSeconds: number = SIGNATURE_TTL_SECONDS,
   ): Promise<AntiReplayResult> {
     const signatureHash = this.hashSignature(signature);
 
@@ -99,7 +105,7 @@ export class WebhookAntiReplayService {
     const key = `webhook:replay:${provider}:${signatureHash}`;
     let fresh: boolean;
     try {
-      fresh = await this.redis.setNxEx(key, '1', SIGNATURE_TTL_SECONDS);
+      fresh = await this.redis.setNxEx(key, '1', ttlSeconds);
     } catch (err) {
       // Redis fora → não bloqueia o webhook (degraded mode); loga e prossegue.
       this.logger.warn(

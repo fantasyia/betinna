@@ -21,6 +21,11 @@ const assinatura = () => ({
   registrarExpiracao: vi.fn(async () => 'aplicado' as const),
 });
 
+/** Anti-replay que sempre diz "primeira vez" — o replay tem teste próprio. */
+const antiReplay = () => ({
+  checkAndMarkWebhook: vi.fn(async () => ({ fresh: true, signatureHash: 'h' })),
+});
+
 const req = (cru: string): Request => ({ rawBody: Buffer.from(cru, 'utf8') }) as unknown as Request;
 
 const CORPO = JSON.stringify({
@@ -31,7 +36,11 @@ const CORPO = JSON.stringify({
 describe('ClickSignWebhookController', () => {
   it('recusa quando o segredo não está configurado — não dá pra confiar em nada', async () => {
     const svc = assinatura();
-    const ctrl = new ClickSignWebhookController(envSemSegredo() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      envSemSegredo() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await expect(
       ctrl.receber(req(CORPO), assinar(CORPO), 'document_closed'),
     ).rejects.toBeInstanceOf(UnauthorizedException);
@@ -40,16 +49,42 @@ describe('ClickSignWebhookController', () => {
 
   it('recusa HMAC inválido', async () => {
     const svc = assinatura();
-    const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      env() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await expect(
       ctrl.receber(req(CORPO), 'sha256=deadbeef', 'document_closed'),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(svc.registrarAssinado).not.toHaveBeenCalled();
   });
 
+  it('mesmo evento reenviado (replay) → ACK sem reprocessar', async () => {
+    const svc = assinatura();
+    const replay = {
+      checkAndMarkWebhook: vi.fn(async () => ({ fresh: false, signatureHash: 'h' })),
+    };
+    const ctrl = new ClickSignWebhookController(env() as never, svc as never, replay as never);
+    await expect(ctrl.receber(req(CORPO), assinar(CORPO), 'document_closed')).resolves.toEqual({
+      ok: true,
+    });
+    expect(replay.checkAndMarkWebhook).toHaveBeenCalledWith(
+      'clicksign',
+      assinar(CORPO),
+      undefined,
+      expect.any(Number),
+    );
+    expect(svc.registrarAssinado).not.toHaveBeenCalled();
+  });
+
   it('processa fechamento com HMAC válido', async () => {
     const svc = assinatura();
-    const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      env() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await expect(ctrl.receber(req(CORPO), assinar(CORPO), 'document_closed')).resolves.toEqual({
       ok: true,
     });
@@ -58,7 +93,11 @@ describe('ClickSignWebhookController', () => {
 
   it('cai no nome do evento dentro do corpo quando o header Event não vem', async () => {
     const svc = assinatura();
-    const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      env() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await ctrl.receber(req(CORPO), assinar(CORPO), undefined);
     expect(svc.registrarAssinado).toHaveBeenCalledOnce();
   });
@@ -66,7 +105,11 @@ describe('ClickSignWebhookController', () => {
   it('roteia recusa pro caminho de recusa', async () => {
     const svc = assinatura();
     const corpo = JSON.stringify({ event: { name: 'refusal' }, document: { key: 'doc-1' } });
-    const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      env() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await ctrl.receber(req(corpo), assinar(corpo), 'refusal');
     expect(svc.registrarRecusa).toHaveBeenCalledOnce();
     expect(svc.registrarAssinado).not.toHaveBeenCalled();
@@ -75,7 +118,11 @@ describe('ClickSignWebhookController', () => {
   it('ignora evento que não muda nada aqui, mas responde 200', async () => {
     const svc = assinatura();
     const corpo = JSON.stringify({ event: { name: 'sign' }, document: { key: 'doc-1' } });
-    const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      env() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await expect(ctrl.receber(req(corpo), assinar(corpo), 'sign')).resolves.toEqual({ ok: true });
     expect(svc.registrarAssinado).not.toHaveBeenCalled();
     expect(svc.registrarRecusa).not.toHaveBeenCalled();
@@ -94,7 +141,11 @@ describe('ClickSignWebhookController — prazo estourado', () => {
     async (nome) => {
       const svc = assinatura();
       const corpo = JSON.stringify({ event: { name: nome }, document: { key: 'doc-1' } });
-      const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+      const ctrl = new ClickSignWebhookController(
+        env() as never,
+        svc as never,
+        antiReplay() as never,
+      );
       await expect(ctrl.receber(req(corpo), assinar(corpo), nome)).resolves.toEqual({ ok: true });
       expect(svc.registrarExpiracao).toHaveBeenCalledOnce();
       expect(svc.registrarAssinado).not.toHaveBeenCalled();
@@ -105,7 +156,11 @@ describe('ClickSignWebhookController — prazo estourado', () => {
   it('expiração NÃO é recusa — são ações comerciais diferentes', async () => {
     const svc = assinatura();
     const corpo = JSON.stringify({ event: { name: 'deadline' }, document: { key: 'doc-1' } });
-    const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      env() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await ctrl.receber(req(corpo), assinar(corpo), 'deadline');
     expect(svc.registrarRecusa).not.toHaveBeenCalled();
   });
@@ -114,7 +169,11 @@ describe('ClickSignWebhookController — prazo estourado', () => {
     const svc = assinatura();
     svc.registrarExpiracao.mockRejectedValueOnce(new Error('banco fora'));
     const corpo = JSON.stringify({ event: { name: 'deadline' }, document: { key: 'doc-1' } });
-    const ctrl = new ClickSignWebhookController(env() as never, svc as never);
+    const ctrl = new ClickSignWebhookController(
+      env() as never,
+      svc as never,
+      antiReplay() as never,
+    );
     await expect(ctrl.receber(req(corpo), assinar(corpo), 'deadline')).resolves.toEqual({
       ok: true,
     });

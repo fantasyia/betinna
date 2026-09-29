@@ -100,6 +100,11 @@ export function initSentry(): void {
           '$1t=[REDACTED]',
         );
       }
+      // Corpo da request (webhooks trazem telefone/e-mail do cliente): mesma
+      // sanitização por chave que extra/contexts já recebem.
+      if (event.request?.data && typeof event.request.data === 'object') {
+        event.request.data = sanitize(event.request.data) as Record<string, unknown>;
+      }
       // Strip Authorization header de requests capturados
       if (event.request?.headers) {
         const h = event.request.headers as Record<string, string>;

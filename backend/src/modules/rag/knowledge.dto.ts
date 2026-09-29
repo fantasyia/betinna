@@ -12,11 +12,33 @@ export type CreateKnowledgeDto = z.infer<typeof createKnowledgeSchema>;
 export const updateKnowledgeSchema = createKnowledgeSchema.partial();
 export type UpdateKnowledgeDto = z.infer<typeof updateKnowledgeSchema>;
 
+/** Formatos aceitos no upload — os que `extrairTexto` sabe ler. */
+export const MIMES_DOCUMENTO = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/vnd.oasis.opendocument.presentation',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'application/json',
+]);
+
 /** Upload de documento (PDF/DOCX/TXT/…) pra base de conhecimento. dataBase64 ≤ ~20MB. */
 export const createKnowledgeDocumentoSchema = z.object({
   titulo: z.string().trim().min(2).max(160),
   fileName: z.string().trim().min(1).max(255),
-  mimetype: z.string().trim().min(3).max(120),
+  // Só o que a extração trata (officeparser + texto plano). O mimetype vira o
+  // Content-Type do objeto no Storage e do arquivo que o bot pode ENVIAR ao lead,
+  // então não pode ser string livre (text/html na URL assinada, por exemplo).
+  mimetype: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine((m) => MIMES_DOCUMENTO.has(m), 'Tipo de arquivo não suportado'),
   /** true = o bot pode ENVIAR o arquivo inteiro ao lead (catálogo, tabela de preços). */
   podeEnviar: z.boolean().optional(),
   // base64 cru (~27MB de string = ~20MB de binário).

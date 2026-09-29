@@ -273,7 +273,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
                 mensagemWaFinal,
               );
               waMessageId = r.externalId;
-              this.logger.debug(`WA enviado → ${dest.telefone} (campanha ${campanhaId})`);
+              this.logger.debug(`WA enviado → destinatário ${dest.id} (campanha ${campanhaId})`);
             } catch (sendErr) {
               // Falha no provider — libera claim pra próxima tentativa retry
               await this.idempotency.release(idemKey);
@@ -347,7 +347,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
               // O id do Resend é o ELO com o webhook de engajamento: sem guardar
               // aqui, o evento de abertura/clique chega e não há onde pendurar.
               resendEmailId = r.id ?? null;
-              this.logger.debug(`Email enviado → ${dest.email} (campanha ${campanhaId})`);
+              this.logger.debug(`Email enviado → destinatário ${dest.id} (campanha ${campanhaId})`);
             } catch (sendErr) {
               await this.idempotency.release(idemKey);
               throw sendErr;

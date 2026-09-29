@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { sanitizarTexto } from '@shared/utils/sanitize-pii';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
@@ -215,7 +216,9 @@ export class ResendWebhookService {
           marcou += await this.supressao
             .marcarEmailInvalido(empresaId, email, motivo)
             .catch((err) => {
-              this.logger.warn(`[resend] falha ao suprimir ${email}: ${String(err)}`);
+              this.logger.warn(
+                sanitizarTexto(`[resend] falha ao suprimir ${email}: ${String(err)}`),
+              );
               return 0;
             });
         }

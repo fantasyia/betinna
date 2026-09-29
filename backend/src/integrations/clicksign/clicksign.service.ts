@@ -73,7 +73,7 @@ const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 const BASE_PADRAO = 'https://app.clicksign.com';
 
 /** Únicos hosts que a ClickSign publica. Qualquer outro é erro de digitação — ou SSRF. */
-const HOSTS_CLICKSIGN = new Set(['app.clicksign.com', 'sandbox.clicksign.com']);
+export const HOSTS_CLICKSIGN = new Set(['app.clicksign.com', 'sandbox.clicksign.com']);
 
 /**
  * A `apiUrl` vem das credenciais que o DIRECTOR digita. Sem esta trava, ela era

@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { MessageDirection } from '@prisma/client';
+import { sanitizarTexto } from '@shared/utils/sanitize-pii';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
@@ -540,7 +541,9 @@ export class MullerWhatsappService implements OnModuleInit {
         await this.supressao
           .aplicarLgpd(params.empresaId, { telefone })
           .catch((err) =>
-            this.logger.warn(`[bot] LGPD não aplicada (${telefone}): ${String(err)}`),
+            this.logger.warn(
+              sanitizarTexto(`[bot] LGPD não aplicada (${telefone}): ${String(err)}`),
+            ),
           );
         await this.prisma.conversation
           .update({ where: { id: convId }, data: { botLigado: false, precisaHumano: false } })

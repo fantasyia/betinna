@@ -48,6 +48,12 @@ function setup(opts?: {
           opts?.empresaIdResolve === null ? { empresas: [] } : { empresas: empresas },
         ),
     },
+    // Instância `emp_<id>` agora é conferida: sem registro (null) a empresa
+    // precisa existir — o mock devolve a própria id pedida.
+    evolutionInstancia: { findUnique: vi.fn().mockResolvedValue(null) },
+    empresa: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => ({ id: where.id })),
+    },
   };
   const inbox = {
     processarMensagemEntrante: vi
@@ -309,6 +315,22 @@ describe('EvolutionInboundService — fluxo principal (roteamento instância →
     const arg = inbox.processarMensagemEntrante.mock.calls[0][0];
     expect(arg.empresaId).toBe('emp-42');
     expect(arg.proprietarioId).toBeUndefined();
+  });
+
+  // Auditoria 29/09/2026: o segredo do webhook é global, então o NOME da instância
+  // não pode escolher o tenant sozinho.
+  it('emp_<id> com instância registrada em OUTRA empresa → vale a registrada', async () => {
+    const { svc, inbox, prisma } = setup();
+    prisma.evolutionInstancia.findUnique.mockResolvedValue({ empresaId: 'emp-real' });
+    await svc.processarEvento(upsert({ messages: [msgTexto()] }, 'emp_emp-forjada'));
+    expect(inbox.processarMensagemEntrante.mock.calls[0][0].empresaId).toBe('emp-real');
+  });
+
+  it('emp_<id> sem registro e empresa inexistente → descarta', async () => {
+    const { svc, inbox, prisma } = setup();
+    prisma.empresa.findUnique.mockResolvedValue(null);
+    await svc.processarEvento(upsert({ messages: [msgTexto()] }, 'emp_nao-existe'));
+    expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
   });
 
   it('instância user_<id> → resolve empresa do usuário e seta proprietarioId', async () => {

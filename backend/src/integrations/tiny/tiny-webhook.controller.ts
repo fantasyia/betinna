@@ -134,6 +134,11 @@ export class TinyWebhookController {
   private validarSegredo(segredo: string): void {
     const esperado = this.env.get('TINY_WEBHOOK_SECRET');
     if (!esperado) {
+      // Em produção o env.schema já aborta o boot sem este segredo; esta é a
+      // segunda tranca, pra rota nunca ficar aberta se aquele gate mudar.
+      if (this.env.isProduction) {
+        throw new UnauthorizedException('webhook não configurado', ErrorCode.AUTH_INVALID_TOKEN);
+      }
       this.logger.warn('TINY_WEBHOOK_SECRET ausente — webhook aceito SEM validação de segredo');
       return;
     }

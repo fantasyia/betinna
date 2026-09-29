@@ -19,6 +19,8 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 const RL_MAX_POR_MIN = 300;
 /** Secret dummy p/ o caminho de token inexistente — mantém o custo do HMAC constante. */
 const DUMMY_SECRET = '0'.repeat(64);
+/** Janela em que a mesma assinatura é tratada como replay (timestamp não entra no HMAC). */
+const REPLAY_TTL_S = 30 * 24 * 60 * 60;
 
 export interface ReceberWebhookInput {
   token: string;
@@ -132,7 +134,16 @@ export class WebhookEntradaService {
     }
 
     // Anti-replay por HMAC (+ timestamp opcional): mesmo POST reenviado → ACK sem processar.
-    const { fresh } = await this.antiReplay.checkAndMarkWebhook('fluxo', signature, timestamp);
+    // O timestamp NÃO entra no HMAC (mudar isso quebra quem já emite), então a
+    // janela de "assinatura vista" é longa: 30 dias em vez dos 10 min padrão —
+    // senão o mesmo POST capturado voltava a disparar o fluxo quando a chave
+    // expirava. Auditoria 29/09/2026.
+    const { fresh } = await this.antiReplay.checkAndMarkWebhook(
+      'fluxo',
+      signature,
+      timestamp,
+      REPLAY_TTL_S,
+    );
     if (!fresh) return { ok: true };
 
     // Idempotência forte (DB) quando o emissor manda Idempotency-Key — sobrevive a Redis frio.

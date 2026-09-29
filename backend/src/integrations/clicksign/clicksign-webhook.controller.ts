@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import { EnvService } from '@config/env.service';
 import { Public } from '@shared/decorators/public.decorator';
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
+import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
 import { UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { ClickSignAssinaturaService } from './clicksign-assinatura.service';
@@ -65,6 +66,7 @@ export class ClickSignWebhookController {
   constructor(
     private readonly env: EnvService,
     private readonly assinatura: ClickSignAssinaturaService,
+    private readonly antiReplay: WebhookAntiReplayService,
   ) {}
 
   @Post()
@@ -89,6 +91,16 @@ export class ClickSignWebhookController {
       this.logger.warn('Webhook do ClickSign com HMAC inválido — ignorado');
       throw new UnauthorizedException('Assinatura inválida', ErrorCode.AUTH_INVALID_TOKEN);
     }
+    // Anti-replay (o único webhook que não passava por ele): o mesmo evento
+    // reenviado é ACK sem reprocessar. Janela longa porque o HMAC cobre só o
+    // corpo, sem timestamp. Auditoria 29/09/2026.
+    const { fresh } = await this.antiReplay.checkAndMarkWebhook(
+      'clicksign',
+      hmac ?? '',
+      undefined,
+      30 * 24 * 60 * 60,
+    );
+    if (!fresh) return { ok: true };
 
     // O header `Event` existe justamente pra filtrar sem fazer parse do corpo —
     // é a recomendação deles. O corpo só é lido pro que interessa.
