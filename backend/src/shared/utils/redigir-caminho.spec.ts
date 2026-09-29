@@ -47,4 +47,14 @@ describe('redigirCaminho', () => {
       '/api/v1/descadastrar?lang=pt&t=[REDACTED]&x=1',
     );
   });
+
+  it('verify token do handshake da Meta (hub.verify_token e hub_verify_token) some da URL', () => {
+    const url =
+      '/api/v1/webhooks/meta/cmr1?hub.mode=subscribe&hub.challenge=123&hub.verify_token=SEGREDO%2A&hub_verify_token=SEGREDO%2A';
+    const r = redigirCaminho(url);
+    expect(r).not.toContain('SEGREDO');
+    expect(r).toContain('hub.challenge=123');
+    expect(r).toContain('hub.verify_token=[REDACTED]');
+    expect(r).toContain('hub_verify_token=[REDACTED]');
+  });
 });

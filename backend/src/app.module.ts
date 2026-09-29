@@ -126,6 +126,9 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
               // /integracoes/conectar) — fora do wildcard de 1 nível acima. Redige o objeto inteiro
               // + os segredos comuns aninhados em qualquer profundidade.
               'req.body.credenciais',
+              // Verify token do handshake da Meta (vem na query, com ponto no nome).
+              'req.query["hub.verify_token"]',
+              'req.query.hub_verify_token',
               '*.credenciais',
               '*.client_secret',
               '*.clientSecret',

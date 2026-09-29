@@ -24,6 +24,9 @@ const CAMINHOS_COM_SEGREDO = [
   // /descadastrar?t=<token> — token de opt-out LGPD; quem lê o log conseguiria
   // descadastrar o lead no lugar dele.
   /(\/descadastrar\?(?:[^#]*&)?t=)[^&#]+/gi,
+  // Handshake do webhook da Meta: o verify token (da empresa) vem na QUERY, em
+  // `hub.verify_token` E `hub_verify_token` (a Meta manda os dois). 29/09/2026.
+  /([?&]hub[._]verify_token=)[^&#]+/gi,
 ];
 
 export function redigirCaminho(url: string): string {

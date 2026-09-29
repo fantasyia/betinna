@@ -44,6 +44,16 @@ const makeAntiReplay = () => ({
 
 const makeLeadgen = () => ({ enfileirar: vi.fn(async () => undefined) });
 
+/** Response do Express: o handshake responde em TEXTO PURO via @Res(). */
+const fakeRes = () => {
+  const r = {
+    status: vi.fn(() => r),
+    type: vi.fn(() => r),
+    send: vi.fn(() => r),
+  };
+  return r;
+};
+
 const fakeReq = (raw: string): Request =>
   ({ rawBody: Buffer.from(raw, 'utf8') }) as unknown as Request;
 
@@ -60,7 +70,11 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    expect(await ctrl.verify(EMP, 'subscribe', 'verify-123', 'desafio-xyz')).toBe('desafio-xyz');
+    const res = fakeRes();
+    await ctrl.verify(EMP, 'subscribe', 'verify-123', 'desafio-xyz', res as never);
+    // A Meta compara o corpo com o challenge: texto puro, SEM o envelope JSON do app.
+    expect(res.type).toHaveBeenCalledWith('text/plain');
+    expect(res.send).toHaveBeenCalledWith('desafio-xyz');
   });
 
   it('rejeita quando verify_token não bate', async () => {
@@ -75,9 +89,9 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    await expect(ctrl.verify(EMP, 'subscribe', 'errado', 'x')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      ctrl.verify(EMP, 'subscribe', 'errado', 'x', fakeRes() as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejeita quando mode != subscribe', async () => {
@@ -92,9 +106,9 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    await expect(ctrl.verify(EMP, 'unsubscribe', 'verify-123', 'x')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      ctrl.verify(EMP, 'unsubscribe', 'verify-123', 'x', fakeRes() as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejeita quando a empresa não tem App da Meta cadastrado', async () => {
@@ -109,9 +123,9 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    await expect(ctrl.verify(EMP, 'subscribe', 'qualquer', 'x')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      ctrl.verify(EMP, 'subscribe', 'qualquer', 'x', fakeRes() as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
@@ -505,10 +519,12 @@ describe('MetaWebhookController — app por empresa (item 13)', () => {
 
   it('handshake usa o verify token de CADA empresa', async () => {
     const { ctrl } = montar(EMP_A);
-    expect(await ctrl.verify(EMP_A, 'subscribe', 'vt-a', 'ok-a')).toBe('ok-a');
-    await expect(ctrl.verify(EMP_B, 'subscribe', 'vt-a', 'x')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    const res = fakeRes();
+    await ctrl.verify(EMP_A, 'subscribe', 'vt-a', 'ok-a', res as never);
+    expect(res.send).toHaveBeenCalledWith('ok-a');
+    await expect(
+      ctrl.verify(EMP_B, 'subscribe', 'vt-a', 'x', fakeRes() as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('id de empresa malformado na URL: recusa sem nem consultar o app', async () => {

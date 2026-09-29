@@ -10,13 +10,14 @@ import {
   Post,
   Query,
   Req,
+  Res,
   type RawBodyRequest,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import { Throttle, seconds } from '@nestjs/throttler';
 import type { MessageChannel } from '@prisma/client';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { Public } from '@shared/decorators/public.decorator';
 import {
@@ -90,7 +91,8 @@ export class MetaWebhookController {
     @Query('hub.mode') mode: string | undefined,
     @Query('hub.verify_token') token: string | undefined,
     @Query('hub.challenge') challenge: string | undefined,
-  ): Promise<string> {
+    @Res() res: Response,
+  ): Promise<void> {
     const app = ID_VALIDO.test(empresaId) ? await this.apps.talvez(empresaId) : null;
     const expected = app?.verifyToken;
     if (!expected) {
@@ -108,7 +110,13 @@ export class MetaWebhookController {
       this.logger.warn(`Meta verify falhou: mode=${mode}`);
       throw new ForbiddenException('verify token inválido');
     }
-    return challenge ?? '';
+    // TEXTO PURO, fora do envelope `{ success, data }` do ResponseInterceptor:
+    // a Meta compara o corpo com o challenge e recusa qualquer outra coisa
+    // ("Não foi possível validar a URL de callback", 29/09). Por isso @Res().
+    res
+      .status(200)
+      .type('text/plain')
+      .send(challenge ?? '');
   }
 
   // ─── Recebimento (POST events) ───────────────────────────────────────
