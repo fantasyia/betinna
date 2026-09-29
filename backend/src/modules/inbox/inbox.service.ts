@@ -387,6 +387,9 @@ export class InboxService {
       conds.push({ categoria: { in: [...GRUPOS_MARKETPLACE[params.grupo]] } });
       if (!params.canal) conds.push({ canal: { in: [...CANAIS_MARKETPLACE] } });
     }
+    if (params.semMarketplace && !params.canal && !params.grupo) {
+      conds.push({ canal: { notIn: [...CANAIS_MARKETPLACE] } });
+    }
     if (params.meu) conds.push({ atribuidoId: user.id });
     if (params.atribuidoId) conds.push({ atribuidoId: params.atribuidoId });
     if (params.naoAtribuidas) conds.push({ atribuidoId: null });

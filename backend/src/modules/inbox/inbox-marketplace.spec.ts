@@ -76,6 +76,26 @@ describe('InboxService — grupos de marketplace', () => {
     expect(c).not.toContain('"canal":{"in"');
   });
 
+  it('semMarketplace (o "Todos" da tela da Inbox) tira os canais de marketplace', async () => {
+    await m.svc.list(ADMIN, { semMarketplace: true, page: 1, limit: 30 } as never);
+    expect(condicoes(m.prisma)).toContain('"canal":{"notIn":["MARKETPLACE_ML"');
+  });
+
+  it('sem o flag a API segue devolvendo tudo (MCP e bancada não mudam)', async () => {
+    await m.svc.list(ADMIN, { page: 1, limit: 30 } as never);
+    expect(condicoes(m.prisma)).not.toContain('MARKETPLACE');
+  });
+
+  it('semMarketplace com canal explícito respeita o canal', async () => {
+    await m.svc.list(ADMIN, {
+      semMarketplace: true,
+      canal: 'MARKETPLACE_ML',
+      page: 1,
+      limit: 30,
+    } as never);
+    expect(condicoes(m.prisma)).not.toContain('notIn":["MARKETPLACE');
+  });
+
   it('resumo: soma por canal e grupo; canal sem conversa não aparece', async () => {
     m.prisma.conversation.groupBy.mockResolvedValue([
       { canal: 'MARKETPLACE_ML', categoria: 'PRE_VENDA', _count: { _all: 3 } },

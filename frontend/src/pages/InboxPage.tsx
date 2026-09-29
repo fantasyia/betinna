@@ -77,6 +77,9 @@ export default function InboxPage() {
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ limit: '40' });
     if (canal) qs.set('canal', canal);
+    // "Todos" da Inbox = conversas (WhatsApp, IG, FB, e-mail). Marketplace tem
+    // aba própria em Atendimento → Marketplaces (Léo, 29/09).
+    else qs.set('semMarketplace', 'true');
     if (status) qs.set('status', status);
     if (filterMeu === 'meu') qs.set('meu', 'true');
     if (filterMeu === 'nao_atribuidas') qs.set('naoAtribuidas', 'true');

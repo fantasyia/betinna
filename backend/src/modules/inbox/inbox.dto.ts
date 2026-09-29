@@ -37,6 +37,12 @@ export const listConversationsSchema = z.object({
    * Traduzido pra categorias em `GRUPOS_MARKETPLACE` (inbox.service).
    */
   grupo: z.enum(['pre_venda', 'pos_venda', 'reclamacoes']).optional(),
+  /**
+   * true → tira os canais de marketplace (quando não há canal explícito). É o
+   * "Todos" da tela da Inbox: marketplace tem aba própria (Léo, 29/09). Sem o
+   * flag a API segue devolvendo tudo — MCP e bancada não mudam.
+   */
+  semMarketplace: boolQuery.optional(),
   search: z.string().min(1).max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(30),
