@@ -1,6 +1,38 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { MLQuestionsService } from './ml-questions.service';
+import { MLQuestionsService, perguntasRecentes } from './ml-questions.service';
 import type { MLQuestion } from './ml.types';
+
+/**
+ * Léo, 29/09: o painel do ML mostra 3 perguntas "a responder" e a busca trazia
+ * 18 (de março a setembro) — ficam só as recentes. Datas reais da conta LGHB.
+ */
+describe('perguntasRecentes — janela de 14 dias', () => {
+  const agora = new Date('2026-09-29T05:00:00Z');
+  const q = (date_created: string) => ({ date_created });
+
+  it('com as datas reais da conta LGHB, sobram exatamente as 3 de 22/09', () => {
+    const datas = [
+      '2026-09-22T10:00:00-04:00',
+      '2026-09-22T11:00:00-04:00',
+      '2026-09-22T12:00:00-04:00',
+      '2026-09-03T10:00:00-04:00',
+      '2026-09-02T10:00:00-04:00',
+      '2026-08-29T10:00:00-04:00',
+      '2026-06-06T10:00:00-04:00',
+      '2026-03-10T10:00:00-04:00',
+    ];
+    const r = perguntasRecentes(datas.map(q), agora);
+    expect(r.map((x) => x.date_created.slice(0, 10))).toEqual([
+      '2026-09-22',
+      '2026-09-22',
+      '2026-09-22',
+    ]);
+  });
+
+  it('data ilegível entra (não esconde pergunta de cliente por formato)', () => {
+    expect(perguntasRecentes([q('ontem')], agora)).toHaveLength(1);
+  });
+});
 
 const makeMLClientMock = () => ({
   get: vi.fn(),

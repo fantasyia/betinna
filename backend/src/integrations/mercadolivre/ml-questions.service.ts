@@ -15,6 +15,35 @@ import type { MLQuestion } from './ml.types';
  * Peer ID na Inbox: `pergunta:<question_id>` — cada pergunta vira uma Conversation
  * separada (modelo do ML — não há thread). Isso bate com a UX do próprio ML.
  */
+/**
+ * Janela das perguntas que a sincronização importa (Léo, 29/09).
+ *
+ * A busca `status=UNANSWERED` devolve pergunta de MESES atrás (na conta LGHB:
+ * 18, de março a setembro) e o painel do ML mostra só as recentes (3, de uma
+ * semana antes). O diagnóstico mostrou que nenhum campo da API separa umas das
+ * outras — nem status do anúncio (as 3 estão em anúncio pausado), nem hold,
+ * nem deleted_from_listing. O que separa é a DATA. O prazo exato do painel o
+ * ML não publica; 14 dias reproduz as 3 do painel naquela conta.
+ *
+ * Vale só pra sincronização de fallback: pergunta nova chega pelo webhook na
+ * hora e sempre entra.
+ */
+export const PERGUNTA_ML_JANELA_DIAS = 14;
+
+/** Só as perguntas criadas dentro da janela, contando de `agora`. */
+export function perguntasRecentes<T extends { date_created: string }>(
+  qs: T[],
+  agora: Date = new Date(),
+  dias: number = PERGUNTA_ML_JANELA_DIAS,
+): T[] {
+  const limite = agora.getTime() - dias * 24 * 60 * 60 * 1000;
+  return qs.filter((q) => {
+    const t = new Date(q.date_created).getTime();
+    // data ilegível: importa (não esconder pergunta de cliente por formato)
+    return Number.isNaN(t) || t >= limite;
+  });
+}
+
 @Injectable()
 export class MLQuestionsService {
   private readonly logger = new Logger(MLQuestionsService.name);
