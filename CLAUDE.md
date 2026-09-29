@@ -4,7 +4,7 @@
 > gerais dela (ordem do pedido no ERP, Drive do marketing@, domínio e NOINDEX do
 > site) vêm do arquivo importado abaixo. Material de outro cliente não entra aqui.
 
-@~/.claude/github/leo-Skills-master/clients/somatec/REGRAS-GERAIS-SOMATEC.md
+@~/Clientes/SOMATEC-BLOCKING/REGRAS-GERAIS-SOMATEC.md
 
 Este arquivo é lido automaticamente pelo Claude Code em qualquer sessão neste repo.
 **Siga estas regras antes de qualquer mudança.**
@@ -282,7 +282,7 @@ erro de produção redescobre o Sentry investigando por conta própria.
 
 ```
 comando    .claude\commands\sentry.md   (deste repositório, /sentry — desde 28/09)
-bootstrap  leo-Skills-master\_sessions\triagem-sentry\CONTEXT.md
+bootstrap  C:/Users/TechD/Clientes/SOMATEC-BLOCKING/sessoes/triagem-sentry\CONTEXT.md
 rotina     tarefa agendada "🔎 Triagem diária do Sentry", 03:00
 ```
 

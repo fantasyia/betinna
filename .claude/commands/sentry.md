@@ -11,7 +11,7 @@ Faça o seguinte, nesta ordem:
    ⚠️ **Confira a DATA no topo.** Se for de ontem, a rotina não rodou (ela roda com o app aberto);
    trabalhar em cima de relatório velho é consertar erro que já foi consertado.
    Se o arquivo não existir, tudo bem: siga sem ele e leia o Sentry direto.
-1. Leia `github/leo-Skills-master/_sessions/triagem-sentry/CONTEXT.md` (bootstrap) — se o diretório de trabalho já for a raiz do repo, o caminho é `_sessions/triagem-sentry/CONTEXT.md`.
+1. Leia `C:/Users/TechD/Clientes/SOMATEC-BLOCKING/sessoes/triagem-sentry/CONTEXT.md` (bootstrap) — se o diretório de trabalho já for a raiz do repo, o caminho é `C:/Users/TechD/Clientes/SOMATEC-BLOCKING/sessoes/triagem-sentry/CONTEXT.md`.
 2. Leia o desenho de referência do filtro de dado pessoal, que é o que impede exportar lead pro Sentry — e o que já quebrou duas vezes:
    - `C:\Users\TechD\.claude\github\somatec_web\src\lib\observabilidade\sentry-limpeza.ts`
    - `C:\Users\TechD\.claude\github\somatec_web\tests\sentry-limpeza.test.ts`
