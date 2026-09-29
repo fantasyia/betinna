@@ -225,8 +225,20 @@ function tipoMidiaDeMime(mime: string): 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT'
   return 'DOCUMENT';
 }
 
-/** Marcação de envio de arquivo que a IA insere na resposta: `[[ENVIAR_DOC:<id>]]`. */
-const RE_ENVIAR_DOC = /\[\[\s*ENVIAR_DOC\s*:\s*([\w-]+)\s*\]\]/gi;
+/**
+ * Marcação de envio de arquivo que a IA insere na resposta: `[[ENVIAR_DOC:<id>]]`.
+ *
+ * O modelo NÃO respeita o separador à risca: em 29/09 escreveu
+ * `[[ENVIAR_DOC, cmun9ik…]]` (vírgula), o regex só aceitava `:`, o PDF não saiu e
+ * a marcação crua foi parar no WhatsApp do cliente. Aceita `:` `,` `=` ou espaço.
+ */
+const RE_ENVIAR_DOC = /\[\[\s*ENVIAR_DOC\s*[:,=\s]\s*([\w-]+)\s*\]\]/gi;
+/**
+ * Rede de segurança: QUALQUER resto de `[[ENVIAR_DOC…]]` que não casou acima
+ * (id malformado, colchete faltando) sai do texto — marcação interna nunca vai
+ * pro cliente, mesmo quando o envio não dá pra fazer.
+ */
+const RE_ENVIAR_DOC_RESTO = /\[\[\s*ENVIAR_DOC[^\]]*\]?\]?/gi;
 
 /**
  * Tool-use por marcador: extrai os ids de `[[ENVIAR_DOC:id]]` da resposta da IA e
@@ -239,6 +251,7 @@ export function extrairMarcadoresDoc(texto: string): { limpo: string; ids: strin
       ids.push(id);
       return '';
     })
+    .replace(RE_ENVIAR_DOC_RESTO, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

@@ -303,6 +303,27 @@ describe('extrairMarcadoresDoc', () => {
     const r = extrairMarcadoresDoc('[[ENVIAR_DOC:a]] x [[ENVIAR_DOC:b]] y [[ENVIAR_DOC:a]]');
     expect(r.ids).toEqual(['a', 'b']);
   });
+
+  it('29/09: IA escreveu com VÍRGULA — o arquivo sai e a marcação não vaza pro cliente', () => {
+    const r = extrairMarcadoresDoc(
+      'Claro! Vou enviar a proposta em PDF. [[ENVIAR_DOC, cmun9ik65002oqj5ivxc9p5ap]]',
+    );
+    expect(r.ids).toEqual(['cmun9ik65002oqj5ivxc9p5ap']);
+    expect(r.limpo).toBe('Claro! Vou enviar a proposta em PDF.');
+  });
+
+  it('aceita = e espaço como separador', () => {
+    expect(extrairMarcadoresDoc('[[ENVIAR_DOC=ab1]] [[ENVIAR_DOC cd2]]').ids).toEqual([
+      'ab1',
+      'cd2',
+    ]);
+  });
+
+  it('marcação malformada que não dá pra ler SOME do texto (nunca vai crua pro cliente)', () => {
+    const r = extrairMarcadoresDoc('Segue o PDF. [[ENVIAR_DOC: ]] [[ENVIAR_DOC:abc');
+    expect(r.limpo).toBe('Segue o PDF.');
+    expect(r.limpo).not.toContain('ENVIAR_DOC');
+  });
 });
 
 describe('ConversarIaService', () => {
