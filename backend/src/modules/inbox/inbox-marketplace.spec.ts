@@ -111,6 +111,19 @@ describe('InboxService — grupos de marketplace', () => {
     expect(where).toMatchObject({ status: { notIn: ['RESOLVIDA', 'ARQUIVADA'] } });
   });
 
+  it('pergunta já respondida (resposta que não falhou) não conta no pré-venda', async () => {
+    m.prisma.conversation.groupBy.mockResolvedValue([]);
+    await m.svc.resumoMarketplace(ADMIN);
+    const where = JSON.stringify(
+      (m.prisma.conversation.groupBy.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+    );
+    expect(where).toContain(
+      '"AND":[{"OR":[{"categoria":{"notIn":["PRE_VENDA"]}},{"mensagens":{"none":{"direction":"OUTBOUND","status":{"not":"FAILED"}}}}]}]',
+    );
+    // o escopo do WhatsApp (OR do baseWhere) continua lá
+    expect(where).toContain('"OR":[{"canal":{"not":"WHATSAPP"}},{"proprietarioId":null}]');
+  });
+
   it('REP: o escopo da listagem (só o próprio WhatsApp) vale pro resumo também', async () => {
     m.prisma.conversation.groupBy.mockResolvedValue([]);
     await m.svc.resumoMarketplace(REP);

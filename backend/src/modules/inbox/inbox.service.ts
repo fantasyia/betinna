@@ -346,6 +346,19 @@ export class InboxService {
         ...this.baseWhere(user),
         canal: { in: [...CANAIS_MARKETPLACE] },
         status: { notIn: ['RESOLVIDA', 'ARQUIVADA'] },
+        // Pergunta de anúncio já respondida sai do contador (Léo, 29/09: "tá
+        // aparecendo 1 sendo que já foi respondido"). Ela segue na LISTA, com a
+        // resposta embaixo — o ML aceita uma resposta só, não há o que fazer.
+        // Dentro de AND: o baseWhere já usa `OR` (escopo do WhatsApp) e um
+        // segundo `OR` na mesma chave o substituiria.
+        AND: [
+          {
+            OR: [
+              { categoria: { notIn: [...GRUPOS_MARKETPLACE.pre_venda] } },
+              { mensagens: { none: { direction: 'OUTBOUND', status: { not: 'FAILED' } } } },
+            ],
+          },
+        ],
       },
       _count: { _all: true },
     });
