@@ -10,21 +10,20 @@ const APP_SECRET = 'app-secret-meta';
 const sign = (body: string) =>
   `sha256=${createHmac('sha256', APP_SECRET).update(body, 'utf8').digest('hex')}`;
 
-const makeEnv = (overrides: Record<string, string> = {}) => {
-  const map: Record<string, string> = {
-    META_GRAPH_APP_SECRET: APP_SECRET,
-    META_GRAPH_VERIFY_TOKEN: 'verify-123',
-    NODE_ENV: 'test',
-    ...overrides,
-  };
-  return {
-    get: vi.fn((k: string): string => map[k] ?? ''),
-    // EnvService.isProduction usado pelo controller pra decidir fail-closed
-    get isProduction() {
-      return map['NODE_ENV'] === 'production';
-    },
-  };
-};
+const EMP = 'cmempresaum0000000000001';
+const EMP7 = 'cmempresasete00000000007';
+
+/**
+ * Item 13 (29/09): o segredo e o verify token são do app DA EMPRESA
+ * (`meta_app`), não do env. `semApp` = empresa sem app cadastrado.
+ */
+const makeApps = (opts: { semApp?: boolean; secret?: string } = {}) => ({
+  talvez: vi.fn(async () =>
+    opts.semApp
+      ? null
+      : { appId: 'app-1', appSecret: opts.secret ?? APP_SECRET, verifyToken: 'verify-123' },
+  ),
+});
 
 const makeInbox = () => ({
   processarMensagemEntrante: vi.fn(async () => ({
@@ -49,9 +48,9 @@ const fakeReq = (raw: string): Request =>
   ({ rawBody: Buffer.from(raw, 'utf8') }) as unknown as Request;
 
 describe('MetaWebhookController.verify (GET handshake)', () => {
-  it('retorna challenge quando mode + token batem', () => {
+  it('retorna challenge quando mode + token batem', async () => {
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
@@ -61,12 +60,12 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    expect(ctrl.verify('subscribe', 'verify-123', 'desafio-xyz')).toBe('desafio-xyz');
+    expect(await ctrl.verify(EMP, 'subscribe', 'verify-123', 'desafio-xyz')).toBe('desafio-xyz');
   });
 
-  it('rejeita quando verify_token não bate', () => {
+  it('rejeita quando verify_token não bate', async () => {
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
@@ -76,12 +75,14 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    expect(() => ctrl.verify('subscribe', 'errado', 'x')).toThrow(ForbiddenException);
+    await expect(ctrl.verify(EMP, 'subscribe', 'errado', 'x')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
-  it('rejeita quando mode != subscribe', () => {
+  it('rejeita quando mode != subscribe', async () => {
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
@@ -91,12 +92,14 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    expect(() => ctrl.verify('unsubscribe', 'verify-123', 'x')).toThrow(ForbiddenException);
+    await expect(ctrl.verify(EMP, 'unsubscribe', 'verify-123', 'x')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
-  it('rejeita quando verify token não está configurado no env', () => {
+  it('rejeita quando a empresa não tem App da Meta cadastrado', async () => {
     const ctrl = new MetaWebhookController(
-      makeEnv({ META_GRAPH_VERIFY_TOKEN: '' }) as never,
+      makeApps({ semApp: true }) as never,
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
@@ -106,7 +109,9 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    expect(() => ctrl.verify('subscribe', 'qualquer', 'x')).toThrow(ForbiddenException);
+    await expect(ctrl.verify(EMP, 'subscribe', 'qualquer', 'x')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 });
 
@@ -132,9 +137,9 @@ describe('MetaWebhookController.receive (POST events)', () => {
 
   it('rejeita HMAC inválido com UnauthorizedException (auditoria 2026-05-15)', async () => {
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       makeInbox() as never,
-      makeOAuth({ empresaId: 'emp-1' }) as never,
+      makeOAuth({ empresaId: EMP }) as never,
       makeAntiReplay() as never,
       {
         baixarEArmazenar: vi.fn(async () => null),
@@ -143,15 +148,15 @@ describe('MetaWebhookController.receive (POST events)', () => {
       makeLeadgen() as never,
     );
     await expect(
-      ctrl.receive(fakeReq(rawBody), 'sha256=deadbeef', envelope),
+      ctrl.receive(EMP, fakeReq(rawBody), 'sha256=deadbeef', envelope),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it('em produção rejeita quando META_GRAPH_APP_SECRET vazio (fail-closed)', async () => {
+  it('empresa sem App da Meta: rejeita (fail-closed, sem modo "aceita sem HMAC")', async () => {
     const ctrl = new MetaWebhookController(
-      makeEnv({ META_GRAPH_APP_SECRET: '', NODE_ENV: 'production' }) as never,
+      makeApps({ semApp: true }) as never,
       makeInbox() as never,
-      makeOAuth({ empresaId: 'emp-1' }) as never,
+      makeOAuth({ empresaId: EMP }) as never,
       makeAntiReplay() as never,
       {
         baixarEArmazenar: vi.fn(async () => null),
@@ -159,16 +164,16 @@ describe('MetaWebhookController.receive (POST events)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    await expect(ctrl.receive(fakeReq(rawBody), undefined, envelope)).rejects.toBeInstanceOf(
+    await expect(ctrl.receive(EMP, fakeReq(rawBody), undefined, envelope)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });
 
   it('aceita HMAC válido e despacha pra InboxService', async () => {
     const inbox = makeInbox();
-    const oauth = makeOAuth({ empresaId: 'emp-1' });
+    const oauth = makeOAuth({ empresaId: EMP });
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       inbox as never,
       oauth as never,
       makeAntiReplay() as never,
@@ -178,12 +183,12 @@ describe('MetaWebhookController.receive (POST events)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    const r = await ctrl.receive(fakeReq(rawBody), sign(rawBody), envelope);
+    const r = await ctrl.receive(EMP, fakeReq(rawBody), sign(rawBody), envelope);
     expect(r.ok).toBe(true);
     expect(oauth.resolverPorAccount).toHaveBeenCalledWith('facebook', 'page-1');
     expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
       expect.objectContaining({
-        empresaId: 'emp-1',
+        empresaId: EMP,
         canal: 'FACEBOOK',
         peerId: 'psid-aaa',
         conteudo: 'olá',
@@ -196,7 +201,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
     const inbox = makeInbox();
     const oauth = makeOAuth(undefined);
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       inbox as never,
       oauth as never,
       makeAntiReplay() as never,
@@ -206,7 +211,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    const r = await ctrl.receive(fakeReq(rawBody), sign(rawBody), envelope);
+    const r = await ctrl.receive(EMP, fakeReq(rawBody), sign(rawBody), envelope);
     expect(r.ok).toBe(true);
     expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
   });
@@ -232,9 +237,9 @@ describe('MetaWebhookController.receive (POST events)', () => {
     const raw = JSON.stringify(envelopeEcho);
     const inbox = makeInbox();
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       inbox as never,
-      makeOAuth({ empresaId: 'emp-1' }) as never,
+      makeOAuth({ empresaId: EMP }) as never,
       makeAntiReplay() as never,
       {
         baixarEArmazenar: vi.fn(async () => null),
@@ -242,7 +247,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    await ctrl.receive(fakeReq(raw), sign(raw), envelopeEcho);
+    await ctrl.receive(EMP, fakeReq(raw), sign(raw), envelopeEcho);
     expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
   });
 
@@ -266,9 +271,9 @@ describe('MetaWebhookController.receive (POST events)', () => {
     };
     const raw = JSON.stringify(env);
     const inbox = makeInbox();
-    const oauth = makeOAuth({ empresaId: 'emp-7' });
+    const oauth = makeOAuth({ empresaId: EMP7 });
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       inbox as never,
       oauth as never,
       makeAntiReplay() as never,
@@ -278,7 +283,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    await ctrl.receive(fakeReq(raw), sign(raw), env);
+    await ctrl.receive(EMP7, fakeReq(raw), sign(raw), env);
     expect(oauth.resolverPorAccount).toHaveBeenCalledWith('instagram', 'ig-1');
     expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
       expect.objectContaining({ canal: 'INSTAGRAM', peerId: 'igsid-xxx' }),
@@ -309,9 +314,9 @@ describe('MetaWebhookController.receive (POST events)', () => {
     const raw = JSON.stringify(env);
     const inbox = makeInbox();
     const ctrl = new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       inbox as never,
-      makeOAuth({ empresaId: 'emp-1' }) as never,
+      makeOAuth({ empresaId: EMP }) as never,
       makeAntiReplay() as never,
       {
         baixarEArmazenar: vi.fn(async () => null),
@@ -319,7 +324,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
       } as never,
       makeLeadgen() as never,
     );
-    await ctrl.receive(fakeReq(raw), sign(raw), env);
+    await ctrl.receive(EMP, fakeReq(raw), sign(raw), env);
     expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
       expect.objectContaining({
         tipo: 'IMAGE',
@@ -342,9 +347,9 @@ describe('MetaWebhookController.receive (Lead Ads)', () => {
       entry: [{ id: 'page-1', time: 1, changes: [{ field: 'leadgen', value }] }],
     }) as unknown as MetaWebhookEnvelope;
 
-  const ctrlCom = (leadgen: ReturnType<typeof makeLeadgen>, oauthEmpresa = 'emp-1') =>
+  const ctrlCom = (leadgen: ReturnType<typeof makeLeadgen>, oauthEmpresa = EMP) =>
     new MetaWebhookController(
-      makeEnv() as never,
+      makeApps() as never,
       makeInbox() as never,
       makeOAuth(oauthEmpresa ? { empresaId: oauthEmpresa } : undefined) as never,
       makeAntiReplay() as never,
@@ -364,10 +369,10 @@ describe('MetaWebhookController.receive (Lead Ads)', () => {
     });
     const raw = JSON.stringify(env);
 
-    await ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env);
+    await ctrlCom(leadgen).receive(EMP, fakeReq(raw), sign(raw), env);
 
     expect(leadgen.enfileirar).toHaveBeenCalledWith({
-      empresaId: 'emp-1',
+      empresaId: EMP,
       leadgenId: 'lg-1',
       pageId: 'page-1',
       formId: 'form-9',
@@ -382,7 +387,7 @@ describe('MetaWebhookController.receive (Lead Ads)', () => {
     const env = envelopeLeadgen({ leadgen_id: 'lg-2', page_id: 'page-1', form_id: 'form-9' });
     const raw = JSON.stringify(env);
 
-    await ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env);
+    await ctrlCom(leadgen).receive(EMP, fakeReq(raw), sign(raw), env);
 
     expect(leadgen.enfileirar).toHaveBeenCalledWith(
       expect.objectContaining({ leadgenId: 'lg-2', adId: undefined }),
@@ -394,7 +399,7 @@ describe('MetaWebhookController.receive (Lead Ads)', () => {
     const env = envelopeLeadgen({ leadgen_id: 'lg-3', page_id: 'page-desconhecida' });
     const raw = JSON.stringify(env);
 
-    await ctrlCom(leadgen, '').receive(fakeReq(raw), sign(raw), env);
+    await ctrlCom(leadgen, '').receive(EMP, fakeReq(raw), sign(raw), env);
 
     expect(leadgen.enfileirar).not.toHaveBeenCalled();
   });
@@ -405,7 +410,7 @@ describe('MetaWebhookController.receive (Lead Ads)', () => {
     const env = envelopeLeadgen({ leadgen_id: 'lg-4', page_id: 'page-1' });
     const raw = JSON.stringify(env);
 
-    await expect(ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env)).rejects.toThrow();
+    await expect(ctrlCom(leadgen).receive(EMP, fakeReq(raw), sign(raw), env)).rejects.toThrow();
   });
 
   it('mudança que não é leadgen não vai pra fila do Lead Ads', async () => {
@@ -416,8 +421,102 @@ describe('MetaWebhookController.receive (Lead Ads)', () => {
     } as unknown as MetaWebhookEnvelope;
     const raw = JSON.stringify(env);
 
-    await ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env);
+    await ctrlCom(leadgen).receive(EMP, fakeReq(raw), sign(raw), env);
 
     expect(leadgen.enfileirar).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Item 13 (29/09): cada empresa tem o PRÓPRIO app da Meta. Prova do checklist:
+ * webhook de duas empresas com apps diferentes — cada uma só aceita o próprio
+ * segredo, e o segredo de uma não vira passe pra entry da outra.
+ */
+describe('MetaWebhookController — app por empresa (item 13)', () => {
+  const SEGREDO_A = 'segredo-app-empresa-a';
+  const SEGREDO_B = 'segredo-app-empresa-b';
+  const EMP_A = 'cmempresaa00000000000000a';
+  const EMP_B = 'cmempresab00000000000000b';
+  const assinar = (body: string, segredo: string) =>
+    `sha256=${createHmac('sha256', segredo).update(body, 'utf8').digest('hex')}`;
+  const envelope: MetaWebhookEnvelope = {
+    object: 'page',
+    entry: [
+      {
+        id: 'page-a',
+        time: 1,
+        messaging: [
+          {
+            sender: { id: 'psid-1' },
+            recipient: { id: 'page-a' },
+            timestamp: 1_700_000_000_000,
+            message: { mid: 'mid-a', text: 'oi' },
+          },
+        ],
+      },
+    ],
+  };
+  const raw = JSON.stringify(envelope);
+
+  /** Apps por empresa: A e B com segredos diferentes. */
+  const apps = {
+    talvez: vi.fn(async (empresaId: string) =>
+      empresaId === EMP_A
+        ? { appId: 'app-a', appSecret: SEGREDO_A, verifyToken: 'vt-a' }
+        : empresaId === EMP_B
+          ? { appId: 'app-b', appSecret: SEGREDO_B, verifyToken: 'vt-b' }
+          : null,
+    ),
+  };
+  const montar = (donoDaPagina: string) => {
+    const inbox = makeInbox();
+    const ctrl = new MetaWebhookController(
+      apps as never,
+      inbox as never,
+      makeOAuth({ empresaId: donoDaPagina }) as never,
+      makeAntiReplay() as never,
+      { baixarEArmazenar: vi.fn(async () => null), signedUrl: vi.fn(async () => null) } as never,
+      makeLeadgen() as never,
+    );
+    return { ctrl, inbox };
+  };
+
+  it('empresa A aceita o que o app A assinou', async () => {
+    const { ctrl, inbox } = montar(EMP_A);
+    await ctrl.receive(EMP_A, fakeReq(raw), assinar(raw, SEGREDO_A), envelope);
+    expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
+      expect.objectContaining({ empresaId: EMP_A }),
+    );
+  });
+
+  it('a URL da empresa B recusa o que o app A assinou', async () => {
+    const { ctrl, inbox } = montar(EMP_A);
+    await expect(
+      ctrl.receive(EMP_B, fakeReq(raw), assinar(raw, SEGREDO_A), envelope),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
+  });
+
+  it('assinatura válida da B NÃO passa entry de Página da A', async () => {
+    const { ctrl, inbox } = montar(EMP_A); // page-a é da empresa A
+    await ctrl.receive(EMP_B, fakeReq(raw), assinar(raw, SEGREDO_B), envelope);
+    expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
+  });
+
+  it('handshake usa o verify token de CADA empresa', async () => {
+    const { ctrl } = montar(EMP_A);
+    expect(await ctrl.verify(EMP_A, 'subscribe', 'vt-a', 'ok-a')).toBe('ok-a');
+    await expect(ctrl.verify(EMP_B, 'subscribe', 'vt-a', 'x')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('id de empresa malformado na URL: recusa sem nem consultar o app', async () => {
+    apps.talvez.mockClear();
+    const { ctrl } = montar(EMP_A);
+    await expect(
+      ctrl.receive("x' OR 1=1", fakeReq(raw), assinar(raw, SEGREDO_A), envelope),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(apps.talvez).not.toHaveBeenCalled();
   });
 });

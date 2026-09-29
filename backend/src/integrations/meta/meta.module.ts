@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { FacebookService } from './facebook.service';
 import { InstagramService } from './instagram.service';
+import { MetaAppService } from './meta-app.service';
 import { MetaGraphClientService } from './meta-graph-client.service';
 import { MetaLeadgenProcessor } from './meta-leadgen.processor';
 import { MetaLeadgenService } from './meta-leadgen.service';
@@ -29,6 +30,7 @@ import { MetaWebhookController } from './meta-webhook.controller';
   imports: [BullModule.registerQueue({ name: META_LEADGEN_QUEUE }), LeadsModule],
   controllers: [MetaOAuthController, MetaWebhookController],
   providers: [
+    MetaAppService,
     MetaGraphClientService,
     MetaOAuthService,
     MetaMediaService,

@@ -79,8 +79,9 @@ Graph API oficial. Uma `IntegracaoConexao` por canal (`facebook` e `instagram`),
 ### Webhook único
 
 `POST /webhooks/meta`:
-- GET handshake com `META_GRAPH_VERIFY_TOKEN`
-- POST com HMAC SHA-256 do `META_GRAPH_APP_SECRET`
+- Uma URL por empresa: `/webhooks/meta/:empresaId` (app da Meta por empresa, 29/09)
+- GET handshake com o verify token do app DA EMPRESA
+- POST com HMAC SHA-256 do segredo do app DA EMPRESA; entry de Página de outra empresa é ignorada
 - Routing: `messaging` → Messenger, `messages` (IG) → Instagram
 
 ## Marketplaces

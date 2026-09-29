@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, publicApiUrl } from '@/lib/api';
+import { getStoredEmpresaId } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
@@ -26,6 +27,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'tiktok',
   'instagram',
   'facebook',
+  'meta_app',
   'openai',
   'clicksign',
 ]);
@@ -41,6 +43,7 @@ type ServicoEmpresa =
   | 'tiktok'
   | 'instagram'
   | 'facebook'
+  | 'meta_app'
   | 'openai'
   | 'clicksign';
 
@@ -150,6 +153,24 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     connectMode: 'oauth',
     oauthStart: '/integracoes/meta/oauth/start',
   },
+  // App da Meta DA EMPRESA (29/09): cada cliente usa o próprio app (portfólio
+  // dele). Sem isto cadastrado, Facebook/Instagram e Lead Ads não conectam.
+  meta_app: {
+    nome: 'App da Meta',
+    tipo: 'social',
+    obrigatorio: false,
+    color: '#0866ff',
+    icon: '∞',
+    description:
+      'O app que a empresa criou no painel de desenvolvedores da Meta. Cadastre ANTES de ' +
+      'conectar Facebook/Instagram: o login, o token e o webhook usam este app.',
+    connectMode: 'credentials',
+    credentialFields: [
+      { name: 'appId', label: 'ID do app' },
+      { name: 'appSecret', label: 'Chave secreta do app', type: 'password' },
+      { name: 'verifyToken', label: 'Token de verificação do webhook (você escolhe)' },
+    ],
+  },
   openai: {
     nome: 'OpenAI',
     tipo: 'ia',
@@ -191,6 +212,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'shopee',
   'amazon',
   'tiktok',
+  'meta_app',
   'instagram',
   'facebook',
   'clicksign',
@@ -346,6 +368,22 @@ export default function IntegracoesPage() {
 
 // ─── Card por serviço ────────────────────────────────────────────────
 
+/**
+ * URL do webhook DESTA empresa — é ela que vai no painel do app da Meta
+ * (Webhooks → URL de retorno), junto com o token de verificação cadastrado.
+ */
+function UrlWebhookMeta() {
+  const empresaId = getStoredEmpresaId();
+  if (!empresaId) return null;
+  const url = publicApiUrl(`/webhooks/meta/${empresaId}`);
+  return (
+    <div className="text-[11px] text-muted" data-testid="meta-webhook-url">
+      <strong>URL do webhook:</strong>{' '}
+      <code className="break-all select-all">{url}</code>
+    </div>
+  );
+}
+
 function ServicoCard({
   servico,
   conexao,
@@ -457,6 +495,7 @@ function ServicoCard({
       </header>
 
       <p className="m-0 text-[12px] text-muted leading-[1.4]">{meta.description}</p>
+      {servico === 'meta_app' && <UrlWebhookMeta />}
 
       {conexao && (
         <dl className="m-0 text-[11px] text-muted">

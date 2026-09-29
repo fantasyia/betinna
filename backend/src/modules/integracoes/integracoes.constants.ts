@@ -15,6 +15,9 @@ export const SERVICOS_EMPRESA = [
   'tiktok',
   'instagram',
   'facebook',
+  // App da Meta da EMPRESA (29/09): id, segredo e verify token do app que o
+  // cliente criou no portfólio dele. OAuth, token e webhook de FB/IG usam ESTE.
+  'meta_app',
   // OpenAI da EMPRESA (chave única lida por api+worker) — escopo 'ambos':
   // também existe por-usuário (cada rep a sua) em SERVICOS_USUARIO.
   'openai',
@@ -134,6 +137,13 @@ export const SERVICO_METADATA: Record<
   },
   facebook: {
     nome: 'Facebook Messenger',
+    tipo: 'social',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  meta_app: {
+    nome: 'App da Meta',
     tipo: 'social',
     escopo: 'empresa',
     obrigatorio: false,

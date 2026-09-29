@@ -342,12 +342,11 @@ export const envSchema = z
     /** Versão do API path (v202309 atual). */
     TIKTOK_API_VERSION: z.string().default('202309'),
 
-    // Meta (Instagram + Facebook)
-    META_GRAPH_APP_ID: z.string().optional().default(''),
-    META_GRAPH_APP_SECRET: z.string().optional().default(''),
+    // Meta (Instagram + Facebook). O APP (id, segredo, verify token) é POR
+    // EMPRESA desde 29/09 — cadastrado na tela (servico 'meta_app'). Aqui fica só
+    // o que é da plataforma: o redirect do OAuth (cada app libera essa URL) e a
+    // versão da Graph API.
     META_GRAPH_REDIRECT_URI: z.string().optional().default(''),
-    /** Token compartilhado para Meta verificar nosso webhook (GET handshake). */
-    META_GRAPH_VERIFY_TOKEN: z.string().optional().default(''),
     /** Versão da Graph API. Default v21.0 (atual). */
     META_GRAPH_API_VERSION: z.string().default('v21.0'),
 
@@ -428,8 +427,8 @@ export const envSchema = z
       // O Tiny não assina os webhooks, então o secret aqui é o da URL: sem ele
       // a rota fica aberta, que é justamente o que este gate impede.
       { key: 'TINY_WEBHOOK_SECRET', label: 'Tiny (segredo na URL)' },
-      { key: 'META_GRAPH_APP_SECRET', label: 'Meta (Facebook/Instagram)' },
-      { key: 'META_GRAPH_VERIFY_TOKEN', label: 'Meta verify token' },
+      // Meta saiu (29/09): o segredo e o verify token são POR EMPRESA, cadastrados
+      // na tela (servico 'meta_app') — o webhook sem app cadastrado recusa sozinho.
       { key: 'SHOPEE_PARTNER_KEY', label: 'Shopee' },
       { key: 'TIKTOK_APP_SECRET', label: 'TikTok' },
     ];

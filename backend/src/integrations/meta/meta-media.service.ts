@@ -71,8 +71,8 @@ export class MetaMediaService implements OnModuleInit {
     const { cdnUrl, empresaId, canal, peerId, msgId } = params;
 
     try {
-      // SSRF guard: cdnUrl vem do payload do webhook /webhooks/meta (atacante-controlável, e em
-      // ambiente sem META_GRAPH_APP_SECRET o webhook é aceito sem HMAC). safeRequest valida
+      // SSRF guard: cdnUrl vem do payload do webhook /webhooks/meta/:empresaId (conteúdo de
+      // terceiro, mesmo com a assinatura do app da empresa conferida). safeRequest valida
       // scheme/host/IP (bloqueia localhost/169.254.169.254/RFC1918/DNS-rebinding) + redirect:'manual'
       // + timeout. SsrfBlockedError cai no catch abaixo → retorna null (não baixa nem armazena).
       const response = await safeRequest(cdnUrl, {}, { timeoutMs: DOWNLOAD_TIMEOUT_MS });

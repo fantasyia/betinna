@@ -23,6 +23,12 @@ import type {
  *  - Listar pages do user, pegar IG vinculado à page
  *  - Enviar mensagem de texto (Messenger e IG usam o mesmo endpoint base)
  */
+/** O que a troca de token precisa do app da empresa. */
+export interface MetaAppDoPedido {
+  appId: string;
+  appSecret: string;
+}
+
 @Injectable()
 export class MetaGraphClientService {
   private readonly logger = new Logger(MetaGraphClientService.name);
@@ -44,11 +50,18 @@ export class MetaGraphClientService {
 
   // ─── OAuth ───────────────────────────────────────────────────────────
 
-  /** Troca o `code` (Authorization Code Flow) por short-lived user access token. */
-  async exchangeCode(code: string, redirectUri: string): Promise<MetaTokenResponse> {
+  /**
+   * Troca o `code` (Authorization Code Flow) por short-lived user access token.
+   * `app` = o app da Meta DA EMPRESA (item 13) — não existe mais app global.
+   */
+  async exchangeCode(
+    code: string,
+    redirectUri: string,
+    app: MetaAppDoPedido,
+  ): Promise<MetaTokenResponse> {
     const params = new URLSearchParams({
-      client_id: this.env.get('META_GRAPH_APP_ID'),
-      client_secret: this.env.get('META_GRAPH_APP_SECRET'),
+      client_id: app.appId,
+      client_secret: app.appSecret,
       redirect_uri: redirectUri,
       code,
     });
@@ -62,12 +75,15 @@ export class MetaGraphClientService {
     return res;
   }
 
-  /** Troca short-lived user token por long-lived (~60 dias). */
-  async exchangeLongLived(shortLivedToken: string): Promise<MetaTokenResponse> {
+  /** Troca short-lived user token por long-lived (~60 dias), com o app DA EMPRESA. */
+  async exchangeLongLived(
+    shortLivedToken: string,
+    app: MetaAppDoPedido,
+  ): Promise<MetaTokenResponse> {
     const params = new URLSearchParams({
       grant_type: 'fb_exchange_token',
-      client_id: this.env.get('META_GRAPH_APP_ID'),
-      client_secret: this.env.get('META_GRAPH_APP_SECRET'),
+      client_id: app.appId,
+      client_secret: app.appSecret,
       fb_exchange_token: shortLivedToken,
     });
     return this.callExpect<MetaTokenResponse>('GET', `/oauth/access_token?${params}`);
@@ -119,14 +135,17 @@ export class MetaGraphClientService {
     );
   }
 
-  /** Campos que ESTE app tem assinados na Página (vazio = não assinado). */
-  async camposAssinadosNaPagina(pageId: string, pageAccessToken: string): Promise<string[]> {
+  /** Campos que o app `appId` (o da empresa) tem assinados na Página (vazio = não assinado). */
+  async camposAssinadosNaPagina(
+    pageId: string,
+    pageAccessToken: string,
+    appId: string,
+  ): Promise<string[]> {
     const qs = new URLSearchParams({ access_token: pageAccessToken });
     const r = await this.callExpect<{
       data?: Array<{ id?: string; subscribed_fields?: string[] }>;
     }>('GET', `/${encodeURIComponent(pageId)}/subscribed_apps?${qs}`);
-    const appId = this.env.get('META_GRAPH_APP_ID');
-    const app = (r.data ?? []).find((a) => !appId || a.id === appId) ?? null;
+    const app = (r.data ?? []).find((a) => a.id === appId) ?? null;
     return app?.subscribed_fields ?? [];
   }
 

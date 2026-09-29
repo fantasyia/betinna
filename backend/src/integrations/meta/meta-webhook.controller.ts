@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Param,
   Post,
   Query,
   Req,
@@ -16,7 +17,6 @@ import { Throttle, seconds } from '@nestjs/throttler';
 import type { MessageChannel } from '@prisma/client';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { EnvService } from '@config/env.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { Public } from '@shared/decorators/public.decorator';
 import {
@@ -27,6 +27,7 @@ import {
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
 import { addBreadcrumb } from '@shared/observability/sentry';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
+import { MetaAppService } from './meta-app.service';
 import { MetaLeadgenService } from './meta-leadgen.service';
 import type { MetaLeadgenChangeValue } from './meta-leadgen.types';
 import { MetaMediaService } from './meta-media.service';
@@ -36,12 +37,19 @@ import type { MetaMessagingEvent, MetaWebhookEntry, MetaWebhookEnvelope } from '
 /**
  * Receiver de webhooks da Meta (Messenger + Instagram Direct).
  *
+ * UMA URL POR EMPRESA: `/webhooks/meta/:empresaId` (item 13, 29/09). Cada
+ * empresa tem o próprio app da Meta (cadastrado em Integrações, servico
+ * 'meta_app'), e é essa URL que vai no painel do app dela.
+ *
  * GET = verificação inicial (handshake do Meta).
  *   Meta envia `hub.mode=subscribe`, `hub.verify_token`, `hub.challenge`.
- *   Comparamos o token e devolvemos o challenge em plain text.
+ *   Comparamos com o verify token DA EMPRESA e devolvemos o challenge.
  *
  * POST = recebimento de eventos.
- *   - Verificação HMAC SHA-256 do raw body com `META_GRAPH_APP_SECRET`
+ *   - HMAC SHA-256 do raw body com o segredo do app DA EMPRESA da URL — antes
+ *     de ler o corpo. Empresa sem app cadastrado → 401 (fail-closed).
+ *   - Entry de Página/IG que NÃO é da empresa da URL é ignorada: o segredo
+ *     prova qual app mandou, não pode servir de passe pra outra empresa.
  *   - Routing por (object × entry.id):
  *       object='page'      → entry.id = pageId   → IntegracaoConexao(servico='facebook')
  *       object='instagram' → entry.id = igUserId → IntegracaoConexao(servico='instagram')
@@ -53,6 +61,9 @@ import type { MetaMessagingEvent, MetaWebhookEntry, MetaWebhookEnvelope } from '
  *
  * SEMPRE responde 200 — Meta retentaria por horas em qualquer erro 5xx.
  */
+/** id de empresa (cuid) — barra lixo na URL antes de ir ao banco. */
+const ID_VALIDO = /^[a-z0-9]{20,40}$/;
+
 @ApiTags('webhooks')
 @Controller('webhooks/meta')
 // 200 req/min — Meta envia bursts em mass-message campaigns
@@ -61,7 +72,7 @@ export class MetaWebhookController {
   private readonly logger = new Logger(MetaWebhookController.name);
 
   constructor(
-    private readonly env: EnvService,
+    private readonly apps: MetaAppService,
     private readonly inbox: InboxService,
     private readonly oauth: MetaOAuthService,
     private readonly antiReplay: WebhookAntiReplayService,
@@ -72,16 +83,18 @@ export class MetaWebhookController {
   // ─── Verificação (GET handshake) ─────────────────────────────────────
 
   @Public()
-  @Get()
-  @ApiOperation({ summary: 'Meta GET handshake (hub.challenge)' })
-  verify(
+  @Get(':empresaId')
+  @ApiOperation({ summary: 'Meta GET handshake (hub.challenge) — por empresa' })
+  async verify(
+    @Param('empresaId') empresaId: string,
     @Query('hub.mode') mode: string | undefined,
     @Query('hub.verify_token') token: string | undefined,
     @Query('hub.challenge') challenge: string | undefined,
-  ): string {
-    const expected = this.env.get('META_GRAPH_VERIFY_TOKEN');
+  ): Promise<string> {
+    const app = ID_VALIDO.test(empresaId) ? await this.apps.talvez(empresaId) : null;
+    const expected = app?.verifyToken;
     if (!expected) {
-      this.logger.warn('META_GRAPH_VERIFY_TOKEN não configurado — handshake rejeitado');
+      this.logger.warn(`Meta handshake: empresa ${empresaId} sem App da Meta cadastrado`);
       throw new ForbiddenException('verify token não configurado');
     }
     // Comparação constant-time (consistente com evolution-webhook/auth-bootstrap do repo).
@@ -101,22 +114,23 @@ export class MetaWebhookController {
   // ─── Recebimento (POST events) ───────────────────────────────────────
 
   @Public()
-  @Post()
+  @Post(':empresaId')
   @HttpCode(HttpStatus.OK)
   async receive(
+    @Param('empresaId') empresaId: string,
     @Req() req: RawBodyRequest<Request>,
     @Headers('x-hub-signature-256') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<{ ok: boolean }> {
-    const secret = this.env.get('META_GRAPH_APP_SECRET');
-    const isProd = this.env.isProduction;
+    // Sem app cadastrado não há segredo — e sem segredo NADA entra (antes, em
+    // dev, entrava sem HMAC; com o segredo por empresa não existe esse modo).
+    const app = ID_VALIDO.test(empresaId) ? await this.apps.talvez(empresaId) : null;
+    const secret = app?.appSecret;
     if (!secret) {
-      if (isProd) {
-        this.logger.error('META_GRAPH_APP_SECRET ausente em produção — webhook rejeitado');
-        throw new UnauthorizedException('webhook secret não configurado');
-      }
-      this.logger.warn('META_GRAPH_APP_SECRET ausente (dev) — webhook aceito sem HMAC');
-    } else {
+      this.logger.warn(`Webhook Meta: empresa ${empresaId} sem App da Meta cadastrado — rejeitado`);
+      throw new UnauthorizedException('webhook secret não configurado');
+    }
+    {
       const rawBody = req.rawBody;
       if (!rawBody) {
         this.logger.warn('Webhook Meta sem rawBody — não é possível validar HMAC');
@@ -159,7 +173,7 @@ export class MetaWebhookController {
     let falhaProcessamento = false;
     for (const entry of envelope.entry) {
       try {
-        await this.processarEntry(canal, entry);
+        await this.processarEntry(empresaId, canal, entry);
       } catch (err) {
         falhaProcessamento = true;
         const m = err instanceof Error ? err.message : String(err);
@@ -179,7 +193,11 @@ export class MetaWebhookController {
 
   // ─── Internos ────────────────────────────────────────────────────────
 
-  private async processarEntry(canal: MessageChannel, entry: MetaWebhookEntry): Promise<void> {
+  private async processarEntry(
+    empresaId: string,
+    canal: MessageChannel,
+    entry: MetaWebhookEntry,
+  ): Promise<void> {
     const accountId = entry.id;
     const servico = canal === 'FACEBOOK' ? 'facebook' : 'instagram';
 
@@ -188,13 +206,19 @@ export class MetaWebhookController {
     // tempo de resposta que o Meta espera.
     const mudancasLeadgen = (entry.changes ?? []).filter((c) => c.field === 'leadgen');
     if (mudancasLeadgen.length) {
-      await this.processarLeadgen(servico, accountId, mudancasLeadgen);
+      await this.processarLeadgen(empresaId, servico, accountId, mudancasLeadgen);
     }
 
     const resolved = await this.oauth.resolverPorAccount(servico, accountId);
     if (!resolved) {
       this.logger.warn(
         `Webhook Meta ${canal}: conta ${accountId} sem IntegracaoConexao — ignorado`,
+      );
+      return;
+    }
+    if (resolved.empresaId !== empresaId) {
+      this.logger.warn(
+        `Webhook Meta ${canal}: conta ${accountId} é de outra empresa, não de ${empresaId} — ignorado`,
       );
       return;
     }
@@ -254,6 +278,7 @@ export class MetaWebhookController {
    * reentrega.
    */
   private async processarLeadgen(
+    empresaId: string,
     servico: 'facebook' | 'instagram',
     accountId: string,
     mudancas: Array<{ field: string; value: unknown }>,
@@ -267,6 +292,12 @@ export class MetaWebhookController {
     const resolved = await this.oauth.resolverPorAccount('facebook', accountId);
     if (!resolved) {
       this.logger.warn(`Webhook leadgen: página ${accountId} sem IntegracaoConexao — ignorado`);
+      return;
+    }
+    if (resolved.empresaId !== empresaId) {
+      this.logger.warn(
+        `Webhook leadgen: página ${accountId} é de outra empresa, não de ${empresaId} — ignorado`,
+      );
       return;
     }
     for (const mudanca of mudancas) {

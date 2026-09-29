@@ -10,6 +10,7 @@ import {
   signOAuthState,
   verifyOAuthState,
 } from '@shared/utils/oauth-state.util';
+import { MetaAppService } from './meta-app.service';
 import { MetaGraphClientService } from './meta-graph-client.service';
 import type { AssinaturaPagina, FacebookCredenciais, InstagramCredenciais } from './meta.types';
 
@@ -92,28 +93,28 @@ export class MetaOAuthService {
     private readonly prisma: PrismaService,
     private readonly integracoes: IntegracoesService,
     private readonly redis: RedisService,
+    private readonly apps: MetaAppService,
   ) {
     this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'meta-oauth-state');
   }
 
+  /** O redirect é o ÚNICO pedaço global: cada app da empresa libera essa URL no painel. */
   isConfigured(): boolean {
-    return !!(
-      this.env.get('META_GRAPH_APP_ID') &&
-      this.env.get('META_GRAPH_APP_SECRET') &&
-      this.env.get('META_GRAPH_REDIRECT_URI')
-    );
+    return !!this.env.get('META_GRAPH_REDIRECT_URI');
   }
 
   async buildAuthUrl(empresaId: string): Promise<string> {
     if (!this.isConfigured()) {
       throw new IntegrationException(
-        'Meta OAuth não configurado — defina META_GRAPH_APP_ID/SECRET/REDIRECT_URI',
+        'Meta OAuth não configurado — defina META_GRAPH_REDIRECT_URI',
         ErrorCode.INTEGRATION_ERROR,
       );
     }
+    // Item 13: o login usa o app DA EMPRESA (sem ele, erro claro — nunca o de outra).
+    const app = await this.apps.obter(empresaId);
     const state = await this.signState(empresaId);
     const params = new URLSearchParams({
-      client_id: this.env.get('META_GRAPH_APP_ID'),
+      client_id: app.appId,
       redirect_uri: this.env.get('META_GRAPH_REDIRECT_URI'),
       response_type: 'code',
       scope: DEFAULT_SCOPE,
@@ -124,11 +125,16 @@ export class MetaOAuthService {
 
   async processCallback(code: string, state: string): Promise<ConectarPagesResult> {
     const empresaId = await this.verifyState(state);
+    const app = await this.apps.obter(empresaId);
 
     // 1. code → short-lived user token
-    const shortLived = await this.graph.exchangeCode(code, this.env.get('META_GRAPH_REDIRECT_URI'));
+    const shortLived = await this.graph.exchangeCode(
+      code,
+      this.env.get('META_GRAPH_REDIRECT_URI'),
+      app,
+    );
     // 2. → long-lived (~60 dias)
-    const longLived = await this.graph.exchangeLongLived(shortLived.access_token);
+    const longLived = await this.graph.exchangeLongLived(shortLived.access_token, app);
     const userToken = longLived.access_token;
     const userTokenExpiresAt = longLived.expires_in
       ? Date.now() + longLived.expires_in * 1000
@@ -160,7 +166,7 @@ export class MetaOAuthService {
     // Assina a Página no app (Lead Ads + Messenger). Era passo MANUAL no painel
     // da Meta — empresa nova ficava sem receber lead nenhum e sem aviso. Falha
     // aqui NÃO derruba a conexão: fica gravada e a tela mostra o estado.
-    fbCreds.assinatura = await this.assinarPagina(page.id, page.access_token);
+    fbCreds.assinatura = await this.assinarPagina(page.id, page.access_token, app.appId);
     await this.persistirConexao(empresaId, 'facebook', fbCreds, page.id, true);
 
     // Persiste Instagram (se houver)
@@ -227,8 +233,9 @@ export class MetaOAuthService {
     const diasRestantes = (expiraEm - Date.now()) / 86_400_000;
     if (diasRestantes > limiarDias) return 'ok';
 
-    // Renova o user token long-lived (Meta estende por mais ~60d).
-    const longLived = await this.graph.exchangeLongLived(creds.userAccessToken);
+    // Renova o user token long-lived (Meta estende por mais ~60d) — com o app DA EMPRESA.
+    const app = await this.apps.obter(empresaId);
+    const longLived = await this.graph.exchangeLongLived(creds.userAccessToken, app);
     const novoUserToken = longLived.access_token;
     const novoExpiresAt = longLived.expires_in
       ? Date.now() + longLived.expires_in * 1000
@@ -302,11 +309,15 @@ export class MetaOAuthService {
    * Assina o app na Página e devolve o estado pra gravar/mostrar. Nunca
    * estoura: o erro vira texto no estado.
    */
-  async assinarPagina(pageId: string, pageAccessToken: string): Promise<AssinaturaPagina> {
+  async assinarPagina(
+    pageId: string,
+    pageAccessToken: string,
+    appId: string,
+  ): Promise<AssinaturaPagina> {
     const em = new Date().toISOString();
     try {
       await this.graph.assinarAppNaPagina(pageId, pageAccessToken, CAMPOS_ASSINATURA_PAGINA);
-      const campos = await this.graph.camposAssinadosNaPagina(pageId, pageAccessToken);
+      const campos = await this.graph.camposAssinadosNaPagina(pageId, pageAccessToken, appId);
       return { leadgen: campos.includes('leadgen'), campos, em };
     } catch (err) {
       const erro = err instanceof Error ? err.message : String(err);
@@ -330,9 +341,20 @@ export class MetaOAuthService {
     } catch {
       return null;
     }
+    const app = await this.apps.talvez(empresaId);
+    if (!app) {
+      return {
+        leadgen: false,
+        campos: [],
+        em: new Date().toISOString(),
+        erro: 'App da Meta não cadastrado em Integrações',
+        pageId: creds.pageId,
+        pageName: creds.pageName,
+      };
+    }
     let estado: AssinaturaPagina;
     if (reassinar) {
-      estado = await this.assinarPagina(creds.pageId, creds.pageAccessToken);
+      estado = await this.assinarPagina(creds.pageId, creds.pageAccessToken, app.appId);
       await this.persistirConexao(
         empresaId,
         'facebook',
@@ -344,6 +366,7 @@ export class MetaOAuthService {
         const campos = await this.graph.camposAssinadosNaPagina(
           creds.pageId,
           creds.pageAccessToken,
+          app.appId,
         );
         estado = { leadgen: campos.includes('leadgen'), campos, em: new Date().toISOString() };
       } catch (err) {

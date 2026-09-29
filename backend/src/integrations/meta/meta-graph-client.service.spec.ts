@@ -4,13 +4,13 @@ import { HttpClientError } from '@shared/http/http-client.types';
 import { MetaGraphClientService } from './meta-graph-client.service';
 
 const makeHttpMock = () => ({ request: vi.fn() });
+/** App da empresa (item 13) — vem de quem chama, não do env. */
+const APP = { appId: 'app-id', appSecret: 'app-secret' };
 
 const makeEnvMock = () => ({
   get: vi.fn((k: string) => {
     const d: Record<string, string> = {
       META_GRAPH_API_VERSION: 'v19.0',
-      META_GRAPH_APP_ID: 'app-id',
-      META_GRAPH_APP_SECRET: 'app-secret',
     };
     return d[k] ?? '';
   }),
@@ -35,7 +35,7 @@ describe('MetaGraphClientService', () => {
     it('chama /oauth/access_token com client_id, client_secret, redirect_uri e code', async () => {
       http.request.mockResolvedValue({ data: { access_token: 'short-tok', token_type: 'bearer' } });
 
-      const r = await service.exchangeCode('CODE_X', 'https://app.com/cb');
+      const r = await service.exchangeCode('CODE_X', 'https://app.com/cb', APP);
 
       const url = http.request.mock.calls[0][1];
       expect(url).toContain('/oauth/access_token');
@@ -48,7 +48,9 @@ describe('MetaGraphClientService', () => {
     it('lança IntegrationException quando response não tem access_token', async () => {
       http.request.mockResolvedValue({ data: {} });
 
-      await expect(service.exchangeCode('X', 'Y')).rejects.toBeInstanceOf(IntegrationException);
+      await expect(service.exchangeCode('X', 'Y', APP)).rejects.toBeInstanceOf(
+        IntegrationException,
+      );
     });
   });
 
@@ -56,7 +58,7 @@ describe('MetaGraphClientService', () => {
     it('chama /oauth/access_token com grant_type=fb_exchange_token', async () => {
       http.request.mockResolvedValue({ data: { access_token: 'long-tok' } });
 
-      const r = await service.exchangeLongLived('short-tok');
+      const r = await service.exchangeLongLived('short-tok', APP);
 
       const url = http.request.mock.calls[0][1];
       expect(url).toContain('grant_type=fb_exchange_token');
