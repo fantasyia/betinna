@@ -11,7 +11,12 @@ export const createBoardSchema = z.object({
 });
 export type CreateBoardDto = z.infer<typeof createBoardSchema>;
 
-export const updateBoardSchema = createBoardSchema.partial();
+// `descricao: null` = apagar a descrição. A tela manda null quando o campo fica
+// vazio; herdado do create (que só aceita texto), o "Renomear quadro" sem
+// descrição dava "Expected string, received null" e não salvava.
+export const updateBoardSchema = createBoardSchema.partial().extend({
+  descricao: z.string().trim().max(2000).nullable().optional(),
+});
 export type UpdateBoardDto = z.infer<typeof updateBoardSchema>;
 
 export const addBoardMembroSchema = z.object({
