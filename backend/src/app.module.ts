@@ -7,6 +7,8 @@ import { TenantThrottlerGuard } from '@shared/guards/tenant-throttler.guard';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
+import { stdSerializers } from 'pino';
+import { redigirCaminho } from '@shared/utils/redigir-caminho';
 import { EnvModule } from '@config/env.module';
 import { EnvService } from '@config/env.service';
 import { PrismaModule } from '@database/prisma.module';
@@ -96,6 +98,16 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
           transport: env.isProduction
             ? undefined
             : { target: 'pino-pretty', options: { singleLine: true } },
+          // O log de acesso escreve `req.url` em TODA linha — e o segredo do webhook
+          // do Tiny viaja no caminho. O `redigirCaminho` já cobria meta.path e o
+          // filtro de exceção; este era o sink que faltava (Railway mostra o log
+          // cru). Auditoria 29/09/2026.
+          serializers: {
+            req: (req: Parameters<typeof stdSerializers.req>[0]) => {
+              const s = stdSerializers.req(req);
+              return { ...s, url: redigirCaminho(s.url) };
+            },
+          },
           redact: {
             paths: [
               'req.headers.authorization',

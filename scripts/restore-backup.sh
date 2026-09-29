@@ -51,7 +51,8 @@ SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
 echo -e "${YELLOW}⚠️  RESTORE DESTRUTIVO${NC}"
 echo "   Arquivo:     $BACKUP_FILE"
 echo "   Tamanho:     $SIZE"
-echo "   Target:      $DATABASE_URL"
+# Sem a senha: a URL inteira ia pro terminal/log de quem roda o restore.
+echo "   Target:      $(echo "$DATABASE_URL" | sed -E 's#://([^:/]+):[^@]*@#://\1:***@#')"
 echo ""
 echo -e "${RED}   Isso vai APAGAR todos os dados atuais e substituir pelo backup.${NC}"
 echo ""

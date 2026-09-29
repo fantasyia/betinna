@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/node';
 import { sanitize, sanitizarTexto } from '@shared/utils/sanitize-pii';
+import { redigirCaminho } from '@shared/utils/redigir-caminho';
 
 /**
  * Inicialização do Sentry (Sprint 3 FIX 5 + APM 2026-05-17).
@@ -85,6 +86,19 @@ export function initSentry(): void {
           ...b,
           data: b.data ? (sanitize(b.data) as Record<string, unknown>) : undefined,
         }));
+      }
+      // O CAMINHO da request carrega segredo (Tiny na URL, token legado do
+      // Evolution, `t=` do descadastro). `request.url`/`query_string` vêm da
+      // requestDataIntegration e não passavam pelo `redigirCaminho` — só o
+      // `meta.path` do filtro de exceção passava. Auditoria 29/09/2026.
+      if (event.request?.url) {
+        event.request.url = redigirCaminho(event.request.url);
+      }
+      if (typeof event.request?.query_string === 'string') {
+        event.request.query_string = event.request.query_string.replace(
+          /(^|&)t=[^&]+/g,
+          '$1t=[REDACTED]',
+        );
       }
       // Strip Authorization header de requests capturados
       if (event.request?.headers) {

@@ -30,4 +30,21 @@ describe('redigirCaminho', () => {
       '/api/v1/webhooks/tiny/[REDACTED]/nota?x=1',
     );
   });
+
+  // Auditoria 29/09/2026: os outros dois segredos que viajam na URL.
+  it('some com o token legado do webhook do Evolution, sem tocar na rota nova', () => {
+    expect(redigirCaminho('/api/v1/webhooks/evolution/0123456789abcdef0123456789abcdef')).toBe(
+      '/api/v1/webhooks/evolution/[REDACTED]',
+    );
+    expect(redigirCaminho('/api/v1/webhooks/evolution')).toBe('/api/v1/webhooks/evolution');
+  });
+
+  it('some com o token de descadastro na query, preservando os outros parâmetros', () => {
+    expect(redigirCaminho('/api/v1/descadastrar?t=AAAA.BBBB.CCCC')).toBe(
+      '/api/v1/descadastrar?t=[REDACTED]',
+    );
+    expect(redigirCaminho('/api/v1/descadastrar?lang=pt&t=AAAA&x=1')).toBe(
+      '/api/v1/descadastrar?lang=pt&t=[REDACTED]&x=1',
+    );
+  });
 });

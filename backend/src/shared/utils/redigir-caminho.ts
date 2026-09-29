@@ -18,6 +18,12 @@ const CAMINHOS_COM_SEGREDO = [
   // /api/v1/webhooks/tiny/<segredo>/<evento> — o evento fica, que é o que
   // interessa pra ler o log; some só o segmento do meio.
   /(\/webhooks\/tiny\/)[^/?#]+/gi,
+  // /api/v1/webhooks/evolution/<token> — rota legada; o token deriva da
+  // EVOLUTION_API_KEY e autentica o inbound de TODOS os tenants.
+  /(\/webhooks\/evolution\/)[^/?#]+/gi,
+  // /descadastrar?t=<token> — token de opt-out LGPD; quem lê o log conseguiria
+  // descadastrar o lead no lugar dele.
+  /(\/descadastrar\?(?:[^#]*&)?t=)[^&#]+/gi,
 ];
 
 export function redigirCaminho(url: string): string {
