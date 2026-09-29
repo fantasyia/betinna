@@ -65,6 +65,54 @@ describe('MLQuestionsService', () => {
     service = new MLQuestionsService(ml as never, inbox as never);
   });
 
+  /** Léo, 29/09: responder pergunta de anúncio pausado mostrava o JSON cru do ML. */
+  it('resposta em anúncio pausado vira mensagem que diz o que fazer', async () => {
+    ml.post.mockRejectedValueOnce(
+      new Error(
+        'ML POST /answers HTTP 400: {"message":"Item must be active","error":"not_active_item"}',
+      ),
+    );
+    await expect(service.responder('emp-1', 1234, 'oi')).rejects.toThrow(
+      'O Mercado Livre só aceita resposta com o anúncio ativo. Reative o anúncio e tente de novo.',
+    );
+  });
+
+  it('outro erro do ML segue como veio', async () => {
+    ml.post.mockRejectedValueOnce(new Error('ML POST /answers HTTP 500: boom'));
+    await expect(service.responder('emp-1', 1234, 'oi')).rejects.toThrow('boom');
+  });
+
+  describe('pendentesParaImportar — recentes e de anúncio ativo (29/09)', () => {
+    const recente = new Date(Date.now() - 2 * 24 * 3600e3).toISOString();
+    const antiga = new Date(Date.now() - 40 * 24 * 3600e3).toISOString();
+    const q = (id: number, item: string, date_created: string) =>
+      fakeQuestion({ id, item_id: item, date_created });
+
+    it('fica só a recente de anúncio ativo; pausada e antiga saem', async () => {
+      ml.get
+        .mockResolvedValueOnce({
+          questions: [q(1, 'MLB1', recente), q(2, 'MLB2', recente), q(3, 'MLB1', antiga)],
+        })
+        .mockResolvedValueOnce([
+          { code: 200, body: { id: 'MLB1', status: 'active' } },
+          { code: 200, body: { id: 'MLB2', status: 'paused' } },
+        ]);
+      const r = await service.pendentesParaImportar('emp-1', '999');
+      expect(r.importar.map((x) => x.id)).toEqual([1]);
+      expect(r).toMatchObject({ foraDaJanela: 1, anuncioInativo: 1 });
+      // status só é consultado pros anúncios das recentes
+      expect(ml.get.mock.calls[1][1]).toBe('/items?ids=MLB1,MLB2&attributes=id,status');
+    });
+
+    it('status indisponível: entram todas as recentes', async () => {
+      ml.get
+        .mockResolvedValueOnce({ questions: [q(1, 'MLB1', recente), q(2, 'MLB2', recente)] })
+        .mockRejectedValueOnce(new Error('503'));
+      const r = await service.pendentesParaImportar('emp-1', '999');
+      expect(r.importar).toHaveLength(2);
+    });
+  });
+
   describe('diagnosticoPendentes (29/09, só leitura)', () => {
     it('cruza a busca por seller com /my/received_questions e traz o status do anúncio + campos extras', async () => {
       ml.get

@@ -7,7 +7,7 @@ import { ehFalhaDeCredencial } from '../falha-credencial.util';
 import { MLClaimsService } from './ml-claims.service';
 import { MLClientService } from './ml-client.service';
 import { MLOrdersService } from './ml-orders.service';
-import { MLQuestionsService, perguntasRecentes } from './ml-questions.service';
+import { MLQuestionsService } from './ml-questions.service';
 
 /**
  * Cron de fallback do Mercado Livre.
@@ -112,10 +112,15 @@ export class MLSyncJob {
     // Perguntas não respondidas
     let questionsCount = 0;
     try {
-      // Só as recentes (janela de PERGUNTA_ML_JANELA_DIAS): a busca traz pergunta
-      // de meses atrás, que o painel do ML não mostra mais (18 contra 3, 29/09).
-      const qs = perguntasRecentes(await this.questions.listarNaoRespondidas(empresaId, sellerId));
-      for (const q of qs) {
+      // Só as recentes (14 dias) e de anúncio ativo — ver pendentesParaImportar.
+      const r = await this.questions.pendentesParaImportar(empresaId, sellerId);
+      if (r.foraDaJanela || r.anuncioInativo) {
+        this.logger.log(
+          `Perguntas ML empresa=${empresaId}: ${r.importar.length} importadas, ` +
+            `${r.foraDaJanela} fora da janela, ${r.anuncioInativo} de anúncio inativo`,
+        );
+      }
+      for (const q of r.importar) {
         await this.questions.processarQuestion(empresaId, q);
         questionsCount++;
       }

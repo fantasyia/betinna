@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { BusinessRuleException } from '@shared/errors/app-exception';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { MLClientService } from './ml-client.service';
 import type { MLQuestion } from './ml.types';
@@ -88,17 +89,88 @@ export class MLQuestionsService {
     });
   }
 
-  /** Responde uma pergunta. */
+  /**
+   * Responde uma pergunta.
+   *
+   * O ML recusa resposta em anúncio que não está ativo (`not_active_item`,
+   * "Item must be active") — aconteceu com o Léo em 29/09 e a tela mostrou o
+   * JSON cru. Vira mensagem que diz o que fazer.
+   */
   async responder(
     empresaId: string,
     questionId: string | number,
     texto: string,
   ): Promise<{ externalId: string }> {
-    const r = await this.ml.post<{ id: number }>(empresaId, `/answers`, {
-      question_id: Number(questionId),
-      text: texto,
+    try {
+      const r = await this.ml.post<{ id: number }>(empresaId, `/answers`, {
+        question_id: Number(questionId),
+        text: texto,
+      });
+      return { externalId: `a:${r.id}` };
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      if (/not_active_item|Item must be active/i.test(m)) {
+        throw new BusinessRuleException(
+          'O Mercado Livre só aceita resposta com o anúncio ativo. Reative o anúncio e tente de novo.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Status de cada anúncio (`active`, `paused`, `closed`…), pelo multiget do ML
+   * — 20 ids por chamada (limite da API). Anúncio que o ML não devolve fica
+   * fora do mapa.
+   */
+  async statusDosAnuncios(empresaId: string, itemIds: string[]): Promise<Map<string, string>> {
+    const unicos = [...new Set(itemIds.filter(Boolean))];
+    const mapa = new Map<string, string>();
+    for (let i = 0; i < unicos.length; i += 20) {
+      const lote = unicos.slice(i, i + 20);
+      const r = await this.ml.get<Array<{ code: number; body?: { id?: string; status?: string } }>>(
+        empresaId,
+        `/items?ids=${lote.join(',')}&attributes=id,status`,
+      );
+      for (const it of r ?? []) {
+        if (it.code === 200 && it.body?.id && it.body.status) mapa.set(it.body.id, it.body.status);
+      }
+    }
+    return mapa;
+  }
+
+  /**
+   * Perguntas pendentes que a sincronização importa (Léo, 29/09): dos últimos
+   * 14 dias E de anúncio ATIVO. Pergunta de anúncio pausado não tem como ser
+   * respondida (o ML recusa), então não entra. Se o status não puder ser
+   * consultado, entram todas as recentes — esconder pergunta de cliente por
+   * falha de consulta é pior que mostrar a mais.
+   */
+  async pendentesParaImportar(
+    empresaId: string,
+    sellerId: string,
+  ): Promise<{ importar: MLQuestion[]; foraDaJanela: number; anuncioInativo: number }> {
+    const todas = await this.listarNaoRespondidas(empresaId, sellerId);
+    const recentes = perguntasRecentes(todas);
+    let status: Map<string, string> | null = null;
+    try {
+      status = await this.statusDosAnuncios(
+        empresaId,
+        recentes.map((q) => String(q.item_id)),
+      );
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Status dos anúncios indisponível (empresa=${empresaId}): ${m}`);
+    }
+    const importar = recentes.filter((q) => {
+      const st = status?.get(String(q.item_id));
+      return !st || st === 'active';
     });
-    return { externalId: `a:${r.id}` };
+    return {
+      importar,
+      foraDaJanela: todas.length - recentes.length,
+      anuncioInativo: recentes.length - importar.length,
+    };
   }
 
   /**
