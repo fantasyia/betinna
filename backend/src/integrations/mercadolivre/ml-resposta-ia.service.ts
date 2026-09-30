@@ -32,6 +32,14 @@ export type ResultadoSugestao =
   | { texto: string; precisaHumano: false; fonte: 'base' | 'descricao'; modelo: string }
   | { texto: null; precisaHumano: true; fonte: null; modelo: string | null };
 
+export interface ResumoAnuncio {
+  id: string;
+  titulo: string | null;
+  link: string | null;
+  status: string | null;
+  thumbnail: string | null;
+}
+
 /** Etiqueta interna que marca a pergunta pra um humano responder. */
 export const TAG_HUMANO = 'humano';
 
@@ -255,6 +263,29 @@ export class MLRespostaIaService {
     return perguntas
       .map((p) => ({ pergunta: p.conteudo, resposta: p.conversation.mensagens[0]?.conteudo ?? '' }))
       .filter((p) => p.resposta);
+  }
+
+  /**
+   * Título, link e status do anúncio pra tela da pergunta (card ML, 30/09).
+   * Cache curto: o link não muda, mas o status (pausado/ativo) muda.
+   */
+  async resumoAnuncio(empresaId: string, itemId: string): Promise<ResumoAnuncio> {
+    const it = await this.emCache(`ml:item-resumo:${empresaId}:${itemId}`, TTL_ITEM_S, () =>
+      this.ml.get<{
+        id: string;
+        title?: string;
+        permalink?: string;
+        status?: string;
+        thumbnail?: string;
+      }>(empresaId, `/items/${itemId}?attributes=id,title,permalink,status,thumbnail`),
+    );
+    return {
+      id: it.id,
+      titulo: it.title ?? null,
+      link: it.permalink ?? null,
+      status: it.status ?? null,
+      thumbnail: it.thumbnail ?? null,
+    };
   }
 
   private async anuncio(empresaId: string, itemId: string): Promise<ItemML> {

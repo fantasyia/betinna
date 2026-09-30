@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { api, apiErrorMessage } from '@/lib/api';
-import { Button, Textarea } from '@/components/ui';
+import { Button, Select, Textarea } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
 /**
@@ -16,7 +16,7 @@ export interface MensagemMkt {
   conteudo: string;
   status?: string;
   criadoEm: string;
-  meta?: { erro?: string; ml_sender_role?: string } | null;
+  meta?: { erro?: string; ml_sender_role?: string; ml_item_id?: string } | null;
 }
 
 export function useMensagensMkt(conversationId: string | null | undefined) {
@@ -42,6 +42,7 @@ export function CampoResposta({
   onEnviada,
   testId,
   sugerir,
+  prontas,
 }: {
   conversationId: string;
   placeholder: string;
@@ -53,6 +54,8 @@ export function CampoResposta({
    * a IA não achou a informação e a pergunta ficou marcada pra humano.
    */
   sugerir?: () => Promise<string | null>;
+  /** Respostas prontas da empresa: escolher uma põe o texto no campo pra editar. */
+  prontas?: Array<{ titulo: string; texto: string }>;
 }) {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -98,6 +101,24 @@ export function CampoResposta({
 
   return (
     <div className="mt-2">
+      {prontas && prontas.length > 0 && (
+        <Select
+          data-testid={`${testId}-pronta`}
+          value=""
+          onChange={(e) => {
+            const p = prontas[Number(e.target.value)];
+            if (p) setTexto(p.texto);
+          }}
+          className="mb-1.5 h-8 text-[12px] w-auto max-w-full"
+        >
+          <option value="">Usar resposta pronta…</option>
+          {prontas.map((p, i) => (
+            <option key={i} value={i}>
+              {p.titulo}
+            </option>
+          ))}
+        </Select>
+      )}
       <div className="flex items-end gap-2">
         <Textarea
           data-testid={`${testId}-texto`}

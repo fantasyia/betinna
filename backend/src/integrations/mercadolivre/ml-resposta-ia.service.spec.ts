@@ -190,6 +190,14 @@ describe('MLRespostaIaService', () => {
     expect(m.bot.gerarRespostaIa).not.toHaveBeenCalled();
   });
 
+  it('resumo do anúncio: título e status, e a 2ª leitura sai do cache', async () => {
+    const m = montar();
+    const r = await m.svc.resumoAnuncio('emp-1', 'MLB4685939713');
+    expect(r).toMatchObject({ id: 'MLB4685939713', titulo: 'Camiseta Básica' });
+    await m.svc.resumoAnuncio('emp-1', 'MLB4685939713');
+    expect(m.ml.get).toHaveBeenCalledTimes(1);
+  });
+
   it('conversa de outra empresa → não encontrada, sem chamar ML', async () => {
     const m = montar({ peerId: null });
     await expect(m.svc.sugerirPorConversa('emp-2', 'conv-1')).rejects.toThrow();

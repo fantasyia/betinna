@@ -40,6 +40,20 @@ export class MLOAuthController {
     return this.respostaIa.sugerirPorConversa(user.empresaIdAtiva, conversationId);
   }
 
+  /** Título, link e status do anúncio da pergunta (tela de pré-venda). */
+  @Get('anuncios/:itemId')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
+  @ApiOperation({ summary: 'Resumo do anúncio (título, link, status).' })
+  async resumoAnuncio(@CurrentUser() user: AuthenticatedUser, @Param('itemId') itemId: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    // id do ML = site + número (MLB123…); qualquer outra coisa não vai pra URL da API
+    if (!/^[A-Z]{3}\d{1,20}$/.test(itemId)) throw new BadRequestException('Anúncio inválido');
+    return this.respostaIa.resumoAnuncio(user.empresaIdAtiva, itemId);
+  }
+
   /** Diagnóstico só de leitura das perguntas pendentes da empresa ativa (ver o serviço). */
   @Get('diagnostico/perguntas')
   @ApiBearerAuth()

@@ -7,6 +7,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 
 const navigate = vi.fn();
 const post = vi.fn();
+const patch = vi.fn();
 const pedidos: string[] = [];
 let mensagens: unknown[] = [];
 
@@ -15,15 +16,37 @@ vi.mock('react-router-dom', () => ({
 }));
 
 vi.mock('@/lib/api', () => ({
-  api: { post: (...a: unknown[]) => post(...a) },
+  api: { post: (...a: unknown[]) => post(...a), patch: (...a: unknown[]) => patch(...a) },
   apiErrorMessage: (e: Error) => e.message,
 }));
+
+let papel = 'SAC';
+vi.mock('@/hooks/usePermission', () => ({ useRole: () => papel }));
+
+// referências ESTÁVEIS, como o useApiQuery real
+const CONFIG = {
+  respostasProntas: {
+    marketplace: [{ titulo: 'Prazo de envio', texto: 'Enviamos em até 24 h úteis.' }],
+  },
+};
+const ANUNCIO = {
+  id: 'MLB4685939713',
+  titulo: 'Camiseta Básica',
+  link: 'https://produto.mercadolivre.com.br/MLB-4685939713',
+  status: 'paused',
+};
 
 vi.mock('@/hooks/useApiQuery', () => ({
   useApiQuery: (path: string | null) => {
     if (path) pedidos.push(path);
     if (path?.includes('/mensagens')) {
       return { data: mensagens, loading: false, error: null, refetch: vi.fn() };
+    }
+    if (path === '/empresas/config') {
+      return { data: CONFIG, loading: false, error: null, refetch: vi.fn() };
+    }
+    if (path?.startsWith('/integracoes/mercadolivre/anuncios/')) {
+      return { data: ANUNCIO, loading: false, error: null, refetch: vi.fn() };
     }
     return {
       data: {
@@ -46,7 +69,7 @@ vi.mock('@/hooks/useApiQuery', () => ({
   },
 }));
 
-import { ConversasMarketplace } from './ConversasMarketplace';
+import { ConversasMarketplace, espera } from './ConversasMarketplace';
 
 const pergunta = {
   id: 'm1',
@@ -55,14 +78,85 @@ const pergunta = {
   conteudo: 'Preciso dela toda preta',
   status: 'DELIVERED',
   criadoEm: '2026-09-29T14:45:00.000Z',
+  meta: { ml_item_id: 'MLB4685939713' },
 };
 
 afterEach(() => {
   cleanup();
   navigate.mockReset();
   post.mockReset();
+  patch.mockReset();
   pedidos.length = 0;
   mensagens = [];
+  papel = 'SAC';
+});
+
+describe('espera (tempo sem resposta)', () => {
+  const agora = new Date('2026-09-30T12:00:00.000Z').getTime();
+  it('até 1 h ok, até 12 h atenção, depois atrasada', () => {
+    expect(espera('2026-09-30T11:30:00.000Z', agora)).toEqual({ texto: 'Aguardando há 30 min', nivel: 'ok' });
+    expect(espera('2026-09-30T07:00:00.000Z', agora)).toEqual({ texto: 'Aguardando há 5 h', nivel: 'atencao' });
+    expect(espera('2026-09-27T12:00:00.000Z', agora)?.nivel).toBe('atrasada');
+    expect(espera('2026-09-27T12:00:00.000Z', agora)?.texto).toBe('Aguardando há 3 dias');
+    expect(espera(null, agora)).toBeNull();
+  });
+});
+
+describe('pré-venda: anúncio, espera e respostas prontas', () => {
+  it('mostra o título do anúncio com link, o status pausado e o tempo de espera', () => {
+    mensagens = [pergunta];
+    const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    const a = getByTestId('mkt-anuncio');
+    expect(a.textContent).toContain('Camiseta Básica');
+    expect(a.textContent).toContain('pausado');
+    expect(a.querySelector('a')?.getAttribute('href')).toBe(ANUNCIO.link);
+    expect(pedidos).toContain('/integracoes/mercadolivre/anuncios/MLB4685939713');
+    expect(getByTestId('mkt-espera').textContent).toContain('Aguardando');
+  });
+
+  it('escolher resposta pronta põe o texto no campo e NÃO envia', () => {
+    mensagens = [pergunta];
+    const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    fireEvent.change(getByTestId('mkt-pergunta-pronta'), { target: { value: '0' } });
+    expect((getByTestId('mkt-pergunta-texto') as HTMLTextAreaElement).value).toBe(
+      'Enviamos em até 24 h úteis.',
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('gerenciar respostas prontas: só DIRETOR/ADMIN veem o botão', () => {
+    mensagens = [pergunta];
+    const sac = render(<ConversasMarketplace grupo="pre_venda" />);
+    expect(sac.queryByTestId('prontas-gerenciar')).toBeNull();
+    cleanup();
+    papel = 'DIRECTOR';
+    const dir = render(<ConversasMarketplace grupo="pre_venda" />);
+    expect(dir.getByTestId('prontas-gerenciar').textContent).toContain('(1)');
+  });
+
+  it('salvar grava a lista inteira na config; item sem texto é recusado', async () => {
+    papel = 'ADMIN';
+    patch.mockResolvedValue({});
+    const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    fireEvent.click(getByTestId('prontas-gerenciar'));
+    fireEvent.click(getByTestId('prontas-adicionar'));
+    fireEvent.change(getByTestId('prontas-titulo-1'), { target: { value: 'Garantia' } });
+    fireEvent.click(getByTestId('prontas-salvar'));
+    expect(getByTestId('prontas-erro').textContent).toContain('título e texto');
+    expect(patch).not.toHaveBeenCalled();
+    fireEvent.change(getByTestId('prontas-texto-1'), { target: { value: '90 dias de garantia.' } });
+    fireEvent.click(getByTestId('prontas-salvar'));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith('/empresas/config', {
+        respostasProntas: {
+          marketplace: [
+            { titulo: 'Prazo de envio', texto: 'Enviamos em até 24 h úteis.' },
+            { titulo: 'Garantia', texto: '90 dias de garantia.' },
+          ],
+        },
+      }),
+    );
+  });
 });
 
 describe('ConversasMarketplace', () => {

@@ -510,6 +510,22 @@ const entradaAnunciosSchema = z
   .optional();
 
 /**
+ * Respostas prontas do atendimento (card ML, 30/09). `marketplace` = textos que
+ * o vendedor escolhe na pergunta de anúncio e edita antes de enviar. Lista
+ * inteira substitui a anterior (o merge da config é de 1 nível). O ML aceita
+ * até 2000 caracteres numa resposta.
+ */
+const respostaProntaSchema = z.object({
+  titulo: z.string().trim().min(1).max(60),
+  texto: z.string().trim().min(1).max(2000),
+});
+const respostasProntasSchema = z
+  .object({
+    marketplace: z.array(respostaProntaSchema).max(30).nullable().optional(),
+  })
+  .strip();
+
+/**
  * Integração com o ERP (Tiny): o que o pedido leva ao subir.
  * - ecommerceId: e-commerce cadastrado lá (amarra o pedido ao canal do site);
  * - formaEnvioId/formaFreteId: transportadora padrão — sem ela o pedido nasce
@@ -601,6 +617,7 @@ export const tenantConfigPatchSchema = z
     branding: brandingSchema.nullable(),
     funilEtapas: funilEtapasSchema.nullable(),
     entradaAnuncios: entradaAnunciosSchema.nullable(),
+    respostasProntas: respostasProntasSchema.nullable().optional(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).
