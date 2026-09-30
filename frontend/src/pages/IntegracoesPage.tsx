@@ -5,8 +5,6 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
-import { LeadCaptureCard } from '@/components/LeadCaptureCard';
-import { PedidoSiteChaveCard } from '@/components/PedidoSiteChaveCard';
 import { EmailTransacionalCard } from '@/components/EmailTransacionalCard';
 import { AssinaturaPaginaMeta, EscolherPaginaMeta } from '@/components/MetaPaginaCards';
 import { EntradaAnunciosCard } from '@/components/EntradaAnunciosCard';
@@ -437,16 +435,6 @@ export default function IntegracoesPage() {
         {/* E-mail transacional (Resend) — status + teste de envio */}
         <div className="mt-4">
           <EmailTransacionalCard />
-        </div>
-
-        {/* Captura de leads do site (chave de API pública por tenant) */}
-        <div className="mt-4">
-          <LeadCaptureCard />
-        </div>
-
-        {/* Pedidos do checkout do site — chave própria, separada da de leads */}
-        <div className="mt-4">
-          <PedidoSiteChaveCard />
         </div>
       </StateView>
 

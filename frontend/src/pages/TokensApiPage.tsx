@@ -12,6 +12,9 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
+import { LeadCaptureCard } from '@/components/LeadCaptureCard';
+import { PedidoSiteChaveCard } from '@/components/PedidoSiteChaveCard';
+import { useRole } from '@/hooks/usePermission';
 import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Checkbox, Dialog, Field, IconButton, Input } from '@/components/ui';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -70,6 +73,8 @@ const rotuloEscopo = (key: string) =>
  * O VALOR do token aparece UMA única vez na criação — copie na hora.
  */
 export default function TokensApiPage() {
+  const papel = useRole();
+  const podeVerChavesSite = papel === 'ADMIN' || papel === 'DIRECTOR';
   const toast = useToast();
   const [confirm, confirmDialog] = useConfirm();
 
@@ -171,8 +176,8 @@ export default function TokensApiPage() {
 
   return (
     <PageLayout
-      title="Tokens de API (MCP)"
-      description="Conectam o Claude Code aos dados desta empresa. Cada token só alcança os módulos que você marcar."
+      title="Tokens de API"
+      description="Tudo que dá acesso aos dados desta empresa por fora do app: os tokens do Claude Code e as chaves do site."
       actions={
         <div className="flex gap-2">
           <Button
@@ -186,6 +191,10 @@ export default function TokensApiPage() {
       }
     >
       <SistemaTabs />
+      <h2 className="m-0 mb-1 text-[16px] font-semibold">Claude Code (MCP)</h2>
+      <p className="m-0 mb-3 text-[13px] text-muted">
+        Cada token só alcança os módulos que você marcar.
+      </p>
       <StateView
         loading={loading}
         error={error}
@@ -247,6 +256,24 @@ export default function TokensApiPage() {
           </ul>
         </Card>
       </StateView>
+
+      {/* Chaves do site: moravam em Integrações até 30/09 (pedido do Léo — tudo
+          que é token de API num lugar só). O backend só as libera pra
+          ADMIN/DIRECTOR; pra outro papel os cards só dariam 403. */}
+      {podeVerChavesSite && (
+        <section className="mt-8 flex flex-col gap-4" aria-labelledby="chaves-do-site">
+          <div>
+            <h2 id="chaves-do-site" className="m-0 mb-1 text-[16px] font-semibold">
+              Chaves do site
+            </h2>
+            <p className="m-0 text-[13px] text-muted">
+              Usadas pelo site da empresa pra criar lead e pedido aqui.
+            </p>
+          </div>
+          <LeadCaptureCard />
+          <PedidoSiteChaveCard />
+        </section>
+      )}
 
       <Dialog
         open={dialogAberto}

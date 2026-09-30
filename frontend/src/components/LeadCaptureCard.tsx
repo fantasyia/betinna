@@ -8,7 +8,7 @@ import { Button, Card } from '@/components/ui';
 /**
  * LeadCaptureCard — chave de API pra formulários do SITE criarem leads.
  *
- * Fica na página de Integrações. A chave (`blc_…`) aparece UMA vez ao
+ * Fica na página Tokens de API (até 30/09 morava em Integrações). A chave (`blc_…`) aparece UMA vez ao
  * gerar/rotacionar; depois só o prefixo. Inclui snippet pronto de fetch pro
  * dev do site colar.
  */
