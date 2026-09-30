@@ -367,7 +367,7 @@ export default function IntegracoesPage() {
               <h2 id="integracoes-em-uso" className="m-0 text-[18px] font-medium flex items-baseline gap-2.5">
                 Em uso <span className="text-[14px] text-muted font-normal">{emUso.length}</span>
               </h2>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
                 {emUso.map((s) => (
                   <ServicoCard
                     key={s}
@@ -392,14 +392,16 @@ export default function IntegracoesPage() {
                 Disponíveis{' '}
                 <span className="text-[14px] text-muted font-normal">{disponiveis.length}</span>
               </h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              {/* Colunas corridas, não grade: cada grupo encaixa embaixo do anterior, sem
+                  o buraco que a grade deixava ao lado de um grupo alto. */}
+              <div className="columns-1 lg:columns-2 gap-4">
                 {GRUPOS_DISPONIVEIS.map(({ tipo, rotulo }) => {
                   const doGrupo = disponiveis.filter((s) => SERVICOS[s].tipo === tipo);
                   if (doGrupo.length === 0) return null;
                   return (
                     <div
                       key={tipo}
-                      className="bg-surface border border-border rounded-[10px] overflow-hidden"
+                      className="bg-surface border border-border rounded-[10px] overflow-hidden break-inside-avoid mb-4"
                     >
                       <div className="px-[18px] py-2.5 text-[12px] font-semibold tracking-[0.3px] text-muted bg-bg-alt">
                         {rotulo}
