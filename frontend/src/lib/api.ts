@@ -52,6 +52,42 @@ function addRequestBreadcrumb(method: string, url: string): void {
 }
 
 /**
+ * Rota da API sem os ids, pro Sentry agrupar por ENDPOINT.
+ *
+ * `/api/v1/inbox/cmuna5iot000gmn5ivl3fw072/presenca?x=1` → `/inbox/:id/presenca`.
+ * Id = segmento com dígito e ≥ 16 caracteres (cuid, uuid, hash), ou só dígitos.
+ * Rota com palavra comum (`/kanban/boards`, `/nao-lidas`) fica como está.
+ */
+export function rotaDaApi(url: string): string {
+  let caminho = url;
+  try {
+    caminho = new URL(url, 'http://x').pathname;
+  } catch {
+    caminho = url.split('?')[0];
+  }
+  if (caminho.startsWith(API_PREFIX)) caminho = caminho.slice(API_PREFIX.length);
+  return caminho
+    .split('/')
+    .map((seg) =>
+      /^\d+$/.test(seg) || (seg.length >= 16 && /\d/.test(seg) && /^[\w-]+$/.test(seg)) ? ':id' : seg,
+    )
+    .join('/');
+}
+
+/**
+ * Impressão digital do erro de API no Sentry: tipo + método + rota.
+ *
+ * Sem ela o Sentry agrupava pela MENSAGEM, e ele troca a URL por um marcador
+ * antes de agrupar — então TODO timeout de GET virava uma issue só e todo
+ * timeout de POST, outra. Em 30/09 a BETINNA-FRONT-9 (o "Sincronizar ERP", já
+ * consertado) "voltou" porque um timeout de `/inbox/:id/presenca` caiu dentro
+ * dela: conserto parecendo falho, e problema novo escondido sob nome velho.
+ */
+function impressaoDigital(tipo: string, method: string, url: string): string[] {
+  return ['api-client', tipo, method.toUpperCase(), rotaDaApi(url)];
+}
+
+/**
  * Reporta erros HTTP no Sentry. Por padrão:
  *  - 5xx → sempre captura (bug do nosso lado ou integração)
  *  - 4xx → não captura (client error: validação, perm, etc — esperado)
@@ -63,8 +99,9 @@ function reportApiError(error: ApiError, url: string, method: string): void {
     // 5xx sempre
     if (error.status >= 500) {
       Sentry.captureException(error, {
-        tags: { source: 'api-client', method, statusGroup: '5xx' },
+        tags: { source: 'api-client', method, statusGroup: '5xx', rota: rotaDaApi(url) },
         extra: { url, status: error.status, code: error.code },
+        fingerprint: impressaoDigital(`http-${error.status}`, method, url),
       });
       return;
     }
@@ -76,7 +113,9 @@ function reportApiError(error: ApiError, url: string, method: string): void {
           source: 'api-client',
           method,
           statusGroup: error.status === 429 ? '429' : '408',
+          rota: rotaDaApi(url),
         },
+        fingerprint: impressaoDigital(error.code || String(error.status), method, url),
         extra: {
           status: error.status,
           code: error.code,
