@@ -14,6 +14,7 @@ import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
 import { cn } from '@/lib/cn';
+import { AlertTriangle, Lock } from 'lucide-react';
 
 // D45 (2026-05-17): integrações que só DIRECTOR pode conectar/desconectar.
 // Mantém em sync com SERVICO_METADATA.requerDirector no backend.
@@ -295,6 +296,10 @@ export default function IntegracoesPage() {
   const statusByServico = new Map<string, IntegracaoStatusRow>();
   for (const s of statusRows) statusByServico.set(s.servico, s);
 
+  // Conectadas viram cards em cima; o resto, a lista "Disponíveis" agrupada.
+  const emUso = SERVICO_ORDER.filter((s) => byServico.get(s)?.ativo);
+  const disponiveis = SERVICO_ORDER.filter((s) => !byServico.get(s)?.ativo);
+
   // Escuta postMessage de popup OAuth pra refetch automático
   useEffect(() => {
     function handler(e: MessageEvent) {
@@ -312,21 +317,102 @@ export default function IntegracoesPage() {
     <PageLayout title="Integrações da empresa">
       <SistemaTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3.5">
-          {SERVICO_ORDER.map((s) => (
-            <ServicoCard
-              key={s}
-              servico={s}
-              conexao={byServico.get(s)}
-              status={statusByServico.get(s)}
-              onConnect={() => setConnecting(s)}
-              onDisconnect={() => setDisconnecting(s)}
-              onRefetch={() => {
-                refetch();
-                refetchStatus();
+        <div className="flex flex-col gap-7">
+          <div className="flex items-end justify-between gap-6 flex-wrap">
+            <p className="m-0 flex items-center gap-2 text-[14px] text-muted">
+              <Lock className="h-4 w-4" aria-hidden="true" />
+              Só diretor ou admin conecta integrações da empresa.
+            </p>
+            <div className="flex gap-2 text-[13px]">
+              <span
+                className="rounded-full px-3 py-1.5 text-success"
+                style={{ background: 'color-mix(in srgb, var(--success) 14%, transparent)' }}
+              >
+                {emUso.length} {emUso.length === 1 ? 'conectada' : 'conectadas'}
+              </span>
+              <span className="rounded-full px-3 py-1.5 bg-bg-alt text-muted">
+                {disponiveis.length} {disponiveis.length === 1 ? 'disponível' : 'disponíveis'}
+              </span>
+            </div>
+          </div>
+
+          {/* O ERP é o único obrigatório: desconectado, ele é o aviso da página. */}
+          {!byServico.get('tiny')?.ativo && podeEscolherPagina && (
+            <div
+              data-testid="aviso-tiny"
+              className="flex items-center gap-3 px-[18px] py-3.5 rounded-[10px] border"
+              style={{
+                background: 'color-mix(in srgb, var(--warning) 10%, transparent)',
+                borderColor: 'color-mix(in srgb, var(--warning) 35%, transparent)',
               }}
-            />
-          ))}
+            >
+              <AlertTriangle className="h-[18px] w-[18px] text-warning shrink-0" aria-hidden="true" />
+              <p className="m-0 flex-grow text-[14px]">
+                <strong className="text-warning">Tiny ERP não conectado.</strong> Ele é a fonte da
+                verdade de produtos, estoque, pedidos e nota.
+              </p>
+              <button
+                type="button"
+                data-testid="aviso-tiny-conectar"
+                onClick={() => setConnecting('tiny')}
+                className="bg-primary text-primary-contrast rounded-[10px] px-4 h-9 text-[14px] font-semibold cursor-pointer shrink-0"
+              >
+                Conectar Tiny
+              </button>
+            </div>
+          )}
+
+          {emUso.length > 0 && (
+            <section className="flex flex-col gap-3.5" aria-labelledby="integracoes-em-uso">
+              <h2 id="integracoes-em-uso" className="m-0 text-[18px] font-medium flex items-baseline gap-2.5">
+                Em uso <span className="text-[14px] text-muted font-normal">{emUso.length}</span>
+              </h2>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+                {emUso.map((s) => (
+                  <ServicoCard
+                    key={s}
+                    servico={s}
+                    conexao={byServico.get(s) as Conexao}
+                    status={statusByServico.get(s)}
+                    onConnect={() => setConnecting(s)}
+                    onDisconnect={() => setDisconnecting(s)}
+                    onRefetch={() => {
+                      refetch();
+                      refetchStatus();
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {disponiveis.length > 0 && (
+            <section className="flex flex-col gap-3.5" aria-labelledby="integracoes-disponiveis">
+              <h2 id="integracoes-disponiveis" className="m-0 text-[18px] font-medium flex items-baseline gap-2.5">
+                Disponíveis{' '}
+                <span className="text-[14px] text-muted font-normal">{disponiveis.length}</span>
+              </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                {GRUPOS_DISPONIVEIS.map(({ tipo, rotulo }) => {
+                  const doGrupo = disponiveis.filter((s) => SERVICOS[s].tipo === tipo);
+                  if (doGrupo.length === 0) return null;
+                  return (
+                    <div
+                      key={tipo}
+                      className="bg-surface border border-border rounded-[10px] overflow-hidden"
+                    >
+                      <div className="px-[18px] py-2.5 text-[12px] font-semibold tracking-[0.3px] text-muted bg-bg-alt">
+                        {rotulo}
+                      </div>
+                      {doGrupo.map((s) => (
+                        <ServicoLinha key={s} servico={s} onConnect={() => setConnecting(s)} />
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </div>
 
         {/* Conta com várias Páginas: o admin escolhe (item 3a) */}
@@ -387,8 +473,6 @@ export default function IntegracoesPage() {
   );
 }
 
-// ─── Card por serviço ────────────────────────────────────────────────
-
 /**
  * URL do webhook DESTA empresa — é ela que vai no painel do app da Meta
  * (Webhooks → URL de retorno), junto com o token de verificação cadastrado.
@@ -405,6 +489,56 @@ function UrlWebhookMeta() {
   );
 }
 
+// ─── Serviço: card (em uso) e linha (disponível) ─────────────────────
+
+/**
+ * Grupos da lista "Disponíveis", na ordem em que aparecem. O rótulo é o do
+ * grupo (plural), não o do serviço — "Marketplaces", não "Marketplace".
+ */
+const GRUPOS_DISPONIVEIS: Array<{ tipo: ServicoMeta['tipo']; rotulo: string }> = [
+  { tipo: 'erp', rotulo: 'ERP' },
+  { tipo: 'mensageria', rotulo: 'Mensageria' },
+  { tipo: 'ia', rotulo: 'IA' },
+  { tipo: 'marketplace', rotulo: 'Marketplaces' },
+  { tipo: 'social', rotulo: 'Redes sociais' },
+  { tipo: 'assinatura', rotulo: 'Assinatura' },
+];
+
+/**
+ * Pode conectar/desconectar? D48: serviços com `requerDirector` aceitam
+ * DIRECTOR (mandatário do tenant) OU ADMIN (master da plataforma).
+ */
+function usePodeOperar(servico: ServicoEmpresa) {
+  const role = useRole();
+  return (
+    !SERVICOS_REQUEREM_DIRECTOR.has(servico) || role === 'DIRECTOR' || role === 'ADMIN'
+  );
+}
+
+function IconeServico({ meta, tamanho }: { meta: ServicoMeta; tamanho: 'md' | 'sm' }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'text-white flex items-center justify-center font-semibold shrink-0',
+        tamanho === 'md' ? 'w-[38px] h-[38px] rounded-[10px] text-[14px]' : 'w-8 h-8 rounded-lg text-[12px]',
+      )}
+      style={{ background: meta.color }}
+    >
+      {meta.icon}
+    </span>
+  );
+}
+
+const BOTAO_CONTORNO =
+  'bg-transparent text-text border border-border-strong rounded-[10px] px-4 h-9 text-[13px] font-medium cursor-pointer hover:bg-surface-hover';
+
+/**
+ * Serviço CONECTADO: card com status, dado útil da conexão e as ações.
+ *
+ * "Desconectar" é texto vermelho, não bloco vermelho: é a ação que menos se
+ * quer apertar por engano, e antes era a mais chamativa do card.
+ */
 function ServicoCard({
   servico,
   conexao,
@@ -414,160 +548,91 @@ function ServicoCard({
   onRefetch,
 }: {
   servico: ServicoEmpresa;
-  conexao?: Conexao;
+  conexao: Conexao;
   status?: IntegracaoStatusRow;
   onConnect: () => void;
   onDisconnect: () => void;
   onRefetch: () => void;
 }) {
   const meta = SERVICOS[servico];
-  const conectado = conexao?.ativo;
-  const role = useRole();
-  // D48: serviços com requerDirector aceitam DIRECTOR (mandatário do tenant)
-  // OU ADMIN (master da plataforma, opera cross-tenant). Outros papéis veem
-  // a página mas não conseguem operar.
-  const requerDirector = SERVICOS_REQUEREM_DIRECTOR.has(servico);
-  const podeOperar = !requerDirector || role === 'DIRECTOR' || role === 'ADMIN';
+  const podeOperar = usePodeOperar(servico);
+  // Saúde só aparece quando NÃO está boa: "conectado" + "ativa" diziam a mesma
+  // coisa duas vezes. Instável/caída é o que precisa chamar atenção.
+  const saudeRuim = status && status.status !== 'ATIVA' ? STATUS_SAUDE[status.status] : null;
+  const conectadoEm = conexao.conectadoEm ?? conexao.criadoEm;
 
   return (
     <div
       data-testid={`servico-card-${servico}`}
-      className="bg-surface border border-border rounded-[10px] p-6 flex flex-col gap-2"
-      style={{
-        borderLeft: `4px solid ${meta.color}`,
-        opacity: conectado ? 1 : 0.95,
-      }}
+      className="bg-surface border border-border rounded-[10px] p-[18px] flex flex-col gap-3.5"
     >
-      <header className="flex items-center gap-2">
-        <span
-          className="text-white rounded-md w-9 h-9 flex items-center justify-center font-bold text-[14px] shrink-0"
-          style={{ background: meta.color }}
-        >
-          {meta.icon}
-        </span>
-        <div className="flex-1 min-w-0">
-          <h3 className="m-0 text-[15px]">{meta.nome}</h3>
-          <div className="text-[11px] text-muted">
-            {TIPO_LABEL[meta.tipo]}
-            {meta.obrigatorio && (
-              <span
-                className="ml-1.5 inline-flex items-center rounded-full px-[5px] py-px text-[9px] font-semibold leading-[1.6] tracking-[0.2px] text-warning border"
-                style={{
-                  background: 'color-mix(in srgb, var(--warning) 12%, transparent)',
-                  borderColor: 'color-mix(in srgb, var(--warning) 19%, transparent)',
-                }}
-              >
-                obrigatório
-              </span>
-            )}
-            {requerDirector && (
-              <span
-                className="ml-1.5 inline-flex items-center rounded-full px-[5px] py-px text-[9px] font-semibold leading-[1.6] tracking-[0.2px] text-danger border"
-                style={{
-                  background: 'color-mix(in srgb, var(--danger) 12%, transparent)',
-                  borderColor: 'color-mix(in srgb, var(--danger) 19%, transparent)',
-                }}
-                title="Apenas DIRETOR ou ADMIN pode conectar este serviço (D45/D48)"
-              >
-                diretor/admin
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-[3px]">
-          <span
-            className={cn(
-              'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] border',
-              conectado ? 'text-success' : 'text-muted',
-            )}
-            style={{
-              background: conectado
-                ? 'color-mix(in srgb, var(--success) 12%, transparent)'
-                : 'color-mix(in srgb, var(--muted) 12%, transparent)',
-              borderColor: conectado
-                ? 'color-mix(in srgb, var(--success) 19%, transparent)'
-                : 'color-mix(in srgb, var(--muted) 19%, transparent)',
-            }}
-            data-testid={`status-${servico}`}
-          >
-            {conectado ? '● conectado' : '○ não conectado'}
-          </span>
-          {status && (
-            <span
-              className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[10px] font-semibold leading-[1.6] tracking-[0.2px] border"
-              style={{
-                background: `color-mix(in srgb, ${STATUS_SAUDE[status.status].color} 12%, transparent)`,
-                color: STATUS_SAUDE[status.status].color,
-                borderColor: `color-mix(in srgb, ${STATUS_SAUDE[status.status].color} 19%, transparent)`,
-              }}
-              data-testid={`saude-${servico}`}
-              title={
-                `Saúde: ${status.status}` +
-                (status.ultimoErro ? `\nÚltimo erro: ${status.ultimoErro}` : '') +
-                (status.ultimaVerificacaoEm
-                  ? `\nVerificado: ${fmtDate(status.ultimaVerificacaoEm)}`
-                  : '')
-              }
-            >
-              {STATUS_SAUDE[status.status].label}
-            </span>
-          )}
+      <header className="flex items-center gap-3">
+        <IconeServico meta={meta} tamanho="md" />
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <h3 className="m-0 text-[15px] font-semibold">{meta.nome}</h3>
+          <span className="text-[12px] text-muted">{TIPO_LABEL[meta.tipo]}</span>
         </div>
       </header>
 
-      <p className="m-0 text-[12px] text-muted leading-[1.4]">{meta.description}</p>
-      {servico === 'meta_app' && <UrlWebhookMeta />}
-      {servico === 'facebook' && conectado && podeOperar && <AssinaturaPaginaMeta />}
-
-      {conexao && (
-        <dl className="m-0 text-[11px] text-muted">
-          {conexao.externalAccountId && (
-            <div>
-              <strong>ID:</strong> {conexao.externalAccountId}
-            </div>
-          )}
-          {conexao.ultimoSync && (
-            <div>
-              <strong>Último sync:</strong> {fmtDate(conexao.ultimoSync)}
-            </div>
-          )}
-          {/* Conexão que vive só no provider (WhatsApp/Evolution) não tem linha
-              na tabela — e portanto não tem "conectado em". Mostrar a data de
-              agora seria dizer que pareou neste instante. */}
-          {(conexao.conectadoEm ?? conexao.criadoEm) && (
-            <div>
-              <strong>Conectado em:</strong>{' '}
-              {fmtDate(conexao.conectadoEm ?? conexao.criadoEm)}
-            </div>
-          )}
-        </dl>
-      )}
-
-      {/* Botões inferiores */}
-      <div className="flex gap-1.5 mt-auto flex-wrap">
-        {!podeOperar && (
-          <span className="text-[11px] text-muted italic" data-testid={`bloqueado-${servico}`}>
-            Apenas DIRETOR ou ADMIN pode conectar este serviço.
+      <div className="flex items-center gap-3 flex-wrap text-[13px]">
+        <span
+          className="inline-flex items-center gap-2 text-success"
+          data-testid={`status-${servico}`}
+        >
+          <span aria-hidden="true" className="w-2 h-2 rounded-full bg-success" />
+          Conectado
+        </span>
+        {saudeRuim && status && (
+          <span
+            className="inline-flex items-center gap-1.5 font-semibold"
+            style={{ color: saudeRuim.color }}
+            data-testid={`saude-${servico}`}
+            title={
+              `Saúde: ${status.status}` +
+              (status.ultimoErro ? `\nÚltimo erro: ${status.ultimoErro}` : '') +
+              (status.ultimaVerificacaoEm
+                ? `\nVerificado: ${fmtDate(status.ultimaVerificacaoEm)}`
+                : '')
+            }
+          >
+            {saudeRuim.label}
           </span>
         )}
-        {podeOperar && !conectado && (
-          <button
-            type="button"
-            data-testid={`conectar-${servico}`}
-            onClick={onConnect}
-            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
-          >
-            Conectar
-          </button>
+      </div>
+
+      <div className="flex flex-col gap-1 text-[13px] leading-[1.5] text-muted flex-grow">
+        <p className="m-0">{meta.description}</p>
+        {servico === 'meta_app' && <UrlWebhookMeta />}
+        {servico === 'facebook' && podeOperar && <AssinaturaPaginaMeta />}
+        {(conexao.externalAccountId || conexao.ultimoSync || conectadoEm) && (
+          <p className="m-0 text-[12px]">
+            {[
+              conexao.ultimoSync && `Último sync ${fmtDate(conexao.ultimoSync)}`,
+              conexao.externalAccountId && `ID ${conexao.externalAccountId}`,
+              // Conexão que vive só no provider (WhatsApp/Evolution) não tem
+              // linha na tabela — e portanto não tem "conectado em". Mostrar a
+              // data de agora seria dizer que pareou neste instante.
+              conectadoEm && `Desde ${fmtDate(conectadoEm)}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
         )}
-        {podeOperar && conectado && servico === 'tiny' && <SyncTinyButton onDone={onRefetch} />}
-        {podeOperar && conectado && (
+      </div>
+
+      <div className="flex gap-2 items-center flex-wrap">
+        {!podeOperar ? (
+          <span className="text-[12px] text-muted italic" data-testid={`bloqueado-${servico}`}>
+            Só diretor ou admin mexe nesta conexão.
+          </span>
+        ) : (
           <>
+            {servico === 'tiny' && <SyncTinyButton onDone={onRefetch} />}
             <button
               type="button"
               data-testid={`reconectar-${servico}`}
               onClick={onConnect}
-              className="bg-surface text-text border border-border-strong rounded-md px-3 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+              className={BOTAO_CONTORNO}
             >
               Reconectar
             </button>
@@ -578,7 +643,7 @@ function ServicoCard({
               <a
                 href={meta.qrRoute}
                 data-testid={`desconectar-${servico}`}
-                className="bg-danger text-white rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px] no-underline"
+                className="bg-transparent text-danger rounded-[10px] px-2.5 h-9 inline-flex items-center text-[13px] font-medium no-underline hover:underline"
               >
                 Desconectar
               </a>
@@ -587,7 +652,7 @@ function ServicoCard({
                 type="button"
                 data-testid={`desconectar-${servico}`}
                 onClick={onDisconnect}
-                className="bg-danger text-white rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+                className="bg-transparent border-0 text-danger rounded-[10px] px-2.5 h-9 text-[13px] font-medium cursor-pointer hover:underline"
               >
                 Desconectar
               </button>
@@ -595,6 +660,58 @@ function ServicoCard({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Serviço DISPONÍVEL (não conectado): uma linha enxuta da lista agrupada. */
+function ServicoLinha({
+  servico,
+  onConnect,
+}: {
+  servico: ServicoEmpresa;
+  onConnect: () => void;
+}) {
+  const meta = SERVICOS[servico];
+  const podeOperar = usePodeOperar(servico);
+
+  return (
+    <div
+      data-testid={`servico-card-${servico}`}
+      className="flex items-center gap-3.5 px-[18px] py-3.5 border-t border-border"
+    >
+      <IconeServico meta={meta} tamanho="sm" />
+      <div className="flex flex-col gap-0.5 flex-grow min-w-0">
+        <span className="text-[14px] font-semibold">
+          {meta.nome}
+          {meta.obrigatorio && (
+            <span
+              className="ml-2 inline-flex items-center rounded-full px-2 py-px text-[11px] font-semibold text-warning"
+              style={{ background: 'color-mix(in srgb, var(--warning) 15%, transparent)' }}
+            >
+              obrigatório
+            </span>
+          )}
+        </span>
+        <span className="text-[13px] text-muted">{meta.description}</span>
+      </div>
+      <span className="text-[12px] text-muted whitespace-nowrap" data-testid={`status-${servico}`}>
+        não conectado
+      </span>
+      {podeOperar ? (
+        <button
+          type="button"
+          data-testid={`conectar-${servico}`}
+          onClick={onConnect}
+          className={BOTAO_CONTORNO}
+        >
+          Conectar
+        </button>
+      ) : (
+        <span className="text-[12px] text-muted italic" data-testid={`bloqueado-${servico}`}>
+          só diretor ou admin
+        </span>
+      )}
     </div>
   );
 }
