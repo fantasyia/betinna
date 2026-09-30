@@ -84,3 +84,21 @@ export class IntegrationException extends AppException {
     this.upstreamStatus = upstreamStatus;
   }
 }
+
+/**
+ * Integração não configurada (ou desativada) nesta empresa/ambiente.
+ *
+ * É condição LOCAL — o app nem chegou a chamar o provedor —, então é 4xx, não
+ * o 502 da `IntegrationException`. A diferença importa porque o filtro global
+ * só manda pro Sentry o que é >= 500: "você ainda não configurou isto" era
+ * gravado como erro de servidor, e cada clique em "Conectar" numa integração
+ * sem credencial virava issue no painel (BETINNA-API-A, 29/09).
+ *
+ * Falha de DECIFRAR credencial cadastrada NÃO é isto: aí o problema é nosso
+ * (ENCRYPTION_KEY trocada, dado corrompido) e segue `IntegrationException`.
+ */
+export class IntegracaoNaoConfiguradaException extends AppException {
+  constructor(message: string, code = ErrorCode.INTEGRATION_NOT_CONFIGURED) {
+    super(code, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}

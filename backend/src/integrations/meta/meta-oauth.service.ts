@@ -3,7 +3,10 @@ import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import { BusinessRuleException, IntegrationException } from '@shared/errors/app-exception';
+import {
+  BusinessRuleException,
+  IntegracaoNaoConfiguradaException,
+} from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import {
   deriveOAuthStateSecret,
@@ -127,9 +130,9 @@ export class MetaOAuthService {
 
   async buildAuthUrl(empresaId: string): Promise<string> {
     if (!this.isConfigured()) {
-      throw new IntegrationException(
+      throw new IntegracaoNaoConfiguradaException(
         'Meta OAuth não configurado — defina META_GRAPH_REDIRECT_URI',
-        ErrorCode.INTEGRATION_ERROR,
+        ErrorCode.INTEGRATION_NOT_CONFIGURED,
       );
     }
     // Item 13: o login usa o app DA EMPRESA (sem ele, erro claro — nunca o de outra).

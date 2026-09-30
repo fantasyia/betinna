@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
+import {
+  IntegracaoNaoConfiguradaException,
+  IntegrationException,
+  UnauthorizedException,
+} from '@shared/errors/app-exception';
 import { AmazonLwaService } from './amazon-lwa.service';
 
 const ENC_KEY = 'a'.repeat(64);
@@ -66,7 +70,9 @@ describe('AmazonLwaService.buildAuthUrl', () => {
       makeIntegracoes() as never,
       makeRedis() as never,
     );
-    await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
+    await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(
+      IntegracaoNaoConfiguradaException,
+    );
   });
 });
 

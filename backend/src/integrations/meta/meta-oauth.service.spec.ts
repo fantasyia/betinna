@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   BusinessRuleException,
-  IntegrationException,
+  IntegracaoNaoConfiguradaException,
   UnauthorizedException,
 } from '@shared/errors/app-exception';
 import { MetaOAuthService } from './meta-oauth.service';
@@ -88,7 +88,9 @@ describe('MetaOAuthService.buildAuthUrl', () => {
       makeRedis() as never,
       makeApps() as never,
     );
-    await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
+    await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(
+      IntegracaoNaoConfiguradaException,
+    );
   });
 });
 

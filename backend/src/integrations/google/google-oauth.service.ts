@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
 import { UsuarioIntegracoesService } from '@modules/integracoes/usuario-integracoes.service';
-import { IntegrationException } from '@shared/errors/app-exception';
+import {
+  IntegracaoNaoConfiguradaException,
+  IntegrationException,
+} from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import {
   deriveOAuthStateSecret,
@@ -69,9 +72,9 @@ export class GoogleOAuthService {
 
   async buildAuthUrl(userId: string): Promise<string> {
     if (!this.isConfigured()) {
-      throw new IntegrationException(
+      throw new IntegracaoNaoConfiguradaException(
         'Google OAuth não configurado — defina GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI',
-        ErrorCode.INTEGRATION_ERROR,
+        ErrorCode.INTEGRATION_NOT_CONFIGURED,
       );
     }
     const state = await this.signState(userId);

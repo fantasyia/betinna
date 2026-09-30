@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
+import {
+  IntegracaoNaoConfiguradaException,
+  UnauthorizedException,
+} from '@shared/errors/app-exception';
 import { MLOAuthService } from './ml-oauth.service';
 
 const ENC_KEY = 'a'.repeat(64);
@@ -70,7 +73,9 @@ describe('MLOAuthService.buildAuthUrl', () => {
       makeIntegracoes() as never,
       makeRedis() as never,
     );
-    await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
+    await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(
+      IntegracaoNaoConfiguradaException,
+    );
   });
 });
 

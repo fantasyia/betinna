@@ -4,7 +4,10 @@ import { comLockDeRefresh } from '@shared/utils/refresh-lock.util';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import { IntegrationException } from '@shared/errors/app-exception';
+import {
+  IntegracaoNaoConfiguradaException,
+  IntegrationException,
+} from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
@@ -70,9 +73,9 @@ export class ShopeeOAuthService {
 
   async buildAuthUrl(empresaId: string): Promise<string> {
     if (!this.isConfigured()) {
-      throw new IntegrationException(
+      throw new IntegracaoNaoConfiguradaException(
         'Shopee não configurada — defina SHOPEE_PARTNER_ID/PARTNER_KEY/REDIRECT_URI',
-        ErrorCode.INTEGRATION_ERROR,
+        ErrorCode.INTEGRATION_NOT_CONFIGURED,
       );
     }
     // Anexamos nosso state JWT no redirect — Shopee envia de volta como query.

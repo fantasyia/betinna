@@ -34,6 +34,8 @@ export enum ErrorCode {
 
   // Integrações
   INTEGRATION_ERROR = 'INTEGRATION_ERROR',
+  /** Integração não configurada/desativada — condição LOCAL, não falha do provedor. */
+  INTEGRATION_NOT_CONFIGURED = 'INTEGRATION_NOT_CONFIGURED',
   ERP_ERROR = 'ERP_ERROR',
   WHATSAPP_ERROR = 'WHATSAPP_ERROR',
   MARKETPLACE_ERROR = 'MARKETPLACE_ERROR',

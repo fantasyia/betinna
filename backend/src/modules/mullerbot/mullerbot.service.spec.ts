@@ -3,7 +3,7 @@ import type { UserRole } from '@prisma/client';
 import {
   BusinessRuleException,
   ForbiddenException,
-  IntegrationException,
+  IntegracaoNaoConfiguradaException,
 } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { MullerBotService } from './mullerbot.service';
@@ -141,7 +141,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lança IntegrationException quando OpenAI não configurado em nenhum lugar', async () => {
+  it('lança IntegracaoNaoConfiguradaException (4xx, fora do Sentry) quando OpenAI não configurado em nenhum lugar', async () => {
     const svc = new MullerBotService(
       makeHttp() as never,
       makeEnv() as never,
@@ -154,7 +154,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeConhecimento() as never,
     );
     await expect(svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 })).rejects.toBeInstanceOf(
-      IntegrationException,
+      IntegracaoNaoConfiguradaException,
     );
   });
 

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { IntegrationException } from '@shared/errors/app-exception';
+import {
+  IntegracaoNaoConfiguradaException,
+  IntegrationException,
+} from '@shared/errors/app-exception';
 import { ShopeeOAuthService } from './shopee-oauth.service';
 
 const makeEnvMock = (overrides: Record<string, string> = {}) => ({
@@ -108,7 +111,7 @@ describe('ShopeeOAuthService', () => {
   });
 
   describe('buildAuthUrl', () => {
-    it('lança IntegrationException quando não configurado', async () => {
+    it('lança IntegracaoNaoConfiguradaException (4xx, fora do Sentry) quando não configurado', async () => {
       const svc = new ShopeeOAuthService(
         makeEnvMock({ SHOPEE_PARTNER_ID: '' }) as never,
         http as never,
@@ -117,7 +120,9 @@ describe('ShopeeOAuthService', () => {
         makeRedis() as never,
       );
 
-      await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
+      await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(
+        IntegracaoNaoConfiguradaException,
+      );
     });
 
     it('inclui partner_id, sign, timestamp e redirect na URL', async () => {

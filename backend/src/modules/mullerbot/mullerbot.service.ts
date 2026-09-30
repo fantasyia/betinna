@@ -9,6 +9,7 @@ import {
 import {
   BusinessRuleException,
   ForbiddenException,
+  IntegracaoNaoConfiguradaException,
   IntegrationException,
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -88,6 +89,9 @@ function instrucaoQuebra(max: number): string {
  */
 export class RespostaVaziaError extends IntegrationException {}
 
+/** Por que a chave OpenAI da empresa não resolveu (ver resolverChaveEmpresaDetalhada). */
+type FalhaChaveEmpresa = 'ausente' | 'inativa' | 'cripto' | 'erro';
+
 @Injectable()
 export class MullerBotService {
   private readonly logger = new Logger(MullerBotService.name);
@@ -110,14 +114,80 @@ export class MullerBotService {
    * pela api quanto pelo worker), senão a `OPENAI_API_KEY` do ambiente (Railway).
    */
   private async resolverChaveEmpresa(empresaId: string): Promise<string | undefined> {
+    return (await this.resolverChaveEmpresaDetalhada(empresaId)).chave;
+  }
+
+  /**
+   * Igual ao `resolverChaveEmpresa`, mas diz POR QUE não achou.
+   *
+   * Antes um `catch {}` vazio engolia as três causas que
+   * `obterCredenciaisInternas` distingue — linha inexistente, linha DESATIVADA e
+   * falha ao DECIFRAR (ENCRYPTION_KEY trocada) —, e a mensagem final afirmava a
+   * primeira: "defina a chave em Integrações". Nas outras duas ela mandava
+   * cadastrar uma chave que já estava cadastrada (triagem Sentry, 30/09).
+   */
+  private async resolverChaveEmpresaDetalhada(
+    empresaId: string,
+  ): Promise<{ chave?: string; falha?: FalhaChaveEmpresa; detalhe?: string }> {
+    let falha: FalhaChaveEmpresa | undefined;
+    let detalhe: string | undefined;
     try {
       const conn = await this.integracoes.obterCredenciaisInternas(empresaId, 'openai');
       const k = (conn.credenciais as { apiKey?: string }).apiKey;
-      if (k && k.trim()) return k.trim();
-    } catch {
-      // Empresa não configurou OpenAI no app — cai pro env (Railway).
+      if (k && k.trim()) return { chave: k.trim() };
+      falha = 'ausente';
+    } catch (err) {
+      detalhe = err instanceof Error ? err.message : String(err);
+      falha = /desativad/i.test(detalhe)
+        ? 'inativa'
+        : /descriptograf/i.test(detalhe)
+          ? 'cripto'
+          : /n[ãa]o configurad/i.test(detalhe)
+            ? 'ausente'
+            : 'erro';
+      if (falha === 'cripto' || falha === 'erro') {
+        // Cadastrada e ilegível, ou erro que nem é de cadastro: isto é nosso, não
+        // do diretor. Fica no log mesmo quando o env salva a resposta.
+        this.logger.warn(`[mullerbot] chave OpenAI da empresa ${empresaId}: ${detalhe}`);
+      }
     }
-    return this.env.get('OPENAI_API_KEY') || undefined;
+    // Sem chave da empresa → cai pro env (Railway), como antes.
+    const env = this.env.get('OPENAI_API_KEY');
+    if (env) return { chave: env };
+    return { falha, detalhe };
+  }
+
+  /**
+   * O erro certo pra "sem chave da empresa", pelo motivo real. Não configurada ou
+   * desativada é condição LOCAL (4xx, fora do Sentry); cadastrada e ilegível, ou
+   * erro desconhecido, é problema nosso (502, vai pro Sentry).
+   *
+   * ⚠️ Toda mensagem mantém "chave" — o `conversar-ia` classifica `ia_sem_chave`
+   * pelo texto (`tipoErroIa`), e é essa saída que o fluxo usa.
+   */
+  private erroSemChaveEmpresa(
+    r: { falha?: FalhaChaveEmpresa; detalhe?: string },
+    mensagemPadrao: string,
+  ): Error {
+    if (r.falha === 'cripto') {
+      return new IntegrationException(
+        'A chave OpenAI da empresa está cadastrada, mas não deu pra lê-la (falha ao decifrar). ' +
+          'Recadastre a chave em Integrações.',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    if (r.falha === 'erro') {
+      return new IntegrationException(
+        `Não deu pra ler a chave OpenAI da empresa: ${r.detalhe ?? 'erro desconhecido'}`,
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    if (r.falha === 'inativa') {
+      return new IntegracaoNaoConfiguradaException(
+        'A chave OpenAI da empresa está DESATIVADA em Integrações — reative a conexão da OpenAI.',
+      );
+    }
+    return new IntegracaoNaoConfiguradaException(mensagemPadrao);
   }
 
   /**
@@ -148,15 +218,15 @@ export class MullerBotService {
    */
   private async resolverCredenciaisEmpresa(empresaId: string): Promise<LlmCredenciais> {
     if (this.env.get('MULLERBOT_MOCK')) return { apiKey: 'mock' };
-    const apiKey = await this.resolverChaveEmpresa(empresaId);
-    if (!apiKey) {
-      throw new IntegrationException(
+    const r = await this.resolverChaveEmpresaDetalhada(empresaId);
+    if (!r.chave) {
+      throw this.erroSemChaveEmpresa(
+        r,
         'A empresa não tem chave OpenAI configurada. O DIRETOR precisa cadastrá-la em ' +
           'Integrações (escopo empresa) — é a chave que o assistente usa.',
-        ErrorCode.INTEGRATION_ERROR,
       );
     }
-    return { apiKey };
+    return { apiKey: r.chave };
   }
 
   async perguntar(user: AuthenticatedUser, dto: PerguntarDto): Promise<MullerBotResposta> {
@@ -360,16 +430,17 @@ export class MullerBotService {
     produtosIncluidos: number;
   }> {
     const dono = opts.proprietarioId ?? '';
-    const apiKey = dono
-      ? await this.resolverChaveDoUsuario(dono)
-      : await this.resolverChaveEmpresa(empresaId);
+    const daEmpresa = dono ? null : await this.resolverChaveEmpresaDetalhada(empresaId);
+    const apiKey = dono ? await this.resolverChaveDoUsuario(dono) : daEmpresa?.chave;
     if (!apiKey) {
-      throw new IntegrationException(
-        dono
-          ? 'O bot pessoal usa a SUA chave OpenAI e ela não está conectada — cadastre em Minhas integrações.'
-          : 'OpenAI não configurada — defina a chave da empresa em Integrações (ou OPENAI_API_KEY no ambiente). O bot do WhatsApp não pode responder.',
-        ErrorCode.INTEGRATION_ERROR,
-      );
+      throw dono
+        ? new IntegracaoNaoConfiguradaException(
+            'O bot pessoal usa a SUA chave OpenAI e ela não está conectada — cadastre em Minhas integrações.',
+          )
+        : this.erroSemChaveEmpresa(
+            daEmpresa ?? {},
+            'OpenAI não configurada — defina a chave da empresa em Integrações (ou OPENAI_API_KEY no ambiente). O bot do WhatsApp não pode responder.',
+          );
     }
     // Modelo: pra IMAGEM usa o modelo de VISÃO (o de chat pode não enxergar);
     // senão, o escolhido pelo dono do bot (tela Persona) ou o padrão do servidor.
@@ -499,11 +570,12 @@ ${REGRAS_CATALOGO}`;
       responseFormat?: Record<string, unknown> | null;
     } = {},
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number; modelo: string }> {
-    const apiKey = await this.resolverChaveEmpresa(empresaId);
+    const chaveR = await this.resolverChaveEmpresaDetalhada(empresaId);
+    const apiKey = chaveR.chave;
     if (!apiKey) {
-      throw new IntegrationException(
+      throw this.erroSemChaveEmpresa(
+        chaveR,
         'OpenAI não configurada — defina a chave da empresa em Integrações (ou OPENAI_API_KEY no ambiente). O nó "Conversar com IA" não pode rodar.',
-        ErrorCode.INTEGRATION_ERROR,
       );
     }
     // Precedência: prompt do nó > persona da empresa > default do servidor.
@@ -533,11 +605,12 @@ ${REGRAS_CATALOGO}`;
    */
   async transcreverAudio(empresaId: string, audio: Buffer, mime: string): Promise<string> {
     if (this.env.get('MULLERBOT_MOCK')) return '(transcrição de teste)';
-    const apiKey = await this.resolverChaveEmpresa(empresaId);
+    const r = await this.resolverChaveEmpresaDetalhada(empresaId);
+    const apiKey = r.chave;
     if (!apiKey) {
-      throw new IntegrationException(
-        'OpenAI não configurada — não dá pra transcrever o áudio.',
-        ErrorCode.INTEGRATION_ERROR,
+      throw this.erroSemChaveEmpresa(
+        r,
+        'OpenAI não configurada — sem chave da empresa, não dá pra transcrever o áudio.',
       );
     }
     const modelo = this.env.get('MULLERBOT_TRANSCRIBE_MODEL');

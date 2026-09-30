@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
+import {
+  IntegracaoNaoConfiguradaException,
+  IntegrationException,
+  UnauthorizedException,
+} from '@shared/errors/app-exception';
 import { GoogleOAuthService } from './google-oauth.service';
 
 const ENC_KEY = 'a'.repeat(64); // 64 hex chars
@@ -65,7 +69,7 @@ describe('GoogleOAuthService.buildAuthUrl', () => {
       makeUserIntegracoes() as never,
       makeRedis() as never,
     );
-    await expect(svc.buildAuthUrl('u1')).rejects.toBeInstanceOf(IntegrationException);
+    await expect(svc.buildAuthUrl('u1')).rejects.toBeInstanceOf(IntegracaoNaoConfiguradaException);
   });
 });
 

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { IntegrationException } from '@shared/errors/app-exception';
+import {
+  IntegracaoNaoConfiguradaException,
+  IntegrationException,
+} from '@shared/errors/app-exception';
 import { TikTokOAuthService } from './tiktok-oauth.service';
 
 const makeEnvMock = (overrides: Record<string, string> = {}) => ({
@@ -90,7 +93,7 @@ describe('TikTokOAuthService', () => {
   });
 
   describe('buildAuthUrl', () => {
-    it('lança IntegrationException quando não configurado', async () => {
+    it('lança IntegracaoNaoConfiguradaException (4xx, fora do Sentry) quando não configurado', async () => {
       const svc = new TikTokOAuthService(
         makeEnvMock({ TIKTOK_APP_KEY: '' }) as never,
         http as never,
@@ -99,7 +102,9 @@ describe('TikTokOAuthService', () => {
         makeRedis() as never,
       );
 
-      await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
+      await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(
+        IntegracaoNaoConfiguradaException,
+      );
     });
 
     it('inclui service_id e state na URL', async () => {
