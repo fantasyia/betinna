@@ -63,14 +63,31 @@ function texto(v: unknown): string | undefined {
  * contextInfo pode estar em qualquer variante da mensagem (extendedTextMessage,
  * imageMessage, videoMessage…), então procuramos em todas em vez de fixar uma.
  */
-export function extrairCtwaReferral(message: unknown): CtwaReferral | undefined {
-  if (!message || typeof message !== 'object') return undefined;
+export function extrairCtwaReferral(
+  message: unknown,
+  /**
+   * `contextInfo` da RAIZ do registro do Evolution (irmão de `message`). Em
+   * mensagem de texto simples (`messageType: "conversation"`), o Evolution põe
+   * o contextInfo — com o `externalAdReply` do anúncio — AQUI, e não dentro de
+   * uma variante. Medido no 1º clique real num anúncio da Ribelt (30/09): a
+   * marca veio completa (ctwaClid, sourceId, sourceUrl) e o Betinna gravava a
+   * conversa SEM atribuição, porque só olhava as variantes.
+   */
+  contextInfoRaiz?: unknown,
+): CtwaReferral | undefined {
+  const candidatos: unknown[] = [];
+  if (message && typeof message === 'object') {
+    for (const variante of Object.values(message as Record<string, unknown>)) {
+      if (variante && typeof variante === 'object') {
+        candidatos.push((variante as Record<string, unknown>).contextInfo);
+      }
+    }
+  }
+  candidatos.push(contextInfoRaiz);
 
   let ad: Record<string, unknown> | undefined;
   let ctxAnuncio: Record<string, unknown> | undefined;
-  for (const variante of Object.values(message as Record<string, unknown>)) {
-    if (!variante || typeof variante !== 'object') continue;
-    const ctx = (variante as Record<string, unknown>).contextInfo;
+  for (const ctx of candidatos) {
     if (!ctx || typeof ctx !== 'object') continue;
     const c = ctx as Record<string, unknown>;
     const ear = c.externalAdReply;

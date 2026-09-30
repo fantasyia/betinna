@@ -27,6 +27,43 @@ describe('extrairCtwaReferral', () => {
     });
   });
 
+  it('texto SIMPLES ("conversation"): acha o anúncio no contextInfo da RAIZ (formato real do Evolution, 30/09)', () => {
+    // Estrutura medida no 1º clique real (anúncio da Ribelt): `message` só tem
+    // `conversation` (string) + messageContextInfo; o externalAdReply fica no
+    // contextInfo IRMÃO de `message`.
+    const message = {
+      conversation: 'Olá! Posso ter mais informações sobre isso?',
+      messageContextInfo: { deviceListMetadataVersion: 2 },
+    };
+    const contextInfoRaiz = {
+      mentionedJid: [],
+      groupMentions: [],
+      externalAdReply: {
+        title: 'Sua indústria em 16 canais de venda',
+        body: 'Indústria de cosméticos…',
+        ctwaClid: 'AffABC',
+        sourceId: '120255319246460496',
+        sourceType: 'ad',
+        sourceUrl: 'https://fb.me/x',
+        sourceApp: 'facebook',
+        showAdAttribution: true,
+      },
+    };
+    expect(extrairCtwaReferral(message)).toBeUndefined(); // o defeito: só olhava as variantes
+    expect(extrairCtwaReferral(message, contextInfoRaiz)).toMatchObject({
+      ctwaClid: 'AffABC',
+      sourceId: '120255319246460496',
+      sourceType: 'ad',
+      headline: 'Sua indústria em 16 canais de venda',
+    });
+  });
+
+  it('contextInfo da raiz SEM anúncio (mensagem comum) → undefined', () => {
+    expect(
+      extrairCtwaReferral({ conversation: 'oi' }, { mentionedJid: [], groupMentions: [] }),
+    ).toBeUndefined();
+  });
+
   it('guarda o bloco CRU (raw) — não perde campo que não mapeamos', () => {
     const r = extrairCtwaReferral({
       extendedTextMessage: {

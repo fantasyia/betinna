@@ -135,6 +135,34 @@ describe('EvolutionInboundService — parsing do webhook (messages.upsert)', () 
     expect(arg.data.getTime()).toBe(1_700_000_000 * 1000);
   });
 
+  it('anúncio CTWA em texto simples: lê o externalAdReply do contextInfo da RAIZ e manda no meta', async () => {
+    const { svc, inbox } = setup();
+    await svc.processarEvento(
+      upsert({
+        messages: [
+          msgTexto({
+            message: { conversation: 'Olá! Posso ter mais informações sobre isso?' },
+            messageType: 'conversation',
+            contextInfo: {
+              externalAdReply: {
+                title: 'Sua indústria em 16 canais de venda',
+                ctwaClid: 'AffABC',
+                sourceId: '120255319246460496',
+                sourceType: 'ad',
+              },
+            },
+          }),
+        ],
+      }),
+    );
+    const arg = inbox.processarMensagemEntrante.mock.calls[0][0];
+    expect(arg.meta.ctwaReferral).toMatchObject({
+      ctwaClid: 'AffABC',
+      sourceId: '120255319246460496',
+    });
+    expect(arg.meta.ctwaReferralCru).toBeDefined();
+  });
+
   it('aceita objeto único (sem array messages) — Evolution às vezes manda 1 msg só', async () => {
     const { svc, inbox } = setup();
     await svc.processarEvento(upsert(msgTexto()));

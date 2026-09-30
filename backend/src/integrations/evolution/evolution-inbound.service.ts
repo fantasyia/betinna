@@ -25,6 +25,11 @@ interface EvoMessage {
   messageTimestamp?: number;
   /** Mídia em base64 (quando a instância tem webhook base64:true). */
   base64?: string;
+  /**
+   * contextInfo na RAIZ: em texto simples ("conversation") é aqui que o
+   * Evolution entrega o `externalAdReply` do anúncio CTWA.
+   */
+  contextInfo?: Record<string, unknown>;
 }
 
 /**
@@ -316,7 +321,7 @@ export class EvolutionInboundService {
       // Atribuição de anúncio (CTWA). Só faz sentido em 1:1 INBOUND: grupo não vem
       // de anúncio e mensagem nossa (fromMe) não tem referral.
       const ctwaReferral =
-        !isGroup && !fromMe ? extrairCtwaReferral(m.message as unknown) : undefined;
+        !isGroup && !fromMe ? extrairCtwaReferral(m.message as unknown, m.contextInfo) : undefined;
 
       await this.inbox.processarMensagemEntrante({
         empresaId,
