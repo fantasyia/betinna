@@ -8,6 +8,7 @@ import { MLOAuthService } from './ml-oauth.service';
 import { MLOrdersService } from './ml-orders.service';
 import { MLQuestionsService } from './ml-questions.service';
 import { MLRespostaIaService } from './ml-resposta-ia.service';
+import { MLRespostaAutomaticaService } from './ml-resposta-automatica.service';
 import { MLService } from './ml.service';
 import { MLSyncJob } from './ml-sync.job';
 import { MLWebhookController } from './ml-webhook.controller';
@@ -31,6 +32,7 @@ import { MLWebhookController } from './ml-webhook.controller';
   controllers: [MLOAuthController, MLWebhookController],
   providers: [
     MLRespostaIaService,
+    MLRespostaAutomaticaService,
     MLClientService,
     MLOAuthService,
     MLQuestionsService,

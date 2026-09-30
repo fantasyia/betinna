@@ -16,6 +16,8 @@ export interface MensagemMkt {
   conteudo: string;
   status?: string;
   criadoEm: string;
+  /** Resposta automática do ML (IA) — mostra "Respondida pela IA". */
+  enviadaPorBot?: boolean;
   meta?: { erro?: string; ml_sender_role?: string; ml_item_id?: string } | null;
 }
 
@@ -180,7 +182,9 @@ export function RespostaEnviada({ m }: { m: MensagemMkt }) {
       )}
     >
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
-        <span>{falhou ? '⚠ Não enviada' : 'Sua resposta'}</span>
+        <span>
+          {falhou ? '⚠ Não enviada' : m.enviadaPorBot ? '✨ Respondida pela IA' : 'Sua resposta'}
+        </span>
         <span>{hora(m.criadoEm)}</span>
       </div>
       <div className="whitespace-pre-wrap text-text">{m.conteudo}</div>

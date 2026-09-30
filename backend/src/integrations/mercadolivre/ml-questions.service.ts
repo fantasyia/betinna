@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { MLClientService } from './ml-client.service';
+import { MLRespostaAutomaticaService } from './ml-resposta-automatica.service';
 import type { MLQuestion } from './ml.types';
 
 /**
@@ -52,6 +53,7 @@ export class MLQuestionsService {
   constructor(
     private readonly ml: MLClientService,
     private readonly inbox: InboxService,
+    @Optional() private readonly auto?: MLRespostaAutomaticaService,
   ) {}
 
   /** Busca pergunta pelo ID. */
@@ -68,7 +70,7 @@ export class MLQuestionsService {
     const peerId = `q:${q.id}`;
     const peerNome = `Comprador ML #${q.from.id}`;
 
-    await this.inbox.processarMensagemEntrante({
+    const r = await this.inbox.processarMensagemEntrante({
       empresaId,
       canal: 'MARKETPLACE_ML',
       peerId,
@@ -87,6 +89,12 @@ export class MLQuestionsService {
         categoria: 'PRE_VENDA',
       },
     });
+
+    // Resposta automática (chave própria do ML, desligada por padrão). Em
+    // segundo plano: a IA leva segundos e o webhook do ML espera resposta rápida.
+    if (this.auto && r?.conversationId) {
+      void this.auto.talvezResponder(empresaId, r.conversationId, q.status);
+    }
   }
 
   /**

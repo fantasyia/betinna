@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { api, apiErrorMessage } from '@/lib/api';
-import { Button, Dialog, Input, Textarea } from '@/components/ui';
+import { Button, Dialog, Input, Switch, Textarea } from '@/components/ui';
 
 /**
  * Respostas prontas da pré-venda (card ML, 30/09): textos que o vendedor
@@ -16,6 +16,7 @@ export interface RespostaPronta {
 
 interface ConfigComProntas {
   respostasProntas?: { marketplace?: RespostaPronta[] | null } | null;
+  mercadoLivre?: { respostaAutomatica?: boolean | null } | null;
 }
 
 export function useRespostasProntas() {
@@ -23,7 +24,60 @@ export function useRespostasProntas() {
   const cru = r.data?.respostasProntas?.marketplace;
   // referência estável: o diálogo reinicia o rascunho quando a lista muda
   const lista = useMemo(() => cru ?? [], [cru]);
-  return { lista, refetch: r.refetch };
+  return {
+    lista,
+    // Chave PRÓPRIA do ML (Léo, 30/09) — nada a ver com o bot do WhatsApp.
+    respostaAutomatica: r.data?.mercadoLivre?.respostaAutomatica === true,
+    refetch: r.refetch,
+  };
+}
+
+/**
+ * Liga/desliga a resposta automática das perguntas do ML. Só DIRETOR/ADMIN
+ * (quem pode gravar a config). Independente do bot do WhatsApp.
+ */
+export function RespostaAutomaticaMl({
+  ligada,
+  onMudou,
+}: {
+  ligada: boolean;
+  onMudou: () => void;
+}) {
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const alternar = async (v: boolean) => {
+    setSalvando(true);
+    setErro(null);
+    try {
+      await api.patch('/empresas/config', { mercadoLivre: { respostaAutomatica: v } });
+      onMudou();
+    } catch (err) {
+      setErro(apiErrorMessage(err));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col">
+      <span title="A IA responde sozinha quando a informação está no anúncio. Se não estiver, a pergunta fica marcada Humano. Não depende do bot do WhatsApp.">
+        <Switch
+          data-testid="ml-auto-toggle"
+          size="sm"
+          checked={ligada}
+          disabled={salvando}
+          label={`Resposta automática com IA: ${ligada ? 'ligada' : 'desligada'}`}
+          onChange={(e) => void alternar(e.target.checked)}
+        />
+      </span>
+      {erro && (
+        <span data-testid="ml-auto-erro" className="text-[12px] text-danger">
+          {erro}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function GerenciarRespostasProntas({

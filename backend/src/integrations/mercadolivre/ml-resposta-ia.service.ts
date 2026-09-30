@@ -332,6 +332,15 @@ export class MLRespostaIaService {
     return v;
   }
 
+  /** Marca a pergunta pra um humano (ex.: a resposta automática não conseguiu enviar). */
+  async marcarParaHumano(conversationId: string): Promise<void> {
+    const c = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { tagsInternas: true },
+    });
+    if (c) await this.marcarHumano(conversationId, c.tagsInternas);
+  }
+
   private async marcarHumano(conversationId: string, tags: string[]): Promise<void> {
     if (tags.some((t) => t.toLowerCase() === TAG_HUMANO)) return;
     await this.prisma.conversation.update({

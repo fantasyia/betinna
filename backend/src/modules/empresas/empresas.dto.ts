@@ -526,6 +526,17 @@ const respostasProntasSchema = z
   .strip();
 
 /**
+ * Mercado Livre (Léo, 30/09). `respostaAutomatica`: a IA responde sozinha a
+ * pergunta de anúncio quando a informação está no anúncio. Chave PRÓPRIA —
+ * independente do bot do WhatsApp. Ausente/false = desligada.
+ */
+const mercadoLivreSchema = z
+  .object({
+    respostaAutomatica: z.boolean().nullable().optional(),
+  })
+  .strip();
+
+/**
  * Integração com o ERP (Tiny): o que o pedido leva ao subir.
  * - ecommerceId: e-commerce cadastrado lá (amarra o pedido ao canal do site);
  * - formaEnvioId/formaFreteId: transportadora padrão — sem ela o pedido nasce
@@ -618,6 +629,7 @@ export const tenantConfigPatchSchema = z
     funilEtapas: funilEtapasSchema.nullable(),
     entradaAnuncios: entradaAnunciosSchema.nullable(),
     respostasProntas: respostasProntasSchema.nullable().optional(),
+    mercadoLivre: mercadoLivreSchema.nullable().optional(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

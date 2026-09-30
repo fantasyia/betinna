@@ -134,6 +134,41 @@ describe('pré-venda: anúncio, espera e respostas prontas', () => {
     expect(dir.getByTestId('prontas-gerenciar').textContent).toContain('(1)');
   });
 
+  it('resposta automática: chave própria do ML, gravada em mercadoLivre (não no bot)', async () => {
+    papel = 'DIRECTOR';
+    patch.mockResolvedValue({});
+    const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    const t = getByTestId('ml-auto-toggle') as HTMLInputElement;
+    expect(t.checked).toBe(false); // desligada por padrão
+    fireEvent.click(t);
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith('/empresas/config', {
+        mercadoLivre: { respostaAutomatica: true },
+      }),
+    );
+  });
+
+  it('resposta mandada pela IA aparece como "Respondida pela IA"', () => {
+    mensagens = [
+      {
+        id: 'm9',
+        direction: 'OUTBOUND',
+        conteudo: 'Temos sim.',
+        status: 'SENT',
+        enviadaPorBot: true,
+        criadoEm: '2026-09-30T10:00:00.000Z',
+      },
+      pergunta,
+    ];
+    const { getByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    expect(getByTestId('mkt-resposta').textContent).toContain('Respondida pela IA');
+  });
+
+  it('SAC não vê o interruptor da resposta automática', () => {
+    const { queryByTestId } = render(<ConversasMarketplace grupo="pre_venda" />);
+    expect(queryByTestId('ml-auto-toggle')).toBeNull();
+  });
+
   it('salvar grava a lista inteira na config; item sem texto é recusado', async () => {
     papel = 'ADMIN';
     patch.mockResolvedValue({});

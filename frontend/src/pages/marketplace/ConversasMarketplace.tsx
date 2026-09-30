@@ -4,6 +4,7 @@ import { Button } from '@/components/ui';
 import { useRole } from '@/hooks/usePermission';
 import {
   GerenciarRespostasProntas,
+  RespostaAutomaticaMl,
   useRespostasProntas,
   type RespostaPronta,
 } from '@/pages/marketplace/RespostasProntas';
@@ -65,7 +66,8 @@ export function ConversasMarketplace({ grupo }: { grupo: GrupoMarketplace }) {
   return (
     <>
       {grupo === 'pre_venda' && podeEditarProntas && (
-        <div className="flex justify-end px-4 py-2 border-b border-border">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-border">
+          <RespostaAutomaticaMl ligada={prontas.respostaAutomatica} onMudou={prontas.refetch} />
           <Button
             size="sm"
             variant="secondary"
