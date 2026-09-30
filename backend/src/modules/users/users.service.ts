@@ -158,11 +158,17 @@ export class UsersService {
     // AUDITORIA 2026-05-15 P0: ADMIN pode filtrar por qualquer empresa.
     // DIRECTOR/GERENTE só podem ver usuários da própria empresa ativa.
     // - Se ADMIN passa params.empresaId, respeita.
-    // - Se ADMIN não passa, mostra TODOS (cross-tenant).
+    // - Se ADMIN não passa, usa a EMPRESA ATIVA (a que ele selecionou). Antes
+    //   mostrava TODOS (cross-tenant): o Léo, como ADMIN com a Ribelt selecionada,
+    //   via os usuários da Somatec na lista e nos seletores (atribuir conversa,
+    //   responsável no fluxo, membros de quadro), 30/09. Só sem empresa ativa
+    //   o ADMIN segue vendo todos.
     // - Se DIRECTOR/GERENTE passa params.empresaId, valida que é a própria.
     // - Se DIRECTOR/GERENTE não passa, força empresa ativa.
     let empresaIdFiltro = params.empresaId;
-    if (!isGlobalAdmin(user)) {
+    if (isGlobalAdmin(user)) {
+      empresaIdFiltro ??= user.empresaIdAtiva ?? undefined;
+    } else {
       if (!user.empresaIdAtiva) {
         throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
       }

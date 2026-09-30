@@ -167,11 +167,24 @@ describe('UsersService', () => {
   describe('list', () => {
     const defaultParams = { page: 1, limit: 20 };
 
-    it('ADMIN sem empresaId → não injeta filtro de empresa', async () => {
+    it('ADMIN com empresa ATIVA e sem empresaId → só os usuários da empresa selecionada (Léo, 30/09)', async () => {
       prisma.usuario.count.mockResolvedValue(0);
       prisma.usuario.findMany.mockResolvedValue([]);
 
-      await service.list(fakeUser({ role: 'ADMIN' }), defaultParams);
+      await service.list(fakeUser({ role: 'ADMIN', empresaIdAtiva: 'emp-ribelt' }), defaultParams);
+
+      const args = prisma.usuario.findMany.mock.calls[0][0];
+      expect(args.where.empresas).toEqual({ some: { empresaId: 'emp-ribelt' } });
+      expect(prisma.usuario.count.mock.calls[0][0].where.empresas).toEqual({
+        some: { empresaId: 'emp-ribelt' },
+      });
+    });
+
+    it('ADMIN sem empresa ativa e sem empresaId → não injeta filtro de empresa', async () => {
+      prisma.usuario.count.mockResolvedValue(0);
+      prisma.usuario.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser({ role: 'ADMIN', empresaIdAtiva: null }), defaultParams);
 
       const args = prisma.usuario.findMany.mock.calls[0][0];
       expect(args.where.empresas).toBeUndefined();
