@@ -58,6 +58,7 @@ beforeEach(() => {
   capturaExcecao.mockClear();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -77,23 +78,20 @@ describe('rotaDaApi', () => {
 });
 
 describe('impressão digital no Sentry', () => {
-  it('timeout em rotas DIFERENTES do mesmo método → issues diferentes (o caso da FRONT-9)', async () => {
+  it('timeout: a rajada vira UMA issue, com a rota na tag (01/10: 1 engasgo = 14 issues)', async () => {
     vi.stubGlobal('fetch', fetchQueNuncaResponde());
     const sync = await timeoutEm('/integracoes/tiny/sync/produtos', 'post');
     const presenca = await timeoutEm('/inbox/cmuna5iot000gmn5ivl3fw072/presenca', 'post');
+    const badges = await timeoutEm('/badges');
 
-    expect(sync).toEqual(['api-client', 'TIMEOUT', 'POST', '/integracoes/tiny/sync/produtos']);
-    expect(presenca).toEqual(['api-client', 'TIMEOUT', 'POST', '/inbox/:id/presenca']);
+    expect(sync).toEqual(['api-client', 'TIMEOUT']);
+    expect(presenca).toEqual(sync);
+    expect(badges).toEqual(sync);
+    const tags = (capturaMensagem.mock.calls.at(-1)?.[1] as { tags?: { rota?: string } }).tags;
+    expect(tags?.rota).toBe('/badges');
   });
 
-  it('mesma rota com ids diferentes → MESMA issue', async () => {
-    vi.stubGlobal('fetch', fetchQueNuncaResponde());
-    const a = await timeoutEm('/inbox/cmuna5iot000gmn5ivl3fw072/presenca', 'post');
-    const b = await timeoutEm('/inbox/cmzzz9iot000gmn5ivl3fw999/presenca', 'post');
-    expect(a).toEqual(b);
-  });
-
-  it('5xx também agrupa por rota e status', async () => {
+  it('5xx continua POR ROTA — aí a rota aponta o endpoint com defeito', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -107,5 +105,55 @@ describe('impressão digital no Sentry', () => {
     await api.get('/badges').catch(() => undefined);
     const opts = capturaExcecao.mock.calls.at(-1)?.[1] as { fingerprint?: string[] };
     expect(opts.fingerprint).toEqual(['api-client', 'http-500', 'GET', '/badges']);
+  });
+
+  it('429 continua POR ROTA, e ids diferentes caem na mesma issue', async () => {
+    const resposta429 = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'calma' } }),
+      text: async () => '',
+    }));
+    vi.stubGlobal('fetch', resposta429);
+    await api.get('/inbox/messages/cmuna5iot000gmn5ivl3fw072/media').catch(() => undefined);
+    const a = (capturaMensagem.mock.calls.at(-1)?.[1] as { fingerprint?: string[] }).fingerprint;
+    await api.get('/inbox/messages/cmzzz9iot000gmn5ivl3fw999/media').catch(() => undefined);
+    const b = (capturaMensagem.mock.calls.at(-1)?.[1] as { fingerprint?: string[] }).fingerprint;
+
+    expect(a).toEqual(['api-client', 'RATE_LIMIT_EXCEEDED', 'GET', '/inbox/messages/:id/media']);
+    expect(b).toEqual(a);
+  });
+});
+
+describe('timeout que é do CLIENTE não vai pro Sentry', () => {
+  it('navegador offline: não reporta', async () => {
+    vi.stubGlobal('fetch', fetchQueNuncaResponde());
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await timeoutEm('/badges');
+    expect(capturaMensagem).not.toHaveBeenCalled();
+  });
+
+  it('aba escondida enquanto esperava (notebook dormindo): não reporta', async () => {
+    vi.stubGlobal('fetch', fetchQueNuncaResponde());
+    const visivel = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const p = api.get('/badges').catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(2_000);
+    visivel.mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(1_000);
+    visivel.mockReturnValue('visible');
+    await vi.advanceTimersByTimeAsync(10_000);
+    await p;
+    expect(capturaMensagem).not.toHaveBeenCalled();
+  });
+
+  it('aba visível e online o tempo todo: reporta (o timeout pode ser nosso)', async () => {
+    // O relógio falso recomeça a cada teste; o anterior marcou 'escondida' no futuro dele.
+    vi.setSystemTime(Date.now() + 3_600_000);
+    vi.stubGlobal('fetch', fetchQueNuncaResponde());
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    expect(await timeoutEm('/badges')).toEqual(['api-client', 'TIMEOUT']);
   });
 });

@@ -88,13 +88,38 @@ function impressaoDigital(tipo: string, method: string, url: string): string[] {
 }
 
 /**
+ * Última vez que a aba ficou ESCONDIDA (ms). Aba em segundo plano tem timer
+ * estrangulado e notebook dormindo congela a requisição: o `abort` de 10s
+ * dispara ao acordar, sem a API ter culpa nenhuma.
+ */
+let ultimaVezOculta = 0;
+if (typeof document !== 'undefined') {
+  if (document.visibilityState === 'hidden') ultimaVezOculta = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') ultimaVezOculta = Date.now();
+  });
+}
+
+/**
+ * O timeout é do CLIENTE, não da API? Navegador offline, ou aba escondida em
+ * algum momento enquanto a requisição esperava. Esse não vai pro Sentry: não há
+ * o que consertar do nosso lado, e cada engasgo virava uma rajada de issues
+ * (01/10: 3 engasgos de notebook = 14 issues, com a API em 7% de CPU).
+ */
+export function timeoutEhDoCliente(inicio: number, agora = Date.now()): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return true;
+  return ultimaVezOculta >= inicio && ultimaVezOculta <= agora;
+}
+
+/**
  * Reporta erros HTTP no Sentry. Por padrão:
  *  - 5xx → sempre captura (bug do nosso lado ou integração)
  *  - 4xx → não captura (client error: validação, perm, etc — esperado)
  *  - 401/403/404/422 → silencioso (fluxo normal de auth/perm/validação)
  *  - 408/429 → captura como warning (timeout, rate limit — pode ser nosso problema)
  */
-function reportApiError(error: ApiError, url: string, method: string): void {
+function reportApiError(error: ApiError, url: string, method: string, inicio?: number): void {
   try {
     // 5xx sempre
     if (error.status >= 500) {
@@ -106,6 +131,8 @@ function reportApiError(error: ApiError, url: string, method: string): void {
       return;
     }
     // 408 timeout, 429 rate limit — captura como warning
+    const ehTimeout = error.code === 'TIMEOUT' || error.status === 408;
+    if (ehTimeout && inicio !== undefined && timeoutEhDoCliente(inicio)) return;
     if (error.status === 408 || error.status === 429 || error.code === 'TIMEOUT') {
       Sentry.captureMessage(`API ${error.code}: ${method} ${url}`, {
         level: 'warning',
@@ -115,7 +142,12 @@ function reportApiError(error: ApiError, url: string, method: string): void {
           statusGroup: error.status === 429 ? '429' : '408',
           rota: rotaDaApi(url),
         },
-        fingerprint: impressaoDigital(error.code || String(error.status), method, url),
+        // Timeout: UMA issue pra rajada. Quando trava, trava tudo junto (as ~14
+        // chamadas de uma tela), então a rota não diz a causa — ela fica na tag
+        // `rota`. 429 continua por rota: aí a rota É o endpoint em rajada.
+        fingerprint: ehTimeout
+          ? ['api-client', 'TIMEOUT']
+          : impressaoDigital(error.code || String(error.status), method, url),
         extra: {
           status: error.status,
           code: error.code,
@@ -219,6 +251,7 @@ async function request<T>(
 
   const controller = new AbortController();
   const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
+  const inicioRequisicao = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
@@ -244,7 +277,7 @@ async function request<T>(
     clearTimeout(timer);
     if (err instanceof DOMException && err.name === 'AbortError') {
       const timeoutErr = new ApiError(0, 'TIMEOUT', `Requisição excedeu ${timeoutMs / 1000}s`);
-      reportApiError(timeoutErr, url, method);
+      reportApiError(timeoutErr, url, method, inicioRequisicao);
       throw timeoutErr;
     }
     const networkErr = new ApiError(
