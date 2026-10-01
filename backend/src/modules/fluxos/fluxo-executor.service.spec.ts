@@ -714,6 +714,26 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('empresa SEM funil padrão: nasce no 1º funil ATIVO, não fica fora de todo kanban (Ribelt, 30/09)', async () => {
+      prepararNo({});
+      prisma.conversation.findFirst.mockResolvedValue(conversaComAnuncio());
+      prisma.funilEtapa.findFirst
+        .mockResolvedValueOnce(null) // não há funil marcado como padrão
+        .mockResolvedValueOnce({ id: 'et-prospeccao-1', funilId: 'funil-prospeccao' });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      const criado = prisma.lead.create.mock.calls[0][0].data;
+      expect(criado).toMatchObject({
+        funilId: 'funil-prospeccao',
+        funilEtapaId: 'et-prospeccao-1',
+      });
+      expect(prisma.funilEtapa.findFirst).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ where: { funil: { empresaId: 'emp-1', ativo: true } } }),
+      );
+    });
+
     it('conversa que o orquestrador JÁ amarrou (anúncio): o CRIAR_LEAD do T1 só usa o lead, não duplica', async () => {
       prepararNo({ funilEtapaId: 'et-triagem' });
       prisma.conversation.findFirst.mockResolvedValue(

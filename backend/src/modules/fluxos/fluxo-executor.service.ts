@@ -3162,13 +3162,22 @@ export class FluxoExecutorService {
       funilEtapaId = etapa.id;
       etapaEnum = etapa.tipo === 'GANHO' ? 'GANHO' : etapa.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
     } else {
-      // Item 10 (29/09): sem etapa → 1ª etapa ATIVA do funil PADRÃO. Antes o lead
+      // Item 10 (29/09): sem etapa → 1ª etapa do funil PADRÃO. Antes o lead
       // nascia com funilId=null e não aparecia em kanban nenhum.
-      const padrao = await this.prisma.funilEtapa.findFirst({
-        where: { funil: { empresaId, isPadrao: true, ativo: true } },
-        orderBy: { ordem: 'asc' },
-        select: { id: true, funilId: true },
-      });
+      // 30/09: empresa SEM funil marcado como padrão (a Ribelt tem um funil só,
+      // não marcado) → 1º funil ATIVO, a mesma regra que o kanban usa pra
+      // escolher o que mostrar. Sem isso o lead de anúncio caía fora de tudo.
+      const padrao =
+        (await this.prisma.funilEtapa.findFirst({
+          where: { funil: { empresaId, isPadrao: true, ativo: true } },
+          orderBy: { ordem: 'asc' },
+          select: { id: true, funilId: true },
+        })) ??
+        (await this.prisma.funilEtapa.findFirst({
+          where: { funil: { empresaId, ativo: true } },
+          orderBy: [{ funil: { ordem: 'asc' } }, { funil: { criadoEm: 'asc' } }, { ordem: 'asc' }],
+          select: { id: true, funilId: true },
+        }));
       if (padrao) {
         funilId = padrao.funilId;
         funilEtapaId = padrao.id;

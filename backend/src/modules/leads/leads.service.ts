@@ -782,10 +782,18 @@ export class LeadsService {
       if (!f) throw new BusinessRuleException('Funil inválido ou de outra empresa');
       funilId = f.id;
     } else {
-      const padrao = await this.prisma.funil.findFirst({
-        where: { empresaId, isPadrao: true, ativo: true },
-        select: { id: true },
-      });
+      // Sem funil PADRÃO → 1º funil ATIVO (mesma regra do kanban). Sem isso o
+      // lead (Lead Ads, site) nascia com funilId=null, fora de todo kanban (30/09).
+      const padrao =
+        (await this.prisma.funil.findFirst({
+          where: { empresaId, isPadrao: true, ativo: true },
+          select: { id: true },
+        })) ??
+        (await this.prisma.funil.findFirst({
+          where: { empresaId, ativo: true },
+          orderBy: [{ ordem: 'asc' }, { criadoEm: 'asc' }],
+          select: { id: true },
+        }));
       funilId = padrao?.id ?? null;
     }
     if (!funilId) return { funilId: null, funilEtapaId: null };
