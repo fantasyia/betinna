@@ -2120,6 +2120,38 @@ export class FluxoExecutorService {
             },
             ctxEnvio,
           );
+          // Grava na conversa, igual ao texto abaixo. Sem isto o arquivo saía pro
+          // cliente e NÃO aparecia na inbox (Ribelt, 01/10: o PDF da proposta foi
+          // entregue e o Léo não via nada na conversa). Best-effort.
+          await this.inbox
+            .processarMensagemEntrante({
+              empresaId,
+              canal: 'WHATSAPP',
+              peerId,
+              tipo: cfg.midia.tipo,
+              conteudo:
+                mensagem ||
+                (cfg.midia.tipo === 'DOCUMENT' && cfg.midia.fileName
+                  ? cfg.midia.fileName
+                  : {
+                      IMAGE: '[imagem]',
+                      VIDEO: '[vídeo]',
+                      AUDIO: '[áudio]',
+                      DOCUMENT: '[documento]',
+                    }[cfg.midia.tipo]),
+              direction: 'OUTBOUND',
+              enviadaPorBot: true,
+              externalId: r.externalId ?? undefined,
+              mediaUrl: cfg.midia.storagePath,
+              mediaMime: cfg.midia.mimetype,
+              proprietarioId: ctxEnvio.proprietarioId ?? undefined,
+            })
+            .catch((err: unknown) =>
+              this.logger.warn(
+                `ENVIAR_WHATSAPP: falha ao registrar a mídia na conversa: ` +
+                  `${err instanceof Error ? err.message : String(err)}`,
+              ),
+            );
           return {
             peerId,
             modo,

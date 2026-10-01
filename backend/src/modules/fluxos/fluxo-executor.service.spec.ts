@@ -1807,6 +1807,19 @@ describe('FluxoExecutorService', () => {
         { idempotencyKey: 'fx:exec-1:no-wa:p0' },
       );
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      // O arquivo também fica na conversa (Ribelt, 01/10: o PDF saiu e não
+      // aparecia na inbox).
+      expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
+        expect.objectContaining({
+          direction: 'OUTBOUND',
+          enviadaPorBot: true,
+          tipo: 'DOCUMENT',
+          conteudo: 'Segue a tabela, Carlos',
+          externalId: 'wa-midia-1',
+          mediaUrl: 'emp-1/fluxo/doc.pdf',
+          mediaMime: 'application/pdf',
+        }),
+      );
     });
 
     it('BL-1: envio falha + instância Evolution desconectada → alerta o diretor', async () => {
