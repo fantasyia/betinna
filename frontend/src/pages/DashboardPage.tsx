@@ -107,6 +107,8 @@ interface FunilStage {
   probabilidade?: number;
   valorPonderado?: number;
   entradasPeriodo?: number;
+  /** % (0–100) dos que entraram aqui e chegaram à próxima — calculado no backend. */
+  taxaAvanco?: number | null;
   tempoMedioDias?: number | null;
 }
 
@@ -701,13 +703,10 @@ function FunilCard() {
 function FunnelView({ stages, funilId }: { stages: FunilStage[]; funilId: string }) {
   const max = Math.max(...stages.map((s) => s.count), 1);
   const [etapaAberta, setEtapaAberta] = useState<{ id: string; nome: string } | null>(null);
-  // Conversão entre etapas: ENTRADAS no período (histórico), etapa i → i+1.
-  const conv = (i: number): number | null => {
-    const de = stages[i]?.entradasPeriodo ?? 0;
-    const para = stages[i + 1]?.entradasPeriodo ?? 0;
-    if (de <= 0) return null;
-    return Math.round((para / de) * 100);
-  };
+  // Conversão etapa i → i+1: vem pronta do backend (coorte de LEADS distintos).
+  // Dividir entradas da próxima pelas desta dava "350% avançam" quando um lead
+  // ia e voltava, ou caía direto na etapa seguinte (01/10).
+  const conv = (i: number): number | null => stages[i]?.taxaAvanco ?? null;
   return (
     <>
       <ul className="flex flex-col gap-0">

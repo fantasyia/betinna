@@ -392,6 +392,8 @@ export class RelatoriosService {
       valorPonderado?: number;
       /** Leads que ENTRARAM na etapa no período (histórico) — base da conversão. */
       entradasPeriodo?: number;
+      /** % dos leads que entraram aqui no período e chegaram à próxima etapa (0–100). */
+      taxaAvanco?: number | null;
       /** Tempo médio (dias) que um lead fica nesta etapa, via histórico. */
       tempoMedioDias?: number | null;
     }>;
@@ -405,28 +407,38 @@ export class RelatoriosService {
       const byEtapa = new Map(porFunilEtapa.map((g) => [g.funilEtapaId, g]));
 
       // M5 (dashboard): conversão entre etapas + tempo médio parado — as duas
-      // vêm do HISTÓRICO de transições, não do snapshot. Métricas de GESTÃO:
-      // computadas no âmbito da empresa/funil (sem recorte de carteira — o
-      // recorte do rep vale pras contagens, não pra taxa histórica do funil).
+      // vêm do HISTÓRICO de transições, não do snapshot. Contam LEADS distintos
+      // (não transições) e respeitam a carteira, igual ao M8: em 01/10 UM lead
+      // de teste indo e voltando virou "350% avançam", e o REP via a empresa
+      // toda num painel em que os outros números eram só dele.
+      const repIds =
+        rf === undefined ? null : rf.equals ? [rf.equals] : ((rf.in as string[]) ?? []);
+      const carteiraSql =
+        repIds === null
+          ? Prisma.empty
+          : Prisma.sql`AND l."representanteId" = ANY(${repIds.length ? repIds : ['__none__']})`;
       const [entradas, tempos] = await Promise.all([
-        this.prisma.leadEtapaHistorico.groupBy({
-          by: ['etapaDestino'],
+        this.prisma.leadEtapaHistorico.findMany({
           where: {
             empresaId,
             funilId: funilCustom.id,
             ocorridoEm: { gte: de, lte: ate },
             etapaDestino: { not: null },
+            ...(rf !== undefined ? { lead: { representanteId: rf } } : {}),
           },
-          _count: { _all: true },
+          distinct: ['leadId', 'etapaDestino'],
+          select: { leadId: true, etapaDestino: true },
         }),
         // Tempo na etapa = intervalo entre ENTRAR nela (etapaDestino=E) e a
         // PRÓXIMA transição do mesmo lead (janela LAG/LEAD por lead).
         this.prisma.$queryRaw<Array<{ etapa: string; dias: number }>>`
           WITH t AS (
-            SELECT "leadId", "etapaDestino" AS etapa, "ocorridoEm",
-                   LEAD("ocorridoEm") OVER (PARTITION BY "leadId" ORDER BY "ocorridoEm") AS saida
-            FROM "LeadEtapaHistorico"
-            WHERE "empresaId" = ${empresaId} AND "funilId" = ${funilCustom.id}
+            SELECT h."leadId", h."etapaDestino" AS etapa, h."ocorridoEm",
+                   LEAD(h."ocorridoEm") OVER (PARTITION BY h."leadId" ORDER BY h."ocorridoEm") AS saida
+            FROM "LeadEtapaHistorico" h
+            JOIN "Lead" l ON l."id" = h."leadId"
+            WHERE h."empresaId" = ${empresaId} AND h."funilId" = ${funilCustom.id}
+              ${carteiraSql}
           )
           SELECT etapa, (AVG(EXTRACT(EPOCH FROM (saida - "ocorridoEm")) / 86400))::float AS dias
           FROM t
@@ -434,12 +446,25 @@ export class RelatoriosService {
           GROUP BY etapa
         `,
       ]);
-      const entradasPorEtapa = new Map(entradas.map((e) => [e.etapaDestino, e._count._all]));
+      const leadsPorEtapa = new Map<string, Set<string>>();
+      for (const e of entradas) {
+        if (!e.etapaDestino) continue;
+        const s = leadsPorEtapa.get(e.etapaDestino) ?? new Set<string>();
+        s.add(e.leadId);
+        leadsPorEtapa.set(e.etapaDestino, s);
+      }
       const tempoPorEtapa = new Map(tempos.map((t) => [t.etapa, t.dias]));
 
-      funilAtual = funilCustom.etapas.map((et) => {
+      funilAtual = funilCustom.etapas.map((et, i) => {
         const g = byEtapa.get(et.id);
         const valor = arredondar(g?._sum.valorEstimado ?? null);
+        const aqui = leadsPorEtapa.get(et.id) ?? new Set<string>();
+        const proxima = funilCustom.etapas[i + 1];
+        const naProx = proxima ? (leadsPorEtapa.get(proxima.id) ?? new Set<string>()) : null;
+        // Coorte: dos que entraram AQUI, quantos também entraram na próxima —
+        // interseção, nunca passa de 100%.
+        let avancaram = 0;
+        if (naProx) for (const id of aqui) if (naProx.has(id)) avancaram++;
         return {
           etapa: et.id,
           label: et.nome,
@@ -448,7 +473,9 @@ export class RelatoriosService {
           valorEstimado: valor,
           probabilidade: et.probabilidade,
           valorPonderado: Math.round(valor * et.probabilidade) / 100,
-          entradasPeriodo: entradasPorEtapa.get(et.id) ?? 0,
+          entradasPeriodo: aqui.size,
+          taxaAvanco:
+            naProx !== null && aqui.size > 0 ? Math.round((avancaram / aqui.size) * 100) : null,
           tempoMedioDias:
             tempoPorEtapa.get(et.id) != null
               ? Math.round(tempoPorEtapa.get(et.id)! * 10) / 10

@@ -29,7 +29,7 @@ const makePrismaMock = () => ({
     findMany: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
   leadEtapaHistorico: {
-    groupBy: vi.fn().mockResolvedValue([]),
+    findMany: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
   funil: {
     findFirst: vi.fn().mockResolvedValue(null),
@@ -321,6 +321,55 @@ describe('RelatoriosService', () => {
       for (const call of prisma.lead.count.mock.calls) {
         expect(call[0].where.funilId).toBe('fun-1');
       }
+    });
+
+    it('conversão por etapa conta LEADS e nunca passa de 100% (caso real 01/10)', async () => {
+      // UM lead de teste devolvido pra Entrada e avançado várias vezes, mais dois
+      // que caíram direto em Proposta. A busca já vem distinta por (lead, etapa).
+      prisma.funil.findFirst.mockResolvedValueOnce({
+        id: 'fun-1',
+        etapas: [
+          { id: 'et-novo', nome: 'Entrada', cor: '#111', tipo: 'ATIVA', probabilidade: 10 },
+          { id: 'et-prop', nome: 'Proposta', cor: '#222', tipo: 'ATIVA', probabilidade: 50 },
+        ],
+      });
+      prisma.leadEtapaHistorico.findMany.mockResolvedValueOnce([
+        { leadId: 'teste', etapaDestino: 'et-novo' },
+        { leadId: 'teste', etapaDestino: 'et-prop' },
+        { leadId: 'direto-1', etapaDestino: 'et-prop' },
+        { leadId: 'direto-2', etapaDestino: 'et-prop' },
+      ]);
+
+      const result = await service.funil(fakeUser(), { ...basePeriodo, funilId: 'fun-1' });
+
+      const [novo, prop] = result.funilAtual as Array<Record<string, unknown>>;
+      expect(novo).toMatchObject({ entradasPeriodo: 1, taxaAvanco: 100 });
+      expect(prop).toMatchObject({ entradasPeriodo: 3, taxaAvanco: null });
+      expect(prisma.leadEtapaHistorico.findMany.mock.calls[0][0].distinct).toEqual([
+        'leadId',
+        'etapaDestino',
+      ]);
+    });
+
+    it('REP: conversão e tempo por etapa recortam a carteira', async () => {
+      prisma.funil.findFirst.mockResolvedValueOnce({
+        id: 'fun-1',
+        etapas: [{ id: 'et-novo', nome: 'Entrada', cor: '#111', tipo: 'ATIVA', probabilidade: 10 }],
+      });
+      await service.funil(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), {
+        ...basePeriodo,
+        funilId: 'fun-1',
+      });
+
+      const where = prisma.leadEtapaHistorico.findMany.mock.calls[0][0].where;
+      expect(where.lead).toEqual({ representanteId: { in: ['rep-1'] } });
+      // SQL do tempo por etapa: o fragmento da carteira leva o id do rep.
+      const vals = prisma.$queryRaw.mock.calls.at(-1)!.slice(1) as unknown[];
+      const frag = vals.find(
+        (v) => typeof v === 'object' && v !== null && 'values' in (v as object),
+      ) as { sql: string; values: unknown[] } | undefined;
+      expect(frag?.sql).toContain('representanteId');
+      expect(frag?.values).toContainEqual(['rep-1']);
     });
 
     it('com funilId inexistente/de outra empresa → NotFoundException', async () => {
