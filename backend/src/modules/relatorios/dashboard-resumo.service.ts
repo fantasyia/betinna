@@ -272,7 +272,10 @@ export class DashboardResumoService {
         where: {
           empresaId,
           usuarioId: user.id,
-          data: { gte: inicioDoDia(agora), lt: new Date(inicioDoDia(agora).getTime() + DIA_MS) },
+          data: {
+            gte: inicioDoDiaEm(agora),
+            lt: new Date(inicioDoDiaEm(agora).getTime() + DIA_MS),
+          },
         },
       }),
       // Prontidão: SLA modelado mas SEM ação configurada (acaoSlaExpirado null).
@@ -341,9 +344,10 @@ export class DashboardResumoService {
     // ── M3 Agenda de hoje — "o que EU faço" + "o que a MÁQUINA faz" ───────
     // Uma lista SÓ, ordenada por hora: ver o robô agendado ao lado dos próprios
     // compromissos é o que dá sensação de controle (regra do card: não separar).
-    const fimDoDia = new Date(inicioDoDia(agora).getTime() + DIA_MS);
+    const comecoDoDia = inicioDoDiaEm(agora);
+    const fimDoDia = new Date(comecoDoDia.getTime() + DIA_MS);
     const agendaEventos = await this.prisma.agendaItem.findMany({
-      where: { empresaId, usuarioId: user.id, data: { gte: inicioDoDia(agora), lt: fimDoDia } },
+      where: { empresaId, usuarioId: user.id, data: { gte: comecoDoDia, lt: fimDoDia } },
       orderBy: { data: 'asc' },
       take: 12,
       select: { id: true, titulo: true, data: true, tipo: true },
@@ -1013,9 +1017,40 @@ export class DashboardResumoService {
   }
 }
 
-/** Meia-noite LOCAL do servidor — suficiente pro corte "tarefas de hoje". */
+/**
+ * Meia-noite em UTC (o servidor roda em UTC). Serve só pra casar os buckets dos
+ * gráficos com o `date_trunc('day', …)` do banco, que também corta em UTC.
+ * NÃO usar pra "hoje" do usuário — pra isso é `inicioDoDiaEm`.
+ */
 function inicioDoDia(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
+}
+
+/**
+ * Meia-noite do dia de `d` no fuso `tz` (padrão: Brasília), como instante UTC.
+ * "Tarefas hoje" e "Agenda de hoje" cortavam o dia em UTC: depois das 21h de
+ * Brasília o card já mostrava as tarefas de amanhã, e de manhã contava as da
+ * noite anterior (achado pela sessão da Ribelt, 01/10).
+ */
+export function inicioDoDiaEm(d: Date, tz: string = TZ_PADRAO): Date {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  // Diferença entre o relógio local "lido como UTC" e o instante real = offset do fuso.
+  const localComoUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  const offset = localComoUtc - Math.floor(d.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(+p.year, +p.month - 1, +p.day) - offset);
 }

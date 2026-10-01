@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import { DashboardResumoService } from './dashboard-resumo.service';
+import { DashboardResumoService, inicioDoDiaEm } from './dashboard-resumo.service';
 
 const user = (over: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
   id: 'u1',
@@ -687,5 +687,47 @@ describe('agenda do robô com o resultado de cada horário + falhas 72h', () => 
       }),
     ]);
     vi.useRealTimers();
+  });
+});
+
+/**
+ * "Tarefas hoje" e "Agenda de hoje" cortavam o dia em UTC (achado da sessão da
+ * Ribelt, 01/10): às 17h55 de Brasília o card contava 4 tarefas, duas delas
+ * da noite ANTERIOR (21h e 22h de 30/09 = 01/10 em UTC); e depois das 21h o
+ * card passava a mostrar as de amanhã.
+ */
+describe('dia de "hoje" no fuso de Brasília', () => {
+  it('inicioDoDiaEm: meia-noite de Brasília, inclusive entre 21h e 0h (já é amanhã em UTC)', () => {
+    // 21:55 de 01/10 em Brasília = 00:55Z de 02/10.
+    expect(inicioDoDiaEm(new Date('2026-10-02T00:55:00Z')).toISOString()).toBe(
+      '2026-10-01T03:00:00.000Z',
+    );
+    // 00:30 de 01/10 em Brasília = 03:30Z.
+    expect(inicioDoDiaEm(new Date('2026-10-01T03:30:00Z')).toISOString()).toBe(
+      '2026-10-01T03:00:00.000Z',
+    );
+    // 23:59 de 30/09 em Brasília = 02:59Z de 01/10 → ainda é 30/09.
+    expect(inicioDoDiaEm(new Date('2026-10-01T02:59:00Z')).toISOString()).toBe(
+      '2026-09-30T03:00:00.000Z',
+    );
+  });
+
+  it('a contagem e a lista da agenda usam a janela de Brasília', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-02T00:55:00Z')); // 21:55 de 01/10 em Brasília
+    try {
+      const prisma = makePrisma();
+      const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+      await svc.resumo(user());
+
+      const janela = {
+        gte: new Date('2026-10-01T03:00:00.000Z'),
+        lt: new Date('2026-10-02T03:00:00.000Z'),
+      };
+      expect(prisma.agendaItem.count.mock.calls[0][0].where.data).toEqual(janela);
+      expect(prisma.agendaItem.findMany.mock.calls[0][0].where.data).toEqual(janela);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
