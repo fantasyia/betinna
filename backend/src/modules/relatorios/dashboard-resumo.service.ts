@@ -816,8 +816,10 @@ export class DashboardResumoService {
    * o front SÓ renderiza.
    *
    * Escopo: leads respeitam a carteira (RepScope) e ficam FORA da triagem
-   * (mesma regra do resumo). Conversão/tempo são métricas de GESTÃO do funil
-   * (âmbito empresa — mesmo racional do M5). Saúde dos fluxos: só gestão.
+   * (mesma regra do resumo). Conversão/tempo também respeitam a carteira
+   * (01/10: o REP via contagem da empresa toda num gráfico em que os outros
+   * quadros mostravam 0) e contam LEADS distintos, não transições. Saúde dos
+   * fluxos: só gestão.
    */
   async graficos(user: AuthenticatedUser, params: GraficosDto) {
     const empresaId = this.requireEmpresa(user);
@@ -887,27 +889,31 @@ export class DashboardResumoService {
             select: { id: true, nome: true, cor: true, tipo: true },
           })
         : Promise.resolve([]),
+      // LEADS DISTINTOS por etapa (não transições): um lead que volta pra
+      // "Novo" e avança de novo é 1 lead, não N. Contar transição deu
+      // "350% avançam" com UM lead de teste indo e voltando (01/10).
+      // Carteira: o REP só enxerga os leads dele — antes via a empresa toda.
       funilSel
-        ? this.prisma.leadEtapaHistorico.groupBy({
-            by: ['etapaDestino'],
-            where: {
-              empresaId,
-              funilId: funilSel.id,
-              ocorridoEm: { gte: de },
-              etapaDestino: { not: null },
-            },
-            _count: { _all: true },
-          })
+        ? this.prisma.$queryRaw<Array<{ leadId: string; etapa: string }>>`
+            SELECT DISTINCT h."leadId", h."etapaDestino" AS etapa
+            FROM "LeadEtapaHistorico" h
+            JOIN "Lead" l ON l."id" = h."leadId"
+            WHERE h."empresaId" = ${empresaId} AND h."funilId" = ${funilSel.id}
+              AND h."ocorridoEm" >= ${de} AND h."etapaDestino" IS NOT NULL
+              ${scopeSql}
+          `
         : Promise.resolve([]),
       // Tempo na etapa = ENTRAR nela → PRÓXIMA transição do mesmo lead (janela
       // LEAD por lead) — mesma conta do M5, histórico completo do funil.
       funilSel
         ? this.prisma.$queryRaw<Array<{ etapa: string; dias: number }>>`
             WITH t AS (
-              SELECT "leadId", "etapaDestino" AS etapa, "ocorridoEm",
-                     LEAD("ocorridoEm") OVER (PARTITION BY "leadId" ORDER BY "ocorridoEm") AS saida
-              FROM "LeadEtapaHistorico"
-              WHERE "empresaId" = ${empresaId} AND "funilId" = ${funilSel.id}
+              SELECT h."leadId", h."etapaDestino" AS etapa, h."ocorridoEm",
+                     LEAD(h."ocorridoEm") OVER (PARTITION BY h."leadId" ORDER BY h."ocorridoEm") AS saida
+              FROM "LeadEtapaHistorico" h
+              JOIN "Lead" l ON l."id" = h."leadId"
+              WHERE h."empresaId" = ${empresaId} AND h."funilId" = ${funilSel.id}
+                ${scopeSql}
             )
             SELECT etapa, (AVG(EXTRACT(EPOCH FROM (saida - "ocorridoEm")) / 86400))::float AS dias
             FROM t
@@ -960,21 +966,30 @@ export class DashboardResumoService {
     const resto = utmTodos.slice(8).reduce((s, u) => s + u.total, 0);
     if (resto > 0) utm.push({ campanha: 'Outros', total: resto });
 
-    const entradasPorEtapa = new Map(entradas.map((e) => [e.etapaDestino, e._count._all]));
+    const leadsPorEtapa = new Map<string, Set<string>>();
+    for (const e of entradas) {
+      const s = leadsPorEtapa.get(e.etapa) ?? new Set<string>();
+      s.add(e.leadId);
+      leadsPorEtapa.set(e.etapa, s);
+    }
     const tempoPorEtapa = new Map(tempos.map((t) => [t.etapa, t.dias]));
     const etapasAtivas = etapas.filter((e) => e.tipo === 'ATIVA');
     const conversaoFunil = etapasAtivas.map((et, i) => {
-      const entrou = entradasPorEtapa.get(et.id) ?? 0;
+      const aqui = leadsPorEtapa.get(et.id) ?? new Set<string>();
       const proxima = etapasAtivas[i + 1];
-      const entrouProx = proxima ? (entradasPorEtapa.get(proxima.id) ?? 0) : null;
+      const naProx = proxima ? (leadsPorEtapa.get(proxima.id) ?? new Set<string>()) : null;
+      // Coorte: dos leads que entraram AQUI no período, quantos também entraram
+      // na próxima. Interseção → nunca passa de 100% (lead que caiu direto na
+      // próxima etapa não conta como "avançou daqui").
+      let avancaram = 0;
+      if (naProx) for (const id of aqui) if (naProx.has(id)) avancaram++;
       return {
         id: et.id,
         nome: et.nome,
         cor: et.cor,
-        entradas: entrou,
-        // % dos que entraram AQUI que avançaram pra próxima etapa no período.
+        entradas: aqui.size,
         taxaAvanco:
-          entrouProx !== null && entrou > 0 ? Math.round((entrouProx / entrou) * 1000) / 10 : null,
+          naProx !== null && aqui.size > 0 ? Math.round((avancaram / aqui.size) * 1000) / 10 : null,
       };
     });
     const tempoEtapas = etapasAtivas.map((et) => ({

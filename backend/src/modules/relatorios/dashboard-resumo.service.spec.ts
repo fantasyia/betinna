@@ -304,16 +304,15 @@ const makePrismaGraficos = () => {
         { id: 'et-g', nome: 'Ganho', cor: '#333333', tipo: 'GANHO' },
       ]),
     },
-    leadEtapaHistorico: {
-      groupBy: vi.fn().mockResolvedValue([
-        { etapaDestino: 'et-1', _count: { _all: 10 } },
-        { etapaDestino: 'et-2', _count: { _all: 4 } },
-      ]),
-    },
-    // 1ª = leads por dia · 2ª = tempo por etapa · 3ª = saúde dos fluxos.
+    // 1ª = leads por dia · 2ª = (lead, etapa) distintos · 3ª = tempo por etapa
+    // · 4ª = saúde dos fluxos. 10 leads em Novo; 4 deles chegaram a Qualificando.
     $queryRaw: vi
       .fn()
       .mockResolvedValueOnce([{ dia: hoje, total: 3n }])
+      .mockResolvedValueOnce([
+        ...Array.from({ length: 10 }, (_, i) => ({ leadId: `l${i}`, etapa: 'et-1' })),
+        ...Array.from({ length: 4 }, (_, i) => ({ leadId: `l${i}`, etapa: 'et-2' })),
+      ])
       .mockResolvedValueOnce([{ etapa: 'et-1', dias: 2.34 }])
       .mockResolvedValueOnce([{ dia: hoje, ok: 5n, erro: 1n }]),
   };
@@ -363,6 +362,48 @@ describe('DashboardResumoService.graficos (M8)', () => {
     });
     expect(r.tempoPorEtapa[0]).toMatchObject({ nome: 'Novo', dias: 2.3 });
     expect(r.tempoPorEtapa[1]).toMatchObject({ nome: 'Qualificando', dias: null });
+  });
+
+  it('conversão conta LEADS, não transições — nunca passa de 100% (caso real 01/10)', async () => {
+    // UM lead de teste foi devolvido pra "Novo" e avançou várias vezes: o
+    // histórico tinha 2 entradas em Novo e 7 em Qualificando → "350% avançam".
+    // A query já devolve (lead, etapa) DISTINTOS; e quem caiu direto em
+    // Qualificando sem passar por Novo não conta como "avançou de Novo".
+    const prisma = makePrismaGraficos();
+    prisma.$queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { leadId: 'teste', etapa: 'et-1' },
+        { leadId: 'teste', etapa: 'et-2' },
+        { leadId: 'direto-1', etapa: 'et-2' },
+        { leadId: 'direto-2', etapa: 'et-2' },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.graficos(user(), { dias: 30 });
+
+    expect(r.conversaoFunil[0]).toMatchObject({ entradas: 1, taxaAvanco: 100 });
+    expect(r.conversaoFunil[1]).toMatchObject({ entradas: 3 });
+  });
+
+  it('REP: conversão e tempo por etapa recortam a carteira (SQL com o filtro do rep)', async () => {
+    const prisma = makePrismaGraficos();
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(['rep-1']) as never);
+    await svc.graficos(user({ id: 'rep-1', role: 'REP' as UserRole }), { dias: 7 });
+
+    // 2ª e 3ª SQL = conversão e tempo. O filtro entra como fragmento Prisma.sql
+    // com o id do rep entre os valores.
+    for (const i of [1, 2]) {
+      const [tpl, ...vals] = prisma.$queryRaw.mock.calls[i] as [TemplateStringsArray, ...unknown[]];
+      expect(tpl.join('?')).toContain('JOIN "Lead" l');
+      const scope = vals.find(
+        (v) => typeof v === 'object' && v !== null && 'values' in (v as object),
+      ) as { sql: string; values: unknown[] } | undefined;
+      expect(scope?.sql).toContain('representanteId');
+      expect(scope?.values).toContainEqual(['rep-1']);
+    }
   });
 
   it('REP: saúde dos fluxos volta VAZIA (módulo de gestão) e carteira entra no groupBy de UTM', async () => {
