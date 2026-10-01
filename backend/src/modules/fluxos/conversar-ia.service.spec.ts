@@ -379,6 +379,25 @@ describe('ConversarIaService', () => {
   const no = (config = {}) => ({ id: 'no-ia', config, acaoTipo: 'CONVERSAR_IA' });
 
   describe('iniciar', () => {
+    it('humano assumiu a conversa (bot pausado, sem precisaHumano) → nó pulado, nada enviado', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      prisma.conversation.findUnique.mockResolvedValue({
+        botLigado: true,
+        precisaHumano: false,
+        botPausadoAte: new Date(Date.now() + 3_600_000),
+      });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', conversationId: 'conv-1' },
+        'emp-1',
+      );
+
+      expect(r).toMatchObject({ pulado: true, motivo: 'humano assumiu a conversa (bot pausado)' });
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    });
+
     // Incidente de 05/09: SIGTERM no worker no meio do nó → passo FALHOU depois
     // de enviar → BullMQ re-executou o nó no worker novo → resposta re-gerada →
     // cliente leu a despedida duas vezes. Estes dois testes prendem o conserto.
@@ -1711,6 +1730,41 @@ describe('ConversarIaService', () => {
     // enviava). Mock com estado é o tipo de coisa que faz o teste mentir.
     beforeEach(() => {
       execAguardando.contexto = { leadId: 'lead-1' };
+    });
+
+    // Ribelt, 01/10: o Léo respondeu pela inbox (o que grava `botPausadoAte`,
+    // sem `precisaHumano`) e a IA do F1 seguiu falando com o cliente por cima
+    // dele — o gate do retomar não olhava a pausa.
+    it('humano assumiu (bot pausado pela resposta na inbox) → turno NÃO processado', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.conversation.findUnique.mockResolvedValue({
+        botLigado: true,
+        precisaHumano: false,
+        botPausadoAte: new Date(Date.now() + 3_600_000),
+      });
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+
+      await svc.retomar('exec-1', 'conv-1', 'Boa noite');
+
+      expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    });
+
+    it('pausa VENCIDA não segura: a IA volta a responder sozinha', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.conversation.findUnique.mockResolvedValue({
+        botLigado: true,
+        precisaHumano: false,
+        botPausadoAte: new Date(Date.now() - 60_000),
+      });
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Oi! Seguimos?', modelo: 'gpt' });
+
+      await svc.retomar('exec-1', 'conv-1', 'oi');
+
+      expect(muller.gerarRespostaIa).toHaveBeenCalled();
     });
 
     it('claim perdido (count=0) → NÃO roda a IA nem envia (anti-turno-duplo)', async () => {

@@ -1143,10 +1143,20 @@ export class ConversarIaService implements OnModuleDestroy {
             `(exec ${execucaoId})`,
         );
       }
-      if (!ligado || (convCfg?.precisaHumano && !pausaVenceu)) {
+      // Pausa de HANDOFF: o humano respondeu pela inbox (`fragmentoHandoffHumano`
+      // grava `botPausadoAte` sem `precisaHumano`). A IA do fluxo ignorava essa
+      // pausa e respondia POR CIMA do atendente (Ribelt, 01/10: o Léo entrou na
+      // conversa e a IA seguiu falando com o cliente).
+      const pausadoPorHumano =
+        !convCfg?.precisaHumano &&
+        !!convCfg?.botPausadoAte &&
+        convCfg.botPausadoAte.getTime() > Date.now();
+      if (!ligado || (convCfg?.precisaHumano && !pausaVenceu) || pausadoPorHumano) {
         const motivo = !ligado
           ? 'bot desligado nesta conversa (ou no global da empresa)'
-          : 'conversa escalada pra humano (precisaHumano sem prazo)';
+          : pausadoPorHumano
+            ? 'humano assumiu a conversa (bot pausado)'
+            : 'conversa escalada pra humano (precisaHumano sem prazo)';
         this.logger.log(`CONVERSAR_IA: ${motivo} — nó pulado (exec ${execucaoId})`);
         return { aguardando: false, pulado: true, motivo };
       }
@@ -2728,14 +2738,20 @@ export class ConversarIaService implements OnModuleDestroy {
         }),
         this.prisma.conversation.findUnique({
           where: { id: conversationId },
-          select: { botLigado: true, precisaHumano: true },
+          select: { botLigado: true, precisaHumano: true, botPausadoAte: true },
         }),
       ]);
       const ligado = convCfg?.botLigado ?? empresaCfg?.botWhatsappAtivo ?? false;
-      if (!ligado || convCfg?.precisaHumano) {
+      // Pausa de HANDOFF (humano respondeu pela inbox) também segura o turno — ver
+      // o gate do iniciar(). Vencida a pausa, a IA volta a responder sozinha.
+      const pausadoPorHumano =
+        !!convCfg?.botPausadoAte && convCfg.botPausadoAte.getTime() > Date.now();
+      if (!ligado || convCfg?.precisaHumano || pausadoPorHumano) {
         const motivo = !ligado
           ? 'bot desligado nesta conversa (ou no global da empresa)'
-          : 'conversa escalada pra humano (precisaHumano)';
+          : convCfg?.precisaHumano
+            ? 'conversa escalada pra humano (precisaHumano)'
+            : 'humano assumiu a conversa (bot pausado)';
         this.logger.log(`CONVERSAR_IA: ${motivo} — turno NÃO processado (exec ${execucaoId})`);
         await this.prisma.fluxoExecucao
           .update({
