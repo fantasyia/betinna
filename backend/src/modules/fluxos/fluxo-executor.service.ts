@@ -1887,6 +1887,43 @@ export class FluxoExecutorService {
     }
   }
 
+  /**
+   * A conversa do lead está com o bot pausado porque um HUMANO assumiu?
+   * (`botPausadoAte` no futuro sem `precisaHumano` — é o que a resposta pela
+   * inbox e o "pausar bot" gravam.) Conversa do contexto primeiro; senão a do
+   * lead na MESMA porta do envio (D38). Fail-open: erro → null.
+   */
+  private async pausaDeHumanoNaConversa(
+    empresaId: string,
+    conversationId: string | undefined,
+    leadId: string | undefined,
+    proprietarioId: string | null,
+  ): Promise<{ conversationId: string; ate: Date } | null> {
+    try {
+      const conv = conversationId
+        ? await this.prisma.conversation.findFirst({
+            where: { id: conversationId, empresaId },
+            select: { id: true, botPausadoAte: true, precisaHumano: true },
+          })
+        : leadId
+          ? await this.prisma.conversation.findFirst({
+              where: { empresaId, leadId, canal: 'WHATSAPP', proprietarioId },
+              orderBy: { atualizadoEm: 'desc' },
+              select: { id: true, botPausadoAte: true, precisaHumano: true },
+            })
+          : null;
+      if (!conv?.botPausadoAte || conv.precisaHumano) return null;
+      if (conv.botPausadoAte.getTime() <= Date.now()) return null;
+      return { conversationId: conv.id, ate: conv.botPausadoAte };
+    } catch (err) {
+      this.logger.warn(
+        `ENVIAR_WHATSAPP: não consegui checar a pausa de humano — enviando assim mesmo: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
   private async acaoEnviarWhatsapp(
     cfg: EnviarWhatsappConfig,
     ctx: ExecucaoContexto,
@@ -1954,6 +1991,36 @@ export class FluxoExecutorService {
       idempotencyKey: idemBase,
       ...(remetente.proprietarioId ? { proprietarioId: remetente.proprietarioId } : {}),
     };
+
+    // ── HUMANO ASSUMIU? ──
+    //
+    // Responder pela inbox pausa o bot na conversa (`botPausadoAte`, sem
+    // `precisaHumano`). A IA do fluxo já respeita essa pausa (1f45c09), mas o
+    // texto fixo da régua (follow-up, lembrete) saía por cima de quem assumiu —
+    // Ribelt, 01/10. Só o modo 'lead': aviso pra grupo/número fixo não é falar
+    // com o cliente. Só a pausa de HANDOFF: `botLigado=false` também é o estado
+    // que o próprio fluxo grava ao transferir, e o aviso de transferência tem
+    // que sair. Fail-open: consulta que falha não emudece a régua.
+    if (modo === 'lead') {
+      const pausa = await this.pausaDeHumanoNaConversa(
+        empresaId,
+        conversationIdDoCtx,
+        ctx['leadId'] as string | undefined,
+        remetente.proprietarioId ?? null,
+      );
+      if (pausa) {
+        this.logger.log(
+          `ENVIAR_WHATSAPP pulado: humano assumiu a conversa ${pausa.conversationId} ` +
+            `(bot pausado até ${pausa.ate.toISOString()})`,
+        );
+        return {
+          pulado: true,
+          motivo: 'humano assumiu a conversa (bot pausado)',
+          conversationId: pausa.conversationId,
+          pausadoAte: pausa.ate.toISOString(),
+        };
+      }
+    }
 
     // ── RITMO: herda a persona, o NÓ sobrescreve ──
     //

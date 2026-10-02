@@ -1822,6 +1822,63 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    // Ribelt, 01/10: o Léo assumiu a conversa pela inbox e o lembrete da régua
+    // ("conseguiu ler a proposta?") ia sair por cima dele.
+    describe('humano assumiu a conversa (pausa de handoff)', () => {
+      it('conversa do contexto com bot pausado → NÃO envia, passo segue (pulado)', async () => {
+        setupWhatsappPasso({
+          clienteId: 'cli-1',
+          cliente: { nome: 'Carlos' },
+          conversationId: 'conv-1',
+        });
+        prisma.conversation.findFirst.mockResolvedValue({
+          id: 'conv-1',
+          botPausadoAte: new Date(Date.now() + 3_600_000),
+          precisaHumano: false,
+        });
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+        expect(whatsapp.enviarMidia).not.toHaveBeenCalled();
+      });
+
+      it('pausa vencida → envia normalmente', async () => {
+        setupWhatsappPasso({
+          clienteId: 'cli-1',
+          cliente: { nome: 'Carlos' },
+          conversationId: 'conv-1',
+        });
+        prisma.conversation.findFirst.mockResolvedValue({
+          id: 'conv-1',
+          botPausadoAte: new Date(Date.now() - 60_000),
+          precisaHumano: false,
+        });
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+        expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      });
+
+      it('sem conversa no contexto: acha a do LEAD na mesma porta e respeita a pausa', async () => {
+        setupWhatsappPasso({ leadId: 'lead-1', clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
+        prisma.conversation.findFirst.mockResolvedValue({
+          id: 'conv-lead',
+          botPausadoAte: new Date(Date.now() + 3_600_000),
+          precisaHumano: false,
+        });
+
+        await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+        expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ leadId: 'lead-1', proprietarioId: null }),
+          }),
+        );
+        expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      });
+    });
+
     it('BL-1: envio falha + instância Evolution desconectada → alerta o diretor', async () => {
       setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
       whatsapp.enviarTexto.mockRejectedValueOnce(new Error('Falha ao enviar (Evolution)'));
