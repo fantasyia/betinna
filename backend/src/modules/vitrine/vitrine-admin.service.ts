@@ -9,6 +9,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { VitrineFotosService } from './vitrine-fotos.service';
 import type {
   CorDto,
   LinhaDto,
@@ -43,6 +44,7 @@ const modeloInclude = {
       tamanhos: { include: { tamanho: true } },
     },
   },
+  videos: { orderBy: { ordem: 'asc' } },
   variacoes: {
     where: { ativo: true },
     select: {
@@ -71,7 +73,24 @@ const modeloInclude = {
  */
 @Injectable()
 export class VitrineAdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fotos: VitrineFotosService,
+  ) {}
+
+  /** Modelo pra tela: fotos e vídeos com a URL pública pronta. */
+  private comUrls<
+    M extends {
+      cores: Array<{ fotos: Array<{ storagePath: string; thumbPath: string | null }> }>;
+      videos: Array<{ storagePath: string }>;
+    },
+  >(m: M) {
+    return {
+      ...m,
+      cores: m.cores.map((c) => ({ ...c, fotos: c.fotos.map((f) => this.fotos.comUrls(f)) })),
+      videos: m.videos.map((v) => ({ ...v, url: this.fotos.urlPublica(v.storagePath) })),
+    };
+  }
 
   private requireEmpresa(user: AuthenticatedUser): string {
     const id = user.empresaIdAtiva ?? user.empresaIds?.[0];
@@ -304,11 +323,12 @@ export class VitrineAdminService {
 
   async listarModelos(user: AuthenticatedUser) {
     const empresaId = await this.empresaComVitrine(user);
-    return this.prisma.catalogoModelo.findMany({
+    const modelos = await this.prisma.catalogoModelo.findMany({
       where: { empresaId },
       orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
       include: modeloInclude,
     });
+    return modelos.map((m) => this.comUrls(m));
   }
 
   async obterModelo(user: AuthenticatedUser, id: string) {
@@ -318,7 +338,7 @@ export class VitrineAdminService {
       include: modeloInclude,
     });
     if (!m) throw new NotFoundException('Modelo', id);
-    return m;
+    return this.comUrls(m);
   }
 
   async criarModelo(user: AuthenticatedUser, dto: ModeloDto) {

@@ -1,14 +1,16 @@
 import { Module } from '@nestjs/common';
 import { VitrineAdminController } from './vitrine-admin.controller';
 import { VitrineAdminService } from './vitrine-admin.service';
+import { VitrineFotosService } from './vitrine-fotos.service';
+import { VitrineMidiaController } from './vitrine-midia.controller';
 
 /**
  * Vitrine de atacado (Fase 1 — Ribelt Distribuidora Têxtil, 05/10/2026).
  * Ligada POR EMPRESA (tabela `Vitrine`); sem ela, nada daqui age.
  */
 @Module({
-  controllers: [VitrineAdminController],
-  providers: [VitrineAdminService],
-  exports: [VitrineAdminService],
+  controllers: [VitrineAdminController, VitrineMidiaController],
+  providers: [VitrineAdminService, VitrineFotosService],
+  exports: [VitrineAdminService, VitrineFotosService],
 })
 export class VitrineModule {}

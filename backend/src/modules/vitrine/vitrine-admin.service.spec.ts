@@ -52,7 +52,7 @@ function makePrisma() {
     },
     catalogoModelo: {
       findMany: vi.fn().mockResolvedValue([]),
-      findFirst: vi.fn().mockResolvedValue({ id: 'mod-1' }),
+      findFirst: vi.fn().mockResolvedValue({ id: 'mod-1', cores: [], videos: [] }),
       findUniqueOrThrow: vi.fn(),
       create: vi.fn().mockResolvedValue({ id: 'mod-1' }),
       update: vi.fn().mockResolvedValue({ id: 'mod-1' }),
@@ -122,7 +122,13 @@ describe('VitrineAdminService', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new VitrineAdminService(prisma as never);
+    svc = new VitrineAdminService(
+      prisma as never,
+      {
+        comUrls: (f: object) => f,
+        urlPublica: (p: string) => p,
+      } as never,
+    );
   });
 
   // ── ISOLAMENTO ─────────────────────────────────────────────────────────
@@ -201,7 +207,7 @@ describe('VitrineAdminService', () => {
   describe('variações (modelo × cor × linha × tamanho)', () => {
     it('cria UMA variação e UM produto por cor × tamanho, com nome e preço da faixa Entrada', async () => {
       prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
-      prisma.catalogoModelo.findFirst.mockResolvedValue({ id: 'mod-1' });
+      prisma.catalogoModelo.findFirst.mockResolvedValue({ id: 'mod-1', cores: [], videos: [] });
 
       await svc.criarModelo(user(), { nome: 'Moletom' });
 

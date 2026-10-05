@@ -4078,6 +4078,7 @@ model CatalogoModelo {
   cores     CatalogoModeloCor[]
   linhas    CatalogoModeloLinha[]
   variacoes CatalogoVariacao[]
+  videos    CatalogoVideo[]
 
   @@index([empresaId, ativo, ordem])
 }
@@ -4114,6 +4115,23 @@ model CatalogoFoto {
   modeloCor CatalogoModeloCor @relation(fields: [modeloCorId], references: [id], onDelete: Cascade)
 
   @@index([modeloCorId, ordem])
+}
+
+/// Vídeo do modelo (kit pra anunciar; na vitrine, depois das fotos). MP4,
+/// sobe direto do navegador pro Storage por URL assinada.
+model CatalogoVideo {
+  id           String  @id @default(cuid())
+  modeloId     String
+  storagePath  String
+  nomeArquivo  String?
+  tamanhoBytes Int?
+  ordem        Int     @default(0)
+
+  criadoEm DateTime @default(now())
+
+  modelo CatalogoModelo @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+
+  @@index([modeloId, ordem])
 }
 
 /// Linha marcada num modelo, com o preço por faixa e o preço sugerido de

@@ -99,6 +99,19 @@ CREATE TABLE "CatalogoFoto" (
 );
 
 -- CreateTable
+CREATE TABLE "CatalogoVideo" (
+    "id" TEXT NOT NULL,
+    "modeloId" TEXT NOT NULL,
+    "storagePath" TEXT NOT NULL,
+    "nomeArquivo" TEXT,
+    "tamanhoBytes" INTEGER,
+    "ordem" INTEGER NOT NULL DEFAULT 0,
+    "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CatalogoVideo_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "CatalogoModeloLinha" (
     "id" TEXT NOT NULL,
     "modeloId" TEXT NOT NULL,
@@ -173,6 +186,9 @@ CREATE UNIQUE INDEX "CatalogoModeloCor_modeloId_corId_key" ON "CatalogoModeloCor
 CREATE INDEX "CatalogoFoto_modeloCorId_ordem_idx" ON "CatalogoFoto"("modeloCorId", "ordem");
 
 -- CreateIndex
+CREATE INDEX "CatalogoVideo_modeloId_ordem_idx" ON "CatalogoVideo"("modeloId", "ordem");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "CatalogoModeloLinha_modeloId_linhaId_key" ON "CatalogoModeloLinha"("modeloId", "linhaId");
 
 -- CreateIndex
@@ -210,6 +226,9 @@ ALTER TABLE "CatalogoModeloCor" ADD CONSTRAINT "CatalogoModeloCor_corId_fkey" FO
 
 -- AddForeignKey
 ALTER TABLE "CatalogoFoto" ADD CONSTRAINT "CatalogoFoto_modeloCorId_fkey" FOREIGN KEY ("modeloCorId") REFERENCES "CatalogoModeloCor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CatalogoVideo" ADD CONSTRAINT "CatalogoVideo_modeloId_fkey" FOREIGN KEY ("modeloId") REFERENCES "CatalogoModelo"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CatalogoModeloLinha" ADD CONSTRAINT "CatalogoModeloLinha_modeloId_fkey" FOREIGN KEY ("modeloId") REFERENCES "CatalogoModelo"("id") ON DELETE CASCADE ON UPDATE CASCADE;
