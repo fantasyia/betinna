@@ -415,6 +415,10 @@ model Empresa {
   inboxLimpezas         InboxLimpeza[]
   comissoesOriginacao   ComissaoOriginacao[]
   treinamentos          Treinamento[]
+  vitrine               Vitrine?
+  catalogoCores         CatalogoCor[]
+  catalogoLinhas        CatalogoLinha[]
+  catalogoModelos       CatalogoModelo[]
 
   @@index([ativo])
 }
@@ -823,6 +827,9 @@ model Produto {
   pedidoItens     PedidoItem[]
   catalogoReps    RepCatalogoItem[]
   amostras        Amostra[]
+  /// Vitrine de atacado: a variação (modelo × cor × linha × tamanho) que este
+  /// produto representa. Null = produto comum (ERP ou cadastro plano).
+  catalogoVariacao CatalogoVariacao?
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
   @@unique([empresaId, sku])
@@ -3951,4 +3958,227 @@ model ModeloContrato {
 
   @@unique([empresaId, versao])
   @@index([empresaId, ativo])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VITRINE DE ATACADO — Fase 1 (Ribelt Distribuidora Têxtil, 05/10/2026)
+//
+// 🔒 ISOLAMENTO: tudo aqui é por empresa, e a empresa só "tem vitrine" quando
+// existe uma linha em `Vitrine`. Sem ela: zero mudança de comportamento — as
+// outras empresas não leem nem escrevem nada destas tabelas.
+//
+// Modelo de dados: o MODELO é o que aparece na vitrine; ele marca quais CORES
+// (lista da empresa) e quais LINHAS/TAMANHOS (lista da empresa) tem. A
+// VARIAÇÃO é modelo × cor × linha × tamanho e aponta pra um `Produto` comum —
+// é por ele que o pedido entra no Betinna sem mexer em Pedido/PedidoItem.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Liga a vitrine pra UMA empresa. Existir = a empresa usa catálogo próprio.
+model Vitrine {
+  id             String  @id @default(cuid())
+  empresaId      String  @unique
+  /// Endereço público: `/v/<slug>`. Único entre TODAS as empresas.
+  slug           String  @unique
+  /// Desligada = o link responde "indisponível"; o cadastro segue funcionando.
+  ativa          Boolean @default(false)
+  /// Limites das faixas de preço, pelo TOTAL de peças do pedido: Entrada a
+  /// partir de `minimoEntrada`, Volume a partir de `minimoVolume`, 500+ a
+  /// partir de `minimoAtacadao`. Null = ainda não definido.
+  minimoEntrada  Int?
+  minimoVolume   Int?
+  minimoAtacadao Int?    @default(500)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
+/// Lista de cores da empresa — selecionada no cadastro do modelo, não digitada.
+model CatalogoCor {
+  id        String  @id @default(cuid())
+  empresaId String
+  nome      String
+  /// Cor da bolinha na vitrine (#RRGGBB).
+  hex       String
+  ordem     Int     @default(0)
+  ativo     Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  modelos CatalogoModeloCor[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId, ordem])
+}
+
+/// Linha de grade da empresa (ex.: Regular, Plus size, Infantil), cada uma com
+/// a sua sequência de tamanhos.
+model CatalogoLinha {
+  id        String  @id @default(cuid())
+  empresaId String
+  nome      String
+  ordem     Int     @default(0)
+  ativo     Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa  Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  tamanhos CatalogoTamanho[]
+  modelos  CatalogoModeloLinha[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId, ordem])
+}
+
+model CatalogoTamanho {
+  id      String  @id @default(cuid())
+  linhaId String
+  nome    String
+  ordem   Int     @default(0)
+  ativo   Boolean @default(true)
+
+  linha   CatalogoLinha           @relation(fields: [linhaId], references: [id], onDelete: Cascade)
+  modelos CatalogoModeloTamanho[]
+
+  @@unique([linhaId, nome])
+  @@index([linhaId, ordem])
+}
+
+/// O que aparece na vitrine (um "card" do feed).
+model CatalogoModelo {
+  id        String   @id @default(cuid())
+  empresaId String
+  nome      String
+  categoria String?
+  descricao String?  @db.Text
+  /// Chips do cartão (ex.: "Gramatura 280", "Capuz").
+  etiquetas String[] @default([])
+  ordem     Int      @default(0)
+  ativo     Boolean  @default(true)
+
+  // ── KIT PRA ANUNCIAR (Léo, 05/10) ──
+  // O revendedor de marketplace baixa fotos + texto pra montar o PRÓPRIO
+  // anúncio. Ficam separados da descrição da vitrine de propósito: o texto do
+  // marketplace tem regra própria (título curto, ficha técnica).
+  /// Título sugerido pro marketplace (até 60 caracteres).
+  tituloMarketplace    String? @db.VarChar(60)
+  /// Descrição pronta pro anúncio do revendedor.
+  descricaoMarketplace String? @db.Text
+  /// Composição do tecido (ex.: "50% algodão, 50% poliéster").
+  composicao           String? @db.VarChar(200)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa   Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cores     CatalogoModeloCor[]
+  linhas    CatalogoModeloLinha[]
+  variacoes CatalogoVariacao[]
+
+  @@index([empresaId, ativo, ordem])
+}
+
+/// Cor marcada num modelo, com as fotos daquela cor.
+model CatalogoModeloCor {
+  id       String @id @default(cuid())
+  modeloId String
+  corId    String
+  ordem    Int    @default(0)
+
+  modelo    CatalogoModelo     @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+  cor       CatalogoCor        @relation(fields: [corId], references: [id], onDelete: Restrict)
+  fotos     CatalogoFoto[]
+  variacoes CatalogoVariacao[]
+
+  @@unique([modeloId, corId])
+}
+
+/// Foto de uma cor do modelo. A de menor `ordem` é a capa.
+model CatalogoFoto {
+  id          String  @id @default(cuid())
+  modeloCorId String
+  /// Path no Storage (versão otimizada pra celular).
+  storagePath String
+  /// Path da miniatura.
+  thumbPath   String?
+  largura     Int?
+  altura      Int?
+  ordem       Int     @default(0)
+
+  criadoEm DateTime @default(now())
+
+  modeloCor CatalogoModeloCor @relation(fields: [modeloCorId], references: [id], onDelete: Cascade)
+
+  @@index([modeloCorId, ordem])
+}
+
+/// Linha marcada num modelo, com o preço por faixa e o preço sugerido de
+/// revenda. Preço null = "sob consulta" na vitrine (o pedido entra mesmo assim).
+model CatalogoModeloLinha {
+  id            String   @id @default(cuid())
+  modeloId      String
+  linhaId       String
+  precoEntrada  Decimal? @db.Decimal(14, 2)
+  precoVolume   Decimal? @db.Decimal(14, 2)
+  precoAtacadao Decimal? @db.Decimal(14, 2)
+  /// Quanto o lojista deve cobrar na revenda — base do "seu lucro por peça".
+  precoSugerido Decimal? @db.Decimal(14, 2)
+  /// Tabela de medidas desta linha do modelo (kit pra anunciar):
+  /// `{ "colunas": ["Tórax","Comprimento"], "linhas": [{ "tamanho": "P", "valores": ["50","70"] }] }`.
+  tabelaMedidas Json?
+
+  modelo    CatalogoModelo          @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+  linha     CatalogoLinha           @relation(fields: [linhaId], references: [id], onDelete: Restrict)
+  tamanhos  CatalogoModeloTamanho[]
+  variacoes CatalogoVariacao[]
+
+  @@unique([modeloId, linhaId])
+}
+
+/// Tamanho marcado numa linha do modelo.
+model CatalogoModeloTamanho {
+  id            String @id @default(cuid())
+  modeloLinhaId String
+  tamanhoId     String
+
+  modeloLinha CatalogoModeloLinha @relation(fields: [modeloLinhaId], references: [id], onDelete: Cascade)
+  tamanho     CatalogoTamanho     @relation(fields: [tamanhoId], references: [id], onDelete: Restrict)
+  variacoes   CatalogoVariacao[]
+
+  @@unique([modeloLinhaId, tamanhoId])
+}
+
+/// Variação = modelo × cor × linha × tamanho. É materializada (e não só
+/// calculada) porque carrega SKU/estoque e aponta pro `Produto` que vai no
+/// pedido. Desmarcar cor/tamanho DESATIVA a variação e o produto, não apaga:
+/// pedido antigo continua apontando pra ele.
+model CatalogoVariacao {
+  id              String  @id @default(cuid())
+  empresaId       String
+  modeloId        String
+  modeloCorId     String
+  modeloLinhaId   String
+  modeloTamanhoId String
+  produtoId       String  @unique
+  /// Opcional nesta fase.
+  sku             String?
+  /// Opcional nesta fase e NÃO bloqueia venda.
+  estoque         Int?
+  ativo           Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  modelo        CatalogoModelo        @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+  modeloCor     CatalogoModeloCor     @relation(fields: [modeloCorId], references: [id], onDelete: Cascade)
+  modeloLinha   CatalogoModeloLinha   @relation(fields: [modeloLinhaId], references: [id], onDelete: Cascade)
+  modeloTamanho CatalogoModeloTamanho @relation(fields: [modeloTamanhoId], references: [id], onDelete: Cascade)
+  produto       Produto               @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@unique([modeloCorId, modeloTamanhoId])
+  @@index([empresaId, modeloId])
 }
