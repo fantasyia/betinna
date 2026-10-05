@@ -46,6 +46,7 @@ const PromptsBotPage = lazyComRetry(() => import("@/pages/PromptsBotPage"));
 const KnowledgePage = lazyComRetry(() => import("@/pages/KnowledgePage"));
 const BotAuditoriaPage = lazyComRetry(() => import("@/pages/BotAuditoriaPage"));
 const RespostasRapidasPage = lazyComRetry(() => import("@/pages/RespostasRapidasPage"));
+const VitrineCadastroPage = lazyComRetry(() => import("@/pages/vitrine/VitrineCadastroPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -328,6 +329,20 @@ const router = createBrowserRouter([
         <ProtectedRoute requirePermission="mullerbot.auditoria">
           <PageSuspense>
             <BotAuditoriaPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // Vitrine de atacado (Fase 1) — o gate fino (ADMIN/DIRECTOR + vitrine
+    // ligada) é da própria página e do backend.
+    path: "/vitrine",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <VitrineCadastroPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
