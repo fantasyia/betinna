@@ -84,6 +84,9 @@ export class VitrinePublicaService {
           id: c.id,
           nome: c.cor.nome,
           hex: c.cor.hex,
+          // Ponto da capa escolhido no cadastro pra bolinha (null = automático).
+          amostra:
+            c.amostraX !== null && c.amostraY !== null ? { x: c.amostraX, y: c.amostraY } : null,
           fotos: c.fotos.map((f) => ({
             url: this.fotos.urlPublica(f.storagePath),
             thumbUrl: this.fotos.urlPublica(f.thumbPath),

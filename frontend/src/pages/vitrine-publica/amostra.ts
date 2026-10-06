@@ -136,21 +136,38 @@ function amostrar(src: string, hex: string): Promise<Ponto> {
   return p;
 }
 
-/** Estilo da bolinha: foto ampliada no ponto do tecido; hex enquanto carrega. */
-export function useFundoDaCor(cor: {
+interface CorComFoto {
   hex: string;
-  fotos: Array<{ url: string; thumbUrl: string | null }>;
-}): CSSProperties {
-  const src = cor.fotos[0]?.thumbUrl ?? cor.fotos[0]?.url ?? null;
-  const [ponto, setPonto] = useState<Ponto | null>(null);
+  fotos: Array<{
+    url: string | null;
+    thumbUrl: string | null;
+    largura?: number | null;
+    altura?: number | null;
+  }>;
+  /** Ponto escolhido no cadastro (fração da capa). null/ausente = automático. */
+  amostra?: { x: number; y: number } | null;
+}
+
+/**
+ * Estilo da bolinha: foto ampliada no ponto do tecido. O ponto escolhido no
+ * cadastro manda; sem ele, a vitrine procura sozinha. Hex enquanto carrega.
+ */
+export function useFundoDaCor(cor: CorComFoto): CSSProperties {
+  const capa = cor.fotos[0];
+  const src = capa?.thumbUrl ?? capa?.url ?? null;
+  const escolhido = cor.amostra ?? null;
+  const [auto, setAuto] = useState<Ponto | null>(null);
   useEffect(() => {
-    if (!src) return;
+    if (!src || escolhido) return;
     let vivo = true;
-    void amostrar(src, cor.hex).then((p) => vivo && setPonto(p));
+    void amostrar(src, cor.hex).then((p) => vivo && setAuto(p));
     return () => {
       vivo = false;
     };
-  }, [src, cor.hex]);
+  }, [src, cor.hex, escolhido]);
+  const aspecto =
+    capa?.largura && capa?.altura ? capa.largura / capa.altura : (auto?.aspecto ?? MIOLO.aspecto);
+  const ponto: Ponto | null = escolhido ? { fx: escolhido.x, fy: escolhido.y, aspecto } : auto;
   if (!src || !ponto) return { background: cor.hex };
   const { x, y } = posicaoDoFundo(ponto);
   return {

@@ -164,21 +164,46 @@ export class VitrineFotosService implements OnModuleInit {
     }
   }
 
+  /** Ponto da capa que vira a bolinha da cor. null = a vitrine escolhe sozinha. */
+  async definirAmostra(
+    user: AuthenticatedUser,
+    modeloCorId: string,
+    ponto: { x: number; y: number } | null,
+  ) {
+    await this.corDoModelo(user, modeloCorId);
+    const mc = await this.prisma.catalogoModeloCor.update({
+      where: { id: modeloCorId },
+      data: { amostraX: ponto?.x ?? null, amostraY: ponto?.y ?? null },
+      select: { id: true, amostraX: true, amostraY: true },
+    });
+    return mc;
+  }
+
   async reordenar(user: AuthenticatedUser, modeloCorId: string, fotoIds: string[]) {
     await this.corDoModelo(user, modeloCorId);
     const fotos = await this.prisma.catalogoFoto.findMany({
       where: { modeloCorId },
+      orderBy: { ordem: 'asc' },
       select: { id: true },
     });
     const daCor = new Set(fotos.map((f) => f.id));
     if (fotoIds.length !== daCor.size || !fotoIds.every((id) => daCor.has(id))) {
       throw new BusinessRuleException('A nova ordem tem que ter exatamente as fotos desta cor');
     }
-    await this.prisma.$transaction(
-      fotoIds.map((id, ordem) =>
+    await this.prisma.$transaction([
+      ...fotoIds.map((id, ordem) =>
         this.prisma.catalogoFoto.update({ where: { id }, data: { ordem } }),
       ),
-    );
+      // Capa nova = foto nova: o ponto da bolinha era da capa antiga.
+      ...(fotos[0]?.id !== fotoIds[0]
+        ? [
+            this.prisma.catalogoModeloCor.update({
+              where: { id: modeloCorId },
+              data: { amostraX: null, amostraY: null },
+            }),
+          ]
+        : []),
+    ]);
     return this.listar(user, modeloCorId);
   }
 
@@ -197,7 +222,19 @@ export class VitrineFotosService implements OnModuleInit {
       where: { id: fotoId, modeloCor: { modelo: { empresaId } } },
     });
     if (!foto) throw new NotFoundException('Foto', fotoId);
+    const capa = await this.prisma.catalogoFoto.findFirst({
+      where: { modeloCorId: foto.modeloCorId },
+      orderBy: { ordem: 'asc' },
+      select: { id: true },
+    });
     await this.prisma.catalogoFoto.delete({ where: { id: fotoId } });
+    // Apagou a capa: o ponto da bolinha era dela.
+    if (capa?.id === fotoId) {
+      await this.prisma.catalogoModeloCor.update({
+        where: { id: foto.modeloCorId },
+        data: { amostraX: null, amostraY: null },
+      });
+    }
     // Banco primeiro: se o storage falhar, sobra arquivo órfão (inofensivo),
     // nunca foto no banco apontando pra arquivo que não existe.
     await this.remover([foto.storagePath, ...(foto.thumbPath ? [foto.thumbPath] : [])]);

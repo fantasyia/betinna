@@ -82,6 +82,9 @@ export interface ModeloCor {
   id: string;
   corId: string;
   ordem: number;
+  /** Ponto da capa que vira a bolinha na vitrine (0–1). null = automático. */
+  amostraX?: number | null;
+  amostraY?: number | null;
   cor: Cor;
   fotos: Foto[];
 }
@@ -101,7 +104,13 @@ export interface Modelo {
   cores: ModeloCor[];
   linhas: ModeloLinha[];
   videos: Video[];
-  variacoes: Array<{ id: string; modeloCorId: string; modeloTamanhoId: string; sku: string | null; estoque: number | null }>;
+  variacoes: Array<{
+    id: string;
+    modeloCorId: string;
+    modeloTamanhoId: string;
+    sku: string | null;
+    estoque: number | null;
+  }>;
 }
 
 export function dinheiroParaNumero(v: Dinheiro): number | null {

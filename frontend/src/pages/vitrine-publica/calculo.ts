@@ -26,7 +26,14 @@ export interface CorPub {
   id: string; // cor NO MODELO
   nome: string;
   hex: string;
-  fotos: Array<{ url: string; thumbUrl: string | null; largura: number | null; altura: number | null }>;
+  fotos: Array<{
+    url: string;
+    thumbUrl: string | null;
+    largura: number | null;
+    altura: number | null;
+  }>;
+  /** Ponto da capa escolhido no cadastro pra bolinha (null = automático). */
+  amostra?: { x: number; y: number } | null;
 }
 export interface ModeloPub {
   id: string;
@@ -81,9 +88,14 @@ export function faixaDoTotal(total: number, f: Faixas): Faixa {
  */
 export function precoNaFaixa(l: LinhaPub, faixa: Faixa): number | null {
   const ordem: Faixa[] =
-    faixa === 'atacadao' ? ['atacadao', 'volume', 'entrada'] : faixa === 'volume' ? ['volume', 'entrada'] : ['entrada'];
+    faixa === 'atacadao'
+      ? ['atacadao', 'volume', 'entrada']
+      : faixa === 'volume'
+        ? ['volume', 'entrada']
+        : ['entrada'];
   for (const fx of ordem) {
-    const v = fx === 'atacadao' ? l.precoAtacadao : fx === 'volume' ? l.precoVolume : l.precoEntrada;
+    const v =
+      fx === 'atacadao' ? l.precoAtacadao : fx === 'volume' ? l.precoVolume : l.precoEntrada;
     if (v !== null && v !== undefined) return v;
   }
   return null;
@@ -203,11 +215,15 @@ export function faltasDoMinimo(pecas: number, investe: number, aConfirmar: boole
   const crit: Array<{ tipo: 'pecas' | 'valor'; falta: number }> = [];
   if (m?.quantidadeMin) crit.push({ tipo: 'pecas', falta: Math.max(0, m.quantidadeMin - pecas) });
   if (m?.valorMin && !aConfirmar) {
-    crit.push({ tipo: 'valor', falta: Math.max(0, Math.round((m.valorMin - investe) * 100) / 100) });
+    crit.push({
+      tipo: 'valor',
+      falta: Math.max(0, Math.round((m.valorMin - investe) * 100) / 100),
+    });
   }
   const ou = m?.modo === 'OU' && crit.length > 1;
   const cumpriu = ou ? crit.some((c) => c.falta === 0) : crit.every((c) => c.falta === 0);
-  const falta = (t: 'pecas' | 'valor') => (cumpriu ? 0 : (crit.find((c) => c.tipo === t)?.falta ?? 0));
+  const falta = (t: 'pecas' | 'valor') =>
+    cumpriu ? 0 : (crit.find((c) => c.tipo === t)?.falta ?? 0);
   return {
     /** Peças que faltam pro mínimo. */
     faltamMinimo: Math.max(pecasEntrada, falta('pecas')),
@@ -220,12 +236,18 @@ export function faltasDoMinimo(pecas: number, investe: number, aConfirmar: boole
 
 /** Próxima faixa e quantas peças faltam pra ela. */
 export function proximaFaixa(pecas: number, f: Faixas): { faixa: Faixa; faltam: number } | null {
-  if (f.minimoVolume && pecas < f.minimoVolume) return { faixa: 'volume', faltam: f.minimoVolume - pecas };
-  if (f.minimoAtacadao && pecas < f.minimoAtacadao) return { faixa: 'atacadao', faltam: f.minimoAtacadao - pecas };
+  if (f.minimoVolume && pecas < f.minimoVolume)
+    return { faixa: 'volume', faltam: f.minimoVolume - pecas };
+  if (f.minimoAtacadao && pecas < f.minimoAtacadao)
+    return { faixa: 'atacadao', faltam: f.minimoAtacadao - pecas };
   return null;
 }
 
-export const NOME_FAIXA: Record<Faixa, string> = { entrada: 'Entrada', volume: 'Volume', atacadao: 'Atacadão' };
+export const NOME_FAIXA: Record<Faixa, string> = {
+  entrada: 'Entrada',
+  volume: 'Volume',
+  atacadao: 'Atacadão',
+};
 
 /**
  * Barra de progresso: vai só até a PRÓXIMA faixa (144 de 200), não até a
@@ -233,7 +255,9 @@ export const NOME_FAIXA: Record<Faixa, string> = { entrada: 'Entrada', volume: '
  */
 export function progressoFaixa(pecas: number, f: Faixas): { alvo: number; pct: number } {
   const prox = proximaFaixa(pecas, f);
-  const alvo = prox ? pecas + prox.faltam : (f.minimoAtacadao ?? f.minimoVolume ?? Math.max(1, pecas));
+  const alvo = prox
+    ? pecas + prox.faltam
+    : (f.minimoAtacadao ?? f.minimoVolume ?? Math.max(1, pecas));
   return { alvo, pct: alvo > 0 ? Math.min(100, Math.round((pecas / alvo) * 1000) / 10) : 100 };
 }
 
@@ -243,7 +267,10 @@ export function progressoFaixa(pecas: number, f: Faixas): { alvo: number; pct: n
  * na faixa nova × total de peças). null quando não dá pra estimar (preço sob
  * consulta, sem revenda sugerida) — aí a tela diz só quantas peças faltam.
  */
-export function lucroNaProximaFaixa(c: Carrinho, v: VitrinePub): { faixa: Faixa; faltam: number; lucro: number } | null {
+export function lucroNaProximaFaixa(
+  c: Carrinho,
+  v: VitrinePub,
+): { faixa: Faixa; faltam: number; lucro: number } | null {
   const pecas = totalPecas(c);
   const prox = proximaFaixa(pecas, v.faixas);
   if (!prox || pecas <= 0) return null;
@@ -267,10 +294,15 @@ export function lucroNaProximaFaixa(c: Carrinho, v: VitrinePub): { faixa: Faixa;
  * Preço por faixa no card do modelo: "Entrada R$ 19,99 · 200+ peças R$ 17,99…".
  * Só entra faixa com preço PRÓPRIO e (fora a Entrada) com mínimo configurado.
  */
-export function precosPorFaixa(l: LinhaPub, f: Faixas): Array<{ faixa: Faixa; minimo: number | null; preco: number }> {
+export function precosPorFaixa(
+  l: LinhaPub,
+  f: Faixas,
+): Array<{ faixa: Faixa; minimo: number | null; preco: number }> {
   const out: Array<{ faixa: Faixa; minimo: number | null; preco: number }> = [];
-  if (l.precoEntrada !== null) out.push({ faixa: 'entrada', minimo: f.minimoEntrada, preco: l.precoEntrada });
-  if (l.precoVolume !== null && f.minimoVolume) out.push({ faixa: 'volume', minimo: f.minimoVolume, preco: l.precoVolume });
+  if (l.precoEntrada !== null)
+    out.push({ faixa: 'entrada', minimo: f.minimoEntrada, preco: l.precoEntrada });
+  if (l.precoVolume !== null && f.minimoVolume)
+    out.push({ faixa: 'volume', minimo: f.minimoVolume, preco: l.precoVolume });
   if (l.precoAtacadao !== null && f.minimoAtacadao) {
     out.push({ faixa: 'atacadao', minimo: f.minimoAtacadao, preco: l.precoAtacadao });
   }
@@ -286,12 +318,17 @@ export function textoKit(m: ModeloPub): string {
   if (m.etiquetas.length) ficha.push(m.etiquetas.join(' · '));
   if (m.composicao?.trim()) ficha.push(`Composição: ${m.composicao.trim()}`);
   if (ficha.length) partes.push(`FICHA TÉCNICA\n${ficha.join('\n')}`);
-  partes.push(`TAMANHOS\n${m.linhas.map((l) => `${l.nome}: ${l.tamanhos.map((t) => t.nome).join(', ')}`).join('\n')}`);
+  partes.push(
+    `TAMANHOS\n${m.linhas.map((l) => `${l.nome}: ${l.tamanhos.map((t) => t.nome).join(', ')}`).join('\n')}`,
+  );
   const medidas = m.linhas
     .filter((l) => l.tabelaMedidas && l.tabelaMedidas.linhas.length)
     .map((l) => {
       const t = l.tabelaMedidas as TabelaMedidasPub;
-      const linhas = t.linhas.map((r) => `${r.tamanho}: ${t.colunas.map((c, i) => `${c} ${r.valores[i] || '-'}`).join(' · ')}`);
+      const linhas = t.linhas.map(
+        (r) =>
+          `${r.tamanho}: ${t.colunas.map((c, i) => `${c} ${r.valores[i] || '-'}`).join(' · ')}`,
+      );
       return `${l.nome} (cm)\n${linhas.join('\n')}`;
     });
   if (medidas.length) partes.push(`TABELA DE MEDIDAS\n${medidas.join('\n\n')}`);
@@ -313,12 +350,15 @@ export function nomeArquivo(s: string): string {
 }
 
 /** O que vai no envio: só célula e quantidade — preço quem calcula é o servidor. */
-export function itensParaEnvio(c: Carrinho): Array<{ corId: string; tamanhoId: string; quantidade: number }> {
+export function itensParaEnvio(
+  c: Carrinho,
+): Array<{ corId: string; tamanhoId: string; quantidade: number }> {
   const out: Array<{ corId: string; tamanhoId: string; quantidade: number }> = [];
   for (const porCor of Object.values(c)) {
     for (const [corId, porTam] of Object.entries(porCor)) {
       for (const [tamanhoId, quantidade] of Object.entries(porTam)) {
-        if (Number.isInteger(quantidade) && quantidade > 0) out.push({ corId, tamanhoId, quantidade });
+        if (Number.isInteger(quantidade) && quantidade > 0)
+          out.push({ corId, tamanhoId, quantidade });
       }
     }
   }

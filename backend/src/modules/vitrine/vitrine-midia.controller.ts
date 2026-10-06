@@ -33,6 +33,8 @@ const confirmarVideoSchema = z.object({
   nomeArquivo: z.string().trim().max(120).optional(),
   tamanhoBytes: z.number().int().positive().max(MAX_VIDEO_BYTES).optional(),
 });
+const fracao = z.number().min(0).max(1);
+const amostraSchema = z.object({ x: fracao, y: fracao }).nullable();
 const dimSchema = z.coerce.number().int().min(1).max(10_000).optional();
 
 /** Fotos (por cor do modelo) e vídeos (por modelo) do cadastro da vitrine. */
@@ -83,6 +85,17 @@ export class VitrineMidiaController {
     @Body(new ZodValidationPipe(ordemSchema)) dto: z.infer<typeof ordemSchema>,
   ) {
     return this.fotos.reordenar(user, modeloCorId, dto.fotoIds);
+  }
+
+  @Put('cores-modelo/:modeloCorId/amostra')
+  @ApiOperation({ summary: 'Ponto da capa que vira a bolinha da cor (null = automático)' })
+  definirAmostra(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('modeloCorId') modeloCorId: string,
+    @Body(new ZodValidationPipe(z.object({ ponto: amostraSchema })))
+    dto: { ponto: z.infer<typeof amostraSchema> },
+  ) {
+    return this.fotos.definirAmostra(user, modeloCorId, dto.ponto);
   }
 
   @Delete('fotos/:id')

@@ -4137,6 +4137,10 @@ model CatalogoModeloCor {
   modeloId String
   corId    String
   ordem    Int    @default(0)
+  /// Ponto da CAPA que vira a bolinha da cor na vitrine (fração 0–1 da
+  /// largura/altura). null = a vitrine escolhe sozinha. Zera quando a capa muda.
+  amostraX Float?
+  amostraY Float?
 
   modelo    CatalogoModelo     @relation(fields: [modeloId], references: [id], onDelete: Cascade)
   cor       CatalogoCor        @relation(fields: [corId], references: [id], onDelete: Restrict)

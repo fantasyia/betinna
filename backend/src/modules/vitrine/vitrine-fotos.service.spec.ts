@@ -41,6 +41,10 @@ function makePrisma() {
     vitrine: { findUnique: vi.fn().mockResolvedValue({ id: 'vit-1' }) },
     catalogoModeloCor: {
       findFirst: vi.fn().mockResolvedValue({ id: 'mc-1', modeloId: 'mod-1' }),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 'mc-1',
+        ...data,
+      })),
     },
     catalogoModelo: { findFirst: vi.fn().mockResolvedValue({ id: 'mod-1' }) },
     catalogoFoto: {
@@ -134,6 +138,56 @@ describe('VitrineFotosService', () => {
     await expect(svc.reordenar(user(), 'mc-1', ['f-1', 'f-de-outra-cor'])).rejects.toBeInstanceOf(
       BusinessRuleException,
     );
+  });
+
+  describe('bolinha da cor (ponto da capa)', () => {
+    it('grava o ponto escolhido e null volta pro automático', async () => {
+      await svc.definirAmostra(user(), 'mc-1', { x: 0.4, y: 0.6 });
+      expect(prisma.catalogoModeloCor.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { id: 'mc-1' }, data: { amostraX: 0.4, amostraY: 0.6 } }),
+      );
+      await svc.definirAmostra(user(), 'mc-1', null);
+      expect(prisma.catalogoModeloCor.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: { amostraX: null, amostraY: null } }),
+      );
+    });
+
+    it('capa nova (reordenar) zera o ponto; mesma capa mantém', async () => {
+      prisma.catalogoFoto.findMany.mockResolvedValue([{ id: 'f-1' }, { id: 'f-2' }]);
+      await svc.reordenar(user(), 'mc-1', ['f-1', 'f-2']);
+      expect(prisma.catalogoModeloCor.update).not.toHaveBeenCalled();
+      await svc.reordenar(user(), 'mc-1', ['f-2', 'f-1']);
+      expect(prisma.catalogoModeloCor.update).toHaveBeenCalledWith({
+        where: { id: 'mc-1' },
+        data: { amostraX: null, amostraY: null },
+      });
+    });
+
+    it('apagar a capa zera o ponto; apagar outra foto não', async () => {
+      prisma.catalogoFoto.findFirst
+        .mockResolvedValueOnce({
+          id: 'f-2',
+          modeloCorId: 'mc-1',
+          storagePath: 'a.webp',
+          thumbPath: null,
+        })
+        .mockResolvedValueOnce({ id: 'f-1' });
+      await svc.excluir(user(), 'f-2');
+      expect(prisma.catalogoModeloCor.update).not.toHaveBeenCalled();
+      prisma.catalogoFoto.findFirst
+        .mockResolvedValueOnce({
+          id: 'f-1',
+          modeloCorId: 'mc-1',
+          storagePath: 'b.webp',
+          thumbPath: null,
+        })
+        .mockResolvedValueOnce({ id: 'f-1' });
+      await svc.excluir(user(), 'f-1');
+      expect(prisma.catalogoModeloCor.update).toHaveBeenCalledWith({
+        where: { id: 'mc-1' },
+        data: { amostraX: null, amostraY: null },
+      });
+    });
   });
 
   describe('vídeo', () => {
