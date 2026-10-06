@@ -82,7 +82,10 @@ describe('drain no shutdown — turno em voo não morre com o processo', () => {
     const { svc, prisma } = build();
     prisma.fluxoExecucao.findUnique.mockResolvedValue(EXEC);
     const openai = segurar();
-    vi.spyOn(svc as never, 'processarTurno' as never).mockImplementation((() => openai.p) as never);
+    vi.spyOn(
+      svc as unknown as { processarTurno: () => Promise<unknown> },
+      'processarTurno',
+    ).mockImplementation((() => openai.p) as never);
 
     // Exatamente como a Inbox chama: ninguém espera pelo retomar.
     void svc.retomar('exec-1', 'conv-1', 'quero um orçamento');
@@ -112,9 +115,10 @@ describe('drain no shutdown — turno em voo não morre com o processo', () => {
     const { svc, prisma } = build();
     prisma.fluxoExecucao.findUnique.mockResolvedValue(EXEC);
     // Nunca resolve — o pior caso.
-    vi.spyOn(svc as never, 'processarTurno' as never).mockImplementation(
-      (() => new Promise(() => undefined)) as never,
-    );
+    vi.spyOn(
+      svc as unknown as { processarTurno: () => Promise<unknown> },
+      'processarTurno',
+    ).mockImplementation((() => new Promise(() => undefined)) as never);
     void svc.retomar('exec-1', 'conv-1', 'oi');
     await vi.advanceTimersByTimeAsync(0);
 

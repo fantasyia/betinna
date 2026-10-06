@@ -8,13 +8,15 @@ import { UsuarioIntegracoesService } from './usuario-integracoes.service';
 // Mock CryptoUtil — sem crypto real em testes unitários
 // ---------------------------------------------------------------------------
 vi.mock('@shared/utils/crypto.util', () => ({
-  CryptoUtil: vi.fn().mockImplementation(() => ({
-    encrypt: vi.fn((text: string) => `enc:${text}`),
-    decrypt: vi.fn((text: string) => {
-      if (text.startsWith('enc:')) return text.slice(4);
-      throw new Error('Invalid ciphertext');
-    }),
-  })),
+  CryptoUtil: vi.fn().mockImplementation(function () {
+    return {
+      encrypt: vi.fn((text: string) => `enc:${text}`),
+      decrypt: vi.fn((text: string) => {
+        if (text.startsWith('enc:')) return text.slice(4);
+        throw new Error('Invalid ciphertext');
+      }),
+    };
+  }),
 }));
 
 // ---------------------------------------------------------------------------
