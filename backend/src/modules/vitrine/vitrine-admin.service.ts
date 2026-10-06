@@ -11,6 +11,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import type {
+  CategoriaDto,
   CorDto,
   LinhaDto,
   ModeloDto,
@@ -31,6 +32,7 @@ function ehEmUso(err: unknown): boolean {
 }
 
 const modeloInclude = {
+  categoria: true,
   cores: {
     orderBy: { ordem: 'asc' },
     include: {
@@ -233,6 +235,66 @@ export class VitrineAdminService {
     }
   }
 
+  // ─── Categorias ─────────────────────────────────────────────────────────
+
+  async listarCategorias(user: AuthenticatedUser) {
+    const empresaId = await this.empresaComVitrine(user);
+    return this.prisma.catalogoCategoria.findMany({
+      where: { empresaId },
+      orderBy: [{ ordem: 'asc' }, { nome: 'asc' }],
+      include: { _count: { select: { modelos: true } } },
+    });
+  }
+
+  async criarCategoria(user: AuthenticatedUser, dto: CategoriaDto) {
+    const empresaId = await this.empresaComVitrine(user);
+    try {
+      return await this.prisma.catalogoCategoria.create({
+        data: { empresaId, nome: dto.nome, ordem: dto.ordem ?? 0, ativo: dto.ativo ?? true },
+      });
+    } catch (err) {
+      if (ehUnicidade(err)) throw new ConflictException(`Já existe a categoria "${dto.nome}"`);
+      throw err;
+    }
+  }
+
+  async atualizarCategoria(user: AuthenticatedUser, id: string, dto: CategoriaDto) {
+    const empresaId = await this.empresaComVitrine(user);
+    await this.garantirDaEmpresa('catalogoCategoria', id, empresaId);
+    try {
+      const cat = await this.prisma.catalogoCategoria.update({
+        where: { id },
+        data: {
+          nome: dto.nome,
+          ...(dto.ordem !== undefined ? { ordem: dto.ordem } : {}),
+          ...(dto.ativo !== undefined ? { ativo: dto.ativo } : {}),
+        },
+      });
+      // A categoria vai pro produto da variação: renomear atualiza os produtos.
+      await this.ressincronizarModelosQueUsam(empresaId, { categoriaId: id });
+      return cat;
+    } catch (err) {
+      if (ehUnicidade(err)) throw new ConflictException(`Já existe a categoria "${dto.nome}"`);
+      throw err;
+    }
+  }
+
+  async excluirCategoria(user: AuthenticatedUser, id: string) {
+    const empresaId = await this.empresaComVitrine(user);
+    await this.garantirDaEmpresa('catalogoCategoria', id, empresaId);
+    try {
+      await this.prisma.catalogoCategoria.delete({ where: { id } });
+      return { ok: true };
+    } catch (err) {
+      if (ehEmUso(err)) {
+        throw new BusinessRuleException(
+          'Essa categoria está em uso num modelo — troque a categoria nos modelos ou desative',
+        );
+      }
+      throw err;
+    }
+  }
+
   // ─── Linhas e tamanhos ──────────────────────────────────────────────────
 
   async listarLinhas(user: AuthenticatedUser) {
@@ -274,6 +336,51 @@ export class VitrineAdminService {
       return linha;
     } catch (err) {
       if (ehUnicidade(err)) throw new ConflictException(`Já existe a linha "${dto.nome}"`);
+      throw err;
+    }
+  }
+
+  /**
+   * Exclui a linha (e os tamanhos dela). Só se NENHUM modelo usa: a FK é
+   * RESTRICT, então em uso o banco recusa e a resposta pede pra desativar —
+   * apagar levaria junto a grade de modelos com pedido.
+   */
+  async excluirLinha(user: AuthenticatedUser, id: string) {
+    const empresaId = await this.empresaComVitrine(user);
+    await this.garantirDaEmpresa('catalogoLinha', id, empresaId);
+    const emUso = await this.prisma.catalogoModeloLinha.count({ where: { linhaId: id } });
+    if (emUso > 0) {
+      throw new BusinessRuleException(
+        `Essa linha está em ${emUso} modelo(s) — desmarque nos modelos ou desative a linha`,
+      );
+    }
+    try {
+      await this.prisma.catalogoLinha.delete({ where: { id } });
+      return { ok: true };
+    } catch (err) {
+      if (ehEmUso(err)) {
+        throw new BusinessRuleException('Essa linha está em uso — desative em vez de excluir');
+      }
+      throw err;
+    }
+  }
+
+  async excluirTamanho(user: AuthenticatedUser, id: string) {
+    const empresaId = await this.empresaComVitrine(user);
+    const tam = await this.prisma.catalogoTamanho.findFirst({
+      where: { id, linha: { empresaId } },
+      select: { id: true },
+    });
+    if (!tam) throw new NotFoundException('Tamanho', id);
+    try {
+      await this.prisma.catalogoTamanho.delete({ where: { id } });
+      return { ok: true };
+    } catch (err) {
+      if (ehEmUso(err)) {
+        throw new BusinessRuleException(
+          'Esse tamanho está em uso num modelo — desmarque nos modelos ou desative o tamanho',
+        );
+      }
       throw err;
     }
   }
@@ -350,7 +457,7 @@ export class VitrineAdminService {
           data: {
             empresaId,
             nome: dto.nome,
-            categoria: dto.categoria ?? null,
+            categoriaId: dto.categoriaId ?? null,
             descricao: dto.descricao ?? null,
             etiquetas: dto.etiquetas ?? [],
             ordem: dto.ordem ?? 0,
@@ -380,7 +487,7 @@ export class VitrineAdminService {
           where: { id },
           data: {
             nome: dto.nome,
-            categoria: dto.categoria ?? null,
+            ...(dto.categoriaId !== undefined ? { categoriaId: dto.categoriaId } : {}),
             descricao: dto.descricao ?? null,
             ...(dto.etiquetas !== undefined ? { etiquetas: dto.etiquetas } : {}),
             ...(dto.ordem !== undefined ? { ordem: dto.ordem } : {}),
@@ -400,6 +507,57 @@ export class VitrineAdminService {
       { timeout: 30_000 },
     );
     return this.obterModelo(user, id);
+  }
+
+  /**
+   * Exclui o modelo. Os PRODUTOS das variações ficam (desativados): pedido
+   * antigo continua apontando pra eles. Fotos e vídeos saem do armazenamento.
+   */
+  async excluirModelo(user: AuthenticatedUser, id: string) {
+    const empresaId = await this.empresaComVitrine(user);
+    await this.garantirDaEmpresa('catalogoModelo', id, empresaId);
+    const midia = await this.prisma.catalogoModelo.findUniqueOrThrow({
+      where: { id },
+      select: {
+        cores: { select: { fotos: { select: { storagePath: true, thumbPath: true } } } },
+        videos: { select: { storagePath: true } },
+      },
+    });
+    await this.prisma.$transaction(
+      async (tx) => {
+        await this.desativarProdutosDas(tx, { modeloId: id });
+        await tx.catalogoModelo.delete({ where: { id } });
+      },
+      { timeout: 30_000 },
+    );
+    const paths = [
+      ...midia.cores.flatMap((c) =>
+        c.fotos.flatMap((f) => [f.storagePath, ...(f.thumbPath ? [f.thumbPath] : [])]),
+      ),
+      ...midia.videos.map((v) => v.storagePath),
+    ];
+    // Depois do banco: falha aqui deixa arquivo órfão, nunca registro sem arquivo.
+    if (paths.length) await this.fotos.removerArquivos(paths);
+    return { ok: true };
+  }
+
+  /** Ordem dos modelos na vitrine: recebe TODOS os ids da empresa, na ordem nova. */
+  async reordenarModelos(user: AuthenticatedUser, ids: string[]) {
+    const empresaId = await this.empresaComVitrine(user);
+    const daEmpresa = await this.prisma.catalogoModelo.findMany({
+      where: { empresaId },
+      select: { id: true },
+    });
+    const conjunto = new Set(daEmpresa.map((m) => m.id));
+    if (ids.length !== conjunto.size || !ids.every((x) => conjunto.has(x))) {
+      throw new BusinessRuleException('A nova ordem tem que ter exatamente os modelos da empresa');
+    }
+    await this.prisma.$transaction(
+      ids.map((mid, ordem) =>
+        this.prisma.catalogoModelo.update({ where: { id: mid }, data: { ordem } }),
+      ),
+    );
+    return { ok: true };
   }
 
   async atualizarVariacao(user: AuthenticatedUser, id: string, dto: VariacaoPatchDto) {
@@ -438,6 +596,13 @@ export class VitrineAdminService {
    * entraria pela grade.
    */
   private async validarReferencias(empresaId: string, dto: ModeloDto): Promise<void> {
+    if (dto.categoriaId) {
+      const cat = await this.prisma.catalogoCategoria.findFirst({
+        where: { id: dto.categoriaId, empresaId },
+        select: { id: true },
+      });
+      if (!cat) throw new BusinessRuleException('Categoria inválida para esta empresa');
+    }
     const corIds = dto.corIds ?? [];
     if (corIds.length) {
       const n = await this.prisma.catalogoCor.count({ where: { id: { in: corIds }, empresaId } });
@@ -555,6 +720,7 @@ export class VitrineAdminService {
     const m = await tx.catalogoModelo.findUniqueOrThrow({
       where: { id: modeloId },
       include: {
+        categoria: true,
         cores: { include: { cor: true } },
         linhas: { include: { linha: true, tamanhos: { include: { tamanho: true } } } },
         variacoes: true,
@@ -570,7 +736,7 @@ export class VitrineAdminService {
           const dadosProduto = {
             nome,
             linha: ml.linha.nome,
-            categoria: m.categoria,
+            categoria: m.categoria?.nome ?? null,
             precoTabela: ml.precoEntrada ?? new Prisma.Decimal(0),
             ativo: m.ativo && mc.cor.ativo && ml.linha.ativo && mt.tamanho.ativo,
           };
@@ -608,13 +774,14 @@ export class VitrineAdminService {
   /** Renomeou cor/linha/tamanho → reescreve o nome dos produtos que a usam. */
   private async ressincronizarModelosQueUsam(
     empresaId: string,
-    alvo: { corId?: string; linhaId?: string },
+    alvo: { corId?: string; linhaId?: string; categoriaId?: string },
   ): Promise<void> {
     const modelos = await this.prisma.catalogoModelo.findMany({
       where: {
         empresaId,
         ...(alvo.corId ? { cores: { some: { corId: alvo.corId } } } : {}),
         ...(alvo.linhaId ? { linhas: { some: { linhaId: alvo.linhaId } } } : {}),
+        ...(alvo.categoriaId ? { categoriaId: alvo.categoriaId } : {}),
       },
       select: { id: true },
     });
@@ -626,7 +793,7 @@ export class VitrineAdminService {
   }
 
   private async garantirDaEmpresa(
-    modelo: 'catalogoCor' | 'catalogoLinha' | 'catalogoModelo',
+    modelo: 'catalogoCor' | 'catalogoLinha' | 'catalogoModelo' | 'catalogoCategoria',
     id: string,
     empresaId: string,
   ): Promise<void> {
@@ -637,7 +804,12 @@ export class VitrineAdminService {
     };
     const row = await delegate.findFirst({ where: { id, empresaId }, select: { id: true } });
     if (!row) {
-      const nome = { catalogoCor: 'Cor', catalogoLinha: 'Linha', catalogoModelo: 'Modelo' }[modelo];
+      const nome = {
+        catalogoCor: 'Cor',
+        catalogoLinha: 'Linha',
+        catalogoModelo: 'Modelo',
+        catalogoCategoria: 'Categoria',
+      }[modelo];
       throw new NotFoundException(nome, id);
     }
   }

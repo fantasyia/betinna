@@ -50,6 +50,10 @@ function makePrisma() {
       create: vi.fn(),
       update: vi.fn(),
     },
+    catalogoCategoria: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'cat-1' }),
+      delete: vi.fn().mockResolvedValue({}),
+    },
     catalogoModelo: {
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue({ id: 'mod-1', cores: [], videos: [] }),
@@ -119,16 +123,16 @@ function modeloParaSync(variacoes: unknown[] = []) {
 describe('VitrineAdminService', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let svc: VitrineAdminService;
+  let fotosSvc: { removerArquivos: ReturnType<typeof vi.fn> } & Record<string, unknown>;
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new VitrineAdminService(
-      prisma as never,
-      {
-        comUrls: (f: object) => f,
-        urlPublica: (p: string) => p,
-      } as never,
-    );
+    fotosSvc = {
+      comUrls: (f: object) => f,
+      urlPublica: (p: string) => p,
+      removerArquivos: vi.fn().mockResolvedValue(undefined),
+    };
+    svc = new VitrineAdminService(prisma as never, fotosSvc as never);
   });
 
   // ── ISOLAMENTO ─────────────────────────────────────────────────────────
@@ -316,6 +320,141 @@ describe('VitrineAdminService', () => {
           where: { modeloId_corId: { modeloId: 'mod-1', corId: 'cor-preto' } },
         }),
       );
+    });
+  });
+
+  // ── EXCLUIR LINHA/TAMANHO ──────────────────────────────────────────────
+  describe('excluir linha e tamanho', () => {
+    it('linha usada por modelo → 422 e NADA é apagado', async () => {
+      (prisma.catalogoModeloLinha as Record<string, unknown>).count = vi.fn().mockResolvedValue(2);
+      (prisma.catalogoLinha as Record<string, unknown>).delete = vi.fn();
+      await expect(svc.excluirLinha(user(), 'lin-1')).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(
+        (prisma.catalogoLinha as unknown as { delete: ReturnType<typeof vi.fn> }).delete,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('linha sem uso → exclui', async () => {
+      (prisma.catalogoModeloLinha as Record<string, unknown>).count = vi.fn().mockResolvedValue(0);
+      const del = vi.fn().mockResolvedValue({});
+      (prisma.catalogoLinha as Record<string, unknown>).delete = del;
+      await expect(svc.excluirLinha(user(), 'lin-1')).resolves.toEqual({ ok: true });
+      expect(del).toHaveBeenCalledWith({ where: { id: 'lin-1' } });
+    });
+
+    it('linha de outra empresa → 404', async () => {
+      prisma.catalogoLinha.findFirst.mockResolvedValue(null);
+      await expect(svc.excluirLinha(user(), 'lin-x')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('tamanho em uso (FK) → 422 pedindo pra desativar', async () => {
+      prisma.catalogoTamanho.findFirst.mockResolvedValue({ id: 't-1' });
+      (prisma.catalogoTamanho as Record<string, unknown>).delete = vi
+        .fn()
+        .mockRejectedValue(p2003());
+      await expect(svc.excluirTamanho(user(), 't-1')).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+  });
+
+  // ── CATEGORIA, EXCLUIR MODELO, ORDEM ───────────────────────────────────
+  describe('categoria do modelo', () => {
+    it('categoria de OUTRA empresa → recusa antes de gravar', async () => {
+      prisma.catalogoCategoria.findFirst.mockResolvedValue(null);
+      await expect(
+        svc.criarModelo(user(), { nome: 'Moletom', categoriaId: 'cat-alheia' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(prisma.catalogoCategoria.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'cat-alheia', empresaId: 'emp-1' } }),
+      );
+      expect(prisma.catalogoModelo.create).not.toHaveBeenCalled();
+    });
+
+    it('o produto da variação recebe o NOME da categoria', async () => {
+      prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue({
+        ...modeloParaSync(),
+        categoria: { nome: 'Moletom' },
+      });
+      await svc.criarModelo(user(), { nome: 'Moletom', categoriaId: 'cat-1' });
+      expect(prisma.produto.create.mock.calls[0][0].data.categoria).toBe('Moletom');
+    });
+
+    it('excluir categoria em uso → 422', async () => {
+      prisma.catalogoCategoria.delete.mockRejectedValue(p2003());
+      await expect(svc.excluirCategoria(user(), 'cat-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+    });
+  });
+
+  describe('excluir modelo', () => {
+    it('desativa os produtos ANTES de apagar e remove a mídia DEPOIS do banco', async () => {
+      const ordem: string[] = [];
+      (prisma.catalogoModelo as Record<string, unknown>).findUniqueOrThrow = vi
+        .fn()
+        .mockResolvedValue({
+          cores: [{ fotos: [{ storagePath: 'e/m/a.webp', thumbPath: 'e/m/a_thumb.webp' }] }],
+          videos: [{ storagePath: 'e/m/video_1.mp4' }],
+        });
+      prisma.catalogoVariacao.findMany.mockResolvedValue([{ produtoId: 'prod-1' }]);
+      prisma.produto.updateMany.mockImplementation(async () => {
+        ordem.push('desativa');
+        return { count: 1 };
+      });
+      const del = vi.fn(async () => {
+        ordem.push('apaga');
+        return {};
+      });
+      (prisma.catalogoModelo as Record<string, unknown>).delete = del;
+      fotosSvc.removerArquivos.mockImplementation(async () => {
+        ordem.push('midia');
+      });
+
+      await svc.excluirModelo(user(), 'mod-1');
+
+      expect(ordem).toEqual(['desativa', 'apaga', 'midia']);
+      expect(prisma.catalogoVariacao.findMany).toHaveBeenCalledWith({
+        where: { modeloId: 'mod-1' },
+        select: { produtoId: true },
+      });
+      expect(fotosSvc.removerArquivos).toHaveBeenCalledWith([
+        'e/m/a.webp',
+        'e/m/a_thumb.webp',
+        'e/m/video_1.mp4',
+      ]);
+    });
+
+    it('modelo de outra empresa → 404, nada apagado', async () => {
+      prisma.catalogoModelo.findFirst.mockResolvedValue(null);
+      const del = vi.fn();
+      (prisma.catalogoModelo as Record<string, unknown>).delete = del;
+      await expect(svc.excluirModelo(user(), 'mod-x')).rejects.toBeInstanceOf(NotFoundException);
+      expect(del).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ordem dos modelos', () => {
+    it('exige EXATAMENTE os modelos da empresa (nem a mais, nem a menos)', async () => {
+      prisma.catalogoModelo.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+      await expect(svc.reordenarModelos(user(), ['a'])).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      await expect(svc.reordenarModelos(user(), ['a', 'x'])).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+    });
+
+    it('grava a posição de cada um', async () => {
+      prisma.catalogoModelo.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+      prisma.$transaction.mockImplementationOnce(async (ops: unknown[]) => ops);
+      await svc.reordenarModelos(user(), ['b', 'a']);
+      expect(prisma.catalogoModelo.update).toHaveBeenCalledWith({
+        where: { id: 'b' },
+        data: { ordem: 0 },
+      });
+      expect(prisma.catalogoModelo.update).toHaveBeenCalledWith({
+        where: { id: 'a' },
+        data: { ordem: 1 },
+      });
     });
   });
 

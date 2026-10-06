@@ -45,6 +45,19 @@ export const linhaSchema = z.object({
 });
 export type LinhaDto = z.infer<typeof linhaSchema>;
 
+export const categoriaSchema = z.object({
+  nome: z.string().trim().min(1).max(60),
+  ordem: z.number().int().min(0).max(10_000).optional(),
+  ativo: z.boolean().optional(),
+});
+export type CategoriaDto = z.infer<typeof categoriaSchema>;
+
+/** Nova ordem dos modelos na vitrine: TODOS os ids da empresa, na ordem. */
+export const ordemModelosSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(2000),
+});
+export type OrdemModelosDto = z.infer<typeof ordemModelosSchema>;
+
 export const tamanhoSchema = z.object({
   nome: z.string().trim().min(1).max(20),
   ordem: z.number().int().min(0).max(10_000).optional(),
@@ -91,7 +104,8 @@ const modeloLinhaSchema = z.object({
 export const modeloSchema = z
   .object({
     nome: z.string().trim().min(1).max(120),
-    categoria: z.string().trim().max(60).nullable().optional(),
+    /** Da lista de categorias da empresa. */
+    categoriaId: z.string().min(1).nullable().optional(),
     descricao: z.string().trim().max(4000).nullable().optional(),
     etiquetas: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
     ordem: z.number().int().min(0).max(100_000).optional(),

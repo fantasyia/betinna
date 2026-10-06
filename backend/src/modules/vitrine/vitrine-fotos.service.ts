@@ -313,6 +313,11 @@ export class VitrineFotosService implements OnModuleInit {
     }
   }
 
+  /** Remove arquivos do bucket (best-effort; usado ao excluir o modelo). */
+  async removerArquivos(paths: string[]): Promise<void> {
+    await this.remover(paths);
+  }
+
   private async remover(paths: string[]): Promise<void> {
     const { error } = await this.storage.storage.from(BUCKET_VITRINE).remove(paths);
     if (error)

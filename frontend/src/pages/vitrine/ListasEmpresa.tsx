@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { Badge, Button, Card, Dialog, Field, Input, Switch } from '@/components/ui';
@@ -200,6 +200,21 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
     }
   }
 
+  async function excluir() {
+    if (!editando) return;
+    const { tipo, item } = editando;
+    const oQue = tipo === 'linha' ? `a linha "${item.nome}" e os tamanhos dela` : `o tamanho "${item.nome}"`;
+    if (!window.confirm(`Excluir ${oQue}?`)) return;
+    try {
+      const url = tipo === 'linha' ? `/vitrine/admin/linhas/${item.id}` : `/vitrine/admin/tamanhos/${item.id}`;
+      await api.delete(url);
+      setEditando(null);
+      onMudou();
+    } catch (err) {
+      toast.error('Não foi possível excluir', apiErrorMessage(err));
+    }
+  }
+
   function abrirEdicao(tipo: 'linha' | 'tamanho', item: Linha | Tamanho) {
     setEditando({ tipo, item });
     setNomeEdicao(item.nome);
@@ -272,6 +287,9 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
         size="sm"
         footer={
           <>
+            <Button variant="danger" onClick={() => void excluir()} className="mr-auto" data-testid="vitrine-excluir-linha-tamanho">
+              <Trash2 size={14} /> Excluir
+            </Button>
             <Button variant="ghost" onClick={() => setEditando(null)}>
               Cancelar
             </Button>
@@ -290,6 +308,7 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
           />
           <p className="text-xs text-muted">
             Renomear atualiza os produtos dos modelos que usam este item. Inativo some da vitrine.
+            Excluir só funciona se nenhum modelo usa.
           </p>
         </div>
       </Dialog>

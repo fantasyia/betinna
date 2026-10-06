@@ -5,7 +5,11 @@ import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
+  type CategoriaDto,
   type CorDto,
+  type OrdemModelosDto,
+  categoriaSchema,
+  ordemModelosSchema,
   type LinhaDto,
   type ModeloDto,
   type TamanhoDto,
@@ -77,6 +81,34 @@ export class VitrineAdminController {
     return this.svc.excluirCor(user, id);
   }
 
+  // ─── Categorias ─────────────────────────────────────────────────────────
+  @Get('categorias')
+  listarCategorias(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.listarCategorias(user);
+  }
+
+  @Post('categorias')
+  criarCategoria(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(categoriaSchema)) dto: CategoriaDto,
+  ) {
+    return this.svc.criarCategoria(user, dto);
+  }
+
+  @Put('categorias/:id')
+  atualizarCategoria(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(categoriaSchema)) dto: CategoriaDto,
+  ) {
+    return this.svc.atualizarCategoria(user, id, dto);
+  }
+
+  @Delete('categorias/:id')
+  excluirCategoria(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.excluirCategoria(user, id);
+  }
+
   // ─── Linhas e tamanhos ──────────────────────────────────────────────────
   @Get('linhas')
   listarLinhas(@CurrentUser() user: AuthenticatedUser) {
@@ -98,6 +130,18 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(linhaSchema)) dto: LinhaDto,
   ) {
     return this.svc.atualizarLinha(user, id, dto);
+  }
+
+  @Delete('linhas/:id')
+  @ApiOperation({ summary: 'Exclui a linha (só se nenhum modelo usa)' })
+  excluirLinha(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.excluirLinha(user, id);
+  }
+
+  @Delete('tamanhos/:id')
+  @ApiOperation({ summary: 'Exclui o tamanho (só se nenhum modelo usa)' })
+  excluirTamanho(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.excluirTamanho(user, id);
   }
 
   @Post('linhas/:id/tamanhos')
@@ -122,6 +166,22 @@ export class VitrineAdminController {
   @Get('modelos')
   listarModelos(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.listarModelos(user);
+  }
+
+  // `ordem` antes de `:id`: senão o PUT cairia em modelos/:id.
+  @Put('modelos/ordem')
+  @ApiOperation({ summary: 'Ordem dos modelos na vitrine (todos os ids, na ordem)' })
+  reordenarModelos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(ordemModelosSchema)) dto: OrdemModelosDto,
+  ) {
+    return this.svc.reordenarModelos(user, dto.ids);
+  }
+
+  @Delete('modelos/:id')
+  @ApiOperation({ summary: 'Exclui o modelo (produtos ficam desativados; mídia sai do bucket)' })
+  excluirModelo(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.excluirModelo(user, id);
   }
 
   @Get('modelos/:id')

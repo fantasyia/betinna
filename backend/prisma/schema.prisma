@@ -417,6 +417,7 @@ model Empresa {
   treinamentos          Treinamento[]
   vitrine               Vitrine?
   catalogoCores         CatalogoCor[]
+  catalogoCategorias    CatalogoCategoria[]
   catalogoLinhas        CatalogoLinha[]
   catalogoModelos       CatalogoModelo[]
 
@@ -4048,12 +4049,32 @@ model CatalogoTamanho {
   @@index([linhaId, ordem])
 }
 
-/// O que aparece na vitrine (um "card" do feed).
-model CatalogoModelo {
-  id        String   @id @default(cuid())
+/// Lista de categorias da empresa (Moletom, Camiseta UV…) — a vitrine filtra
+/// por ela. Lista, e não texto livre, pra "Moletom" e "moletom" não virarem
+/// dois filtros.
+model CatalogoCategoria {
+  id        String  @id @default(cuid())
   empresaId String
   nome      String
-  categoria String?
+  ordem     Int     @default(0)
+  ativo     Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  modelos CatalogoModelo[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId, ordem])
+}
+
+/// O que aparece na vitrine (um "card" do feed).
+model CatalogoModelo {
+  id          String   @id @default(cuid())
+  empresaId   String
+  nome        String
+  categoriaId String?
   descricao String?  @db.Text
   /// Chips do cartão (ex.: "Gramatura 280", "Capuz").
   etiquetas String[] @default([])
@@ -4075,6 +4096,7 @@ model CatalogoModelo {
   atualizadoEm DateTime @updatedAt
 
   empresa   Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  categoria CatalogoCategoria?    @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
   cores     CatalogoModeloCor[]
   linhas    CatalogoModeloLinha[]
   variacoes CatalogoVariacao[]
