@@ -731,4 +731,62 @@ describe('PedidosService', () => {
     prisma.pedido.findFirst.mockResolvedValue(null);
     await expect(svc.findById(fakeUser(), 'inexistente')).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  // ─── ERP próprio (Distribuidora): ganchos do estoque ─────────────────────
+  describe('estoque próprio', () => {
+    const pedidoBase = {
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      numero: 'PED-0009',
+      numeroErp: null,
+      erpPedidoId: null,
+      observacoes: null,
+      representanteId: null,
+      itens: [],
+      cliente: { id: 'cli-1', nome: 'X' },
+    };
+    const comEstoque = () => {
+      const estoque = {
+        baixarNoDespacho: vi.fn().mockResolvedValue(1),
+        liberarDoPedido: vi.fn().mockResolvedValue(1),
+      };
+      (svc as unknown as { estoque: typeof estoque }).estoque = estoque;
+      return estoque;
+    };
+
+    it('despachar (EM_SEPARACAO → ENVIADO) baixa a reserva do estoque', async () => {
+      const estoque = comEstoque();
+      prisma.pedido.findFirst.mockResolvedValue({ ...pedidoBase, status: 'EM_SEPARACAO' });
+      prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+      prisma.pedido.findUniqueOrThrow.mockResolvedValue({ ...pedidoBase, status: 'ENVIADO' });
+      await svc.avancarStatus(fakeUser({ role: 'ADMIN' }), 'ped-1');
+      expect(estoque.baixarNoDespacho).toHaveBeenCalledWith('ped-1', expect.any(String));
+    });
+
+    it('outros avanços (PAGO → EM_SEPARACAO) NÃO mexem no estoque', async () => {
+      const estoque = comEstoque();
+      prisma.pedido.findFirst.mockResolvedValue({ ...pedidoBase, status: 'PAGO' });
+      prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+      prisma.pedido.findUniqueOrThrow.mockResolvedValue({ ...pedidoBase, status: 'EM_SEPARACAO' });
+      await svc.avancarStatus(fakeUser({ role: 'ADMIN' }), 'ped-1');
+      expect(estoque.baixarNoDespacho).not.toHaveBeenCalled();
+    });
+
+    it('cancelar libera o que estava reservado', async () => {
+      const estoque = comEstoque();
+      prisma.pedido.findFirst.mockResolvedValue({ ...pedidoBase, status: 'RASCUNHO' });
+      prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+      await svc.cancelar(fakeUser({ role: 'ADMIN' }), 'ped-1', { motivo: 'desistiu' } as never);
+      expect(estoque.liberarDoPedido).toHaveBeenCalledWith('ped-1', 'cancelado: desistiu');
+    });
+
+    it('falha no estoque não desfaz o despacho', async () => {
+      const estoque = comEstoque();
+      estoque.baixarNoDespacho.mockRejectedValue(new Error('banco fora'));
+      prisma.pedido.findFirst.mockResolvedValue({ ...pedidoBase, status: 'EM_SEPARACAO' });
+      prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+      prisma.pedido.findUniqueOrThrow.mockResolvedValue({ ...pedidoBase, status: 'ENVIADO' });
+      await expect(svc.avancarStatus(fakeUser({ role: 'ADMIN' }), 'ped-1')).resolves.toBeTruthy();
+    });
+  });
 });

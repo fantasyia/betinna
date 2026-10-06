@@ -833,6 +833,9 @@ model Produto {
   /// Vitrine de atacado: a variação (modelo × cor × linha × tamanho) que este
   /// produto representa. Null = produto comum (ERP ou cadastro plano).
   catalogoVariacao CatalogoVariacao?
+  /// ERP próprio (Fase 2): saldo = soma dos movimentos; reservas do pedido.
+  estoqueMovimentos EstoqueMovimento[]
+  estoqueReservas   EstoqueReserva[]
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
   @@unique([empresaId, sku])
@@ -1078,6 +1081,9 @@ model Pedido {
   movimentosFidelidade     MovimentoFidelidade[]
   ocorrencias              Ocorrencia[]
   leads                    Lead[]
+  /// ERP próprio (Fase 2): reserva do pedido da vitrine e a baixa no despacho.
+  estoqueReservas          EstoqueReserva[]
+  estoqueMovimentos        EstoqueMovimento[]
 
   @@unique([empresaId, numero])
   @@unique([empresaId, numeroErp])
@@ -4231,4 +4237,75 @@ model CatalogoVariacao {
 
   @@unique([modeloCorId, modeloTamanhoId])
   @@index([empresaId, modeloId])
+}
+
+// ─── ERP próprio · Fase 2 · estoque de peça pronta (Ribelt Distribuidora, 06/10/2026) ───
+// Ligado por empresa em `Empresa.config.erpInterno.ativo`. Saldo NUNCA é um
+// número editado: é a soma dos movimentos. Reserva é ledger à parte (não mexe
+// no físico) — o disponível é físico − reservado válido.
+
+enum EstoqueMovTipo {
+  /// Retorno da facção (ordem de produção — entrega 4).
+  ENTRADA_PRODUCAO
+  /// Pedido despachado: a reserva vira saída.
+  SAIDA_PEDIDO
+  /// Inventário ou correção — motivo obrigatório. Pode ser + ou −.
+  AJUSTE
+  /// Troca/defeito voltando pro estoque.
+  DEVOLUCAO
+}
+
+enum EstoqueReservaStatus {
+  /// Pedido enviado, esperando pagamento; vale até `expiraEm`.
+  ATIVA
+  /// Pagamento recebido: segura sem prazo até o despacho.
+  CONFIRMADA
+  /// Despachou: virou movimento SAIDA_PEDIDO.
+  BAIXADA
+  /// Cancelado ou expirado: devolvida ao disponível.
+  LIBERADA
+}
+
+model EstoqueMovimento {
+  id         String         @id @default(cuid())
+  empresaId  String
+  produtoId  String
+  tipo       EstoqueMovTipo
+  /// Com sinal: + entra, − sai.
+  quantidade Int
+  motivo     String?
+  /// Documento de origem quando houver (pedido; OP na entrega 4).
+  pedidoId   String?
+  documento  String?
+  /// Quem fez (id do usuário — UUID); null = automático.
+  usuarioId  String?
+  criadoEm   DateTime       @default(now())
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  pedido  Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId, produtoId])
+  @@index([empresaId, criadoEm])
+  @@index([pedidoId])
+}
+
+model EstoqueReserva {
+  id              String               @id @default(cuid())
+  empresaId       String
+  pedidoId        String
+  produtoId       String
+  quantidade      Int
+  status          EstoqueReservaStatus @default(ATIVA)
+  /// Só ATIVA tem prazo (20 min no pedido da vitrine).
+  expiraEm        DateTime?
+  motivoLiberacao String?
+  criadoEm        DateTime             @default(now())
+  atualizadoEm    DateTime             @updatedAt
+
+  pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([empresaId, produtoId, status])
+  @@index([pedidoId])
+  @@index([status, expiraEm])
 }

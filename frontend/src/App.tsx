@@ -49,6 +49,7 @@ const RespostasRapidasPage = lazyComRetry(() => import("@/pages/RespostasRapidas
 const VitrineCadastroPage = lazyComRetry(() => import("@/pages/vitrine/VitrineCadastroPage"));
 const VitrinePublicaPage = lazyComRetry(() => import("@/pages/vitrine-publica/VitrinePublicaPage"));
 const PrecificacaoPage = lazyComRetry(() => import("@/pages/precificacao/PrecificacaoPage"));
+const EstoquePage = lazyComRetry(() => import("@/pages/estoque/EstoquePage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -370,6 +371,20 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <PrecificacaoPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // ERP próprio · estoque — o gate fino (ADMIN/DIRECTOR + flag da empresa)
+    // é da própria página e do backend.
+    path: "/estoque",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <EstoquePage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

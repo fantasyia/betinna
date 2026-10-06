@@ -6,6 +6,7 @@ const estado = vi.hoisted(() => ({
   role: 'DIRECTOR' as string | null,
   config: null as { id: string } | null,
   precificacao: null as { ativa: boolean } | null,
+  estoque: null as { ativo: boolean } | null,
   paths: [] as Array<string | null>,
 }));
 
@@ -18,7 +19,9 @@ vi.mock('@/hooks/useApiQuery', () => ({
         ? estado.config
         : path === '/precificacao/status'
           ? estado.precificacao
-          : null;
+          : path === '/erp/estoque/status'
+            ? estado.estoque
+            : null;
     return { data, loading: false, error: null, refetch: vi.fn() };
   },
 }));
@@ -37,6 +40,7 @@ describe('CatalogoTabs — abas Vitrine e Precificação só onde existem', () =
     estado.role = 'DIRECTOR';
     estado.config = null;
     estado.precificacao = null;
+    estado.estoque = null;
     estado.paths = [];
   });
   afterEach(() => cleanup());
@@ -62,13 +66,21 @@ describe('CatalogoTabs — abas Vitrine e Precificação só onde existem', () =
     expect(screen.getByText('Precificação')).toBeTruthy();
   });
 
+  it('estoque próprio ligado + diretor: mostra a aba Estoque', () => {
+    estado.estoque = { ativo: true };
+    montar();
+    expect(screen.getByText('Estoque')).toBeTruthy();
+  });
+
   it('REP nem consulta (e não vê nenhuma das duas abas)', () => {
     estado.role = 'REP';
     estado.config = { id: 'vit-1' };
     estado.precificacao = { ativa: true };
+    estado.estoque = { ativo: true };
     montar();
     expect(estado.paths.every((p) => p === null)).toBe(true);
     expect(screen.queryByText('Vitrine')).toBeNull();
     expect(screen.queryByText('Precificação')).toBeNull();
+    expect(screen.queryByText('Estoque')).toBeNull();
   });
 });

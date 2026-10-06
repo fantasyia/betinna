@@ -1,4 +1,4 @@
-import { Calculator, Package, Sparkles, Store } from 'lucide-react';
+import { Boxes, Calculator, Package, Sparkles, Store } from 'lucide-react';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
@@ -14,12 +14,14 @@ import { useRole } from '@/hooks/usePermission';
  * de empresa que tem a vitrine ligada. As outras empresas não veem nada novo.
  * "Precificação" (06/10): mesma regra de papel, mais a flag da empresa
  * (`config.precificacao.ativa`) — hoje só a Distribuidora.
+ * "Estoque" (ERP próprio, 07/10): idem, flag `config.erpInterno.ativo`.
  */
 export function CatalogoTabs() {
   const role = useRole();
   const gestor = role === 'ADMIN' || role === 'DIRECTOR';
   const vitrine = useApiQuery<{ id: string } | null>(gestor ? '/vitrine/admin/config' : null);
   const precificacao = useApiQuery<{ ativa: boolean }>(gestor ? '/precificacao/status' : null);
+  const estoque = useApiQuery<{ ativo: boolean }>(gestor ? '/erp/estoque/status' : null);
 
   const tabs: SubTab[] = [
     { to: '/produtos', label: 'Produtos', icon: <Package size={14} /> },
@@ -28,6 +30,7 @@ export function CatalogoTabs() {
     ...(precificacao.data?.ativa
       ? [{ to: '/precificacao', label: 'Precificação', icon: <Calculator size={14} /> }]
       : []),
+    ...(estoque.data?.ativo ? [{ to: '/estoque', label: 'Estoque', icon: <Boxes size={14} /> }] : []),
   ];
 
   return <SubTabsBar tabs={tabs} ariaLabel="Sub-abas de Catálogo" />;

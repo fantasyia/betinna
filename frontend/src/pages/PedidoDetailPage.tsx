@@ -30,6 +30,7 @@ import { NovoPedidoDialog, type NovoPedidoInicial } from '@/components/NovoPedid
 import { Avatar, Badge, Button, Card, Dialog, Field, Textarea } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
+import { ReservaDoPedido } from '@/pages/estoque/ReservaDoPedido';
 
 /**
  * PedidoDetailPage — versão página cheia do pedido (vs Drawer).
@@ -61,6 +62,8 @@ interface PedidoDetail {
   numero: string | number;
   total: number;
   status: PedidoStatus;
+  /** Canal de entrada (REP_APP, SITE, VITRINE…). */
+  origem?: string;
   cliente?: { id: string; nome: string; cnpj?: string | null };
   representante?: { id: string; nome: string };
   criadoEm: string;
@@ -361,6 +364,9 @@ export default function PedidoDetailPage() {
                   </span>
                 </div>
               )}
+
+              {/* Estoque próprio: reserva de 20 min do pedido da vitrine */}
+              {data.origem === 'VITRINE' && <ReservaDoPedido pedidoId={data.id} onMudou={refetch} />}
 
               {/* Header card com total + status */}
               <Card variant="outline" padding="md" className="bg-bg-alt">

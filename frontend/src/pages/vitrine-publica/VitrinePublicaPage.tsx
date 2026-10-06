@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatMoeda, formatNumero } from '@/lib/masks';
+import { restante, useAgora } from '@/lib/relogio';
 import {
   NOME_FAIXA,
   itensParaEnvio,
@@ -845,6 +846,8 @@ interface Enviado {
   pecas: number;
   total: number;
   aConfirmar: boolean;
+  /** Até quando as peças ficam reservadas (estoque próprio). null = sem reserva. */
+  reservaExpiraEm: string | null;
 }
 
 interface Contato {
@@ -896,7 +899,12 @@ function FolhaEnvio({
     setEnviando(true);
     setErro(null);
     try {
-      const r = await api.post<{ numero: string; totalPecas: number; total: number }>(
+      const r = await api.post<{
+        numero: string;
+        totalPecas: number;
+        total: number;
+        reservaExpiraEm?: string | null;
+      }>(
         `/public/vitrine/${encodeURIComponent(slug)}/pedido`,
         {
           nome: f.nome.trim(),
@@ -914,7 +922,13 @@ function FolhaEnvio({
       } catch {
         /* sem armazenamento: só não lembra da próxima vez */
       }
-      onEnviado({ numero: r.numero, pecas: r.totalPecas, total: r.total, aConfirmar: resumo.aConfirmar });
+      onEnviado({
+        numero: r.numero,
+        pecas: r.totalPecas,
+        total: r.total,
+        aConfirmar: resumo.aConfirmar,
+        reservaExpiraEm: r.reservaExpiraEm ?? null,
+      });
     } catch (e) {
       setErro(
         e instanceof ApiError && e.status === 429
@@ -1034,6 +1048,8 @@ function FolhaEnvio({
 }
 
 function PedidoEnviado({ e, empresa, onFechar }: { e: Enviado; empresa: string; onFechar: () => void }) {
+  const agora = useAgora(Boolean(e.reservaExpiraEm));
+  const relogio = restante(e.reservaExpiraEm, agora);
   return (
     <section className="vt-cart vt-ok" aria-label="Pedido enviado" data-testid="vt-enviado">
       <div className="vt-ok-corpo">
@@ -1045,6 +1061,17 @@ function PedidoEnviado({ e, empresa, onFechar }: { e: Enviado; empresa: string; 
           Recebemos o pedido <b>{e.numero}</b> com {e.pecas} peças
           {e.aConfirmar ? '' : ` (${formatMoeda(e.total)})`}.
         </p>
+        {relogio &&
+          (relogio.vencido ? (
+            <p className="vt-reserva vt-reserva-fim" data-testid="vt-reserva">
+              A reserva das peças venceu. Fale com a {empresa} no WhatsApp pra reativar o pedido.
+            </p>
+          ) : (
+            <p className="vt-reserva" data-testid="vt-reserva">
+              Suas peças ficam reservadas por <b>{relogio.texto}</b>
+              <small>Pague dentro desse prazo pra garantir o pedido.</small>
+            </p>
+          ))}
         <p className="vt-muted">
           A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''} o frete e o
           pagamento.

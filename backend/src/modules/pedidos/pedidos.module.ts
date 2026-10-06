@@ -18,6 +18,7 @@ import { PedidosService } from './pedidos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { ContratosModule } from '@modules/contratos/contratos.module';
+import { ErpModule } from '@modules/erp/erp.module';
 import { ErpCancelamentosService } from './erp-cancelamentos.service';
 import { PedidoFinanceiroErpService } from './pedido-financeiro-erp.service';
 import { ErpSyncDiarioJob } from './erp-sync-diario.job';
@@ -37,6 +38,8 @@ import { SiteStatusRetryJob } from './site-status-retry.job';
     // A passada de cancelamentos reprocessa a folha do mês.
     ComissoesModule,
     ContratosModule,
+    // ERP próprio: despachar baixa e cancelar libera a reserva do pedido.
+    ErpModule,
   ],
   controllers: [PedidosController, AprovacoesController, PedidoSiteController],
   providers: [

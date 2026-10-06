@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { EstoqueService, RESERVA_MINUTOS } from '@modules/erp/estoque.service';
 import { type PedidoMinimoRegra, avaliarPedidoMinimo } from '@modules/pedidos/pedido-minimo.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
@@ -100,12 +101,20 @@ export class VitrinePedidoService {
     private readonly sequence: SequenceService,
     private readonly bus: FluxoEventBusService,
     private readonly notificacoes: NotificacoesService,
+    private readonly estoque: EstoqueService,
   ) {}
 
   async enviar(
     slug: string,
     dto: PedidoVitrineDto,
-  ): Promise<{ numero: string; totalPecas: number; total: number; duplicado: boolean }> {
+  ): Promise<{
+    numero: string;
+    totalPecas: number;
+    total: number;
+    duplicado: boolean;
+    /** Até quando as peças ficam reservadas (ERP ligado). null = sem reserva. */
+    reservaExpiraEm: Date | null;
+  }> {
     const vitrine = await this.prisma.vitrine.findUnique({
       where: { slug },
       select: {
@@ -225,10 +234,20 @@ export class VitrinePedidoService {
         total: new Prisma.Decimal(total.toFixed(2)),
         criadoEm: { gte: new Date(Date.now() - 10 * 60_000) },
       },
-      select: { numero: true, itens: { select: { quantidade: true } } },
+      select: {
+        numero: true,
+        itens: { select: { quantidade: true } },
+        estoqueReservas: { where: { status: 'ATIVA' }, select: { expiraEm: true }, take: 1 },
+      },
     });
     if (recente && recente.itens.reduce((s, i) => s + i.quantidade, 0) === totalPecas) {
-      return { numero: recente.numero, totalPecas, total, duplicado: true };
+      return {
+        numero: recente.numero,
+        totalPecas,
+        total,
+        duplicado: true,
+        reservaExpiraEm: recente.estoqueReservas[0]?.expiraEm ?? null,
+      };
     }
 
     const cliente = await this.acharOuCriarCliente(empresaId, dto, whatsapp);
@@ -275,6 +294,20 @@ export class VitrinePedidoService {
 
     this.logger.log(`[vitrine] ${slug}: pedido ${pedido.numero} (${totalPecas} peças, ${faixa})`);
 
+    // ERP próprio ligado: as peças ficam reservadas por 20 min esperando o
+    // pagamento. Falha aqui não derruba o pedido (ele já existe) — a equipe vê
+    // o pedido sem relógio e segue na mão.
+    const reservaExpiraEm = await this.estoque
+      .reservarPedido(
+        empresaId,
+        pedido.id,
+        linhas.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })),
+      )
+      .catch((err: unknown) => {
+        this.logger.error(`[vitrine] pedido ${pedido.numero}: reserva falhou — ${String(err)}`);
+        return null;
+      });
+
     // Alguém precisa SABER: é cliente esperando resposta no WhatsApp.
     await this.notificacoes
       .criarParaRole({
@@ -297,9 +330,12 @@ export class VitrinePedidoService {
       cliente: { id: cliente.id, nome: dto.nome },
       telefone: whatsapp,
       representanteId: null,
+      // Pro WhatsApp de confirmação citar o prazo ("fica reservado por 20 min").
+      reservaExpiraEm: reservaExpiraEm?.toISOString() ?? null,
+      reservaMinutos: reservaExpiraEm ? RESERVA_MINUTOS : null,
     });
 
-    return { numero: pedido.numero, totalPecas, total, duplicado: false };
+    return { numero: pedido.numero, totalPecas, total, duplicado: false, reservaExpiraEm };
   }
 
   /**

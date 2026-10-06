@@ -197,3 +197,9 @@
    var(--text)) fica CLARA no tema escuro e sumia no creme — quem abre o link
    no mesmo navegador do app em modo escuro via o título invisível. */
 .vt-app h1, .vt-app h2, .vt-app h3, .vt-app h4 { color: inherit; letter-spacing: normal; }
+
+/* relógio da reserva (estoque próprio — 20 min pra pagar) */
+.vt-reserva { margin: 4px 0 0; display: grid; gap: 2px; justify-items: center; padding: 12px 16px; border-radius: 14px; background: var(--linho); font-size: 14px; }
+.vt-reserva b { font-family: var(--f-title); font-weight: 600; font-size: 32px; font-variant-numeric: tabular-nums; color: var(--petroleo); }
+.vt-reserva small { font-size: 12px; color: var(--oliva); }
+.vt-reserva-fim { background: transparent; border: 1px solid var(--terracota); color: var(--terracota); font-weight: 600; }

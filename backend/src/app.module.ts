@@ -48,6 +48,7 @@ import { AuditModule } from '@modules/audit/audit.module';
 import { BackupModule } from '@modules/backup/backup.module';
 import { RespostasRapidasModule } from '@modules/respostas-rapidas/respostas-rapidas.module';
 import { VitrineModule } from '@modules/vitrine/vitrine.module';
+import { ErpModule } from '@modules/erp/erp.module';
 import { CatalogoModule } from '@modules/catalogo/catalogo.module';
 import { ClientesModule } from '@modules/clientes/clientes.module';
 import { ContatosModule } from '@modules/contatos/contatos.module';
@@ -237,6 +238,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     BackupModule,
     RespostasRapidasModule,
     VitrineModule,
+    ErpModule,
     PermissionsModule,
     AuthModule,
     UsersModule,

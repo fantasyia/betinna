@@ -38,7 +38,13 @@ const vitrineOk = {
 };
 
 function montar(
-  opts: { vitrine?: unknown; variacoes?: unknown[]; recente?: unknown; clientes?: unknown[] } = {},
+  opts: {
+    vitrine?: unknown;
+    variacoes?: unknown[];
+    recente?: unknown;
+    clientes?: unknown[];
+    reservaAte?: Date;
+  } = {},
 ) {
   const prisma = {
     vitrine: { findUnique: vi.fn().mockResolvedValue(opts.vitrine ?? vitrineOk) },
@@ -63,8 +69,17 @@ function montar(
   const bus = { disparar: vi.fn().mockResolvedValue(undefined) };
   const notif = { criarParaRole: vi.fn().mockResolvedValue(1) };
   const seq = { next: vi.fn().mockResolvedValue(7) };
-  const svc = new VitrinePedidoService(prisma as never, seq as never, bus as never, notif as never);
-  return { svc, prisma, bus, notif };
+  const estoque = {
+    reservarPedido: vi.fn().mockResolvedValue(opts.reservaAte ?? null),
+  };
+  const svc = new VitrinePedidoService(
+    prisma as never,
+    seq as never,
+    bus as never,
+    notif as never,
+    estoque as never,
+  );
+  return { svc, prisma, bus, notif, estoque };
 }
 
 const dto = (over: Record<string, unknown> = {}) =>
@@ -110,7 +125,13 @@ describe('VitrinePedidoService.enviar', () => {
     const { svc, prisma, bus, notif } = montar();
     const r = await svc.enviar('atacado-ribelt', dto());
 
-    expect(r).toEqual({ numero: 'PED-0007', totalPecas: 6, total: 270, duplicado: false });
+    expect(r).toEqual({
+      numero: 'PED-0007',
+      totalPecas: 6,
+      total: 270,
+      duplicado: false,
+      reservaExpiraEm: null,
+    });
     const data = prisma.pedido.create.mock.calls[0][0].data;
     expect(data.origem).toBe('VITRINE');
     expect(data.status).toBe('RASCUNHO');
@@ -170,7 +191,11 @@ describe('VitrinePedidoService.enviar', () => {
 
   it('reenvio em 10 min (mesmo telefone, total e peças) devolve o MESMO pedido', async () => {
     const { svc, prisma, bus } = montar({
-      recente: { numero: 'PED-0006', itens: [{ quantidade: 3 }, { quantidade: 3 }] },
+      recente: {
+        numero: 'PED-0006',
+        itens: [{ quantidade: 3 }, { quantidade: 3 }],
+        estoqueReservas: [],
+      },
     });
     const r = await svc.enviar('atacado-ribelt', dto());
     expect(r).toMatchObject({ numero: 'PED-0006', duplicado: true });
@@ -253,6 +278,48 @@ describe('VitrinePedidoService.enviar', () => {
     });
     await svc.enviar('atacado-ribelt', dto());
     expect(prisma.pedido.create).toHaveBeenCalled();
+  });
+});
+
+describe('ERP próprio: reserva de 20 min (entrega 1)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('pedido criado reserva as peças e devolve até quando', async () => {
+    const ate = new Date('2026-10-07T12:20:00Z');
+    const { svc, estoque, bus } = montar({ reservaAte: ate });
+    const r = await svc.enviar('atacado-ribelt', dto());
+    expect(estoque.reservarPedido).toHaveBeenCalledWith('emp-1', 'ped-1', [
+      { produtoId: 'prod-p', quantidade: 3 },
+      { produtoId: 'prod-m', quantidade: 3 },
+    ]);
+    expect(r.reservaExpiraEm).toEqual(ate);
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'PEDIDO_CRIADO',
+      expect.objectContaining({ reservaExpiraEm: ate.toISOString(), reservaMinutos: 20 }),
+    );
+  });
+
+  it('reserva falhou: o pedido NÃO cai (já existe) e sai sem relógio', async () => {
+    const { svc, estoque, prisma } = montar();
+    estoque.reservarPedido.mockRejectedValue(new Error('banco fora'));
+    const r = await svc.enviar('atacado-ribelt', dto());
+    expect(prisma.pedido.create).toHaveBeenCalled();
+    expect(r).toMatchObject({ numero: 'PED-0007', reservaExpiraEm: null });
+  });
+
+  it('reenvio do mesmo pedido devolve o relógio da reserva que já existe', async () => {
+    const ate = new Date('2026-10-07T12:20:00Z');
+    const { svc, estoque } = montar({
+      recente: {
+        numero: 'PED-0006',
+        itens: [{ quantidade: 3 }, { quantidade: 3 }],
+        estoqueReservas: [{ expiraEm: ate }],
+      },
+    });
+    const r = await svc.enviar('atacado-ribelt', dto());
+    expect(r).toMatchObject({ numero: 'PED-0006', duplicado: true, reservaExpiraEm: ate });
+    expect(estoque.reservarPedido).not.toHaveBeenCalled();
   });
 });
 

@@ -1,11 +1,12 @@
 import { SiteStatusService } from './site-status.service';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { TinyPedidoPushService } from '@integrations/tiny/tiny-pedido-push.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { MetricsService } from '@shared/observability/metrics.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { EstoqueService } from '@modules/erp/estoque.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import {
   BusinessRuleException,
@@ -83,6 +84,10 @@ export class PedidosService {
     private readonly notificacoes: NotificacoesService,
     private readonly metrics: MetricsService,
     private readonly site: SiteStatusService,
+    // ERP próprio (Distribuidora): baixa no despacho, libera no cancelamento.
+    // Só age em pedido que TEM reserva — e reserva só nasce com a flag da
+    // empresa. Opcional pra não quebrar quem monta o service à mão (testes).
+    @Optional() private readonly estoque?: EstoqueService,
   ) {}
 
   /**
@@ -666,6 +671,14 @@ export class PedidosService {
     });
     this.logger.log(`Pedido ${pedido.numero}: ${pedido.status} → ${proximo}`);
 
+    // Despachou: a reserva do estoque próprio vira saída. Falha aqui não
+    // desfaz o despacho (a mercadoria já saiu) — fica no log pra conferir.
+    if (proximo === 'ENVIADO' && this.estoque) {
+      await this.estoque.baixarNoDespacho(id, user.id).catch((err: unknown) => {
+        this.logger.error(`Pedido ${pedido.numero}: baixa de estoque falhou — ${String(err)}`);
+      });
+    }
+
     // Trigger: PEDIDO_ENTREGUE — só a transição vencedora (count===1) dispara.
     if (proximo === 'ENTREGUE') {
       void this.bus.disparar(pedido.empresaId, 'PEDIDO_ENTREGUE', {
@@ -742,6 +755,16 @@ export class PedidosService {
 
     // Fidelidade removida do projeto Betinna (gerenciada agora no ERP do
     // cliente). Não há mais estorno de pontos em cancelamento — limpo 2026-05-21.
+
+    // Estoque próprio: o que estava reservado pra este pedido volta a ficar
+    // disponível. Pedido sem reserva (todo pedido fora da Distribuidora): nada.
+    if (this.estoque) {
+      await this.estoque
+        .liberarDoPedido(id, dto.motivo ? `cancelado: ${dto.motivo}` : 'pedido cancelado')
+        .catch((err: unknown) => {
+          this.logger.error(`Pedido ${existing.numero}: liberar reserva falhou — ${String(err)}`);
+        });
+    }
 
     if (existing.numeroErp) {
       this.logger.warn(
