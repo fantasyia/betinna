@@ -4047,6 +4047,7 @@ model CatalogoLinha {
   empresa  Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   tamanhos CatalogoTamanho[]
   modelos  CatalogoModeloLinha[]
+  fotos    CatalogoFoto[]
 
   @@unique([empresaId, nome])
   @@index([empresaId, ordem])
@@ -4161,12 +4162,18 @@ model CatalogoFoto {
   largura     Int?
   altura      Int?
   ordem       Int     @default(0)
+  /// Linha da empresa (Regular, Plus Size, Infantil…) que a foto mostra — o
+  /// biotipo certo pra cada linha. null = foto GERAL da cor, vale pra todas.
+  /// Linha sem foto própria cai nas gerais. Ordem e capa são por cor × linha.
+  linhaId     String?
 
   criadoEm DateTime @default(now())
 
   modeloCor CatalogoModeloCor @relation(fields: [modeloCorId], references: [id], onDelete: Cascade)
+  linha     CatalogoLinha?    @relation(fields: [linhaId], references: [id], onDelete: Restrict)
 
   @@index([modeloCorId, ordem])
+  @@index([modeloCorId, linhaId, ordem])
 }
 
 /// Vídeo do modelo (kit pra anunciar; na vitrine, depois das fotos). MP4,

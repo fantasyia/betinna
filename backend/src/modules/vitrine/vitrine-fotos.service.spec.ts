@@ -47,6 +47,7 @@ function makePrisma() {
       })),
     },
     catalogoModelo: { findFirst: vi.fn().mockResolvedValue({ id: 'mod-1' }) },
+    catalogoModeloLinha: { findFirst: vi.fn().mockResolvedValue({ id: 'ml-1' }) },
     catalogoFoto: {
       count: vi.fn().mockResolvedValue(0),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -187,6 +188,60 @@ describe('VitrineFotosService', () => {
         where: { id: 'mc-1' },
         data: { amostraX: null, amostraY: null },
       });
+    });
+  });
+
+  describe('foto por linha (biotipo)', () => {
+    it('grava a linha, e o teto/ordem contam só aquele grupo cor × linha', async () => {
+      prisma.catalogoFoto.count.mockResolvedValue(3);
+      await svc.enviar(user(), 'mc-1', webp(), undefined, {}, 'lin-plus');
+      expect(prisma.catalogoFoto.count).toHaveBeenCalledWith({
+        where: { modeloCorId: 'mc-1', linhaId: 'lin-plus' },
+      });
+      expect(prisma.catalogoFoto.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ linhaId: 'lin-plus', ordem: 3 }),
+        }),
+      );
+    });
+
+    it('sem linha = foto geral (o comportamento de antes)', async () => {
+      await svc.enviar(user(), 'mc-1', webp(), undefined, {});
+      expect(prisma.catalogoFoto.count).toHaveBeenCalledWith({
+        where: { modeloCorId: 'mc-1', linhaId: null },
+      });
+      expect(prisma.catalogoModeloLinha.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('linha que o modelo não tem → recusa, sem subir arquivo', async () => {
+      prisma.catalogoModeloLinha.findFirst.mockResolvedValue(null);
+      await expect(
+        svc.enviar(user(), 'mc-1', webp(), undefined, {}, 'lin-outra'),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(storageFns.upload).not.toHaveBeenCalled();
+    });
+
+    it('trocar a capa DE UMA LINHA não zera a bolinha (ela sai da capa geral)', async () => {
+      prisma.catalogoFoto.findMany.mockResolvedValue([{ id: 'f-1' }, { id: 'f-2' }]);
+      await svc.reordenar(user(), 'mc-1', ['f-2', 'f-1'], 'lin-plus');
+      expect(prisma.catalogoFoto.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { modeloCorId: 'mc-1', linhaId: 'lin-plus' } }),
+      );
+      expect(prisma.catalogoModeloCor.update).not.toHaveBeenCalled();
+    });
+
+    it('apagar a capa de uma linha não zera a bolinha', async () => {
+      prisma.catalogoFoto.findFirst
+        .mockResolvedValueOnce({
+          id: 'f-1',
+          modeloCorId: 'mc-1',
+          linhaId: 'lin-plus',
+          storagePath: 'a.webp',
+          thumbPath: null,
+        })
+        .mockResolvedValueOnce({ id: 'f-1' });
+      await svc.excluir(user(), 'f-1');
+      expect(prisma.catalogoModeloCor.update).not.toHaveBeenCalled();
     });
   });
 

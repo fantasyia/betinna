@@ -132,6 +132,34 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     modeloId: z.string().optional().describe("Alternativa: modelo + cor"),
     cor: z.string().optional().describe("Alternativa: nome (ou id) da cor, junto com modeloId"),
   };
+  const alvoLinha = {
+    linha: z
+      .string()
+      .optional()
+      .describe(
+        "Linha (biotipo) das fotos: nome (Regular, Plus Size, Infantil — exige modeloId) ou linhaId. " +
+          "Ausente = fotos GERAIS da cor, que valem pra toda linha sem foto própria.",
+      ),
+  };
+
+  /** Linha das fotos: null = gerais. Nome exige modeloId; id passa direto. */
+  async function acharLinha(a: { modeloId?: string; linha?: string }): Promise<string | null> {
+    const alvo = a.linha?.trim();
+    if (!alvo) return null;
+    if (!a.modeloId) return alvo; // sem o modelo, só dá pra aceitar o id
+    const m = await api.get<{ linhas: Array<{ linhaId: string; linha: { nome: string } }> }>(
+      `/vitrine/admin/modelos/${seg(a.modeloId)}`,
+    );
+    const l = m.linhas.find(
+      (x) => x.linhaId === alvo || x.linha.nome.trim().toLowerCase() === alvo.toLowerCase(),
+    );
+    if (!l) {
+      throw new Error(
+        `O modelo não tem a linha "${alvo}". Linhas dele: ${m.linhas.map((x) => x.linha.nome).join(", ") || "(nenhuma)"}.`,
+      );
+    }
+    return l.linhaId;
+  }
 
   // ─── Config e conferência ───────────────────────────────────────────────
 
@@ -404,13 +432,18 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   server.registerTool(
     "vitrine_fotos_listar",
     {
-      description: "Fotos de UMA cor do modelo, na ordem (a 1ª é a capa).",
-      inputSchema: alvoCor,
+      description:
+        "Fotos de UMA cor do modelo, na ordem. Cada foto traz linhaId (null = geral). Com `linha`, " +
+        "devolve só as daquela linha (ou só as gerais com linha vazia). A 1ª de cada grupo é a capa.",
+      inputSchema: { ...alvoCor, ...alvoLinha },
       annotations: { readOnlyHint: true, destructiveHint: false },
     },
-    seguro(async (a: { modeloCorId?: string; modeloId?: string; cor?: string }) => {
+    seguro(async (a: { modeloCorId?: string; modeloId?: string; cor?: string; linha?: string }) => {
       const id = await acharModeloCor(a);
-      return ok(await api.get(`/vitrine/admin/cores-modelo/${seg(id)}/fotos`));
+      const fotos = await api.get<Array<{ linhaId: string | null }>>(`/vitrine/admin/cores-modelo/${seg(id)}/fotos`);
+      if (a.linha === undefined) return ok(fotos);
+      const linhaId = await acharLinha(a);
+      return ok(fotos.filter((f) => (f.linhaId ?? null) === linhaId));
     }),
   );
 
@@ -420,27 +453,39 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
       description:
         "Sobe fotos de UMA cor do modelo a partir de arquivos locais (caminhos) OU de uma pasta inteira " +
         "(em ordem natural do nome: foto-2 antes de foto-10). Converte como o app: WebP 1080 px + " +
-        "miniatura. Só lê dentro de BETINNA_MCP_ANEXOS_DIR. Máx 12 fotos por cor; a 1ª foto da cor é a " +
-        "capa (use vitrine_fotos_ordenar pra trocar). Responde o resultado de cada arquivo.",
+        "miniatura. Só lê dentro de BETINNA_MCP_ANEXOS_DIR. Com `linha` (Regular/Plus Size/Infantil), " +
+        "as fotos são DAQUELA linha — o biotipo certo; sem, são gerais da cor. Máx 12 por cor × linha; " +
+        "a 1ª de cada grupo é a capa (vitrine_fotos_ordenar troca). Responde o resultado de cada arquivo.",
       inputSchema: {
         ...alvoCor,
+        ...alvoLinha,
         caminhos: z.array(z.string()).max(12).optional().describe("Caminhos ABSOLUTOS dos arquivos"),
         pasta: z.string().optional().describe("Alternativa: pasta com as fotos (não desce subpastas)"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     seguro(
-      async (a: { modeloCorId?: string; modeloId?: string; cor?: string; caminhos?: string[]; pasta?: string }) => {
+      async (a: {
+        modeloCorId?: string;
+        modeloId?: string;
+        cor?: string;
+        linha?: string;
+        caminhos?: string[];
+        pasta?: string;
+      }) => {
         if (!!a.caminhos?.length === !!a.pasta) return erro("Informe caminhos OU pasta (um dos dois).");
         let arquivos = a.caminhos ?? [];
         if (a.pasta) {
           const l = await listarPasta(a.pasta, EXT_FOTO);
           if (!l.ok) return erro(l.motivo);
           if (!l.arquivos.length) return erro(`Nenhuma foto (${EXT_FOTO.join(" ")}) em "${a.pasta}".`);
-          if (l.arquivos.length > 12) return erro(`A pasta tem ${l.arquivos.length} fotos; o máximo por cor é 12.`);
+          if (l.arquivos.length > 12) {
+            return erro(`A pasta tem ${l.arquivos.length} fotos; o máximo por cor × linha é 12.`);
+          }
           arquivos = l.arquivos;
         }
         const id = await acharModeloCor(a);
+        const linhaId = await acharLinha(a);
         const resultado: Array<{ arquivo: string; ok: boolean; fotoId?: string; kb?: number; erro?: string }> = [];
         for (const caminho of arquivos) {
           try {
@@ -456,6 +501,7 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
             if (p.thumb) form.append("thumb", new Blob([Uint8Array.from(p.thumb)], { type: "image/webp" }), "thumb.webp");
             form.append("largura", String(p.largura));
             form.append("altura", String(p.altura));
+            if (linhaId) form.append("linhaId", linhaId);
             const f = await api.postForm<{ id: string }>(`/vitrine/admin/cores-modelo/${seg(id)}/fotos`, form);
             resultado.push({ arquivo: lido.nome, ok: true, fotoId: f.id, kb: Math.round(p.foto.length / 1024) });
           } catch (e) {
@@ -464,6 +510,7 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
         }
         return ok({
           modeloCorId: id,
+          linhaId,
           enviadas: resultado.filter((r) => r.ok).length,
           falhas: resultado.filter((r) => !r.ok).length,
           resultado,
@@ -475,13 +522,18 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   server.registerTool(
     "vitrine_fotos_ordenar",
     {
-      description: "Nova ordem das fotos de uma cor (TODAS as fotos dela; a 1ª vira a capa).",
-      inputSchema: { ...alvoCor, fotoIds: z.array(z.string()).min(1).max(12) },
+      description:
+        "Nova ordem das fotos de UM grupo cor × linha (TODAS as fotos do grupo; a 1ª vira a capa). " +
+        "Sem `linha`, ordena as fotos gerais da cor.",
+      inputSchema: { ...alvoCor, ...alvoLinha, fotoIds: z.array(z.string()).min(1).max(12) },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    seguro(async (a: { modeloCorId?: string; modeloId?: string; cor?: string; fotoIds: string[] }) => {
+    seguro(async (a: { modeloCorId?: string; modeloId?: string; cor?: string; linha?: string; fotoIds: string[] }) => {
       const id = await acharModeloCor(a);
-      return ok(await api.put(`/vitrine/admin/cores-modelo/${seg(id)}/fotos/ordem`, { fotoIds: a.fotoIds }));
+      const linhaId = await acharLinha(a);
+      return ok(
+        await api.put(`/vitrine/admin/cores-modelo/${seg(id)}/fotos/ordem`, { fotoIds: a.fotoIds, linhaId }),
+      );
     }),
   );
 
@@ -490,7 +542,8 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     {
       description:
         "Pedaço da CAPA que vira a bolinha da cor na vitrine: x e y de 0 a 1 (fração da largura/altura " +
-        "da foto, a partir do canto de cima à esquerda). null = automático. Trocar a capa zera o ponto.",
+        "da foto, a partir do canto de cima à esquerda). null = automático. É a capa GERAL da cor; " +
+        "trocar essa capa zera o ponto.",
       inputSchema: {
         ...alvoCor,
         ponto: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).nullable(),

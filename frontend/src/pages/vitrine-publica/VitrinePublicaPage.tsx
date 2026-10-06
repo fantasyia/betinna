@@ -9,6 +9,8 @@ import {
   itensParaEnvio,
   mascararWhatsapp,
   limparCarrinho,
+  corDaBolinha,
+  fotosDaLinha,
   lucroNaProximaFaixa,
   lucroPorPeca,
   precosPorFaixa,
@@ -211,7 +213,12 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           return (
             <article key={m.id} className="vt-slide" data-testid={`vt-slide-${m.id}`}>
               <div className="vt-stage">
-                <Carrossel key={cor.id} cor={cor} nome={m.nome} onAbrir={() => setPdp(m)} />
+                <Carrossel
+                  key={`${cor.id}:${l.linhaId}`}
+                  cor={{ ...cor, fotos: fotosDaLinha(cor, l.linhaId) }}
+                  nome={m.nome}
+                  onAbrir={() => setPdp(m)}
+                />
                 <NomeDaCor cor={cor} />
                 <div className="vt-counter">
                   {String(i + 1).padStart(2, '0')} / {String(lista.length).padStart(2, '0')}
@@ -452,7 +459,7 @@ function Bolinha({ c, ativa, onCor }: { c: CorPub; ativa: boolean; onCor: (id: s
     <button
       type="button"
       className="vt-dot"
-      style={useFundoDaCor(c)}
+      style={useFundoDaCor(corDaBolinha(c))}
       aria-label={c.nome}
       aria-pressed={ativa}
       onClick={() => onCor(c.id)}
@@ -462,7 +469,7 @@ function Bolinha({ c, ativa, onCor }: { c: CorPub; ativa: boolean; onCor: (id: s
 
 /** Bolinha pequena da linha da grade (só mostra). */
 function AmostraCor({ c }: { c: CorPub }) {
-  return <i style={useFundoDaCor(c)} />;
+  return <i style={useFundoDaCor(corDaBolinha(c))} />;
 }
 
 /** Preço das faixas de cima (Volume, Atacadão) — o card mostra a Entrada. */
@@ -563,7 +570,11 @@ function PaginaModelo({
         ✕
       </button>
       <div className="vt-stage" style={{ position: 'relative' }}>
-        <Carrossel key={cor.id} cor={cor} nome={m.nome} />
+        <Carrossel
+          key={`${cor.id}:${l.linhaId}`}
+          cor={{ ...cor, fotos: fotosDaLinha(cor, l.linhaId) }}
+          nome={m.nome}
+        />
         <NomeDaCor cor={cor} />
       </div>
       <div className="vt-pdp-body">
@@ -641,7 +652,8 @@ function FolhaGrade({
   const [passo, setPasso] = useState(1);
   const [modo, setModo] = useState<'por' | 'tirar'>('por');
   const delta = modo === 'por' ? passo : -passo;
-  const capa = m.cores[0]?.fotos[0]?.thumbUrl ?? m.cores[0]?.fotos[0]?.url;
+  const capaFoto = m.cores[0] ? corDaBolinha(m.cores[0]).fotos[0] : undefined;
+  const capa = capaFoto?.thumbUrl ?? capaFoto?.url;
 
   return (
     <>
@@ -923,7 +935,7 @@ function SeuPedido({
                 if (partes.length) linhas.push(`${c.nome} · ${l.nome}: ${partes.join('  ')}`);
               }
             }
-            const capa = m.cores[0]?.fotos[0];
+            const capa = m.cores[0] ? corDaBolinha(m.cores[0]).fotos[0] : undefined;
             return (
               <div key={m.id} className="vt-line">
                 {capa ? <img src={capa.thumbUrl ?? capa.url} alt="" /> : <span />}

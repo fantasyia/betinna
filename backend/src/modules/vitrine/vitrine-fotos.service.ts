@@ -121,14 +121,19 @@ export class VitrineFotosService implements OnModuleInit {
     foto: ArquivoWebp,
     thumb: ArquivoWebp | undefined,
     dims: { largura?: number; altura?: number },
+    linhaId: string | null = null,
   ) {
     const mc = await this.corDoModelo(user, modeloCorId);
+    await this.linhaDoModelo(mc.modeloId, linhaId);
     this.validar(foto, MAX_FOTO_BYTES, 'Foto');
     if (thumb) this.validar(thumb, MAX_THUMB_BYTES, 'Miniatura');
 
-    const qtd = await this.prisma.catalogoFoto.count({ where: { modeloCorId } });
+    // Teto e ordem são por cor × linha (a linha tem capa própria).
+    const qtd = await this.prisma.catalogoFoto.count({ where: { modeloCorId, linhaId } });
     if (qtd >= MAX_FOTOS_POR_COR) {
-      throw new BusinessRuleException(`No máximo ${MAX_FOTOS_POR_COR} fotos por cor`);
+      throw new BusinessRuleException(
+        `No máximo ${MAX_FOTOS_POR_COR} fotos por cor${linhaId ? ' nesta linha' : ''}`,
+      );
     }
 
     const base = `${mc.empresaId}/${mc.modeloId}/${Date.now()}_${randomBytes(6).toString('hex')}`;
@@ -152,7 +157,8 @@ export class VitrineFotosService implements OnModuleInit {
           thumbPath,
           largura: dims.largura ?? null,
           altura: dims.altura ?? null,
-          // Entra no FIM: a 1ª foto da cor é a capa até alguém reordenar.
+          linhaId,
+          // Entra no FIM: a 1ª foto da cor (na linha) é a capa até alguém reordenar.
           ordem: qtd,
         },
       });
@@ -162,6 +168,19 @@ export class VitrineFotosService implements OnModuleInit {
       await this.remover([storagePath, ...(thumbPath ? [thumbPath] : [])]);
       throw err;
     }
+  }
+
+  /** Foto de linha só pra linha que o modelo TEM (senão ninguém a veria). */
+  private async linhaDoModelo(modeloId: string, linhaId: string | null) {
+    if (!linhaId) return;
+    const ml = await this.prisma.catalogoModeloLinha.findFirst({
+      where: { modeloId, linhaId },
+      select: { id: true },
+    });
+    if (!ml)
+      throw new BusinessRuleException(
+        'Esse modelo não tem essa linha — marque a linha no modelo antes',
+      );
   }
 
   /** Ponto da capa que vira a bolinha da cor. null = a vitrine escolhe sozinha. */
@@ -179,23 +198,32 @@ export class VitrineFotosService implements OnModuleInit {
     return mc;
   }
 
-  async reordenar(user: AuthenticatedUser, modeloCorId: string, fotoIds: string[]) {
+  /** Ordem das fotos de UM grupo cor × linha (null = as gerais da cor). */
+  async reordenar(
+    user: AuthenticatedUser,
+    modeloCorId: string,
+    fotoIds: string[],
+    linhaId: string | null = null,
+  ) {
     await this.corDoModelo(user, modeloCorId);
     const fotos = await this.prisma.catalogoFoto.findMany({
-      where: { modeloCorId },
+      where: { modeloCorId, linhaId },
       orderBy: { ordem: 'asc' },
       select: { id: true },
     });
     const daCor = new Set(fotos.map((f) => f.id));
     if (fotoIds.length !== daCor.size || !fotoIds.every((id) => daCor.has(id))) {
-      throw new BusinessRuleException('A nova ordem tem que ter exatamente as fotos desta cor');
+      throw new BusinessRuleException(
+        `A nova ordem tem que ter exatamente as fotos desta cor${linhaId ? ' nesta linha' : ''}`,
+      );
     }
     await this.prisma.$transaction([
       ...fotoIds.map((id, ordem) =>
         this.prisma.catalogoFoto.update({ where: { id }, data: { ordem } }),
       ),
-      // Capa nova = foto nova: o ponto da bolinha era da capa antiga.
-      ...(fotos[0]?.id !== fotoIds[0]
+      // Capa GERAL nova = foto nova: o ponto da bolinha era da capa antiga.
+      // (A bolinha sai da capa geral; capa de linha não mexe nela.)
+      ...(!linhaId && fotos[0]?.id !== fotoIds[0]
         ? [
             this.prisma.catalogoModeloCor.update({
               where: { id: modeloCorId },
@@ -223,13 +251,13 @@ export class VitrineFotosService implements OnModuleInit {
     });
     if (!foto) throw new NotFoundException('Foto', fotoId);
     const capa = await this.prisma.catalogoFoto.findFirst({
-      where: { modeloCorId: foto.modeloCorId },
+      where: { modeloCorId: foto.modeloCorId, linhaId: foto.linhaId },
       orderBy: { ordem: 'asc' },
       select: { id: true },
     });
     await this.prisma.catalogoFoto.delete({ where: { id: fotoId } });
-    // Apagou a capa: o ponto da bolinha era dela.
-    if (capa?.id === fotoId) {
+    // Apagou a capa GERAL: o ponto da bolinha era dela.
+    if (!foto.linhaId && capa?.id === fotoId) {
       await this.prisma.catalogoModeloCor.update({
         where: { id: foto.modeloCorId },
         data: { amostraX: null, amostraY: null },

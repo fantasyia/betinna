@@ -24,7 +24,17 @@ interface ArquivoRecebido {
   size: number;
 }
 
-const ordemSchema = z.object({ fotoIds: z.array(z.string().min(1)).min(1).max(12) });
+const ordemSchema = z.object({
+  fotoIds: z.array(z.string().min(1)).min(1).max(12),
+  /** Grupo cor × linha; ausente/null = as fotos gerais da cor. */
+  linhaId: z.string().min(1).nullable().optional(),
+});
+const linhaIdSchema = z
+  .string()
+  .trim()
+  .max(40)
+  .optional()
+  .transform((v) => v || null);
 const prepararVideoSchema = z.object({
   tamanhoBytes: z.number().int().positive().max(MAX_VIDEO_BYTES),
 });
@@ -67,14 +77,18 @@ export class VitrineMidiaController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('modeloCorId') modeloCorId: string,
     @UploadedFiles() arquivos: { foto?: ArquivoRecebido[]; thumb?: ArquivoRecebido[] } | undefined,
-    @Body() body: { largura?: string; altura?: string },
+    @Body() body: { largura?: string; altura?: string; linhaId?: string },
   ) {
     const foto = arquivos?.foto?.[0];
     if (!foto) throw new BusinessRuleException('Nenhuma foto enviada');
-    return this.fotos.enviar(user, modeloCorId, foto, arquivos?.thumb?.[0], {
-      largura: dimSchema.parse(body?.largura),
-      altura: dimSchema.parse(body?.altura),
-    });
+    return this.fotos.enviar(
+      user,
+      modeloCorId,
+      foto,
+      arquivos?.thumb?.[0],
+      { largura: dimSchema.parse(body?.largura), altura: dimSchema.parse(body?.altura) },
+      linhaIdSchema.parse(body?.linhaId),
+    );
   }
 
   @Put('cores-modelo/:modeloCorId/fotos/ordem')
@@ -84,7 +98,7 @@ export class VitrineMidiaController {
     @Param('modeloCorId') modeloCorId: string,
     @Body(new ZodValidationPipe(ordemSchema)) dto: z.infer<typeof ordemSchema>,
   ) {
-    return this.fotos.reordenar(user, modeloCorId, dto.fotoIds);
+    return this.fotos.reordenar(user, modeloCorId, dto.fotoIds, dto.linhaId ?? null);
   }
 
   @Put('cores-modelo/:modeloCorId/amostra')

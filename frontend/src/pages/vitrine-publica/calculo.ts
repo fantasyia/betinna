@@ -31,6 +31,8 @@ export interface CorPub {
     thumbUrl: string | null;
     largura: number | null;
     altura: number | null;
+    /** Linha (biotipo) da foto; null/ausente = foto geral da cor. */
+    linhaId?: string | null;
   }>;
   /** Ponto da capa escolhido no cadastro pra bolinha (null = automático). */
   amostra?: { x: number; y: number } | null;
@@ -99,6 +101,26 @@ export function precoNaFaixa(l: LinhaPub, faixa: Faixa): number | null {
     if (v !== null && v !== undefined) return v;
   }
   return null;
+}
+
+/**
+ * Fotos da cor pra linha escolhida (Regular / Plus Size / Infantil mostram o
+ * biotipo certo): as DA LINHA; sem elas, as gerais; sem gerais, todas.
+ */
+export function fotosDaLinha(cor: CorPub, linhaId: string | null | undefined): CorPub['fotos'] {
+  const daLinha = linhaId ? cor.fotos.filter((f) => f.linhaId === linhaId) : [];
+  if (daLinha.length) return daLinha;
+  const gerais = cor.fotos.filter((f) => !f.linhaId);
+  return gerais.length ? gerais : cor.fotos;
+}
+
+/**
+ * A cor como a BOLINHA vê: só as fotos gerais (o ponto escolhido no cadastro
+ * é da capa geral). Sem foto geral, a 1ª foto que houver — e sem o ponto.
+ */
+export function corDaBolinha(cor: CorPub): CorPub {
+  const gerais = cor.fotos.filter((f) => !f.linhaId);
+  return gerais.length ? { ...cor, fotos: gerais } : { ...cor, amostra: null };
 }
 
 /** Lucro por peça e % sobre o custo. null quando falta preço ou sugerido. */

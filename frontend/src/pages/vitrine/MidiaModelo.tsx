@@ -15,15 +15,28 @@ const MAX_VIDEO_MB = 50;
  * Fotos de UMA cor do modelo. A 1ª é a capa; arrastar muda a ordem.
  * O navegador otimiza cada foto (WebP 1080 px + miniatura) antes de enviar.
  */
-export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMudou: () => void }) {
+export function FotosDaCor({
+  modeloCor,
+  linhas = [],
+  onMudou,
+}: {
+  modeloCor: ModeloCor;
+  /** Linhas do modelo: cada uma pode ter fotos próprias (o biotipo certo). */
+  linhas?: Array<{ linhaId: string; nome: string }>;
+  onMudou: () => void;
+}) {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [enviando, setEnviando] = useState<string | null>(null);
+  // Grupo aberto: null = fotos GERAIS da cor; id = fotos daquela linha.
+  const [grupo, setGrupo] = useState<string | null>(null);
+  const doGrupo = (g: string | null) => modeloCor.fotos.filter((f) => (f.linhaId ?? null) === g);
+  const gerais = doGrupo(null);
   // Ordem otimista: a foto fica onde foi solta enquanto o servidor salva.
   const [ordemLocal, setOrdemLocal] = useState<string[] | null>(null);
   const fotos = ordemLocal
     ? ordemLocal.map((id) => modeloCor.fotos.find((f) => f.id === id)).filter((f): f is Foto => !!f)
-    : modeloCor.fotos;
+    : doGrupo(grupo);
   const arrastar = useArrastar(
     fotos.map((f) => f.id),
     (ids) => {
@@ -44,6 +57,7 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
         form.append('thumb', p.thumb, 'thumb.webp');
         form.append('largura', String(p.largura));
         form.append('altura', String(p.altura));
+        if (grupo) form.append('linhaId', grupo);
         await api.upload(`/vitrine/admin/cores-modelo/${modeloCor.id}/fotos`, form);
       }
       toast.success(lista.length === 1 ? 'Foto enviada' : `${lista.length} fotos enviadas`);
@@ -62,7 +76,10 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
 
   async function reordenar(fotoIds: string[]) {
     try {
-      await api.put(`/vitrine/admin/cores-modelo/${modeloCor.id}/fotos/ordem`, { fotoIds });
+      await api.put(`/vitrine/admin/cores-modelo/${modeloCor.id}/fotos/ordem`, {
+        fotoIds,
+        linhaId: grupo,
+      });
       onMudou();
     } catch (err) {
       toast.error('Não foi possível reordenar', apiErrorMessage(err));
@@ -85,9 +102,13 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
     <div className="rounded-[10px] border border-border p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <BolinhaPreview modeloCor={modeloCor} fotos={fotos} className="h-5 w-5" />
+          <BolinhaPreview
+            modeloCor={modeloCor}
+            fotos={gerais.length ? gerais : modeloCor.fotos}
+            className="h-5 w-5"
+          />
           <span className="font-medium text-text">{modeloCor.cor.nome}</span>
-          <span className="text-xs text-muted">{fotos.length} foto(s)</span>
+          <span className="text-xs text-muted">{modeloCor.fotos.length} foto(s)</span>
         </div>
         <Button
           size="sm"
@@ -107,6 +128,39 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
           onChange={(e) => void enviar(e.target.files)}
         />
       </div>
+      {linhas.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1" role="group" aria-label="Fotos por linha">
+          {[{ linhaId: null as string | null, nome: 'Geral' }, ...linhas].map((g) => {
+            const ativo = g.linhaId === grupo;
+            return (
+              <button
+                key={g.linhaId ?? 'geral'}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => {
+                  setOrdemLocal(null);
+                  setGrupo(g.linhaId);
+                }}
+                className={`rounded-[10px] border px-2.5 py-1 text-xs ${
+                  ativo
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-border text-muted hover:text-text'
+                }`}
+                data-testid={`fotos-grupo-${modeloCor.id}-${g.linhaId ?? 'geral'}`}
+              >
+                {g.nome} · {doGrupo(g.linhaId).length}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {linhas.length > 0 && (
+        <p className="text-xs text-muted mb-2">
+          {grupo
+            ? 'Fotos desta linha (o biotipo certo). Sem fotos aqui, a vitrine mostra as gerais.'
+            : 'Fotos gerais: valem pra toda linha que não tiver fotos próprias. A bolinha da cor sai daqui.'}
+        </p>
+      )}
       {enviando && <p className="text-xs text-muted mb-2">{enviando}</p>}
       {fotos.length > 1 && (
         <p className="text-xs text-muted mb-2">
@@ -115,7 +169,9 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
       )}
       {fotos.length === 0 ? (
         <p className="text-sm text-muted">
-          Sem fotos — esta cor não aparece na vitrine até ter ao menos uma.
+          {grupo
+            ? 'Sem fotos desta linha — a vitrine mostra as fotos gerais da cor.'
+            : 'Sem fotos — esta cor não aparece na vitrine até ter ao menos uma.'}
         </p>
       ) : (
         <ul className="flex flex-wrap gap-2">
@@ -163,8 +219,9 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
           ))}
         </ul>
       )}
-      {fotos[0] && (
-        <EscolherBolinha modeloCor={modeloCor} capa={fotos[0]} fotos={fotos} onMudou={onMudou} />
+      {/* A bolinha sai da capa GERAL — o escolher só aparece na aba Geral. */}
+      {!grupo && gerais[0] && (
+        <EscolherBolinha modeloCor={modeloCor} capa={gerais[0]} fotos={gerais} onMudou={onMudou} />
       )}
     </div>
   );

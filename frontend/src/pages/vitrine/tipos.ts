@@ -48,6 +48,8 @@ export interface Foto {
   thumbUrl: string | null;
   largura: number | null;
   altura: number | null;
+  /** Linha (biotipo) da foto; null = foto geral da cor, vale pra todas as linhas. */
+  linhaId?: string | null;
 }
 
 export interface Video {

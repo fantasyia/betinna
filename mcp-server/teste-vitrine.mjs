@@ -39,7 +39,15 @@ const api = createServer(async (req, res) => {
     res.end(JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data }));
   };
   if (req.method === "GET" && url === "/api/v1/vitrine/admin/modelos/mod-1") {
-    return json({ id: "mod-1", nome: "Camiseta UV", cores: [{ id: "mc-preto", corId: "cor-preto", cor: { id: "cor-preto", nome: "Preto" }, fotos: [] }] });
+    return json({
+      id: "mod-1",
+      nome: "Camiseta UV",
+      cores: [{ id: "mc-preto", corId: "cor-preto", cor: { id: "cor-preto", nome: "Preto" }, fotos: [] }],
+      linhas: [
+        { linhaId: "lin-reg", linha: { nome: "Regular" } },
+        { linhaId: "lin-plus", linha: { nome: "Plus Size" } },
+      ],
+    });
   }
   if (req.method === "POST" && url === "/api/v1/vitrine/admin/cores-modelo/mc-preto/fotos") {
     // multipart: guarda o pedaço binário de cada parte pra conferir depois
@@ -127,6 +135,16 @@ for (const [i, c] of recebidas.entries()) {
   conferir(t.format === "webp" && t.width === 360, `miniatura ${i + 1}: WebP 360 px`);
   conferir(c.largura.toString() === "1080" && Number(c.altura.toString()) === m.height, `largura/altura enviadas batem (${c.largura}×${c.altura})`);
 }
+
+conferir(recebidas.every((c) => !c.linhaId), "sem `linha`: fotos gerais (não manda linhaId)");
+
+// Foto por linha (biotipo): nome da linha → linhaId no upload
+const antes = recebidas.length;
+const rl = await chamar("vitrine_fotos_subir", { modeloId: "mod-1", cor: "Preto", linha: "plus size", caminhos: [join(permitida, "camiseta-uv", "preto", "foto-2.jpg")] });
+conferir(rl.json?.enviadas === 1 && rl.json?.linhaId === "lin-plus", "linha pelo nome (sem caixa) vira o linhaId certo");
+conferir(recebidas[antes]?.linhaId?.toString() === "lin-plus", "upload leva o campo linhaId");
+const rl2 = await chamar("vitrine_fotos_subir", { modeloId: "mod-1", cor: "Preto", linha: "Infantil", caminhos: [join(permitida, "camiseta-uv", "preto", "foto-2.jpg")] });
+conferir(rl2.isError && /não tem a linha "Infantil"/.test(rl2.texto), "linha que o modelo não tem: erro claro");
 
 // Portão de arquivo
 const r2 = await chamar("vitrine_fotos_subir", { modeloCorId: "mc-preto", caminhos: [join(fora, "x.jpg"), join(permitida, ".segredo", "x.jpg"), "\\\\servidor\\share\\x.jpg"] });

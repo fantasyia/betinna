@@ -5,7 +5,17 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
 import { useToast } from '@/components/toast';
 import { useApiQuery } from '@/hooks/useApiQuery';
-import { Button, Checkbox, Dialog, Field, Input, Select, Switch, Tabs, Textarea } from '@/components/ui';
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  Field,
+  Input,
+  Select,
+  Switch,
+  Tabs,
+  Textarea,
+} from '@/components/ui';
 import { CorDialog } from './ListasEmpresa';
 import { FichaTecnicaAba } from './FichaTecnica';
 import { FotosDaCor, VideosDoModelo } from './MidiaModelo';
@@ -268,9 +278,7 @@ export function ModeloEditor({
   async function salvarVariacao(id: string, campo: 'sku' | 'estoque', valor: string) {
     const v = valor.trim();
     const corpo =
-      campo === 'sku'
-        ? { sku: v || null }
-        : { estoque: v === '' ? null : Number.parseInt(v, 10) };
+      campo === 'sku' ? { sku: v || null } : { estoque: v === '' ? null : Number.parseInt(v, 10) };
     if (campo === 'estoque' && corpo.estoque !== null && Number.isNaN(corpo.estoque as number)) {
       return toast.error('Estoque precisa ser um número inteiro');
     }
@@ -364,7 +372,12 @@ export function ModeloEditor({
       {aba === 'dados' && (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Nome" required className="sm:col-span-2">
-            <Input value={r.nome} maxLength={120} onChange={(e) => set('nome', e.target.value)} data-testid="vitrine-modelo-nome" />
+            <Input
+              value={r.nome}
+              maxLength={120}
+              onChange={(e) => set('nome', e.target.value)}
+              data-testid="vitrine-modelo-nome"
+            />
           </Field>
           <Field label="Categoria">
             <Select
@@ -389,18 +402,35 @@ export function ModeloEditor({
                 placeholder="Ex.: Moletom"
                 maxLength={60}
               />
-              <Button variant="secondary" onClick={() => void criarCategoria()} aria-label="Criar categoria">
+              <Button
+                variant="secondary"
+                onClick={() => void criarCategoria()}
+                aria-label="Criar categoria"
+              >
                 <Plus size={14} />
               </Button>
             </div>
           </Field>
-          <Field label="Etiquetas" hint="Separadas por vírgula: Gramatura 280, Capuz" className="sm:col-span-2">
+          <Field
+            label="Etiquetas"
+            hint="Separadas por vírgula: Gramatura 280, Capuz"
+            className="sm:col-span-2"
+          >
             <Input value={r.etiquetas} onChange={(e) => set('etiquetas', e.target.value)} />
           </Field>
           <Field label="Descrição curta (vitrine)" className="sm:col-span-2">
-            <Textarea value={r.descricao} rows={3} maxLength={4000} onChange={(e) => set('descricao', e.target.value)} />
+            <Textarea
+              value={r.descricao}
+              rows={3}
+              maxLength={4000}
+              onChange={(e) => set('descricao', e.target.value)}
+            />
           </Field>
-          <Switch label="Ativo na vitrine" checked={r.ativo} onChange={(e) => set('ativo', e.target.checked)} />
+          <Switch
+            label="Ativo na vitrine"
+            checked={r.ativo}
+            onChange={(e) => set('ativo', e.target.checked)}
+          />
         </div>
       )}
 
@@ -424,10 +454,18 @@ export function ModeloEditor({
                     <Checkbox
                       checked={marcada}
                       onChange={(e) =>
-                        set('corIds', e.target.checked ? [...r.corIds, c.id] : r.corIds.filter((x) => x !== c.id))
+                        set(
+                          'corIds',
+                          e.target.checked
+                            ? [...r.corIds, c.id]
+                            : r.corIds.filter((x) => x !== c.id),
+                        )
                       }
                     />
-                    <span className="inline-block h-4 w-4 rounded-full border border-border" style={{ background: c.hex }} />
+                    <span
+                      className="inline-block h-4 w-4 rounded-full border border-border"
+                      style={{ background: c.hex }}
+                    />
                     {c.nome}
                   </label>
                 );
@@ -435,14 +473,23 @@ export function ModeloEditor({
             </div>
           </div>
           {!atual ? (
-            <p className="text-sm text-muted">Salve o modelo pra poder enviar as fotos de cada cor.</p>
+            <p className="text-sm text-muted">
+              Salve o modelo pra poder enviar as fotos de cada cor.
+            </p>
           ) : (
             <div className="flex flex-col gap-3">
               {atual.cores.map((mc) => (
-                <FotosDaCor key={mc.id} modeloCor={mc} onMudou={() => void recarregar(atual.id)} />
+                <FotosDaCor
+                  key={mc.id}
+                  modeloCor={mc}
+                  linhas={atual.linhas.map((l) => ({ linhaId: l.linhaId, nome: l.linha.nome }))}
+                  onMudou={() => void recarregar(atual.id)}
+                />
               ))}
               {r.corIds.some((id) => !atual.cores.find((c) => c.corId === id)) && (
-                <p className="text-xs text-warning">Cor marcada agora: salve pra liberar o envio das fotos dela.</p>
+                <p className="text-xs text-warning">
+                  Cor marcada agora: salve pra liberar o envio das fotos dela.
+                </p>
               )}
             </div>
           )}
@@ -461,7 +508,9 @@ export function ModeloEditor({
       {aba === 'grades' && (
         <div className="flex flex-col gap-3">
           {linhasAtivas.length === 0 && (
-            <p className="text-sm text-muted">Crie as linhas e os tamanhos na aba "Linhas e tamanhos" da vitrine.</p>
+            <p className="text-sm text-muted">
+              Crie as linhas e os tamanhos na aba "Linhas e tamanhos" da vitrine.
+            </p>
           )}
           {linhasAtivas.map((l) => {
             const rl = r.linhas[l.id];
@@ -469,7 +518,10 @@ export function ModeloEditor({
             const entrada = lerPreco(rl.precoEntrada);
             const sugerido = lerPreco(rl.precoSugerido);
             const lucro =
-              entrada !== null && sugerido !== null && !Number.isNaN(entrada) && !Number.isNaN(sugerido)
+              entrada !== null &&
+              sugerido !== null &&
+              !Number.isNaN(entrada) &&
+              !Number.isNaN(sugerido)
                 ? sugerido - entrada
                 : null;
             const outras = linhasMarcadas.filter((o) => o.id !== l.id);
@@ -477,7 +529,11 @@ export function ModeloEditor({
             const linhaSalva = atual?.linhas.find((x) => x.linhaId === l.id);
             return (
               <div key={l.id} className="rounded-[10px] border border-border p-3">
-                <Switch label={`Linha ${l.nome}`} checked={rl.marcada} onChange={(e) => setLinha(l.id, { marcada: e.target.checked })} />
+                <Switch
+                  label={`Linha ${l.nome}`}
+                  checked={rl.marcada}
+                  onChange={(e) => setLinha(l.id, { marcada: e.target.checked })}
+                />
                 {rl.marcada && (
                   <div className="mt-3 flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -491,7 +547,9 @@ export function ModeloEditor({
                               type="button"
                               onClick={() =>
                                 setLinha(l.id, {
-                                  tamanhoIds: on ? rl.tamanhoIds.filter((x) => x !== t.id) : [...rl.tamanhoIds, t.id],
+                                  tamanhoIds: on
+                                    ? rl.tamanhoIds.filter((x) => x !== t.id)
+                                    : [...rl.tamanhoIds, t.id],
                                 })
                               }
                               className={`min-w-10 rounded-[10px] border px-2.5 py-1 text-sm ${on ? 'border-primary bg-primary text-white' : 'border-border'}`}
@@ -503,29 +561,53 @@ export function ModeloEditor({
                       <button
                         type="button"
                         className="ml-1 text-xs text-primary underline"
-                        onClick={() => setLinha(l.id, { tamanhoIds: l.tamanhos.filter((t) => t.ativo).map((t) => t.id) })}
+                        onClick={() =>
+                          setLinha(l.id, {
+                            tamanhoIds: l.tamanhos.filter((t) => t.ativo).map((t) => t.id),
+                          })
+                        }
                       >
                         todos
                       </button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-4">
                       <Field label="Atacado · Entrada (R$)">
-                        <Input value={rl.precoEntrada} inputMode="decimal" onChange={(e) => setLinha(l.id, { precoEntrada: e.target.value })} placeholder="sob consulta" />
+                        <Input
+                          value={rl.precoEntrada}
+                          inputMode="decimal"
+                          onChange={(e) => setLinha(l.id, { precoEntrada: e.target.value })}
+                          placeholder="sob consulta"
+                        />
                       </Field>
                       <Field label="Atacado · Volume (R$)">
-                        <Input value={rl.precoVolume} inputMode="decimal" onChange={(e) => setLinha(l.id, { precoVolume: e.target.value })} placeholder="sob consulta" />
+                        <Input
+                          value={rl.precoVolume}
+                          inputMode="decimal"
+                          onChange={(e) => setLinha(l.id, { precoVolume: e.target.value })}
+                          placeholder="sob consulta"
+                        />
                       </Field>
                       <Field label="Atacadão (R$)">
-                        <Input value={rl.precoAtacadao} inputMode="decimal" onChange={(e) => setLinha(l.id, { precoAtacadao: e.target.value })} placeholder="sob consulta" />
+                        <Input
+                          value={rl.precoAtacadao}
+                          inputMode="decimal"
+                          onChange={(e) => setLinha(l.id, { precoAtacadao: e.target.value })}
+                          placeholder="sob consulta"
+                        />
                       </Field>
                       <Field label="Revenda sugerida (R$)">
-                        <Input value={rl.precoSugerido} inputMode="decimal" onChange={(e) => setLinha(l.id, { precoSugerido: e.target.value })} />
+                        <Input
+                          value={rl.precoSugerido}
+                          inputMode="decimal"
+                          onChange={(e) => setLinha(l.id, { precoSugerido: e.target.value })}
+                        />
                       </Field>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       {lucro !== null && entrada !== null && entrada > 0 ? (
                         <p className="text-sm text-muted">
-                          Lucro do lojista na faixa Entrada: <strong className="text-text">{formatMoeda(lucro)}</strong> por peça
+                          Lucro do lojista na faixa Entrada:{' '}
+                          <strong className="text-text">{formatMoeda(lucro)}</strong> por peça
                         </p>
                       ) : (
                         <span />
@@ -544,7 +626,9 @@ export function ModeloEditor({
                           <Copy size={12} /> Copiar preços de
                           <Select
                             value=""
-                            onChange={(e) => e.target.value && setR((x) => copiarPrecos(x, e.target.value, l.id))}
+                            onChange={(e) =>
+                              e.target.value && setR((x) => copiarPrecos(x, e.target.value, l.id))
+                            }
                             className="h-8 w-36"
                           >
                             <option value="">escolha…</option>
@@ -572,22 +656,43 @@ export function ModeloEditor({
         />
       )}
 
-      {aba === 'variacoes' && (
-        <TabelaVariacoes modelo={atual} onSalvar={salvarVariacao} />
-      )}
+      {aba === 'variacoes' && <TabelaVariacoes modelo={atual} onSalvar={salvarVariacao} />}
 
       {aba === 'kit' && (
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted">O que o revendedor baixa pra montar o próprio anúncio no marketplace.</p>
+          <p className="text-sm text-muted">
+            O que o revendedor baixa pra montar o próprio anúncio no marketplace.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Título sugerido pro marketplace" hint={`${r.tituloMarketplace.length}/60`} className="sm:col-span-2">
-              <Input value={r.tituloMarketplace} maxLength={60} onChange={(e) => set('tituloMarketplace', e.target.value)} />
+            <Field
+              label="Título sugerido pro marketplace"
+              hint={`${r.tituloMarketplace.length}/60`}
+              className="sm:col-span-2"
+            >
+              <Input
+                value={r.tituloMarketplace}
+                maxLength={60}
+                onChange={(e) => set('tituloMarketplace', e.target.value)}
+              />
             </Field>
             <Field label="Descrição pro marketplace" className="sm:col-span-2">
-              <Textarea value={r.descricaoMarketplace} rows={5} maxLength={8000} onChange={(e) => set('descricaoMarketplace', e.target.value)} />
+              <Textarea
+                value={r.descricaoMarketplace}
+                rows={5}
+                maxLength={8000}
+                onChange={(e) => set('descricaoMarketplace', e.target.value)}
+              />
             </Field>
-            <Field label="Composição" hint="Ex.: 50% algodão, 50% poliéster" className="sm:col-span-2">
-              <Input value={r.composicao} maxLength={200} onChange={(e) => set('composicao', e.target.value)} />
+            <Field
+              label="Composição"
+              hint="Ex.: 50% algodão, 50% poliéster"
+              className="sm:col-span-2"
+            >
+              <Input
+                value={r.composicao}
+                maxLength={200}
+                onChange={(e) => set('composicao', e.target.value)}
+              />
             </Field>
           </div>
           {linhasMarcadas.map((l) => (
@@ -599,7 +704,11 @@ export function ModeloEditor({
             />
           ))}
           {atual ? (
-            <VideosDoModelo modeloId={atual.id} videos={atual.videos} onMudou={() => void recarregar(atual.id)} />
+            <VideosDoModelo
+              modeloId={atual.id}
+              videos={atual.videos}
+              onMudou={() => void recarregar(atual.id)}
+            />
           ) : (
             <p className="text-sm text-muted">Salve o modelo pra poder enviar vídeos.</p>
           )}
@@ -620,13 +729,19 @@ function TabelaVariacoes({
   if (!modelo || modelo.variacoes.length === 0) {
     return (
       <p className="text-sm text-muted">
-        As variações nascem sozinhas quando o modelo tem cor e grade salvas (cada cor × cada tamanho marcado).
+        As variações nascem sozinhas quando o modelo tem cor e grade salvas (cada cor × cada tamanho
+        marcado).
       </p>
     );
   }
   const corPorId = new Map(modelo.cores.map((c) => [c.id, c.cor]));
   const tamPorId = new Map(
-    modelo.linhas.flatMap((l) => l.tamanhos.map((t) => [t.id, { linha: l.linha.nome, tamanho: t.tamanho.nome, ordem: t.tamanho.ordem }] as const)),
+    modelo.linhas.flatMap((l) =>
+      l.tamanhos.map(
+        (t) =>
+          [t.id, { linha: l.linha.nome, tamanho: t.tamanho.nome, ordem: t.tamanho.ordem }] as const,
+      ),
+    ),
   );
   const linhas = modelo.variacoes
     .map((v) => ({ v, cor: corPorId.get(v.modeloCorId), tam: tamPorId.get(v.modeloTamanhoId) }))
@@ -639,7 +754,8 @@ function TabelaVariacoes({
   return (
     <div>
       <p className="mb-2 text-sm text-muted">
-        {modelo.variacoes.length} variações. SKU e estoque são opcionais nesta fase — estoque não bloqueia venda.
+        {modelo.variacoes.length} variações. SKU e estoque são opcionais nesta fase — estoque não
+        bloqueia venda.
       </p>
       <div className="max-h-[50vh] overflow-auto rounded-[10px] border border-border">
         <table className="w-full text-sm">
@@ -656,7 +772,10 @@ function TabelaVariacoes({
               <tr key={v.id} className="border-t border-border">
                 <td className="px-3 py-1.5">
                   <span className="flex items-center gap-2">
-                    <span className="inline-block h-3.5 w-3.5 rounded-full border border-border" style={{ background: cor?.hex }} />
+                    <span
+                      className="inline-block h-3.5 w-3.5 rounded-full border border-border"
+                      style={{ background: cor?.hex }}
+                    />
                     {cor?.nome}
                   </span>
                 </td>
@@ -668,7 +787,9 @@ function TabelaVariacoes({
                     defaultValue={v.sku ?? ''}
                     maxLength={60}
                     className="h-8"
-                    onBlur={(e) => e.target.value !== (v.sku ?? '') && void onSalvar(v.id, 'sku', e.target.value)}
+                    onBlur={(e) =>
+                      e.target.value !== (v.sku ?? '') && void onSalvar(v.id, 'sku', e.target.value)
+                    }
                   />
                 </td>
                 <td className="px-3 py-1.5">
@@ -677,7 +798,8 @@ function TabelaVariacoes({
                     inputMode="numeric"
                     className="h-8"
                     onBlur={(e) =>
-                      e.target.value !== (v.estoque?.toString() ?? '') && void onSalvar(v.id, 'estoque', e.target.value)
+                      e.target.value !== (v.estoque?.toString() ?? '') &&
+                      void onSalvar(v.id, 'estoque', e.target.value)
                     }
                   />
                 </td>
@@ -719,12 +841,18 @@ function TabelaMedidasEditor({
     <div className="rounded-[10px] border border-border p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="font-medium text-text">Tabela de medidas (cm) · {linha.nome}</p>
-        <Button size="sm" variant="ghost" onClick={() => onChange({ colunas: [...rl.colunas, ''] })}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onChange({ colunas: [...rl.colunas, ''] })}
+        >
           <Plus size={14} /> Medida
         </Button>
       </div>
       {rl.colunas.length === 0 ? (
-        <p className="text-sm text-muted">Sem tabela. Clique em "+ Medida" pra criar uma coluna (ex.: Tórax).</p>
+        <p className="text-sm text-muted">
+          Sem tabela. Clique em "+ Medida" pra criar uma coluna (ex.: Tórax).
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="text-sm">
@@ -739,9 +867,18 @@ function TabelaMedidasEditor({
                         placeholder="Ex.: Tórax"
                         maxLength={30}
                         className="h-8 w-28"
-                        onChange={(e) => onChange({ colunas: rl.colunas.map((x, j) => (j === i ? e.target.value : x)) })}
+                        onChange={(e) =>
+                          onChange({
+                            colunas: rl.colunas.map((x, j) => (j === i ? e.target.value : x)),
+                          })
+                        }
                       />
-                      <button type="button" onClick={() => removerColuna(i)} aria-label="Remover medida" className="text-muted hover:text-danger">
+                      <button
+                        type="button"
+                        onClick={() => removerColuna(i)}
+                        aria-label="Remover medida"
+                        className="text-muted hover:text-danger"
+                      >
                         <X size={14} />
                       </button>
                     </div>

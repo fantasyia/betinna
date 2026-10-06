@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  corDaBolinha,
+  fotosDaLinha,
   disponivelDe,
   itensParaEnvio,
   mascararWhatsapp,
@@ -50,8 +52,18 @@ const modelo = (over: Partial<ModeloPub> = {}): ModeloPub => ({
   descricaoMarketplace: 'Bermuda de moletom leve.',
   composicao: '50% algodão, 50% poliéster',
   cores: [
-    { id: 'mc-preto', nome: 'Preto', hex: '#000', fotos: [{ url: 'u', thumbUrl: 't', largura: 1, altura: 1 }] },
-    { id: 'mc-bege', nome: 'Bege', hex: '#ccb', fotos: [{ url: 'u', thumbUrl: 't', largura: 1, altura: 1 }] },
+    {
+      id: 'mc-preto',
+      nome: 'Preto',
+      hex: '#000',
+      fotos: [{ url: 'u', thumbUrl: 't', largura: 1, altura: 1 }],
+    },
+    {
+      id: 'mc-bege',
+      nome: 'Bege',
+      hex: '#ccb',
+      fotos: [{ url: 'u', thumbUrl: 't', largura: 1, altura: 1 }],
+    },
   ],
   linhas: [linha()],
   videos: [],
@@ -80,7 +92,12 @@ describe('faixa e preço', () => {
   });
 
   it('sem preço de Entrada = sob consulta (null)', () => {
-    expect(precoNaFaixa(linha({ precoEntrada: null, precoVolume: null, precoAtacadao: null }), 'entrada')).toBeNull();
+    expect(
+      precoNaFaixa(
+        linha({ precoEntrada: null, precoVolume: null, precoAtacadao: null }),
+        'entrada',
+      ),
+    ).toBeNull();
   });
 
   it('lucro por peça e % sobre o custo', () => {
@@ -131,7 +148,9 @@ describe('resumo do pedido', () => {
   });
 
   it('item sem preço → total "a confirmar" e sem lucro; abaixo do mínimo avisa', () => {
-    const v = vitrine([modelo({ linhas: [linha({ precoEntrada: null, precoVolume: null, precoAtacadao: null })] })]);
+    const v = vitrine([
+      modelo({ linhas: [linha({ precoEntrada: null, precoVolume: null, precoAtacadao: null })] }),
+    ]);
     const c = somar({}, 'mod-1', 'mc-preto', 't-p', 2);
     const r = resumoPedido(c, v);
     expect(r.aConfirmar).toBe(true);
@@ -166,9 +185,56 @@ describe('próxima faixa no carrinho', () => {
       ['volume', 50, 40],
       ['atacadao', 500, 36],
     ]);
-    expect(precosPorFaixa(linha({ precoVolume: null }), { ...faixas, minimoAtacadao: null }).map((x) => x.faixa)).toEqual([
-      'entrada',
-    ]);
+    expect(
+      precosPorFaixa(linha({ precoVolume: null }), { ...faixas, minimoAtacadao: null }).map(
+        (x) => x.faixa,
+      ),
+    ).toEqual(['entrada']);
+  });
+});
+
+describe('fotos por linha (biotipo)', () => {
+  const f = (url: string, linhaId: string | null = null) => ({
+    url,
+    thumbUrl: null,
+    largura: 1080,
+    altura: 1440,
+    linhaId,
+  });
+  const cor = (
+    fotos: ReturnType<typeof f>[],
+    amostra: { x: number; y: number } | null = { x: 0.4, y: 0.5 },
+  ) => ({
+    id: 'mc',
+    nome: 'Preto',
+    hex: '#111111',
+    fotos,
+    amostra,
+  });
+
+  it('linha com foto própria mostra só as dela', () => {
+    const c = cor([f('geral'), f('plus-1', 'plus'), f('plus-2', 'plus'), f('inf', 'infantil')]);
+    expect(fotosDaLinha(c, 'plus').map((x) => x.url)).toEqual(['plus-1', 'plus-2']);
+  });
+
+  it('linha sem foto própria cai nas gerais (o comportamento de antes)', () => {
+    const c = cor([f('geral-1'), f('geral-2'), f('plus-1', 'plus')]);
+    expect(fotosDaLinha(c, 'regular').map((x) => x.url)).toEqual(['geral-1', 'geral-2']);
+    expect(fotosDaLinha(c, null).map((x) => x.url)).toEqual(['geral-1', 'geral-2']);
+  });
+
+  it('sem foto geral nem da linha, mostra o que houver (nunca cor sem foto)', () => {
+    const c = cor([f('plus-1', 'plus')]);
+    expect(fotosDaLinha(c, 'regular').map((x) => x.url)).toEqual(['plus-1']);
+  });
+
+  it('a bolinha sai da capa GERAL; sem geral, usa a 1ª foto e larga o ponto', () => {
+    const comGeral = corDaBolinha(cor([f('plus-1', 'plus'), f('geral')]));
+    expect(comGeral.fotos.map((x) => x.url)).toEqual(['geral']);
+    expect(comGeral.amostra).toEqual({ x: 0.4, y: 0.5 });
+    const semGeral = corDaBolinha(cor([f('plus-1', 'plus')]));
+    expect(semGeral.fotos[0].url).toBe('plus-1');
+    expect(semGeral.amostra).toBeNull();
   });
 });
 
@@ -178,7 +244,10 @@ describe('kit pra anunciar', () => {
       modelo({
         linhas: [
           linha({
-            tabelaMedidas: { colunas: ['Cintura', 'Comprimento'], linhas: [{ tamanho: 'P', valores: ['38', '45'] }] },
+            tabelaMedidas: {
+              colunas: ['Cintura', 'Comprimento'],
+              linhas: [{ tamanho: 'P', valores: ['38', '45'] }],
+            },
           }),
         ],
       }),
@@ -191,7 +260,9 @@ describe('kit pra anunciar', () => {
   });
 
   it('sem título do marketplace cai pro nome do modelo', () => {
-    expect(textoKit(modelo({ tituloMarketplace: null }))).toContain('TÍTULO SUGERIDO\nBermuda Moletom Summer');
+    expect(textoKit(modelo({ tituloMarketplace: null }))).toContain(
+      'TÍTULO SUGERIDO\nBermuda Moletom Summer',
+    );
   });
 
   it('nome de arquivo sem acento nem caractere estranho', () => {
@@ -219,12 +290,25 @@ describe('envio do pedido', () => {
 
 describe('pedido mínimo da empresa', () => {
   const linha: LinhaPub = {
-    id: 'l1', linhaId: 'L', nome: 'Regular', tamanhos: [{ id: 't1', nome: 'P' }],
-    precoEntrada: 45, precoVolume: null, precoAtacadao: null, precoSugerido: null, tabelaMedidas: null,
+    id: 'l1',
+    linhaId: 'L',
+    nome: 'Regular',
+    tamanhos: [{ id: 't1', nome: 'P' }],
+    precoEntrada: 45,
+    precoVolume: null,
+    precoAtacadao: null,
+    precoSugerido: null,
+    tabelaMedidas: null,
   };
   const modelo = { id: 'm1', linhas: [linha], cores: [{ id: 'c1' }] } as unknown as ModeloPub;
   const vit = (pedidoMinimo: VitrinePub['pedidoMinimo'], l = linha): VitrinePub =>
-    ({ empresa: { nome: 'R', logoUrl: null }, faixas: { minimoEntrada: null, minimoVolume: 50, minimoAtacadao: 500 }, linhas: [], modelos: [{ ...modelo, linhas: [l] }], pedidoMinimo }) as VitrinePub;
+    ({
+      empresa: { nome: 'R', logoUrl: null },
+      faixas: { minimoEntrada: null, minimoVolume: 50, minimoAtacadao: 500 },
+      linhas: [],
+      modelos: [{ ...modelo, linhas: [l] }],
+      pedidoMinimo,
+    }) as VitrinePub;
   const carr = (q: number): Carrinho => ({ m1: { c1: { t1: q } } });
 
   it('R$ 600: com 10 peças a R$ 45 faltam R$ 150', () => {
@@ -233,13 +317,18 @@ describe('pedido mínimo da empresa', () => {
     expect(r.faltamMinimo).toBe(0);
   });
   it('atingiu o valor: nada falta', () => {
-    expect(resumoPedido(carr(14), vit({ valorMin: 600, quantidadeMin: null, modo: 'E' })).faltaValor).toBe(0);
+    expect(
+      resumoPedido(carr(14), vit({ valorMin: 600, quantidadeMin: null, modo: 'E' })).faltaValor,
+    ).toBe(0);
   });
   it('sem regra: não trava por valor', () => {
     expect(resumoPedido(carr(1), vit(null)).faltaValor).toBe(0);
   });
   it('item sob consulta: o valor não trava', () => {
-    const r = resumoPedido(carr(1), vit({ valorMin: 600, quantidadeMin: null, modo: 'E' }, { ...linha, precoEntrada: null }));
+    const r = resumoPedido(
+      carr(1),
+      vit({ valorMin: 600, quantidadeMin: null, modo: 'E' }, { ...linha, precoEntrada: null }),
+    );
     expect(r.faltaValor).toBe(0);
   });
   it('"50 peças OU R$ 600": falta os dois e diz que é OU', () => {

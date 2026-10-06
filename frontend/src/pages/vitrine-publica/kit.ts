@@ -35,13 +35,25 @@ export async function baixarKit(
 ): Promise<void> {
   const raiz = nomeArquivo(m.nome);
   const arquivos: Zippable = {};
-  const fotos = m.cores.flatMap((c) => c.fotos.map((f, i) => ({ cor: c.nome, i, url: f.url })));
+  // Foto de linha vai numa subpasta da linha (cor/Plus Size/01.jpg); a geral fica na pasta da cor.
+  const nomeLinha = new Map(m.linhas.map((l) => [l.linhaId, l.nome]));
+  const fotos = m.cores.flatMap((c) => {
+    const grupos = new Map<string, Array<{ url: string }>>();
+    for (const f of c.fotos) {
+      const sub = f.linhaId ? (nomeLinha.get(f.linhaId) ?? 'linha') : '';
+      grupos.set(sub, [...(grupos.get(sub) ?? []), f]);
+    }
+    return [...grupos].flatMap(([sub, lista]) =>
+      lista.map((f, i) => ({ cor: c.nome, sub, i, url: f.url })),
+    );
+  });
   const videos = opts.incluirVideos ? m.videos : [];
   const total = fotos.length + videos.length;
   let feito = 0;
 
   for (const f of fotos) {
-    const nome = `${raiz}/${nomeArquivo(f.cor)}/${String(f.i + 1).padStart(2, '0')}.jpg`;
+    const pasta = f.sub ? `${nomeArquivo(f.cor)}/${nomeArquivo(f.sub)}` : nomeArquivo(f.cor);
+    const nome = `${raiz}/${pasta}/${String(f.i + 1).padStart(2, '0')}.jpg`;
     // Nível 0: JPG já é comprimido; recomprimir só gasta tempo do celular.
     arquivos[nome] = [await webpParaJpg(f.url), { level: 0 }];
     opts.onProgresso?.(++feito, total);
@@ -49,8 +61,13 @@ export async function baixarKit(
   for (const [i, v] of videos.entries()) {
     const resp = await fetch(v.url, { mode: 'cors' });
     if (!resp.ok) throw new Error(`Vídeo indisponível (${resp.status})`);
-    const base = v.nomeArquivo ? nomeArquivo(v.nomeArquivo.replace(/\.mp4$/i, '')) : `video-${i + 1}`;
-    arquivos[`${raiz}/videos/${base}.mp4`] = [new Uint8Array(await resp.arrayBuffer()), { level: 0 }];
+    const base = v.nomeArquivo
+      ? nomeArquivo(v.nomeArquivo.replace(/\.mp4$/i, ''))
+      : `video-${i + 1}`;
+    arquivos[`${raiz}/videos/${base}.mp4`] = [
+      new Uint8Array(await resp.arrayBuffer()),
+      { level: 0 },
+    ];
     opts.onProgresso?.(++feito, total);
   }
   arquivos[`${raiz}/descricao.txt`] = strToU8(textoKit(m));

@@ -92,6 +92,8 @@ export class VitrinePublicaService {
             thumbUrl: this.fotos.urlPublica(f.thumbPath),
             largura: f.largura,
             altura: f.altura,
+            // null = foto geral da cor; com id = foto daquela linha (biotipo).
+            linhaId: f.linhaId,
           })),
         })),
         linhas: m.linhas
