@@ -5,9 +5,12 @@ import {
   mascararWhatsapp,
   faixaDoTotal,
   limparCarrinho,
+  lucroNaProximaFaixa,
   lucroPorPeca,
   nomeArquivo,
   precoNaFaixa,
+  precosPorFaixa,
+  progressoFaixa,
   proximaFaixa,
   resumoPedido,
   somar,
@@ -134,6 +137,38 @@ describe('resumo do pedido', () => {
     expect(r.aConfirmar).toBe(true);
     expect(r.lucro).toBeNull();
     expect(r.faltamMinimo).toBe(3);
+  });
+});
+
+describe('próxima faixa no carrinho', () => {
+  it('a barra vai só até a PRÓXIMA faixa; no topo fica cheia', () => {
+    expect(progressoFaixa(30, faixas)).toEqual({ alvo: 50, pct: 60 });
+    expect(progressoFaixa(120, faixas)).toEqual({ alvo: 500, pct: 24 });
+    expect(progressoFaixa(600, faixas)).toEqual({ alvo: 500, pct: 100 });
+  });
+
+  it('"adicione 20 peças para seu lucro ser R$ X" — mesma mistura, preço da faixa nova', () => {
+    const c = somar({}, 'mod-1', 'mc-preto', 't-p', 30); // 30 peças, Entrada
+    // Volume: 89,90 − 40 = 49,90/peça × 50 peças
+    expect(lucroNaProximaFaixa(c, vitrine())).toEqual({ faixa: 'volume', faltam: 20, lucro: 2495 });
+  });
+
+  it('sem revenda sugerida ou já no topo → sem estimativa', () => {
+    const semSug = vitrine([modelo({ linhas: [linha({ precoSugerido: null })] })]);
+    expect(lucroNaProximaFaixa(somar({}, 'mod-1', 'mc-preto', 't-p', 30), semSug)).toBeNull();
+    expect(lucroNaProximaFaixa(somar({}, 'mod-1', 'mc-preto', 't-p', 600), vitrine())).toBeNull();
+    expect(lucroNaProximaFaixa({}, vitrine())).toBeNull();
+  });
+
+  it('card mostra só faixa com preço próprio e mínimo configurado', () => {
+    expect(precosPorFaixa(linha(), faixas).map((x) => [x.faixa, x.minimo, x.preco])).toEqual([
+      ['entrada', 5, 45],
+      ['volume', 50, 40],
+      ['atacadao', 500, 36],
+    ]);
+    expect(precosPorFaixa(linha({ precoVolume: null }), { ...faixas, minimoAtacadao: null }).map((x) => x.faixa)).toEqual([
+      'entrada',
+    ]);
   });
 });
 

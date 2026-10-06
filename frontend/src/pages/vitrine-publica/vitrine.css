@@ -80,6 +80,14 @@
 .vt-lucro .vt-pct { font-size: 11px; color: var(--lucro); font-weight: 600; }
 .vt-lucro .vt-na { font-size: 12.5px; font-weight: 500; color: var(--terracota); }
 .vt-lucro.vt-so-atacado { grid-template-columns: 1fr; }
+/* preço das faixas de cima, logo abaixo do bloco de lucro */
+.vt-faixas { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid #e3d8bf; border-radius: 12px; background: var(--branco); overflow: hidden; margin-top: -4px; }
+.vt-faixas > div { padding: 7px 10px; display: grid; gap: 1px; min-width: 0; }
+.vt-faixas > div + div { border-left: 1px solid #eee4ce; }
+.vt-faixas small { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--oliva); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-faixas b { font-family: var(--f-title); font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vt-faixas .vt-pct { font-size: 11px; color: var(--lucro); font-weight: 600; }
+.vt-ganho { color: var(--lucro); font-variant-numeric: tabular-nums; }
 
 /* página do modelo */
 .vt-pdp { position: absolute; inset: 0; z-index: 40; background: var(--creme); overflow-y: auto; }

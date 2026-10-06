@@ -9,7 +9,10 @@ import {
   itensParaEnvio,
   mascararWhatsapp,
   limparCarrinho,
+  lucroNaProximaFaixa,
   lucroPorPeca,
+  precosPorFaixa,
+  progressoFaixa,
   pecasDoModelo,
   proximaFaixa,
   resumoPedido,
@@ -18,6 +21,7 @@ import {
   totalPecas,
   type Carrinho,
   type CorPub,
+  type Faixas,
   type LinhaPub,
   type ModeloPub,
   type VitrinePub,
@@ -228,7 +232,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                     ))}
                   </div>
                 )}
-                <BlocoLucro l={l} />
+                <BlocoLucro l={l} f={v.faixas} />
                 <div className="vt-row">
                   <button type="button" className="vt-link" onClick={() => setKit(m)}>
                     Kit pra anunciar
@@ -253,6 +257,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           m={pdp}
           cor={corAtual(pdp)}
           l={linhaNoModelo(pdp)}
+          f={v.faixas}
           onCor={(id) => setCorDe((s) => ({ ...s, [pdp.id]: id }))}
           onFechar={() => setPdp(null)}
           onGrade={() => {
@@ -377,7 +382,38 @@ function Bolinhas({ m, cor, onCor }: { m: ModeloPub; cor: CorPub; onCor: (id: st
   );
 }
 
-function BlocoLucro({ l }: { l: LinhaPub }) {
+/** Preço das faixas de cima (Volume, Atacadão) — o card mostra a Entrada. */
+function OutrasFaixas({ l, f }: { l: LinhaPub; f: Faixas }) {
+  const outras = precosPorFaixa(l, f).filter((x) => x.faixa !== 'entrada');
+  if (!outras.length) return null;
+  return (
+    <div className="vt-faixas" data-testid="vt-outras-faixas">
+      {outras.map((x) => {
+        const lp = lucroPorPeca(x.preco, l.precoSugerido);
+        return (
+          <div key={x.faixa}>
+            <small>
+              {NOME_FAIXA[x.faixa]} · {formatNumero(x.minimo ?? 0)}+ peças
+            </small>
+            <b>{formatMoeda(x.preco)}</b>
+            {lp && <span className="vt-pct">lucro {formatMoeda(lp.lucro)}/peça</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BlocoLucro({ l, f }: { l: LinhaPub; f: Faixas }) {
+  return (
+    <>
+      <BlocoLucroEntrada l={l} rotulo={precosPorFaixa(l, f).length > 1 ? 'Entrada' : 'Atacado'} />
+      <OutrasFaixas l={l} f={f} />
+    </>
+  );
+}
+
+function BlocoLucroEntrada({ l, rotulo }: { l: LinhaPub; rotulo: string }) {
   const atacado = l.precoEntrada;
   const lp = lucroPorPeca(atacado, l.precoSugerido);
   if (atacado === null) {
@@ -394,7 +430,7 @@ function BlocoLucro({ l }: { l: LinhaPub }) {
     return (
       <div className="vt-lucro vt-so-atacado">
         <div>
-          <small>Atacado · por peça</small>
+          <small>{rotulo} · por peça</small>
           <b>{formatMoeda(atacado)}</b>
         </div>
       </div>
@@ -403,7 +439,7 @@ function BlocoLucro({ l }: { l: LinhaPub }) {
   return (
     <div className="vt-lucro">
       <div>
-        <small>Atacado</small>
+        <small>{rotulo}</small>
         <b>{formatMoeda(atacado)}</b>
       </div>
       <div>
@@ -423,6 +459,7 @@ function PaginaModelo({
   m,
   cor,
   l,
+  f,
   onCor,
   onFechar,
   onGrade,
@@ -431,6 +468,7 @@ function PaginaModelo({
   m: ModeloPub;
   cor: CorPub;
   l: LinhaPub;
+  f: Faixas;
   onCor: (id: string) => void;
   onFechar: () => void;
   onGrade: () => void;
@@ -461,7 +499,7 @@ function PaginaModelo({
             ))}
           </div>
         )}
-        <BlocoLucro l={l} />
+        <BlocoLucro l={l} f={f} />
         <div className="vt-gl">
           {m.linhas.map((x) => (
             <div key={x.id}>
@@ -709,7 +747,8 @@ function SeuPedido({
   const r = resumoPedido(carrinho, v);
   const prox = proximaFaixa(r.pecas, v.faixas);
   const itens = v.modelos.filter((m) => pecasDoModelo(carrinho, m.id) > 0);
-  const alvo = v.faixas.minimoAtacadao ?? 500;
+  const barra = progressoFaixa(r.pecas, v.faixas);
+  const ganho = lucroNaProximaFaixa(carrinho, v);
 
   return (
     <section className="vt-cart" aria-label="Seu pedido">
@@ -790,21 +829,27 @@ function SeuPedido({
             <div className="vt-kv">
               <span>Faixa de preço</span>
               <span className="vt-muted">
-                {formatNumero(r.pecas)} de {formatNumero(alvo)} peças
+                {formatNumero(r.pecas)} de {formatNumero(barra.alvo)} peças
               </span>
             </div>
             <div className="vt-bar">
-              <i style={{ width: `${Math.min(100, (r.pecas / alvo) * 100)}%` }} />
+              <i style={{ width: `${barra.pct}%` }} />
             </div>
             <div className="vt-tiers">
-              {(['entrada', 'volume', 'atacadao'] as const).map((fx) => (
-                <span key={fx}>{r.faixa === fx ? <b>{NOME_FAIXA[fx]}</b> : NOME_FAIXA[fx]}</span>
-              ))}
+              <b>{NOME_FAIXA[r.faixa]}</b>
+              {prox && <span>{NOME_FAIXA[prox.faixa]}</span>}
             </div>
-            <span className="vt-muted">
-              {prox
-                ? `Faltam ${formatNumero(prox.faltam)} peças pra faixa ${NOME_FAIXA[prox.faixa]}.`
-                : `Você chegou na faixa ${NOME_FAIXA.atacadao}, o melhor preço.`}
+            <span className="vt-muted" data-testid="vt-prox-faixa">
+              {ganho ? (
+                <>
+                  Adicione {formatNumero(ganho.faltam)} peças para seu lucro ser{' '}
+                  <b className="vt-ganho">{formatMoeda(ganho.lucro)}</b> (faixa {NOME_FAIXA[ganho.faixa]}).
+                </>
+              ) : prox ? (
+                `Adicione ${formatNumero(prox.faltam)} peças pra chegar na faixa ${NOME_FAIXA[prox.faixa]}.`
+              ) : (
+                `Você chegou na faixa ${NOME_FAIXA.atacadao}, o melhor preço.`
+              )}
             </span>
             {textoMinimo(r, v) && (
               <span className="vt-aviso" data-testid="vt-falta-minimo">

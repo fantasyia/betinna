@@ -227,6 +227,56 @@ export function proximaFaixa(pecas: number, f: Faixas): { faixa: Faixa; faltam: 
 
 export const NOME_FAIXA: Record<Faixa, string> = { entrada: 'Entrada', volume: 'Volume', atacadao: 'Atacadão' };
 
+/**
+ * Barra de progresso: vai só até a PRÓXIMA faixa (144 de 200), não até a
+ * última. Já no topo = barra cheia, alvo = mínimo do Atacadão.
+ */
+export function progressoFaixa(pecas: number, f: Faixas): { alvo: number; pct: number } {
+  const prox = proximaFaixa(pecas, f);
+  const alvo = prox ? pecas + prox.faltam : (f.minimoAtacadao ?? f.minimoVolume ?? Math.max(1, pecas));
+  return { alvo, pct: alvo > 0 ? Math.min(100, Math.round((pecas / alvo) * 1000) / 10) : 100 };
+}
+
+/**
+ * "Adicione 56 peças para seu lucro ser R$ X": lucro estimado ao chegar na
+ * próxima faixa, mantendo a mesma mistura do carrinho (lucro médio por peça
+ * na faixa nova × total de peças). null quando não dá pra estimar (preço sob
+ * consulta, sem revenda sugerida) — aí a tela diz só quantas peças faltam.
+ */
+export function lucroNaProximaFaixa(c: Carrinho, v: VitrinePub): { faixa: Faixa; faltam: number; lucro: number } | null {
+  const pecas = totalPecas(c);
+  const prox = proximaFaixa(pecas, v.faixas);
+  if (!prox || pecas <= 0) return null;
+  let investe = 0;
+  let revende = 0;
+  for (const m of v.modelos) {
+    for (const l of m.linhas) {
+      const n = pecasDoModelo(c, m.id, l);
+      if (!n) continue;
+      const p = precoNaFaixa(l, prox.faixa);
+      if (p === null || l.precoSugerido === null) return null;
+      investe += n * p;
+      revende += n * l.precoSugerido;
+    }
+  }
+  const lucro = Math.round(((revende - investe) / pecas) * (pecas + prox.faltam) * 100) / 100;
+  return { ...prox, lucro };
+}
+
+/**
+ * Preço por faixa no card do modelo: "Entrada R$ 19,99 · 200+ peças R$ 17,99…".
+ * Só entra faixa com preço PRÓPRIO e (fora a Entrada) com mínimo configurado.
+ */
+export function precosPorFaixa(l: LinhaPub, f: Faixas): Array<{ faixa: Faixa; minimo: number | null; preco: number }> {
+  const out: Array<{ faixa: Faixa; minimo: number | null; preco: number }> = [];
+  if (l.precoEntrada !== null) out.push({ faixa: 'entrada', minimo: f.minimoEntrada, preco: l.precoEntrada });
+  if (l.precoVolume !== null && f.minimoVolume) out.push({ faixa: 'volume', minimo: f.minimoVolume, preco: l.precoVolume });
+  if (l.precoAtacadao !== null && f.minimoAtacadao) {
+    out.push({ faixa: 'atacadao', minimo: f.minimoAtacadao, preco: l.precoAtacadao });
+  }
+  return out;
+}
+
 /** Texto do "kit pra anunciar" — o que o revendedor cola no marketplace. */
 export function textoKit(m: ModeloPub): string {
   const partes: string[] = [];
