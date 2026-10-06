@@ -4,7 +4,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
-import { Button, Card, Field, IconButton, Input, Select, Textarea } from '@/components/ui';
+import { Button, Card, Field, IconButton, Input, Select, Switch, Textarea } from '@/components/ui';
 import { lerNumero, paraCampo } from '@/pages/precificacao/calculo';
 import { SIGLA, type Insumo } from '@/pages/insumos/insumo';
 
@@ -30,7 +30,13 @@ interface Linha {
   consumo: string;
 }
 
-export function FichaTecnicaAba({ linhas }: { linhas: Array<{ id: string; nome: string }> }) {
+export function FichaTecnicaAba({
+  modeloId,
+  linhas,
+}: {
+  modeloId: string;
+  linhas: Array<{ id: string; nome: string }>;
+}) {
   const insumos = useApiQuery<Insumo[]>('/erp/insumos');
   if (linhas.length === 0) {
     return <p className="text-sm text-muted">Salve o modelo com pelo menos uma grade (aba 3) pra montar a ficha técnica.</p>;
@@ -45,10 +51,7 @@ export function FichaTecnicaAba({ linhas }: { linhas: Array<{ id: string; nome: 
       {linhas.map((l) => (
         <FichaDaGrade key={l.id} modeloLinhaId={l.id} nome={l.nome} insumos={insumos.data ?? []} />
       ))}
-      <Card variant="outline" padding="md" className="text-sm text-muted">
-        <b className="text-text">Regras de encaixe</b> — entram aqui (largura do tecido, sentido do fio, giro das
-        peças…) assim que as regras de cada produto vierem do CAD.
-      </Card>
+      <RegrasEncaixe modeloId={modeloId} />
     </div>
   );
 }
@@ -183,6 +186,133 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
       <div>
         <Button onClick={salvar} loading={salvando} disabled={!valido} data-testid={`ficha-salvar-${modeloLinhaId}`}>
           Salvar ficha da grade {nome}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+interface Regras {
+  tecido: 'TUBULAR' | 'ABERTO';
+  larguraUtilMm: number;
+  espelhar: boolean;
+  giroCorpo: 'FIXO' | 'GIRA_180';
+  giroForro: 'LIVRE' | 'GIRA_180' | 'FIXO';
+  encavalamentoMm: number;
+  espacamentoMm: number;
+  observacoes: string | null;
+}
+
+/** Ponto de partida = o produto 100 (short tactel), o único já encaixado na GPU. */
+const PADRAO: Regras = {
+  tecido: 'TUBULAR',
+  larguraUtilMm: 1030,
+  espelhar: true,
+  giroCorpo: 'GIRA_180',
+  giroForro: 'LIVRE',
+  encavalamentoMm: 0,
+  espacamentoMm: 0,
+  observacoes: null,
+};
+
+/**
+ * Regras de ENCAIXE do produto — o que o encaixe automático (GPU) respeita.
+ * Forro de bolso sempre entra no mesmo risco e não há listra/estampa por
+ * enquanto (Léo, 07/10): por isso não são campos.
+ */
+function RegrasEncaixe({ modeloId }: { modeloId: string }) {
+  const toast = useToast();
+  const q = useApiQuery<{ regras: Regras | null }>(`/erp/modelos/${modeloId}/encaixe`);
+  const [r, setR] = useState<Regras>(PADRAO);
+  const [largura, setLargura] = useState(String(PADRAO.larguraUtilMm));
+  const [enc, setEnc] = useState('0');
+  const [esp, setEsp] = useState('0');
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    const atual = q.data?.regras ?? PADRAO;
+    setR(atual);
+    setLargura(String(atual.larguraUtilMm));
+    setEnc(paraCampo(atual.encavalamentoMm));
+    setEsp(paraCampo(atual.espacamentoMm));
+  }, [q.data]);
+
+  const larguraN = Math.round(lerNumero(largura) ?? 0);
+  const valido = larguraN >= 100 && larguraN <= 5000;
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await api.put(`/erp/modelos/${modeloId}/encaixe`, {
+        ...r,
+        larguraUtilMm: larguraN,
+        encavalamentoMm: lerNumero(enc) ?? 0,
+        espacamentoMm: lerNumero(esp) ?? 0,
+        observacoes: r.observacoes ?? '',
+      });
+      toast.success('Regras de encaixe salvas');
+      q.refetch();
+    } catch (err) {
+      toast.error('Não foi possível salvar', apiErrorMessage(err));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Card variant="outline" padding="md" className="flex flex-col gap-3" data-testid="regras-encaixe">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h3 className="text-sm font-semibold mr-auto">Regras de encaixe do produto</h3>
+        {q.data && !q.data.regras && (
+          <span className="text-xs text-warning">Ainda não salvas — sugestão do produto 100 preenchida</span>
+        )}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Tecido" hint={r.tecido === 'TUBULAR' ? 'O par sai do tubo: o risco leva 1 de cada peça' : 'O par vem do molde ("1,1")'}>
+          <Select value={r.tecido} onChange={(e) => setR({ ...r, tecido: e.target.value as Regras['tecido'] })} data-testid="regra-tecido">
+            <option value="TUBULAR">Tubular</option>
+            <option value="ABERTO">Aberto (folha simples)</option>
+          </Select>
+        </Field>
+        <Field label="Largura útil (mm)" hint="Já sem a ourela">
+          <Input value={largura} onChange={(e) => setLargura(e.target.value)} inputMode="numeric" data-testid="regra-largura" />
+        </Field>
+        <div className="flex items-end pb-2">
+          <Switch label="Espelhar as peças" checked={r.espelhar} onChange={(e) => setR({ ...r, espelhar: e.target.checked })} />
+        </div>
+        <Field label="Giro das peças do corpo" hint="90° nunca">
+          <Select value={r.giroCorpo} onChange={(e) => setR({ ...r, giroCorpo: e.target.value as Regras['giroCorpo'] })}>
+            <option value="GIRA_180">0° ou 180°</option>
+            <option value="FIXO">Fixo (só 0°)</option>
+          </Select>
+        </Field>
+        <Field label="Giro do forro de bolso" hint="Sempre no mesmo risco do tecido">
+          <Select value={r.giroForro} onChange={(e) => setR({ ...r, giroForro: e.target.value as Regras['giroForro'] })}>
+            <option value="LIVRE">Livre (360°)</option>
+            <option value="GIRA_180">0° ou 180°</option>
+            <option value="FIXO">Fixo (só 0°)</option>
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Encavalamento (mm)">
+            <Input value={enc} onChange={(e) => setEnc(e.target.value)} inputMode="decimal" />
+          </Field>
+          <Field label="Folga (mm)">
+            <Input value={esp} onChange={(e) => setEsp(e.target.value)} inputMode="decimal" />
+          </Field>
+        </div>
+      </div>
+      <Field label="Observações do modelista">
+        <Textarea
+          value={r.observacoes ?? ''}
+          onChange={(e) => setR({ ...r, observacoes: e.target.value })}
+          rows={2}
+          maxLength={1000}
+        />
+      </Field>
+      <div>
+        <Button onClick={salvar} loading={salvando} disabled={!valido} data-testid="regras-salvar">
+          Salvar regras de encaixe
         </Button>
       </div>
     </Card>

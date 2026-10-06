@@ -5,7 +5,7 @@ import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exc
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { EstoqueService } from './estoque.service';
-import type { FaccaoDto, FichaDto, PrecosFaccaoDto } from './fichas.dto';
+import type { FaccaoDto, FichaDto, PrecosFaccaoDto, RegrasEncaixeDto } from './fichas.dto';
 
 const D = (v: number, casas: number) => new Prisma.Decimal(v.toFixed(casas));
 const num = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
@@ -198,6 +198,33 @@ export class FichasService {
         ).total,
       ]),
     );
+  }
+
+  // ─── Regras de encaixe (por produto) ────────────────────────────────────
+
+  private async modeloDaEmpresa(empresaId: string, modeloId: string) {
+    const m = await this.prisma.catalogoModelo.findFirst({
+      where: { id: modeloId, empresaId },
+      select: { id: true, nome: true, regrasEncaixe: true },
+    });
+    if (!m) throw new NotFoundException('Modelo', modeloId);
+    return m;
+  }
+
+  async regrasEncaixe(user: AuthenticatedUser, modeloId: string) {
+    const empresaId = await this.erp.empresaLigada(user);
+    const m = await this.modeloDaEmpresa(empresaId, modeloId);
+    return { modeloId: m.id, regras: (m.regrasEncaixe as RegrasEncaixeDto | null) ?? null };
+  }
+
+  async salvarRegrasEncaixe(user: AuthenticatedUser, modeloId: string, dto: RegrasEncaixeDto) {
+    const empresaId = await this.erp.empresaLigada(user);
+    await this.modeloDaEmpresa(empresaId, modeloId);
+    await this.prisma.catalogoModelo.update({
+      where: { id: modeloId },
+      data: { regrasEncaixe: dto as unknown as Prisma.InputJsonValue },
+    });
+    return { modeloId, regras: dto };
   }
 
   // ─── Facções ────────────────────────────────────────────────────────────

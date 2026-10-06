@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { Reflector } from '@nestjs/core';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { FichasController } from './fichas.controller';
-import { fichaSchema } from './fichas.dto';
+import { fichaSchema, regrasEncaixeSchema } from './fichas.dto';
 import { FichasService, custoPrevistoDaFicha } from './fichas.service';
 
 const user = { id: 'u-1', role: 'DIRECTOR', empresaIdAtiva: 'emp-1', empresaIds: ['emp-1'] };
@@ -62,7 +62,11 @@ function montar(opts: { ligado?: boolean } = {}) {
       findMany: vi.fn().mockResolvedValue([]),
     },
     insumo: { count: vi.fn().mockResolvedValue(2) },
-    catalogoModelo: { count: vi.fn().mockResolvedValue(1) },
+    catalogoModelo: {
+      count: vi.fn().mockResolvedValue(1),
+      findFirst: vi.fn().mockResolvedValue({ id: 'm-1', nome: 'Short', regrasEncaixe: null }),
+      update: vi.fn().mockResolvedValue({}),
+    },
     faccao: {
       findFirst: vi.fn().mockResolvedValue({ id: 'fac-1' }),
       findMany: vi.fn().mockResolvedValue([]),
@@ -186,5 +190,42 @@ describe('FichasService', () => {
       ],
     });
     expect(r.success).toBe(false);
+  });
+
+  it('regras de encaixe do produto 100 (tubular, 103 cm, espelha, corpo 180, forro livre)', async () => {
+    const { svc, prisma } = montar();
+    const r100 = {
+      tecido: 'TUBULAR' as const,
+      larguraUtilMm: 1030,
+      espelhar: true,
+      giroCorpo: 'GIRA_180' as const,
+      giroForro: 'LIVRE' as const,
+      encavalamentoMm: 0,
+      espacamentoMm: 0,
+      observacoes: null,
+    };
+    expect(regrasEncaixeSchema.safeParse(r100).success).toBe(true);
+    await svc.salvarRegrasEncaixe(user as never, 'm-1', r100);
+    expect(prisma.catalogoModelo.update).toHaveBeenCalledWith({
+      where: { id: 'm-1' },
+      data: { regrasEncaixe: r100 },
+    });
+  });
+
+  it('regras de encaixe: modelo de OUTRA empresa é 404; giro 90° não existe', async () => {
+    const { svc, prisma } = montar();
+    prisma.catalogoModelo.findFirst.mockResolvedValue(null);
+    await expect(svc.regrasEncaixe(user as never, 'm-x')).rejects.toBeInstanceOf(NotFoundException);
+    expect(
+      regrasEncaixeSchema.safeParse({
+        tecido: 'TUBULAR',
+        larguraUtilMm: 1030,
+        espelhar: true,
+        giroCorpo: 'GIRA_90',
+        giroForro: 'LIVRE',
+        encavalamentoMm: 0,
+        espacamentoMm: 0,
+      }).success,
+    ).toBe(false);
   });
 });

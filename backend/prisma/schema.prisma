@@ -4115,6 +4115,10 @@ model CatalogoModelo {
 
   /// ERP próprio: preço por peça que cada facção cobra por este modelo.
   faccaoPrecos FaccaoPreco[]
+  /// ERP próprio: regras de ENCAIXE do produto (ficha técnica) — tubular/aberto,
+  /// largura útil, espelhar, giro do corpo e do forro, encavalamento, espaçamento.
+  /// Validado no DTO (`regrasEncaixeSchema`); null = ainda não definido.
+  regrasEncaixe Json?
 
   @@index([empresaId, ativo, ordem])
 }

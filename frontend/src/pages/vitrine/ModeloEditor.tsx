@@ -566,7 +566,10 @@ export function ModeloEditor({
       )}
 
       {aba === 'ficha' && atual && (
-        <FichaTecnicaAba linhas={atual.linhas.map((l) => ({ id: l.id, nome: l.linha.nome }))} />
+        <FichaTecnicaAba
+          modeloId={atual.id}
+          linhas={atual.linhas.map((l) => ({ id: l.id, nome: l.linha.nome }))}
+        />
       )}
 
       {aba === 'variacoes' && (

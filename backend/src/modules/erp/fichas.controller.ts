@@ -8,9 +8,11 @@ import {
   type FaccaoDto,
   type FichaDto,
   type PrecosFaccaoDto,
+  type RegrasEncaixeDto,
   faccaoSchema,
   fichaSchema,
   precosFaccaoSchema,
+  regrasEncaixeSchema,
 } from './fichas.dto';
 import { FichasService } from './fichas.service';
 
@@ -45,6 +47,22 @@ export class FichasController {
     @Body(new ZodValidationPipe(fichaSchema)) dto: FichaDto,
   ) {
     return this.svc.salvar(user, id, dto);
+  }
+
+  @Get('modelos/:modeloId/encaixe')
+  @ApiOperation({ summary: 'Regras de encaixe do produto (null = não definidas)' })
+  regrasEncaixe(@CurrentUser() user: AuthenticatedUser, @Param('modeloId') id: string) {
+    return this.svc.regrasEncaixe(user, id);
+  }
+
+  @Put('modelos/:modeloId/encaixe')
+  @ApiOperation({ summary: 'Salva as regras de encaixe do produto' })
+  salvarRegrasEncaixe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('modeloId') id: string,
+    @Body(new ZodValidationPipe(regrasEncaixeSchema)) dto: RegrasEncaixeDto,
+  ) {
+    return this.svc.salvarRegrasEncaixe(user, id, dto);
   }
 
   @Get('faccoes')
