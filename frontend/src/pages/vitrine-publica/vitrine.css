@@ -32,9 +32,8 @@
 /* topo */
 .vt-top { position: absolute; inset: 0 0 auto 0; z-index: 30; padding: 12px 16px 0; background: linear-gradient(var(--creme) 78%, rgba(248, 241, 224, 0)); }
 .vt-brand { display: flex; align-items: center; gap: 10px; min-height: 22px; }
-.vt-brand img { height: 22px; width: auto; }
+.vt-brand img { height: 20px; width: auto; display: block; }
 .vt-brand .vt-nome { font-family: var(--f-title); font-weight: 600; font-size: 18px; }
-.vt-brand .vt-atac { font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--oliva); font-weight: 600; padding-left: 10px; border-left: 1px solid var(--quente); }
 .vt-linhas { margin-top: 12px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--linho); border-radius: 12px; padding: 3px; }
 .vt-linhas button { height: 34px; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--oliva); }
 .vt-linhas button[aria-pressed='true'] { background: var(--petroleo); color: var(--creme); }

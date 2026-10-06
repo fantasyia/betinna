@@ -174,12 +174,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
     <>
       <div className="vt-top">
         <div className="vt-brand">
-          {v.empresa.logoUrl ? (
-            <img src={v.empresa.logoUrl} alt={v.empresa.nome} />
-          ) : (
-            <span className="vt-nome">{v.empresa.nome}</span>
-          )}
-          <span className="vt-atac">Atacado</span>
+          <Marca nome={v.empresa.nome} logoUrl={v.empresa.logoUrl} />
         </div>
         {v.linhas.length > 1 && (
           <div className="vt-linhas" role="group" aria-label="Linha">
@@ -226,7 +221,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
               <div className="vt-info">
                 <div className="vt-row">
                   <span className="vt-over">
-                    {m.categoria?.nome ?? 'Atacado'} · {l.nome}
+                    {[m.categoria?.nome, l.nome].filter(Boolean).join(' · ')}
                   </span>
                   <Bolinhas
                     m={m}
@@ -333,7 +328,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           onEsvaziar={() => {
             setCarrinho({});
             setVerPedido(false);
-            avisar('Pedido esvaziado');
+            avisar('Pedido limpo');
           }}
           onEnviado={(e) => {
             setEnviado(e);
@@ -387,6 +382,13 @@ function Carrossel({ cor, nome, onAbrir }: { cor: CorPub; nome: string; onAbrir?
 }
 
 /** Botão que pede confirmação no próprio lugar (2º toque confirma). */
+/** Logo nominal da empresa; sem logo (ou se ela não carregar), o nome. */
+function Marca({ nome, logoUrl }: { nome: string; logoUrl: string | null }) {
+  const [falhou, setFalhou] = useState(false);
+  if (logoUrl && !falhou) return <img src={logoUrl} alt={nome} onError={() => setFalhou(true)} />;
+  return <span className="vt-nome">{nome}</span>;
+}
+
 function BotaoZerar({
   rotulo,
   pergunta,
@@ -555,7 +557,7 @@ function PaginaModelo({
       </div>
       <div className="vt-pdp-body">
         <div className="vt-row">
-          <span className="vt-over">{m.categoria?.nome ?? 'Atacado'}</span>
+          {m.categoria && <span className="vt-over">{m.categoria.nome}</span>}
           <Bolinhas m={m} cor={cor} onCor={onCor} />
         </div>
         <h2 className="vt-name" style={{ fontSize: 28 }}>
@@ -638,7 +640,7 @@ function FolhaGrade({
         <div className="vt-sh-head">
           {capa && <img src={capa} alt="" />}
           <div>
-            <span className="vt-over">{m.categoria?.nome ?? 'Atacado'}</span>
+            {m.categoria && <span className="vt-over">{m.categoria.nome}</span>}
             <div className="vt-name">{m.nome}</div>
           </div>
         </div>
@@ -736,8 +738,8 @@ function FolhaGrade({
           </div>
           {pecasDoModelo(carrinho, m.id) > 0 && (
             <BotaoZerar
-              rotulo="Zerar modelo"
-              pergunta="Sim, zerar"
+              rotulo="Limpar grade"
+              pergunta="Sim, limpar"
               testid="vt-zerar-modelo"
               onConfirmar={() => {
                 const c = { ...carrinho };
@@ -886,8 +888,8 @@ function SeuPedido({
         <h2>Seu pedido</h2>
         {r.pecas > 0 && (
           <BotaoZerar
-            rotulo="Esvaziar"
-            pergunta="Sim, esvaziar"
+            rotulo="Limpar pedido"
+            pergunta="Sim, limpar tudo"
             testid="vt-esvaziar"
             onConfirmar={onEsvaziar}
           />
