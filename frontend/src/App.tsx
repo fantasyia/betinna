@@ -52,6 +52,8 @@ const PrecificacaoPage = lazyComRetry(() => import("@/pages/precificacao/Precifi
 const EstoquePage = lazyComRetry(() => import("@/pages/estoque/EstoquePage"));
 const InsumosPage = lazyComRetry(() => import("@/pages/insumos/InsumosPage"));
 const FaccoesPage = lazyComRetry(() => import("@/pages/faccoes/FaccoesPage"));
+const ProducaoPage = lazyComRetry(() => import("@/pages/producao/ProducaoPage"));
+const OpDetalhePage = lazyComRetry(() => import("@/pages/producao/OpDetalhePage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -413,6 +415,31 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <FaccoesPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // ERP próprio · ordens de produção — gate fino na página e no backend.
+    path: "/producao",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <ProducaoPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/producao/:id",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <OpDetalhePage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

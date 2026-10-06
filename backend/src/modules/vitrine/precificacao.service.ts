@@ -10,6 +10,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { PrecosLinhaDto, TaxasPrecificacaoDto } from './precificacao.dto';
 import { FichasService } from '@modules/erp/fichas.service';
+import { OrdensService } from '@modules/erp/ordens.service';
 import { VitrineAdminService } from './vitrine-admin.service';
 import { minimoDaVitrine } from './vitrine-pedido.service';
 
@@ -43,6 +44,8 @@ export class PrecificacaoService {
     private readonly admin: VitrineAdminService,
     // Custo previsto pela ficha técnica (ERP). Opcional: sem ERP, só o manual.
     @Optional() private readonly fichas?: FichasService,
+    // Custo REAL das OPs fechadas (média e última). Opcional pelo mesmo motivo.
+    @Optional() private readonly ordens?: OrdensService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -113,6 +116,12 @@ export class PrecificacaoService {
           modelos.flatMap((m) => m.linhas.map((l) => l.id)),
         )
       : new Map<string, number>();
+    const reais = this.ordens
+      ? await this.ordens.custosReais(
+          empresaId,
+          modelos.flatMap((m) => m.linhas.map((l) => l.id)),
+        )
+      : new Map();
     return {
       taxas: {
         impostoPct: secao.impostoPct ?? null,
@@ -146,6 +155,8 @@ export class PrecificacaoService {
               atualizadoEm: l.custoAtualizadoEm,
               /** Σ consumo × custo médio + facção prevista (ficha técnica). */
               previsto: previstos.get(l.id) ?? null,
+              /** Das OPs fechadas: média ponderada e a última (com nº e data). */
+              ops: reais.get(l.id) ?? null,
             },
           })),
       })),

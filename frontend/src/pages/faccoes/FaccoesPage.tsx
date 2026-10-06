@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
@@ -33,6 +34,8 @@ export default function FaccoesPage() {
   const gestor = role === 'ADMIN' || role === 'DIRECTOR';
   const q = useApiQuery<Faccao[]>(gestor ? '/erp/faccoes' : null);
   const modelos = useApiQuery<Array<{ id: string; nome: string }>>(gestor ? '/vitrine/admin/modelos' : null);
+  const situacao = useApiQuery<Situacao[]>(gestor ? '/erp/ops/faccoes/situacao' : null);
+  const sit = new Map((situacao.data ?? []).map((s) => [s.faccao.id, s]));
   const [cadastro, setCadastro] = useState<Faccao | 'nova' | null>(null);
   const [precos, setPrecos] = useState<Faccao | null>(null);
 
@@ -85,6 +88,7 @@ export default function FaccoesPage() {
                       ))}
                     </ul>
                   )}
+                  <SituacaoAgora s={sit.get(f.id)} />
                   <div>
                     <Button size="sm" variant="secondary" onClick={() => setPrecos(f)} data-testid={`faccao-precos-${f.id}`}>
                       Preço por modelo
@@ -277,5 +281,41 @@ function PrecosDialog({
         </div>
       )}
     </Dialog>
+  );
+}
+
+interface Situacao {
+  faccao: { id: string; nome: string };
+  aReceber: number;
+  atrasadas: number;
+  ops: Array<{ id: string; numero: string; status: string; modelo: { nome: string }; prazo: string | null; aReceber: number; atrasada: boolean }>;
+  aviamentosEmPoder: Array<{ nome: string; unidade: string; quantidade: number }>;
+}
+
+/** O que está com a facção agora: OPs abertas, peças a receber, atrasos. */
+function SituacaoAgora({ s }: { s: Situacao | undefined }) {
+  if (!s || s.ops.length === 0) return <p className="text-xs text-muted">Nada com ela agora.</p>;
+  return (
+    <div className="rounded-[10px] bg-surface p-2.5 text-sm flex flex-col gap-1" data-testid={`situacao-${s.faccao.id}`}>
+      <span className="font-semibold">
+        Com ela agora: {s.aReceber} peças a receber
+        {s.atrasadas > 0 && <span className="text-danger"> · {s.atrasadas} OP atrasada{s.atrasadas > 1 ? 's' : ''}</span>}
+      </span>
+      {s.ops.map((o) => (
+        <Link key={o.id} to={`/producao/${o.id}`} className="flex justify-between gap-2 hover:underline">
+          <span>
+            {o.numero} · {o.modelo.nome}
+          </span>
+          <span className={o.atrasada ? 'text-danger' : 'text-muted'}>
+            {o.aReceber} a receber{o.prazo ? ` · ${new Date(o.prazo).toLocaleDateString('pt-BR')}` : ''}
+          </span>
+        </Link>
+      ))}
+      {s.aviamentosEmPoder.length > 0 && (
+        <span className="text-xs text-muted">
+          Aviamentos com ela: {s.aviamentosEmPoder.map((a) => `${a.nome} ${a.quantidade}`).join(' · ')}
+        </span>
+      )}
+    </div>
   );
 }

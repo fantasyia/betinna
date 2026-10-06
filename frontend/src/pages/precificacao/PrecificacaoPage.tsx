@@ -37,7 +37,12 @@ interface LinhaPrec {
   precoVolume: number | null;
   precoAtacadao: number | null;
   precoSugerido: number | null;
-  custo: { manual: number | null; atualizadoEm: string | null; previsto?: number | null };
+  custo: {
+    manual: number | null;
+    atualizadoEm: string | null;
+    previsto?: number | null;
+    ops?: { media: number; pecas: number; ultima: { valor: number; numero: string; em: string | null } } | null;
+  };
 }
 interface Dados {
   taxas: {
@@ -244,6 +249,20 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
           >
             <Input value={custo} onChange={(e) => setCusto(e.target.value)} inputMode="decimal" data-testid="prec-custo" />
           </Field>
+          {linha?.custo.ops && (
+            <p className="text-xs text-muted" data-testid="prec-ops">
+              Real das OPs: média <b className="text-text">{formatMoeda(linha.custo.ops.media)}</b> ({linha.custo.ops.pecas} peças){' '}
+              <button type="button" className="text-primary underline" onClick={() => setCusto(paraCampo(Math.round(linha.custo.ops!.media * 100) / 100))}>
+                usar
+              </button>
+              {' · '}última {linha.custo.ops.ultima.numero}
+              {linha.custo.ops.ultima.em ? ` (${new Date(linha.custo.ops.ultima.em).toLocaleDateString('pt-BR')})` : ''}{' '}
+              <b className="text-text">{formatMoeda(linha.custo.ops.ultima.valor)}</b>{' '}
+              <button type="button" className="text-primary underline" onClick={() => setCusto(paraCampo(Math.round(linha.custo.ops!.ultima.valor * 100) / 100))}>
+                usar
+              </button>
+            </p>
+          )}
           {linha?.custo.previsto != null && (
             <p className="text-xs text-muted" data-testid="prec-previsto">
               Previsto pela ficha técnica: <b className="text-text">{formatMoeda(linha.custo.previsto)}</b>{' '}

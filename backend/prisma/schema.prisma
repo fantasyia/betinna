@@ -838,6 +838,9 @@ model Produto {
   estoqueReservas   EstoqueReserva[]
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
+  /// ERP próprio: linhas de OP (grade cor × linha × tamanho) desta variação.
+  opItens OrdemProducaoItem[]
+  opEntregas OrdemProducaoEntrega[]
   @@unique([empresaId, sku])
   @@unique([empresaId, codigoErp])
   @@index([empresaId, linha])
@@ -4120,6 +4123,8 @@ model CatalogoModelo {
   /// Validado no DTO (`regrasEncaixeSchema`); null = ainda não definido.
   regrasEncaixe Json?
 
+  /// ERP próprio: ordens de produção deste modelo.
+  ordensProducao OrdemProducao[]
   @@index([empresaId, ativo, ordem])
 }
 
@@ -4201,6 +4206,8 @@ model CatalogoModeloLinha {
   /// ERP próprio: o que vai em cada peça desta grade (consumo médio por insumo).
   fichaTecnica FichaTecnica?
 
+  /// ERP próprio: custo real por peça de cada OP fechada (alimenta a calculadora).
+  opCustos OrdemProducaoCusto[]
   @@unique([modeloId, linhaId])
 }
 
@@ -4371,6 +4378,7 @@ model Insumo {
   movimentos InsumoMovimento[]
   fichaItens FichaTecnicaItem[]
 
+  opConsumos OrdemProducaoConsumo[]
   @@index([empresaId, ativo])
 }
 
@@ -4447,6 +4455,7 @@ model Faccao {
 
   precos FaccaoPreco[]
 
+  ordensProducao OrdemProducao[]
   @@index([empresaId, ativo])
 }
 
@@ -4460,4 +4469,123 @@ model FaccaoPreco {
   modelo CatalogoModelo @relation(fields: [modeloId], references: [id], onDelete: Cascade)
 
   @@unique([faccaoId, modeloId])
+}
+
+// ─── ERP próprio · Fase 2 · entrega 4 · ordem de produção (OP) ───
+// O tecido é CORTADO na Ribelt e vai cortado pra facção, que cobra por peça
+// ENVIADA (Léo, 06/10). Rascunho → Cortada → Na facção → Recebendo → Fechada.
+// O encaixe automático (GPU) entra DEPOIS, em cima da OP já gravada.
+
+enum OrdemProducaoStatus {
+  RASCUNHO
+  CORTADA
+  NA_FACCAO
+  RECEBENDO
+  FECHADA
+  CANCELADA
+}
+
+model OrdemProducao {
+  id                 String              @id @default(cuid())
+  empresaId          String
+  /// Sequencial por empresa (OP-0001).
+  numero             String
+  modeloId           String
+  faccaoId           String?
+  status             OrdemProducaoStatus @default(RASCUNHO)
+  /// Prazo de entrega combinado com a facção.
+  prazo              DateTime?
+  observacoes        String?
+  /// Preço por peça da facção NO ENVIO (snapshot: a tabela pode mudar depois).
+  precoFaccaoPorPeca Decimal?            @db.Decimal(14, 2)
+  /// Custos REAIS acumulados (R$): tecido no corte, aviamentos no envio,
+  /// facção = peças enviadas × preço.
+  custoTecido        Decimal             @default(0) @db.Decimal(14, 2)
+  custoAviamentos    Decimal             @default(0) @db.Decimal(14, 2)
+  custoFaccao        Decimal             @default(0) @db.Decimal(14, 2)
+  usuarioId          String?
+  cortadaEm          DateTime?
+  enviadaEm          DateTime?
+  fechadaEm          DateTime?
+  criadoEm           DateTime            @default(now())
+  atualizadoEm       DateTime            @updatedAt
+
+  modelo    CatalogoModelo          @relation(fields: [modeloId], references: [id], onDelete: Restrict)
+  faccao    Faccao?                 @relation(fields: [faccaoId], references: [id], onDelete: SetNull)
+  itens     OrdemProducaoItem[]
+  consumos  OrdemProducaoConsumo[]
+  entregas  OrdemProducaoEntrega[]
+  custos    OrdemProducaoCusto[]
+
+  @@unique([empresaId, numero])
+  @@index([empresaId, status])
+  @@index([faccaoId, status])
+}
+
+/// Uma variação (cor × linha × tamanho) na OP: planejado → cortado → enviado.
+model OrdemProducaoItem {
+  id            String @id @default(cuid())
+  opId          String
+  produtoId     String
+  modeloLinhaId String
+  planejada     Int
+  cortada       Int?
+  enviada       Int?
+
+  op      OrdemProducao @relation(fields: [opId], references: [id], onDelete: Cascade)
+  produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@unique([opId, produtoId])
+}
+
+/// Insumo que a OP gastou de verdade, com o custo médio NA HORA (snapshot).
+model OrdemProducaoConsumo {
+  id            String   @id @default(cuid())
+  opId          String
+  insumoId      String
+  /// CORTE (tecido) ou ENVIO (aviamento pra facção).
+  etapa         String
+  quantidade    Decimal  @db.Decimal(14, 3)
+  custoUnitario Decimal  @db.Decimal(14, 4)
+  criadoEm      DateTime @default(now())
+
+  op     OrdemProducao @relation(fields: [opId], references: [id], onDelete: Cascade)
+  insumo Insumo        @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+
+  @@index([opId])
+}
+
+/// Cada retorno da facção (pode vir em várias entregas).
+model OrdemProducaoEntrega {
+  id         String   @id @default(cuid())
+  opId       String
+  produtoId  String
+  quantidade Int
+  /// Peças com defeito nesta entrega (raro — campo opcional).
+  defeito    Int      @default(0)
+  usuarioId  String?
+  criadoEm   DateTime @default(now())
+
+  op      OrdemProducao @relation(fields: [opId], references: [id], onDelete: Cascade)
+  produto Produto       @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@index([opId])
+}
+
+/// Custo real por peça de cada GRADE da OP, gravado no fechamento — é o que a
+/// calculadora mostra como "média das OPs fechadas" e "última OP".
+model OrdemProducaoCusto {
+  id            String   @id @default(cuid())
+  opId          String
+  modeloLinhaId String
+  pecas         Int
+  custoTotal    Decimal  @db.Decimal(14, 2)
+  custoPorPeca  Decimal  @db.Decimal(14, 4)
+  criadoEm      DateTime @default(now())
+
+  op          OrdemProducao       @relation(fields: [opId], references: [id], onDelete: Cascade)
+  modeloLinha CatalogoModeloLinha @relation(fields: [modeloLinhaId], references: [id], onDelete: Cascade)
+
+  @@unique([opId, modeloLinhaId])
+  @@index([modeloLinhaId])
 }

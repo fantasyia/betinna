@@ -6,6 +6,8 @@ import { InsumosController } from './insumos.controller';
 import { InsumosService } from './insumos.service';
 import { FichasController } from './fichas.controller';
 import { FichasService } from './fichas.service';
+import { OrdensController } from './ordens.controller';
+import { OrdensService } from './ordens.service';
 
 /**
  * ERP próprio · Fase 2 (Ribelt Distribuidora Têxtil, 07/10/2026).
@@ -14,8 +16,8 @@ import { FichasService } from './fichas.service';
  * contrário), pra não fechar ciclo de módulo.
  */
 @Module({
-  controllers: [EstoqueController, InsumosController, FichasController],
-  providers: [EstoqueService, ReservaExpiracaoJob, InsumosService, FichasService],
-  exports: [EstoqueService, FichasService],
+  controllers: [EstoqueController, InsumosController, FichasController, OrdensController],
+  providers: [EstoqueService, ReservaExpiracaoJob, InsumosService, FichasService, OrdensService],
+  exports: [EstoqueService, FichasService, OrdensService],
 })
 export class ErpModule {}
