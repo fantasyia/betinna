@@ -180,3 +180,35 @@ describe('envio do pedido', () => {
     expect(mascararWhatsapp('47')).toBe('47');
   });
 });
+
+describe('pedido mínimo da empresa', () => {
+  const linha: LinhaPub = {
+    id: 'l1', linhaId: 'L', nome: 'Regular', tamanhos: [{ id: 't1', nome: 'P' }],
+    precoEntrada: 45, precoVolume: null, precoAtacadao: null, precoSugerido: null, tabelaMedidas: null,
+  };
+  const modelo = { id: 'm1', linhas: [linha], cores: [{ id: 'c1' }] } as unknown as ModeloPub;
+  const vit = (pedidoMinimo: VitrinePub['pedidoMinimo'], l = linha): VitrinePub =>
+    ({ empresa: { nome: 'R', logoUrl: null }, faixas: { minimoEntrada: null, minimoVolume: 50, minimoAtacadao: 500 }, linhas: [], modelos: [{ ...modelo, linhas: [l] }], pedidoMinimo }) as VitrinePub;
+  const carr = (q: number): Carrinho => ({ m1: { c1: { t1: q } } });
+
+  it('R$ 600: com 10 peças a R$ 45 faltam R$ 150', () => {
+    const r = resumoPedido(carr(10), vit({ valorMin: 600, quantidadeMin: null, modo: 'E' }));
+    expect(r.faltaValor).toBe(150);
+    expect(r.faltamMinimo).toBe(0);
+  });
+  it('atingiu o valor: nada falta', () => {
+    expect(resumoPedido(carr(14), vit({ valorMin: 600, quantidadeMin: null, modo: 'E' })).faltaValor).toBe(0);
+  });
+  it('sem regra: não trava por valor', () => {
+    expect(resumoPedido(carr(1), vit(null)).faltaValor).toBe(0);
+  });
+  it('item sob consulta: o valor não trava', () => {
+    const r = resumoPedido(carr(1), vit({ valorMin: 600, quantidadeMin: null, modo: 'E' }, { ...linha, precoEntrada: null }));
+    expect(r.faltaValor).toBe(0);
+  });
+  it('regra OU: cumprir as peças basta', () => {
+    const r = resumoPedido(carr(20), vit({ valorMin: 6000, quantidadeMin: 20, modo: 'OU' }));
+    expect(r.faltaValor).toBe(0);
+    expect(r.faltamMinimo).toBe(0);
+  });
+});

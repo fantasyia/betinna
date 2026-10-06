@@ -797,6 +797,11 @@ function SeuPedido({
             {r.faltamMinimo > 0 && (
               <span className="vt-aviso">Pedido mínimo: faltam {r.faltamMinimo} peças.</span>
             )}
+            {r.faltaValor > 0 && (
+              <span className="vt-aviso" data-testid="vt-falta-valor">
+                Faltam {formatMoeda(r.faltaValor)} pro pedido mínimo de {formatMoeda(v.pedidoMinimo?.valorMin ?? 0)}.
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -805,7 +810,7 @@ function SeuPedido({
           type="button"
           className="vt-cta"
           data-testid="vt-enviar"
-          disabled={itens.length === 0 || r.faltamMinimo > 0}
+          disabled={itens.length === 0 || r.faltamMinimo > 0 || r.faltaValor > 0}
           onClick={() => setEnvio(true)}
         >
           Enviar pedido · {r.pecas} {r.pecas === 1 ? 'peça' : 'peças'}

@@ -4,6 +4,7 @@ import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exc
 import {
   VitrinePedidoService,
   faixaDoTotal,
+  minimoDaVitrine,
   normalizarWhatsapp,
   precoNaFaixa,
 } from './vitrine-pedido.service';
@@ -212,5 +213,58 @@ describe('VitrinePedidoService.enviar', () => {
       .mockResolvedValueOnce([{ id: 'cli-outro', doc: '11111111111' }]);
     await svc.enviar('atacado-ribelt', dto({ cpfCnpj: '222.222.222-22' }));
     expect(prisma.cliente.create).toHaveBeenCalled();
+  });
+
+  it('pedido mínimo por VALOR da empresa: abaixo de R$ 600 recusa, mesmo com peças de sobra', async () => {
+    const cfg = { pedidoMinimo: { tipo: 'por_valor', valorMin: 600 } };
+    const { svc, prisma } = montar({
+      vitrine: { ...vitrineOk, empresa: { ativo: true, config: cfg } },
+    });
+    // 6 peças × R$ 45 = R$ 270
+    await expect(svc.enviar('atacado-ribelt', dto())).rejects.toThrow(/R\$\s?330,00/);
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+
+  it('pedido mínimo por valor atingido: passa', async () => {
+    const cfg = { pedidoMinimo: { tipo: 'por_valor', valorMin: 600 } };
+    const { svc, prisma } = montar({
+      vitrine: { ...vitrineOk, empresa: { ativo: true, config: cfg } },
+    });
+    await svc.enviar(
+      'atacado-ribelt',
+      dto({
+        itens: [
+          { corId: 'c1', tamanhoId: 'p', quantidade: 7 },
+          { corId: 'c1', tamanhoId: 'm', quantidade: 7 },
+        ],
+      }),
+    );
+    expect(prisma.pedido.create).toHaveBeenCalled();
+  });
+
+  it('com item sob consulta o valor não é conhecido: o mínimo por valor não trava', async () => {
+    const cfg = { pedidoMinimo: { tipo: 'por_valor', valorMin: 600 } };
+    const { svc, prisma } = montar({
+      vitrine: { ...vitrineOk, empresa: { ativo: true, config: cfg } },
+      variacoes: [
+        variacao('c1', 'p', 'prod-p'),
+        variacao('c1', 'm', 'prod-m', { precoEntrada: null, precoVolume: null }),
+      ],
+    });
+    await svc.enviar('atacado-ribelt', dto());
+    expect(prisma.pedido.create).toHaveBeenCalled();
+  });
+});
+
+describe('minimoDaVitrine', () => {
+  it('lê valor e quantidade; peso e sem_minimo não contam', () => {
+    expect(minimoDaVitrine({ pedidoMinimo: { tipo: 'por_valor', valorMin: 600 } })).toEqual({
+      valorMin: 600,
+      quantidadeMin: null,
+      modo: 'E',
+    });
+    expect(minimoDaVitrine({ pedidoMinimo: { tipo: 'por_peso', pesoMin: 250 } })).toBeNull();
+    expect(minimoDaVitrine({ pedidoMinimo: { tipo: 'sem_minimo', valorMin: 600 } })).toBeNull();
+    expect(minimoDaVitrine(null)).toBeNull();
   });
 });

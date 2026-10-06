@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { NotFoundException } from '@shared/errors/app-exception';
 import { VitrineFotosService } from './vitrine-fotos.service';
+import { minimoDaVitrine } from './vitrine-pedido.service';
 
 const num = (v: Prisma.Decimal | null): number | null => (v === null ? null : Number(v));
 
@@ -139,6 +140,8 @@ export class VitrinePublicaService {
         minimoVolume: vitrine.minimoVolume,
         minimoAtacadao: vitrine.minimoAtacadao,
       },
+      // Pedido mínimo da empresa (R$ e/ou peças) — o envio confere de novo.
+      pedidoMinimo: minimoDaVitrine(vitrine.empresa.config),
       linhas,
       modelos: publicos,
     };

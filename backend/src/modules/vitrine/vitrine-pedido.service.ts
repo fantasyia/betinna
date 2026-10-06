@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { type PedidoMinimoRegra, avaliarPedidoMinimo } from '@modules/pedidos/pedido-minimo.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -47,6 +48,31 @@ export function precoNaFaixa(l: Precos, faixa: Faixa): number | null {
   return null;
 }
 
+export interface MinimoVitrine {
+  /** R$ mínimo (soma dos itens com preço). null = sem mínimo por valor. */
+  valorMin: number | null;
+  /** Peças mínimas. null = sem mínimo por quantidade. */
+  quantidadeMin: number | null;
+  /** Com os dois: E (todos) ou OU (qualquer um). */
+  modo: 'E' | 'OU';
+}
+
+/**
+ * O pedido mínimo da EMPRESA (Configurações → Pedido mínimo,
+ * `Empresa.config.pedidoMinimo`) lido do jeito que a vitrine aplica. Peso fica
+ * de fora: peça de vitrine não tem peso cadastrado, e exigir kg travaria tudo.
+ */
+export function minimoDaVitrine(config: unknown): MinimoVitrine | null {
+  const r = (config as { pedidoMinimo?: PedidoMinimoRegra } | null)?.pedidoMinimo;
+  const tipo = r?.tipo ?? 'sem_minimo';
+  const pos = (v: unknown) => (typeof v === 'number' && v > 0 ? v : null);
+  const valorMin = tipo === 'por_valor' || tipo === 'combinada' ? pos(r?.valorMin) : null;
+  const quantidadeMin =
+    tipo === 'por_quantidade' || tipo === 'combinada' ? pos(r?.quantidadeMin) : null;
+  if (valorMin === null && quantidadeMin === null) return null;
+  return { valorMin, quantidadeMin, modo: tipo === 'combinada' ? (r?.modo ?? 'E') : 'E' };
+}
+
 /** WhatsApp só com dígitos e com o 55 (sem ele o envio monta JID inválido). */
 export function normalizarWhatsapp(bruto: string): string {
   const d = bruto.replace(/\D/g, '');
@@ -88,7 +114,7 @@ export class VitrinePedidoService {
         minimoEntrada: true,
         minimoVolume: true,
         minimoAtacadao: true,
-        empresa: { select: { ativo: true } },
+        empresa: { select: { ativo: true, config: true } },
       },
     });
     if (!vitrine || !vitrine.ativa || !vitrine.empresa.ativo)
@@ -165,6 +191,27 @@ export class VitrinePedidoService {
     });
     const total = linhas.reduce((s, l) => s + (l.preco ?? 0) * l.quantidade, 0);
     const semPreco = linhas.filter((l) => l.preco === null);
+
+    // Pedido mínimo da empresa (R$ e/ou peças). Com item "sob consulta" o
+    // valor não é conhecido: aí só a equipe decide, na conversa.
+    const minimo = minimoDaVitrine(vitrine.empresa.config);
+    if (minimo && semPreco.length === 0) {
+      const r = avaliarPedidoMinimo(
+        {
+          tipo: 'combinada',
+          ...minimo,
+          valorMin: minimo.valorMin ?? undefined,
+          quantidadeMin: minimo.quantidadeMin ?? undefined,
+        },
+        { valor: total, peso: 0, quantidade: totalPecas },
+      );
+      if (!r.ok) {
+        throw new BusinessRuleException(
+          r.mensagem ?? 'Pedido abaixo do mínimo.',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+    }
     const whatsapp = normalizarWhatsapp(dto.whatsapp);
 
     // Clique duplo, rede que caiu depois de gravar, "enviar" de novo: mesmo

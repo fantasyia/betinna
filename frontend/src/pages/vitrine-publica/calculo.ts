@@ -46,9 +46,16 @@ export interface Faixas {
   minimoVolume: number | null;
   minimoAtacadao: number | null;
 }
+/** Pedido mínimo da empresa (Configurações → Pedido mínimo). */
+export interface MinimoPub {
+  valorMin: number | null;
+  quantidadeMin: number | null;
+  modo: 'E' | 'OU';
+}
 export interface VitrinePub {
   empresa: { nome: string; logoUrl: string | null };
   faixas: Faixas;
+  pedidoMinimo?: MinimoPub | null;
   linhas: Array<{ id: string; nome: string }>;
   modelos: ModeloPub[];
 }
@@ -160,8 +167,30 @@ export function resumoPedido(c: Carrinho, v: VitrinePub) {
     revende: r(revende),
     lucro: aConfirmar || semSugerido ? null : r(revende - investe),
     aConfirmar,
-    /** Abaixo do pedido mínimo (faixa Entrada). */
-    faltamMinimo: v.faixas.minimoEntrada ? Math.max(0, v.faixas.minimoEntrada - pecas) : 0,
+    ...faltasDoMinimo(pecas, r(investe), aConfirmar, v),
+  };
+}
+
+/**
+ * Quanto falta pro pedido mínimo: peças (faixa Entrada e/ou regra da empresa)
+ * e R$ (regra da empresa). Com item sob consulta o valor não é conhecido — aí
+ * o valor não trava (o servidor faz igual).
+ */
+function faltasDoMinimo(pecas: number, investe: number, aConfirmar: boolean, v: VitrinePub) {
+  const m = v.pedidoMinimo;
+  const pecasEntrada = v.faixas.minimoEntrada ? Math.max(0, v.faixas.minimoEntrada - pecas) : 0;
+  let pecasRegra = m?.quantidadeMin ? Math.max(0, m.quantidadeMin - pecas) : 0;
+  let valor = m?.valorMin && !aConfirmar ? Math.max(0, Math.round((m.valorMin - investe) * 100) / 100) : 0;
+  // Regra "OU": cumprir um dos dois basta.
+  if (m?.modo === 'OU' && m.valorMin && m.quantidadeMin && (pecasRegra === 0 || valor === 0)) {
+    pecasRegra = 0;
+    valor = 0;
+  }
+  return {
+    /** Peças que faltam pro mínimo. */
+    faltamMinimo: Math.max(pecasEntrada, pecasRegra),
+    /** R$ que falta pro pedido mínimo da empresa. */
+    faltaValor: valor,
   };
 }
 
