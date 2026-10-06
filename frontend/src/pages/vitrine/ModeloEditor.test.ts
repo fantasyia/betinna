@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerPreco, montarCorpo } from './ModeloEditor';
+import { copiarPrecos, lerPreco, montarCorpo, type Rascunho } from './ModeloEditor';
 import type { Linha } from './tipos';
 
 describe('lerPreco', () => {
@@ -31,11 +31,23 @@ const linhas: Linha[] = [
       { id: 't-m', nome: 'M', ordem: 1, ativo: true },
     ],
   },
+  { id: 'lin-plus', nome: 'Plus size', ordem: 1, ativo: true, tamanhos: [{ id: 't-g1', nome: 'G1', ordem: 0, ativo: true }] },
 ];
 
-const base = () => ({
+const vazioLinha = {
+  marcada: false,
+  tamanhoIds: [] as string[],
+  precoEntrada: '',
+  precoVolume: '',
+  precoAtacadao: '',
+  precoSugerido: '',
+  colunas: [] as string[],
+  medidas: {} as Record<string, string[]>,
+};
+
+const base = (): Rascunho => ({
   nome: 'Moletom',
-  categoria: '',
+  categoriaId: 'cat-1',
   descricao: '',
   etiquetas: 'Capuz, Gramatura 280',
   ativo: true,
@@ -45,35 +57,39 @@ const base = () => ({
   corIds: ['cor-1'],
   linhas: {
     'lin-reg': {
+      ...vazioLinha,
       marcada: true,
       tamanhoIds: ['t-p', 't-m'],
       precoEntrada: '39,90',
-      precoVolume: '',
-      precoAtacadao: '',
       precoSugerido: '79,90',
-      colunas: '',
-      medidas: {},
     },
+    'lin-plus': { ...vazioLinha, marcada: true, tamanhoIds: ['t-g1'] },
   },
 });
 
 describe('montarCorpo', () => {
-  it('monta o corpo com etiquetas separadas, preços em número e "sob consulta" null', () => {
+  it('monta o corpo: categoria por id, etiquetas separadas, "sob consulta" null', () => {
     const r = montarCorpo(base(), linhas);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
+    expect(r.corpo.categoriaId).toBe('cat-1');
     expect(r.corpo.etiquetas).toEqual(['Capuz', 'Gramatura 280']);
-    expect(r.corpo.linhas).toEqual([
-      {
-        linhaId: 'lin-reg',
-        tamanhoIds: ['t-p', 't-m'],
-        precoEntrada: 39.9,
-        precoVolume: null,
-        precoAtacadao: null,
-        precoSugerido: 79.9,
-        tabelaMedidas: null,
-      },
-    ]);
+    expect((r.corpo.linhas as unknown[])[0]).toEqual({
+      linhaId: 'lin-reg',
+      tamanhoIds: ['t-p', 't-m'],
+      precoEntrada: 39.9,
+      precoVolume: null,
+      precoAtacadao: null,
+      precoSugerido: 79.9,
+      tabelaMedidas: null,
+    });
+  });
+
+  it('sem categoria escolhida → null (não string vazia)', () => {
+    const b = base();
+    b.categoriaId = '';
+    const r = montarCorpo(b, linhas);
+    expect(r.ok && r.corpo.categoriaId).toBeNull();
   });
 
   it('linha marcada sem tamanho → erro, não envia', () => {
@@ -85,38 +101,43 @@ describe('montarCorpo', () => {
   it('preço digitado errado → erro, não envia', () => {
     const b = base();
     b.linhas['lin-reg'].precoVolume = '12,3,4';
-    const r = montarCorpo(b, linhas);
-    expect(r.ok).toBe(false);
+    expect(montarCorpo(b, linhas).ok).toBe(false);
   });
 
-  it('tabela de medidas: um valor por coluna em cada tamanho preenchido', () => {
+  it('tabela de medidas em grade: coluna sem nome bloqueia; tamanho vazio fica de fora', () => {
     const b = base();
-    b.linhas['lin-reg'].colunas = 'Tórax, Comprimento';
-    b.linhas['lin-reg'].medidas = { P: '50, 70', M: '53' };
-    const r = montarCorpo(b, linhas);
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.erro).toContain('M');
+    b.linhas['lin-reg'].colunas = ['Tórax', ''];
+    expect(montarCorpo(b, linhas).ok).toBe(false);
 
-    b.linhas['lin-reg'].medidas = { P: '50, 70', M: '53, 72' };
-    const ok = montarCorpo(b, linhas);
-    expect(ok.ok && ok.corpo.linhas).toEqual([
-      expect.objectContaining({
-        tabelaMedidas: {
-          colunas: ['Tórax', 'Comprimento'],
-          linhas: [
-            { tamanho: 'P', valores: ['50', '70'] },
-            { tamanho: 'M', valores: ['53', '72'] },
-          ],
-        },
-      }),
-    ]);
+    b.linhas['lin-reg'].colunas = ['Tórax', 'Comprimento'];
+    // M sem valor nenhum: não entra; P com só uma coluna: completa com "".
+    b.linhas['lin-reg'].medidas = { P: ['50'], M: ['', ''] };
+    const r = montarCorpo(b, linhas);
+    expect(r.ok && (r.corpo.linhas as Array<{ tabelaMedidas: unknown }>)[0].tabelaMedidas).toEqual({
+      colunas: ['Tórax', 'Comprimento'],
+      linhas: [{ tamanho: 'P', valores: ['50', ''] }],
+    });
   });
 
   it('linha desmarcada não vai no corpo', () => {
     const b = base();
-    b.linhas['lin-reg'].marcada = false;
+    b.linhas['lin-plus'].marcada = false;
     const r = montarCorpo(b, linhas);
-    expect(r.ok && r.corpo.linhas).toEqual([]);
+    expect(r.ok && (r.corpo.linhas as unknown[]).length).toBe(1);
+  });
+});
+
+describe('copiarPrecos (item 9)', () => {
+  it('copia os 4 preços de uma linha pra outra e não mexe em tamanhos/medidas', () => {
+    const b = base();
+    b.linhas['lin-plus'].colunas = ['Tórax'];
+    const r = copiarPrecos(b, 'lin-reg', 'lin-plus');
+    expect(r.linhas['lin-plus']).toMatchObject({
+      precoEntrada: '39,90',
+      precoSugerido: '79,90',
+      tamanhoIds: ['t-g1'],
+      colunas: ['Tórax'],
+    });
+    expect(b.linhas['lin-plus'].precoEntrada).toBe(''); // original intacto
   });
 });

@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { Badge, Button, Card, Dialog, Field, Input, Switch } from '@/components/ui';
-import type { Cor, Linha, Tamanho } from './tipos';
+import type { Categoria, Cor, Linha, Tamanho } from './tipos';
 
 /**
  * Listas da EMPRESA (Léo, 05/10): cores e tamanhos se SELECIONAM no cadastro
@@ -55,6 +55,7 @@ export function CoresPanel({ cores, onMudou }: { cores: Cor[]; onMudou: () => vo
         form={form}
         onClose={() => setForm(null)}
         onSalvou={onMudou}
+        onExcluiu={onMudou}
       />
     </Card>
   );
@@ -65,15 +66,30 @@ export function CorDialog({
   form,
   onClose,
   onSalvou,
+  onExcluiu,
 }: {
   form: FormCor | null;
   onClose: () => void;
   onSalvou: (cor: Cor) => void;
+  onExcluiu?: () => void;
 }) {
   const toast = useToast();
   // O pai remonta este componente (key) a cada abertura: o rascunho nasce do form.
   const [rascunho, setRascunho] = useState<FormCor | null>(form);
   const [salvando, setSalvando] = useState(false);
+
+  async function excluir() {
+    if (!rascunho?.id) return;
+    if (!window.confirm(`Excluir a cor "${rascunho.nome}"?`)) return;
+    try {
+      await api.delete(`/vitrine/admin/cores/${rascunho.id}`);
+      toast.success('Cor excluída');
+      onExcluiu?.();
+      onClose();
+    } catch (err) {
+      toast.error('Não foi possível excluir', apiErrorMessage(err));
+    }
+  }
 
   async function salvar() {
     if (!rascunho) return;
@@ -103,6 +119,16 @@ export function CorDialog({
       size="sm"
       footer={
         <>
+          {rascunho?.id && (
+            <Button
+              variant="danger"
+              className="mr-auto"
+              onClick={() => void excluir()}
+              data-testid="vitrine-excluir-cor"
+            >
+              <Trash2 size={14} /> Excluir
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
@@ -310,6 +336,122 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
             Renomear atualiza os produtos dos modelos que usam este item. Inativo some da vitrine.
             Excluir só funciona se nenhum modelo usa.
           </p>
+        </div>
+      </Dialog>
+    </Card>
+  );
+}
+
+/**
+ * Categorias da empresa (Moletom, Camiseta UV…) — lista, não texto livre:
+ * a vitrine filtra por ela, e "Moletom" ≠ "moletom" viraria dois filtros.
+ */
+export function CategoriasPanel({
+  categorias,
+  onMudou,
+}: {
+  categorias: Categoria[];
+  onMudou: () => void;
+}) {
+  const toast = useToast();
+  const [nova, setNova] = useState('');
+  const [editando, setEditando] = useState<Categoria | null>(null);
+  const [nome, setNome] = useState('');
+  const [ativo, setAtivo] = useState(true);
+
+  async function criar() {
+    if (!nova.trim()) return;
+    try {
+      await api.post('/vitrine/admin/categorias', { nome: nova.trim(), ordem: categorias.length });
+      setNova('');
+      onMudou();
+    } catch (err) {
+      toast.error('Não foi possível criar a categoria', apiErrorMessage(err));
+    }
+  }
+
+  async function salvar() {
+    if (!editando || !nome.trim()) return;
+    try {
+      await api.put(`/vitrine/admin/categorias/${editando.id}`, { nome: nome.trim(), ativo });
+      setEditando(null);
+      onMudou();
+    } catch (err) {
+      toast.error('Não foi possível salvar', apiErrorMessage(err));
+    }
+  }
+
+  async function excluir() {
+    if (!editando) return;
+    if (!window.confirm(`Excluir a categoria "${editando.nome}"?`)) return;
+    try {
+      await api.delete(`/vitrine/admin/categorias/${editando.id}`);
+      setEditando(null);
+      onMudou();
+    } catch (err) {
+      toast.error('Não foi possível excluir', apiErrorMessage(err));
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <h3 className="font-semibold text-text mb-1">Categorias</h3>
+      <p className="text-sm text-muted mb-3">É o filtro de categorias que o cliente usa na vitrine.</p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {categorias.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => {
+              setEditando(c);
+              setNome(c.nome);
+              setAtivo(c.ativo);
+            }}
+            className="flex items-center gap-2 rounded-[10px] border border-border px-3 py-1.5 text-sm hover:bg-surface-hover"
+          >
+            {c.nome}
+            <span className="text-xs text-muted">{c._count?.modelos ?? 0}</span>
+            {!c.ativo && <Badge variant="neutral">inativa</Badge>}
+          </button>
+        ))}
+        {categorias.length === 0 && <p className="text-sm text-muted">Nenhuma categoria ainda.</p>}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={nova}
+          onChange={(e) => setNova(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void criar()}
+          placeholder="Nova categoria (ex.: Moletom)"
+          maxLength={60}
+          data-testid="vitrine-nova-categoria"
+        />
+        <Button variant="secondary" onClick={() => void criar()}>
+          <Plus size={14} /> Categoria
+        </Button>
+      </div>
+      <Dialog
+        open={!!editando}
+        onClose={() => setEditando(null)}
+        title="Editar categoria"
+        size="sm"
+        footer={
+          <>
+            <Button variant="danger" className="mr-auto" onClick={() => void excluir()}>
+              <Trash2 size={14} /> Excluir
+            </Button>
+            <Button variant="ghost" onClick={() => setEditando(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void salvar()}>Salvar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Field label="Nome" required>
+            <Input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={60} />
+          </Field>
+          <Switch label="Ativa" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
+          <p className="text-xs text-muted">Excluir só funciona se nenhum modelo usa a categoria.</p>
         </div>
       </Dialog>
     </Card>

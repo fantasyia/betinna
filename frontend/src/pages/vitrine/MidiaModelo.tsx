@@ -1,23 +1,37 @@
 import { useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Film, ImagePlus, Star, Trash2 } from 'lucide-react';
+import { Film, GripVertical, ImagePlus, Star, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useToast } from '@/components/toast';
 import { Button } from '@/components/ui';
+import { useArrastar } from './arrastar';
 import { prepararFoto } from './imagem';
 import type { Foto, ModeloCor, Video } from './tipos';
 
 const MAX_VIDEO_MB = 50;
 
 /**
- * Fotos de UMA cor do modelo. A 1ª é a capa; as setas mudam a ordem.
+ * Fotos de UMA cor do modelo. A 1ª é a capa; arrastar muda a ordem.
  * O navegador otimiza cada foto (WebP 1080 px + miniatura) antes de enviar.
  */
 export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMudou: () => void }) {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [enviando, setEnviando] = useState<string | null>(null);
-  const fotos = modeloCor.fotos;
+  // Ordem otimista: a foto fica onde foi solta enquanto o servidor salva.
+  const [ordemLocal, setOrdemLocal] = useState<string[] | null>(null);
+  const fotos = ordemLocal
+    ? ordemLocal
+        .map((id) => modeloCor.fotos.find((f) => f.id === id))
+        .filter((f): f is Foto => !!f)
+    : modeloCor.fotos;
+  const arrastar = useArrastar(
+    fotos.map((f) => f.id),
+    (ids) => {
+      setOrdemLocal(ids);
+      void reordenar(ids);
+    },
+  );
 
   async function enviar(arquivos: FileList | null) {
     if (!arquivos?.length) return;
@@ -43,15 +57,6 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
     }
   }
 
-  async function mover(foto: Foto, delta: -1 | 1) {
-    const ids = fotos.map((f) => f.id);
-    const i = ids.indexOf(foto.id);
-    const j = i + delta;
-    if (j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j], ids[i]];
-    await reordenar(ids);
-  }
-
   async function tornarCapa(foto: Foto) {
     await reordenar([foto.id, ...fotos.filter((f) => f.id !== foto.id).map((f) => f.id)]);
   }
@@ -62,6 +67,8 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
       onMudou();
     } catch (err) {
       toast.error('Não foi possível reordenar', apiErrorMessage(err));
+    } finally {
+      setOrdemLocal(null);
     }
   }
 
@@ -105,6 +112,9 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
         />
       </div>
       {enviando && <p className="text-xs text-muted mb-2">{enviando}</p>}
+      {fotos.length > 1 && (
+        <p className="text-xs text-muted mb-2">Arraste as fotos pra mudar a ordem. A primeira é a capa.</p>
+      )}
       {fotos.length === 0 ? (
         <p className="text-sm text-muted">
           Sem fotos — esta cor não aparece na vitrine até ter ao menos uma.
@@ -112,22 +122,26 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
       ) : (
         <ul className="flex flex-wrap gap-2">
           {fotos.map((f, i) => (
-            <li key={f.id} className="relative w-28">
+            <li
+              key={f.id}
+              {...arrastar.props(f.id)}
+              className="relative w-28 cursor-grab rounded-[10px] data-[arrastando=true]:opacity-40 data-[sobre=true]:ring-2 data-[sobre=true]:ring-primary"
+              title="Arraste pra mudar a ordem"
+            >
               <img
                 src={f.thumbUrl ?? f.url ?? ''}
                 alt={`Foto ${i + 1} de ${modeloCor.cor.nome}`}
                 className="h-36 w-28 rounded-[10px] border border-border object-cover"
                 loading="lazy"
+                draggable={false}
               />
               {i === 0 && (
                 <span className="absolute left-1 top-1 rounded-[10px] bg-primary px-1.5 py-0.5 text-[10px] text-white">
                   capa
                 </span>
               )}
-              <div className="mt-1 flex justify-between">
-                <button type="button" onClick={() => void mover(f, -1)} disabled={i === 0} aria-label="Mover pra trás" className="text-muted disabled:opacity-30">
-                  <ArrowLeft size={14} />
-                </button>
+              <div className="mt-1 flex items-center justify-between">
+                <GripVertical size={14} className="text-muted" aria-hidden />
                 {i > 0 && (
                   <button type="button" onClick={() => void tornarCapa(f)} aria-label="Usar como capa" className="text-muted hover:text-text">
                     <Star size={14} />
@@ -135,9 +149,6 @@ export function FotosDaCor({ modeloCor, onMudou }: { modeloCor: ModeloCor; onMud
                 )}
                 <button type="button" onClick={() => void excluir(f)} aria-label="Excluir foto" className="text-danger">
                   <Trash2 size={14} />
-                </button>
-                <button type="button" onClick={() => void mover(f, 1)} disabled={i === fotos.length - 1} aria-label="Mover pra frente" className="text-muted disabled:opacity-30">
-                  <ArrowRight size={14} />
                 </button>
               </div>
             </li>

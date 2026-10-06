@@ -17,6 +17,14 @@ export interface Cor {
   ativo: boolean;
 }
 
+export interface Categoria {
+  id: string;
+  nome: string;
+  ordem: number;
+  ativo: boolean;
+  _count?: { modelos: number };
+}
+
 export interface Tamanho {
   id: string;
   nome: string;
@@ -80,7 +88,8 @@ export interface ModeloCor {
 export interface Modelo {
   id: string;
   nome: string;
-  categoria: string | null;
+  categoriaId: string | null;
+  categoria: { id: string; nome: string } | null;
   descricao: string | null;
   etiquetas: string[];
   ordem: number;

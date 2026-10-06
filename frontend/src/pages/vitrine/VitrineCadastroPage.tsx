@@ -9,9 +9,18 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { Badge, Button, Card, Field, Input, Switch, Tabs } from '@/components/ui';
-import { CoresPanel, LinhasPanel } from './ListasEmpresa';
+import { useArrastar } from './arrastar';
+import { CategoriasPanel, CoresPanel, LinhasPanel } from './ListasEmpresa';
 import { ModeloEditor } from './ModeloEditor';
-import { dinheiroParaNumero, type Cor, type Linha, type Modelo, type VitrineConfig } from './tipos';
+import { apareceNaVitrine, pendenciasDoModelo } from './pendencias';
+import {
+  dinheiroParaNumero,
+  type Categoria,
+  type Cor,
+  type Linha,
+  type Modelo,
+  type VitrineConfig,
+} from './tipos';
 
 /**
  * Vitrine de atacado — cadastro (Fase 1, Ribelt Distribuidora Têxtil).
@@ -51,15 +60,37 @@ export default function VitrineCadastroPage() {
 }
 
 function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMudou: () => void }) {
+  const toast = useToast();
   const [aba, setAba] = useState('modelos');
   const modelos = useApiQuery<Modelo[]>('/vitrine/admin/modelos');
   const cores = useApiQuery<Cor[]>('/vitrine/admin/cores');
   const linhas = useApiQuery<Linha[]>('/vitrine/admin/linhas');
+  const categorias = useApiQuery<Categoria[]>('/vitrine/admin/categorias');
   const [editando, setEditando] = useState<Modelo | 'novo' | null>(null);
+  // Item 5: ordem otimista enquanto o servidor salva o arrasto.
+  const [ordemLocal, setOrdemLocal] = useState<string[] | null>(null);
+
+  const lista = modelos.data ?? [];
+  const ordenada = ordemLocal
+    ? ordemLocal.map((id) => lista.find((m) => m.id === id)).filter((m): m is Modelo => !!m)
+    : lista;
+  const arrastar = useArrastar(
+    ordenada.map((m) => m.id),
+    (ids) => {
+      setOrdemLocal(ids);
+      void api
+        .put('/vitrine/admin/modelos/ordem', { ids })
+        .then(() => modelos.refetch())
+        .catch((err) => toast.error('Não foi possível salvar a ordem', apiErrorMessage(err)))
+        .finally(() => setOrdemLocal(null));
+    },
+  );
+  const naVitrine = lista.filter(apareceNaVitrine).length;
 
   const listasMudaram = () => {
     cores.refetch();
     linhas.refetch();
+    categorias.refetch();
     modelos.refetch();
   };
 
@@ -70,6 +101,7 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
         onChange={setAba}
         items={[
           { value: 'modelos', label: 'Modelos', count: modelos.data?.length },
+          { value: 'categorias', label: 'Categorias', count: categorias.data?.length },
           { value: 'cores', label: 'Cores', count: cores.data?.length },
           { value: 'linhas', label: 'Linhas e tamanhos', count: linhas.data?.length },
           { value: 'config', label: 'Configuração' },
@@ -78,22 +110,42 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
 
       {aba === 'modelos' && (
         <StateView loading={modelos.loading} error={modelos.error} onRetry={modelos.refetch}>
-          <div className="flex justify-end mb-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted">
+              {lista.length > 0 && (
+                <>
+                  <strong className="text-text">{naVitrine}</strong> de {lista.length} modelo(s) aparecem na vitrine.
+                  {lista.length > 1 && ' Arraste os cartões pra definir a ordem.'}
+                </>
+              )}
+            </p>
             <Button onClick={() => setEditando('novo')} data-testid="vitrine-novo-modelo">
               <Plus size={14} /> Novo modelo
             </Button>
           </div>
-          {(modelos.data ?? []).length === 0 ? (
+          {lista.length === 0 ? (
             <Card className="p-6 text-sm text-muted">
-              Nenhum modelo ainda. Antes, crie as cores e as linhas com os tamanhos.
+              Nenhum modelo ainda. Antes, crie as categorias, as cores e as linhas com os tamanhos.
             </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {(modelos.data ?? []).map((m) => (
-                <CartaoModelo key={m.id} modelo={m} onAbrir={() => setEditando(m)} />
+              {ordenada.map((m) => (
+                <div
+                  key={m.id}
+                  {...arrastar.props(m.id)}
+                  className="rounded-[10px] data-[arrastando=true]:opacity-40 data-[sobre=true]:ring-2 data-[sobre=true]:ring-primary"
+                >
+                  <CartaoModelo modelo={m} onAbrir={() => setEditando(m)} />
+                </div>
               ))}
             </div>
           )}
+        </StateView>
+      )}
+
+      {aba === 'categorias' && (
+        <StateView loading={categorias.loading} error={categorias.error} onRetry={categorias.refetch}>
+          <CategoriasPanel categorias={categorias.data ?? []} onMudou={listasMudaram} />
         </StateView>
       )}
 
@@ -116,8 +168,10 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
           modelo={editando === 'novo' ? null : editando}
           cores={cores.data ?? []}
           linhas={linhas.data ?? []}
+          categorias={categorias.data ?? []}
           onClose={() => setEditando(null)}
           onSalvou={() => modelos.refetch()}
+          onExcluiu={() => modelos.refetch()}
           onListasMudaram={listasMudaram}
         />
       )}
@@ -132,34 +186,51 @@ function CartaoModelo({ modelo, onAbrir }: { modelo: Modelo; onAbrir: () => void
     .map((l) => dinheiroParaNumero(l.precoEntrada))
     .filter((n): n is number => n !== null);
   const menor = precoEntrada.length ? Math.min(...precoEntrada) : null;
+  const pendencias = pendenciasDoModelo(modelo);
+  const bloqueia = pendencias.filter((p) => p.nivel === 'bloqueia');
+  const avisos = pendencias.filter((p) => p.nivel === 'aviso');
   return (
     <button
       type="button"
       onClick={onAbrir}
       data-testid={`vitrine-modelo-${modelo.id}`}
-      className="flex gap-3 rounded-[10px] border border-border bg-surface p-3 text-left hover:bg-surface-hover"
+      className="flex w-full gap-3 rounded-[10px] border border-border bg-surface p-3 text-left hover:bg-surface-hover"
     >
       <div className="h-24 w-[72px] shrink-0 overflow-hidden rounded-[10px] border border-border bg-surface-hover">
         {capa?.thumbUrl ? (
-          <img src={capa.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <img src={capa.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
         ) : null}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-text">{modelo.nome}</span>
-          {!modelo.ativo && <Badge variant="neutral">inativo</Badge>}
+          {bloqueia.length === 0 ? (
+            <Badge variant="success">na vitrine</Badge>
+          ) : (
+            <Badge variant="danger">fora da vitrine</Badge>
+          )}
         </div>
-        <p className="text-xs text-muted">{modelo.categoria ?? 'Sem categoria'}</p>
+        <p className="text-xs text-muted">{modelo.categoria?.nome ?? 'Sem categoria'}</p>
         <div className="mt-1 flex gap-1">
           {modelo.cores.map((c) => (
-            <span key={c.id} title={c.cor.nome} className="inline-block h-3.5 w-3.5 rounded-full border border-border" style={{ background: c.cor.hex }} />
+            <span
+              key={c.id}
+              title={`${c.cor.nome}${c.fotos.length ? '' : ' (sem foto)'}`}
+              className={`inline-block h-3.5 w-3.5 rounded-full border ${c.fotos.length ? 'border-border' : 'border-dashed border-warning'}`}
+              style={{ background: c.cor.hex }}
+            />
           ))}
         </div>
         <p className="mt-1 text-xs text-muted">
           {modelo.linhas.map((l) => l.linha.nome).join(' · ') || 'Sem grade'} · {totalFotos} foto(s)
         </p>
         <p className="text-xs text-text">{menor !== null ? `a partir de ${formatMoeda(menor)}` : 'preço sob consulta'}</p>
-        {totalFotos === 0 && <p className="text-xs text-warning">Sem foto: não aparece na vitrine</p>}
+        {bloqueia.map((p) => (
+          <p key={p.texto} className="text-xs text-danger">
+            {p.texto}
+          </p>
+        ))}
+        {avisos.length > 0 && <p className="text-xs text-warning">{avisos.length} ponto(s) a completar</p>}
       </div>
     </button>
   );

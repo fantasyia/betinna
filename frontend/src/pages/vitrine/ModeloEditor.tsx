@@ -1,12 +1,20 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, Plus, Trash2, X } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
 import { useToast } from '@/components/toast';
-import { Button, Checkbox, Dialog, Field, Input, Switch, Tabs, Textarea } from '@/components/ui';
+import { Button, Checkbox, Dialog, Field, Input, Select, Switch, Tabs, Textarea } from '@/components/ui';
 import { CorDialog } from './ListasEmpresa';
 import { FotosDaCor, VideosDoModelo } from './MidiaModelo';
-import { dinheiroParaNumero, type Cor, type Linha, type Modelo, type TabelaMedidas } from './tipos';
+import { pendenciasDoModelo } from './pendencias';
+import {
+  dinheiroParaNumero,
+  type Categoria,
+  type Cor,
+  type Linha,
+  type Modelo,
+  type TabelaMedidas,
+} from './tipos';
 
 /** "39,90" / "39.9" / "" → número ou null ("sob consulta"). Inválido → NaN. */
 export function lerPreco(texto: string): number | null {
@@ -22,22 +30,24 @@ function precoParaTexto(v: number | string | null): string {
   return n === null ? '' : String(n).replace('.', ',');
 }
 
-interface RascunhoLinha {
+const CAMPOS_PRECO = ['precoEntrada', 'precoVolume', 'precoAtacadao', 'precoSugerido'] as const;
+
+export interface RascunhoLinha {
   marcada: boolean;
   tamanhoIds: string[];
   precoEntrada: string;
   precoVolume: string;
   precoAtacadao: string;
   precoSugerido: string;
-  /** Colunas da tabela de medidas, separadas por vírgula. */
-  colunas: string;
-  /** tamanho (nome) → valores por coluna, separados por vírgula na tela. */
-  medidas: Record<string, string>;
+  /** Cabeçalho da tabela de medidas (ex.: Tórax, Comprimento). */
+  colunas: string[];
+  /** tamanho (nome) → um valor por coluna. */
+  medidas: Record<string, string[]>;
 }
 
-interface Rascunho {
+export interface Rascunho {
   nome: string;
-  categoria: string;
+  categoriaId: string;
   descricao: string;
   etiquetas: string;
   ativo: boolean;
@@ -60,15 +70,13 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
       precoVolume: precoParaTexto(ml?.precoVolume ?? null),
       precoAtacadao: precoParaTexto(ml?.precoAtacadao ?? null),
       precoSugerido: precoParaTexto(ml?.precoSugerido ?? null),
-      colunas: tabela?.colunas.join(', ') ?? '',
-      medidas: Object.fromEntries(
-        (tabela?.linhas ?? []).map((r) => [r.tamanho, r.valores.join(', ')]),
-      ),
+      colunas: tabela?.colunas ?? [],
+      medidas: Object.fromEntries((tabela?.linhas ?? []).map((r) => [r.tamanho, r.valores])),
     };
   }
   return {
     nome: m?.nome ?? '',
-    categoria: m?.categoria ?? '',
+    categoriaId: m?.categoriaId ?? '',
     descricao: m?.descricao ?? '',
     etiquetas: (m?.etiquetas ?? []).join(', '),
     ativo: m?.ativo ?? true,
@@ -100,25 +108,26 @@ export function montarCorpo(
       return { ok: false, erro: `Marque ao menos um tamanho na linha ${l.nome}` };
     }
     const precos: Record<string, number | null> = {};
-    for (const campo of ['precoEntrada', 'precoVolume', 'precoAtacadao', 'precoSugerido'] as const) {
+    for (const campo of CAMPOS_PRECO) {
       const v = lerPreco(rl[campo]);
       if (Number.isNaN(v)) return { ok: false, erro: `Preço inválido na linha ${l.nome}` };
       precos[campo] = v;
     }
     let tabelaMedidas: TabelaMedidas | null = null;
-    const colunas = separar(rl.colunas);
+    const colunas = rl.colunas.map((c) => c.trim()).filter(Boolean);
     if (colunas.length) {
+      if (colunas.length !== rl.colunas.length) {
+        return { ok: false, erro: `Tabela de medidas (${l.nome}): dê nome a todas as colunas` };
+      }
       const nomes = l.tamanhos.filter((t) => rl.tamanhoIds.includes(t.id)).map((t) => t.nome);
       const linhasTabela = nomes
-        .filter((n) => (rl.medidas[n] ?? '').trim())
-        .map((n) => ({ tamanho: n, valores: (rl.medidas[n] ?? '').split(',').map((x) => x.trim()) }));
-      const torto = linhasTabela.find((x) => x.valores.length !== colunas.length);
-      if (torto) {
-        return {
-          ok: false,
-          erro: `Medidas do tamanho ${torto.tamanho} (${l.nome}): informe ${colunas.length} valor(es), um por coluna`,
-        };
-      }
+        .map((n) => ({ tamanho: n, valores: (rl.medidas[n] ?? []).map((v) => v.trim()) }))
+        .filter((x) => x.valores.some(Boolean))
+        // Coluna nova sem valor ainda vira "" — a tabela fica retangular.
+        .map((x) => ({
+          ...x,
+          valores: colunas.map((_, i) => x.valores[i] ?? ''),
+        }));
       tabelaMedidas = { colunas, linhas: linhasTabela };
     }
     linhasCorpo.push({ linhaId: l.id, tamanhoIds: rl.tamanhoIds, ...precos, tabelaMedidas });
@@ -127,7 +136,7 @@ export function montarCorpo(
     ok: true,
     corpo: {
       nome: r.nome.trim(),
-      categoria: r.categoria.trim() || null,
+      categoriaId: r.categoriaId || null,
       descricao: r.descricao.trim() || null,
       etiquetas: separar(r.etiquetas),
       ativo: r.ativo,
@@ -140,28 +149,47 @@ export function montarCorpo(
   };
 }
 
+/** Copia os 4 preços de uma linha pra outra (item 9). Puro. */
+export function copiarPrecos(r: Rascunho, de: string, para: string): Rascunho {
+  const origem = r.linhas[de];
+  const destino = r.linhas[para];
+  if (!origem || !destino) return r;
+  const precos = Object.fromEntries(CAMPOS_PRECO.map((c) => [c, origem[c]])) as Pick<
+    RascunhoLinha,
+    (typeof CAMPOS_PRECO)[number]
+  >;
+  return { ...r, linhas: { ...r.linhas, [para]: { ...destino, ...precos } } };
+}
+
+type Aba = 'dados' | 'cores' | 'grades' | 'variacoes' | 'kit';
+
 export function ModeloEditor({
   modelo,
   cores,
   linhas,
+  categorias,
   onClose,
   onSalvou,
+  onExcluiu,
   onListasMudaram,
 }: {
   /** null = modelo novo. */
   modelo: Modelo | null;
   cores: Cor[];
   linhas: Linha[];
+  categorias: Categoria[];
   onClose: () => void;
   onSalvou: (m: Modelo) => void;
+  onExcluiu: () => void;
   onListasMudaram: () => void;
 }) {
   const toast = useToast();
-  const [aba, setAba] = useState('dados');
+  const [aba, setAba] = useState<Aba>('dados');
   const [atual, setAtual] = useState<Modelo | null>(modelo);
   const [r, setR] = useState<Rascunho>(() => rascunhoDe(modelo, linhas));
   const [salvando, setSalvando] = useState(false);
   const [novaCor, setNovaCor] = useState(false);
+  const [novaCategoria, setNovaCategoria] = useState('');
 
   const set = <K extends keyof Rascunho>(k: K, v: Rascunho[K]) => setR((x) => ({ ...x, [k]: v }));
   const setLinha = (linhaId: string, patch: Partial<RascunhoLinha>) =>
@@ -178,12 +206,18 @@ export function ModeloEditor({
     if (!montado.ok) return toast.error(montado.erro);
     setSalvando(true);
     try {
+      const eraNovo = !atual;
       const m = atual
         ? await api.put<Modelo>(`/vitrine/admin/modelos/${atual.id}`, montado.corpo)
         : await api.post<Modelo>('/vitrine/admin/modelos', montado.corpo);
       setAtual(m);
       onSalvou(m);
-      toast.success(atual ? 'Modelo salvo' : 'Modelo criado — agora dá pra enviar as fotos');
+      if (eraNovo) {
+        toast.success('Modelo criado — agora as cores e as fotos');
+        setAba('cores');
+      } else {
+        toast.success('Modelo salvo');
+      }
     } catch (err) {
       toast.error('Não foi possível salvar o modelo', apiErrorMessage(err));
     } finally {
@@ -191,8 +225,62 @@ export function ModeloEditor({
     }
   }
 
+  async function excluirModelo() {
+    if (!atual) return;
+    if (
+      !window.confirm(
+        `Excluir o modelo "${atual.nome}"? Fotos e vídeos são apagados. Pedidos antigos continuam com os produtos.`,
+      )
+    )
+      return;
+    try {
+      await api.delete(`/vitrine/admin/modelos/${atual.id}`);
+      toast.success('Modelo excluído');
+      onExcluiu();
+      onClose();
+    } catch (err) {
+      toast.error('Não foi possível excluir', apiErrorMessage(err));
+    }
+  }
+
+  async function criarCategoria() {
+    const nome = novaCategoria.trim();
+    if (!nome) return;
+    try {
+      const cat = await api.post<Categoria>('/vitrine/admin/categorias', {
+        nome,
+        ordem: categorias.length,
+      });
+      setNovaCategoria('');
+      set('categoriaId', cat.id);
+      onListasMudaram();
+    } catch (err) {
+      toast.error('Não foi possível criar a categoria', apiErrorMessage(err));
+    }
+  }
+
+  async function salvarVariacao(id: string, campo: 'sku' | 'estoque', valor: string) {
+    const v = valor.trim();
+    const corpo =
+      campo === 'sku'
+        ? { sku: v || null }
+        : { estoque: v === '' ? null : Number.parseInt(v, 10) };
+    if (campo === 'estoque' && corpo.estoque !== null && Number.isNaN(corpo.estoque as number)) {
+      return toast.error('Estoque precisa ser um número inteiro');
+    }
+    try {
+      await api.patch(`/vitrine/admin/variacoes/${id}`, corpo);
+      if (atual) await recarregar(atual.id);
+    } catch (err) {
+      toast.error('Não foi possível salvar a variação', apiErrorMessage(err));
+    }
+  }
+
   const coresAtivas = cores.filter((c) => c.ativo || r.corIds.includes(c.id));
   const linhasAtivas = linhas.filter((l) => l.ativo || r.linhas[l.id]?.marcada);
+  const linhasMarcadas = linhasAtivas.filter((l) => r.linhas[l.id]?.marcada);
+  const categoriasAtivas = categorias.filter((c) => c.ativo || c.id === r.categoriaId);
+  const pendencias = atual ? pendenciasDoModelo(atual) : [];
 
   return (
     <Dialog
@@ -202,6 +290,16 @@ export function ModeloEditor({
       title={atual ? `Modelo · ${atual.nome}` : 'Novo modelo'}
       footer={
         <>
+          {atual && (
+            <Button
+              variant="danger"
+              className="mr-auto"
+              onClick={() => void excluirModelo()}
+              data-testid="vitrine-excluir-modelo"
+            >
+              <Trash2 size={14} /> Excluir modelo
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Fechar
           </Button>
@@ -211,14 +309,47 @@ export function ModeloEditor({
         </>
       }
     >
+      {/* Item 7: o que falta, clicável, sempre visível. */}
+      {!atual ? (
+        <p className="mb-3 rounded-[10px] border border-border bg-surface-hover px-3 py-2 text-sm text-muted">
+          Passo a passo: <strong className="text-text">1. Dados</strong> → Salvar →{' '}
+          <strong className="text-text">2. Cores e fotos</strong> →{' '}
+          <strong className="text-text">3. Grades e preços</strong> →{' '}
+          <strong className="text-text">4. Kit pra anunciar</strong>.
+        </p>
+      ) : pendencias.length === 0 ? (
+        <p className="mb-3 flex items-center gap-2 text-sm text-success">
+          <CheckCircle2 size={16} /> Completo: este modelo aparece na vitrine.
+        </p>
+      ) : (
+        <ul className="mb-3 flex flex-wrap gap-2" data-testid="vitrine-pendencias">
+          {pendencias.map((p) => (
+            <li key={p.texto}>
+              <button
+                type="button"
+                onClick={() => setAba(p.aba)}
+                className={`flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1 text-xs ${
+                  p.nivel === 'bloqueia'
+                    ? 'border-danger/40 bg-danger/10 text-danger'
+                    : 'border-warning/40 bg-warning/10 text-warning'
+                }`}
+              >
+                <AlertTriangle size={12} /> {p.texto}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <Tabs
         value={aba}
-        onChange={setAba}
+        onChange={(v) => setAba(v as Aba)}
         items={[
-          { value: 'dados', label: 'Dados' },
-          { value: 'cores', label: 'Cores e fotos' },
-          { value: 'grades', label: 'Grades e preços' },
-          { value: 'kit', label: 'Kit pra anunciar' },
+          { value: 'dados', label: '1. Dados' },
+          { value: 'cores', label: '2. Cores e fotos' },
+          { value: 'grades', label: '3. Grades e preços' },
+          { value: 'variacoes', label: 'Variações', count: atual?.variacoes.length },
+          { value: 'kit', label: '4. Kit pra anunciar' },
         ]}
         className="mb-4"
       />
@@ -228,10 +359,35 @@ export function ModeloEditor({
           <Field label="Nome" required className="sm:col-span-2">
             <Input value={r.nome} maxLength={120} onChange={(e) => set('nome', e.target.value)} data-testid="vitrine-modelo-nome" />
           </Field>
-          <Field label="Categoria" hint="Ex.: Moletom, Camiseta UV, Bermuda">
-            <Input value={r.categoria} maxLength={60} onChange={(e) => set('categoria', e.target.value)} />
+          <Field label="Categoria">
+            <Select
+              value={r.categoriaId}
+              onChange={(e) => set('categoriaId', e.target.value)}
+              data-testid="vitrine-modelo-categoria"
+            >
+              <option value="">— sem categoria —</option>
+              {categoriasAtivas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </Select>
           </Field>
-          <Field label="Etiquetas" hint="Separadas por vírgula: Gramatura 280, Capuz">
+          <Field label="Nova categoria" hint="Cria e já seleciona">
+            <div className="flex gap-2">
+              <Input
+                value={novaCategoria}
+                onChange={(e) => setNovaCategoria(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void criarCategoria()}
+                placeholder="Ex.: Moletom"
+                maxLength={60}
+              />
+              <Button variant="secondary" onClick={() => void criarCategoria()} aria-label="Criar categoria">
+                <Plus size={14} />
+              </Button>
+            </div>
+          </Field>
+          <Field label="Etiquetas" hint="Separadas por vírgula: Gramatura 280, Capuz" className="sm:col-span-2">
             <Input value={r.etiquetas} onChange={(e) => set('etiquetas', e.target.value)} />
           </Field>
           <Field label="Descrição curta (vitrine)" className="sm:col-span-2">
@@ -244,8 +400,8 @@ export function ModeloEditor({
       {aba === 'cores' && (
         <div className="flex flex-col gap-4">
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted">Marque as cores que este modelo tem.</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm text-muted">Marque as cores que este modelo tem e salve.</p>
               <Button size="sm" variant="ghost" onClick={() => setNovaCor(true)}>
                 <Plus size={14} /> Criar cor
               </Button>
@@ -254,7 +410,10 @@ export function ModeloEditor({
               {coresAtivas.map((c) => {
                 const marcada = r.corIds.includes(c.id);
                 return (
-                  <label key={c.id} className={`flex cursor-pointer items-center gap-2 rounded-[10px] border px-3 py-1.5 text-sm ${marcada ? 'border-primary bg-primary/10' : 'border-border'}`}>
+                  <label
+                    key={c.id}
+                    className={`flex cursor-pointer items-center gap-2 rounded-[10px] border px-3 py-1.5 text-sm ${marcada ? 'border-primary bg-primary/10' : 'border-border'}`}
+                  >
                     <Checkbox
                       checked={marcada}
                       onChange={(e) =>
@@ -276,7 +435,7 @@ export function ModeloEditor({
                 <FotosDaCor key={mc.id} modeloCor={mc} onMudou={() => void recarregar(atual.id)} />
               ))}
               {r.corIds.some((id) => !atual.cores.find((c) => c.corId === id)) && (
-                <p className="text-xs text-muted">Cor marcada agora: salve pra liberar o envio das fotos dela.</p>
+                <p className="text-xs text-warning">Cor marcada agora: salve pra liberar o envio das fotos dela.</p>
               )}
             </div>
           )}
@@ -306,16 +465,13 @@ export function ModeloEditor({
               entrada !== null && sugerido !== null && !Number.isNaN(entrada) && !Number.isNaN(sugerido)
                 ? sugerido - entrada
                 : null;
+            const outras = linhasMarcadas.filter((o) => o.id !== l.id);
             return (
               <div key={l.id} className="rounded-[10px] border border-border p-3">
-                <Switch
-                  label={`Linha ${l.nome}`}
-                  checked={rl.marcada}
-                  onChange={(e) => setLinha(l.id, { marcada: e.target.checked })}
-                />
+                <Switch label={`Linha ${l.nome}`} checked={rl.marcada} onChange={(e) => setLinha(l.id, { marcada: e.target.checked })} />
                 {rl.marcada && (
                   <div className="mt-3 flex flex-col gap-3">
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {l.tamanhos
                         .filter((t) => t.ativo || rl.tamanhoIds.includes(t.id))
                         .map((t) => {
@@ -335,6 +491,13 @@ export function ModeloEditor({
                             </button>
                           );
                         })}
+                      <button
+                        type="button"
+                        className="ml-1 text-xs text-primary underline"
+                        onClick={() => setLinha(l.id, { tamanhoIds: l.tamanhos.filter((t) => t.ativo).map((t) => t.id) })}
+                      >
+                        todos
+                      </button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-4">
                       <Field label="Atacado · Entrada (R$)">
@@ -350,11 +513,32 @@ export function ModeloEditor({
                         <Input value={rl.precoSugerido} inputMode="decimal" onChange={(e) => setLinha(l.id, { precoSugerido: e.target.value })} />
                       </Field>
                     </div>
-                    {lucro !== null && entrada !== null && entrada > 0 && (
-                      <p className="text-sm text-muted">
-                        Lucro do lojista na faixa Entrada: <strong className="text-text">{formatMoeda(lucro)}</strong> por peça
-                      </p>
-                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {lucro !== null && entrada !== null && entrada > 0 ? (
+                        <p className="text-sm text-muted">
+                          Lucro do lojista na faixa Entrada: <strong className="text-text">{formatMoeda(lucro)}</strong> por peça
+                        </p>
+                      ) : (
+                        <span />
+                      )}
+                      {outras.length > 0 && (
+                        <label className="flex items-center gap-2 text-xs text-muted">
+                          <Copy size={12} /> Copiar preços de
+                          <Select
+                            value=""
+                            onChange={(e) => e.target.value && setR((x) => copiarPrecos(x, e.target.value, l.id))}
+                            className="h-8 w-36"
+                          >
+                            <option value="">escolha…</option>
+                            {outras.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.nome}
+                              </option>
+                            ))}
+                          </Select>
+                        </label>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -363,11 +547,13 @@ export function ModeloEditor({
         </div>
       )}
 
+      {aba === 'variacoes' && (
+        <TabelaVariacoes modelo={atual} onSalvar={salvarVariacao} />
+      )}
+
       {aba === 'kit' && (
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted">
-            O que o revendedor baixa pra montar o próprio anúncio no marketplace.
-          </p>
+          <p className="text-sm text-muted">O que o revendedor baixa pra montar o próprio anúncio no marketplace.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Título sugerido pro marketplace" hint={`${r.tituloMarketplace.length}/60`} className="sm:col-span-2">
               <Input value={r.tituloMarketplace} maxLength={60} onChange={(e) => set('tituloMarketplace', e.target.value)} />
@@ -379,33 +565,14 @@ export function ModeloEditor({
               <Input value={r.composicao} maxLength={200} onChange={(e) => set('composicao', e.target.value)} />
             </Field>
           </div>
-          {linhasAtivas
-            .filter((l) => r.linhas[l.id]?.marcada)
-            .map((l) => {
-              const rl = r.linhas[l.id];
-              const nomes = l.tamanhos.filter((t) => rl.tamanhoIds.includes(t.id)).map((t) => t.nome);
-              return (
-                <div key={l.id} className="rounded-[10px] border border-border p-3">
-                  <p className="font-medium text-text mb-2">Tabela de medidas · {l.nome}</p>
-                  <Field label="Colunas" hint="Separadas por vírgula: Tórax, Comprimento, Manga">
-                    <Input value={rl.colunas} onChange={(e) => setLinha(l.id, { colunas: e.target.value })} />
-                  </Field>
-                  {separar(rl.colunas).length > 0 && (
-                    <div className="mt-2 grid gap-2">
-                      {nomes.map((n) => (
-                        <Field key={n} label={`${n} (cm, na ordem das colunas)`}>
-                          <Input
-                            value={rl.medidas[n] ?? ''}
-                            onChange={(e) => setLinha(l.id, { medidas: { ...rl.medidas, [n]: e.target.value } })}
-                            placeholder="Ex.: 52, 70, 22"
-                          />
-                        </Field>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          {linhasMarcadas.map((l) => (
+            <TabelaMedidasEditor
+              key={l.id}
+              linha={l}
+              rl={r.linhas[l.id]}
+              onChange={(patch) => setLinha(l.id, patch)}
+            />
+          ))}
           {atual ? (
             <VideosDoModelo modeloId={atual.id} videos={atual.videos} onMudou={() => void recarregar(atual.id)} />
           ) : (
@@ -414,5 +581,170 @@ export function ModeloEditor({
         </div>
       )}
     </Dialog>
+  );
+}
+
+/** Itens 2 e 3: cada combinação cor × linha × tamanho, com SKU e estoque. */
+function TabelaVariacoes({
+  modelo,
+  onSalvar,
+}: {
+  modelo: Modelo | null;
+  onSalvar: (id: string, campo: 'sku' | 'estoque', valor: string) => unknown;
+}) {
+  if (!modelo || modelo.variacoes.length === 0) {
+    return (
+      <p className="text-sm text-muted">
+        As variações nascem sozinhas quando o modelo tem cor e grade salvas (cada cor × cada tamanho marcado).
+      </p>
+    );
+  }
+  const corPorId = new Map(modelo.cores.map((c) => [c.id, c.cor]));
+  const tamPorId = new Map(
+    modelo.linhas.flatMap((l) => l.tamanhos.map((t) => [t.id, { linha: l.linha.nome, tamanho: t.tamanho.nome, ordem: t.tamanho.ordem }] as const)),
+  );
+  const linhas = modelo.variacoes
+    .map((v) => ({ v, cor: corPorId.get(v.modeloCorId), tam: tamPorId.get(v.modeloTamanhoId) }))
+    .sort(
+      (a, b) =>
+        (a.cor?.nome ?? '').localeCompare(b.cor?.nome ?? '') ||
+        (a.tam?.linha ?? '').localeCompare(b.tam?.linha ?? '') ||
+        (a.tam?.ordem ?? 0) - (b.tam?.ordem ?? 0),
+    );
+  return (
+    <div>
+      <p className="mb-2 text-sm text-muted">
+        {modelo.variacoes.length} variações. SKU e estoque são opcionais nesta fase — estoque não bloqueia venda.
+      </p>
+      <div className="max-h-[50vh] overflow-auto rounded-[10px] border border-border">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-surface">
+            <tr className="text-left text-xs text-muted">
+              <th className="px-3 py-2">Cor</th>
+              <th className="px-3 py-2">Linha · tamanho</th>
+              <th className="px-3 py-2">SKU</th>
+              <th className="px-3 py-2 w-28">Estoque</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map(({ v, cor, tam }) => (
+              <tr key={v.id} className="border-t border-border">
+                <td className="px-3 py-1.5">
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-3.5 w-3.5 rounded-full border border-border" style={{ background: cor?.hex }} />
+                    {cor?.nome}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5">
+                  {tam?.linha} · <strong>{tam?.tamanho}</strong>
+                </td>
+                <td className="px-3 py-1.5">
+                  <Input
+                    defaultValue={v.sku ?? ''}
+                    maxLength={60}
+                    className="h-8"
+                    onBlur={(e) => e.target.value !== (v.sku ?? '') && void onSalvar(v.id, 'sku', e.target.value)}
+                  />
+                </td>
+                <td className="px-3 py-1.5">
+                  <Input
+                    defaultValue={v.estoque?.toString() ?? ''}
+                    inputMode="numeric"
+                    className="h-8"
+                    onBlur={(e) =>
+                      e.target.value !== (v.estoque?.toString() ?? '') && void onSalvar(v.id, 'estoque', e.target.value)
+                    }
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Item 8: tabela de medidas em grade — uma célula por tamanho × medida. */
+function TabelaMedidasEditor({
+  linha,
+  rl,
+  onChange,
+}: {
+  linha: Linha;
+  rl: RascunhoLinha;
+  onChange: (patch: Partial<RascunhoLinha>) => void;
+}) {
+  const tamanhos = linha.tamanhos.filter((t) => rl.tamanhoIds.includes(t.id));
+  const setCelula = (tamanho: string, col: number, valor: string) => {
+    const atual = [...(rl.medidas[tamanho] ?? [])];
+    while (atual.length < rl.colunas.length) atual.push('');
+    atual[col] = valor;
+    onChange({ medidas: { ...rl.medidas, [tamanho]: atual } });
+  };
+  const removerColuna = (col: number) =>
+    onChange({
+      colunas: rl.colunas.filter((_, i) => i !== col),
+      medidas: Object.fromEntries(
+        Object.entries(rl.medidas).map(([t, vals]) => [t, vals.filter((_, i) => i !== col)]),
+      ),
+    });
+
+  return (
+    <div className="rounded-[10px] border border-border p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="font-medium text-text">Tabela de medidas (cm) · {linha.nome}</p>
+        <Button size="sm" variant="ghost" onClick={() => onChange({ colunas: [...rl.colunas, ''] })}>
+          <Plus size={14} /> Medida
+        </Button>
+      </div>
+      {rl.colunas.length === 0 ? (
+        <p className="text-sm text-muted">Sem tabela. Clique em "+ Medida" pra criar uma coluna (ex.: Tórax).</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="text-sm">
+            <thead>
+              <tr>
+                <th className="px-1 py-1 text-left text-xs text-muted">Tamanho</th>
+                {rl.colunas.map((c, i) => (
+                  <th key={i} className="px-1 py-1">
+                    <div className="flex items-center gap-1">
+                      <Input
+                        value={c}
+                        placeholder="Ex.: Tórax"
+                        maxLength={30}
+                        className="h-8 w-28"
+                        onChange={(e) => onChange({ colunas: rl.colunas.map((x, j) => (j === i ? e.target.value : x)) })}
+                      />
+                      <button type="button" onClick={() => removerColuna(i)} aria-label="Remover medida" className="text-muted hover:text-danger">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tamanhos.map((t) => (
+                <tr key={t.id}>
+                  <td className="px-1 py-1 font-medium">{t.nome}</td>
+                  {rl.colunas.map((_, i) => (
+                    <td key={i} className="px-1 py-1">
+                      <Input
+                        value={rl.medidas[t.nome]?.[i] ?? ''}
+                        maxLength={20}
+                        inputMode="decimal"
+                        className="h-8 w-28"
+                        onChange={(e) => setCelula(t.nome, i, e.target.value)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
