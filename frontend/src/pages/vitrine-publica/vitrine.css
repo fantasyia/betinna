@@ -192,3 +192,8 @@
 .vt-ok-corpo h2 { margin: 0; font-family: var(--f-title); font-weight: 500; font-size: 30px; }
 .vt-ok-corpo p { margin: 0; max-width: 320px; line-height: 1.5; }
 .vt-ok-selo { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--lucro); color: var(--creme); font-size: 30px; }
+
+/* Títulos herdam a cor da vitrine: a regra global do app (h1–h6 com
+   var(--text)) fica CLARA no tema escuro e sumia no creme — quem abre o link
+   no mesmo navegador do app em modo escuro via o título invisível. */
+.vt-app h1, .vt-app h2, .vt-app h3, .vt-app h4 { color: inherit; letter-spacing: normal; }
