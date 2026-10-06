@@ -18,6 +18,7 @@ const exemplo: Simulacao = {
   custo: 9.7,
   impostoPct: 6,
   taxaPct: 2,
+  taxaFixaPorPedido: 0,
   anuncioPorPedido: 50,
   embalagemPorPedido: 3,
   precos: { entrada: 17.99, volume: 15.99, atacadao: 14.99 },
@@ -72,6 +73,12 @@ describe('regras', () => {
   });
   it('imposto + taxa ≥ 100%: não há preço que dê lucro', () => {
     expect(precoParaLucro(3, 500, { ...exemplo, impostoPct: 90, taxaPct: 10 })).toBeNull();
+  });
+  it('taxa FIXA do Pix entra como custo do pedido (e no "quanto cobrar" dividida pelas peças)', () => {
+    const pix = { ...exemplo, impostoPct: 8, taxaPct: 0, taxaFixaPorPedido: 1.99 };
+    // 200 × 15,99 = 3.198 · custos = 200×9,70 + 8%×3.198 + 1,99 + 50 + 3
+    expect(conta(200, pix).custos).toBeCloseTo(1940 + 255.84 + 1.99 + 53, 2);
+    expect(precoParaLucro(3, 500, pix)).toBeCloseTo((9.7 + (1.99 + 53) / 500 + 3) / 0.92, 4);
   });
   it('lê número digitado em pt-BR', () => {
     expect(lerNumero('9,70')).toBe(9.7);

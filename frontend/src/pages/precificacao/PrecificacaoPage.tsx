@@ -43,6 +43,7 @@ interface Dados {
   taxas: {
     impostoPct: number | null;
     pixPct: number | null;
+    pixFixoPorPedido: number | null;
     cartaoPct: number | null;
     anuncioPorPedido: number | null;
     embalagemPorPedido: number | null;
@@ -110,6 +111,7 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
   // Custos da empresa (valem pra todos os produtos).
   const [imposto, setImposto] = useState(paraCampo(d.taxas.impostoPct));
   const [pix, setPix] = useState(paraCampo(d.taxas.pixPct));
+  const [pixFixo, setPixFixo] = useState(paraCampo(d.taxas.pixFixoPorPedido));
   const [cartao, setCartao] = useState(paraCampo(d.taxas.cartaoPct));
   const [anuncio, setAnuncio] = useState(paraCampo(d.taxas.anuncioPorPedido));
   const [emb, setEmb] = useState(paraCampo(d.taxas.embalagemPorPedido));
@@ -132,6 +134,7 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
     custo: n(custo),
     impostoPct: n(imposto),
     taxaPct: n(pag === 'pix' ? pix : cartao),
+    taxaFixaPorPedido: pag === 'pix' ? n(pixFixo) : 0,
     anuncioPorPedido: n(anuncio),
     embalagemPorPedido: n(emb),
     precos: { entrada: lerNumero(p1), volume: lerNumero(p2), atacadao: lerNumero(p3) },
@@ -185,6 +188,7 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
       await api.put('/precificacao/taxas', {
         impostoPct: lerNumero(imposto),
         pixPct: lerNumero(pix),
+        pixFixoPorPedido: lerNumero(pixFixo),
         cartaoPct: lerNumero(cartao),
         anuncioPorPedido: lerNumero(anuncio),
         embalagemPorPedido: lerNumero(emb),
@@ -297,7 +301,10 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
             <Field label="Embalagem por pedido (R$)" hint="Caixa, saco, etiqueta">
               <Input value={emb} onChange={(e) => setEmb(e.target.value)} inputMode="decimal" />
             </Field>
-            <Field label="Taxa do Pix (%)">
+            <Field label="Taxa do Pix (R$ por pedido)" hint="Valor fixo cobrado a cada Pix">
+              <Input value={pixFixo} onChange={(e) => setPixFixo(e.target.value)} inputMode="decimal" data-testid="prec-pix-fixo" />
+            </Field>
+            <Field label="Taxa do Pix (%)" hint="Só se o gateway cobrar em %">
               <Input value={pix} onChange={(e) => setPix(e.target.value)} inputMode="decimal" />
             </Field>
             <Field label="Taxa do cartão (%)">
@@ -400,7 +407,7 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
           </table>
         </div>
         <p className="text-xs text-muted">
-          Custos = peças × custo + imposto + taxa do pagamento + anúncio pra conseguir o pedido + embalagem. Margem =
+          Custos = peças × custo + imposto + taxa do pagamento (% e/ou fixa) + anúncio pra conseguir o pedido + embalagem. Margem =
           lucro ÷ o que você recebe. O preço de cada quantidade segue a faixa da vitrine; faixa sem preço usa a de
           baixo.
         </p>

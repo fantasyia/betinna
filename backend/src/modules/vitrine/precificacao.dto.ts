@@ -12,6 +12,8 @@ const dinheiro = z.number().nonnegative().max(1_000_000).nullable().optional();
 export const taxasPrecificacaoSchema = z.object({
   impostoPct: pct,
   pixPct: pct,
+  /** Taxa FIXA do Pix por pedido (R$) — custo do pedido, como anúncio e embalagem. */
+  pixFixoPorPedido: dinheiro,
   cartaoPct: pct,
   /** Anúncio gasto pra conseguir 1 pedido (R$). */
   anuncioPorPedido: dinheiro,

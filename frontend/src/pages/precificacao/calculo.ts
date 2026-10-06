@@ -3,8 +3,8 @@
  * de referência da Ribelt (docs/precificacao/calculadora-precos.html), com as
  * faixas e o pedido mínimo vindos do cadastro em vez de fixos no código.
  *
- *   custos do pedido = peças × custo + (imposto + taxa) × receita
- *                      + anúncio por pedido + embalagem por pedido
+ *   custos do pedido = peças × custo + (imposto + taxa %) × receita
+ *                      + taxa fixa do pagamento + anúncio + embalagem (por pedido)
  *   lucro = receita − custos · margem = lucro ÷ receita
  */
 
@@ -19,8 +19,10 @@ export const NOME_FAIXA: Record<Faixa, string> = {
 export interface Simulacao {
   custo: number;
   impostoPct: number;
-  /** Taxa do meio de pagamento escolhido (Pix ou cartão). */
+  /** Taxa do meio de pagamento escolhido (Pix ou cartão), em %. */
   taxaPct: number;
+  /** Taxa FIXA do meio de pagamento por pedido (R$) — ex.: Pix R$ 1,99. */
+  taxaFixaPorPedido: number;
   anuncioPorPedido: number;
   embalagemPorPedido: number;
   precos: { entrada: number | null; volume: number | null; atacadao: number | null };
@@ -74,6 +76,7 @@ export function conta(q: number, s: Simulacao): Conta {
     s.custo * q +
     receita * (s.impostoPct / 100) +
     receita * (s.taxaPct / 100) +
+    s.taxaFixaPorPedido +
     s.anuncioPorPedido +
     s.embalagemPorPedido;
   const lucro = receita - custos;
@@ -139,7 +142,7 @@ export function quantidades(s: Simulacao, extra?: number | null): { fixas: numbe
 export function precoParaLucro(lucroPorPeca: number, q: number, s: Simulacao): number | null {
   const den = 1 - s.impostoPct / 100 - s.taxaPct / 100;
   if (den <= 0 || q <= 0) return null;
-  const fixoPorPeca = (s.anuncioPorPedido + s.embalagemPorPedido) / q;
+  const fixoPorPeca = (s.taxaFixaPorPedido + s.anuncioPorPedido + s.embalagemPorPedido) / q;
   return (s.custo + fixoPorPeca + lucroPorPeca) / den;
 }
 

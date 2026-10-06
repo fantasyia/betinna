@@ -19,6 +19,7 @@ type SecaoPrecificacao = { ativa?: boolean } & TaxasPrecificacaoDto;
 const TAXAS_VAZIAS = {
   impostoPct: null,
   pixPct: null,
+  pixFixoPorPedido: null,
   cartaoPct: null,
   anuncioPorPedido: null,
   embalagemPorPedido: null,
@@ -107,6 +108,7 @@ export class PrecificacaoService {
       taxas: {
         impostoPct: secao.impostoPct ?? null,
         pixPct: secao.pixPct ?? null,
+        pixFixoPorPedido: secao.pixFixoPorPedido ?? null,
         cartaoPct: secao.cartaoPct ?? null,
         anuncioPorPedido: secao.anuncioPorPedido ?? null,
         embalagemPorPedido: secao.embalagemPorPedido ?? null,
@@ -153,6 +155,7 @@ export class PrecificacaoService {
       return {
         impostoPct: nova.impostoPct ?? null,
         pixPct: nova.pixPct ?? null,
+        pixFixoPorPedido: nova.pixFixoPorPedido ?? null,
         cartaoPct: nova.cartaoPct ?? null,
         anuncioPorPedido: nova.anuncioPorPedido ?? null,
         embalagemPorPedido: nova.embalagemPorPedido ?? null,
