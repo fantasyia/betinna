@@ -211,13 +211,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
         };
       }
       default:
+        // Código do Prisma (P2022 etc.) NÃO vai pra tela: fica no log e no Sentry,
+        // que recebem a exceção inteira. O requestId do meta liga uma coisa à outra.
         return {
           status: HttpStatus.INTERNAL_SERVER_ERROR,
           body: {
             success: false,
             error: {
               code: ErrorCode.DATABASE_ERROR,
-              message: `Erro de banco (${error.code})`,
+              message:
+                'Não foi possível concluir agora por uma falha interna. Tente de novo em alguns instantes.',
             },
             meta,
           },
