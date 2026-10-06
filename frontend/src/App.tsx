@@ -50,6 +50,7 @@ const VitrineCadastroPage = lazyComRetry(() => import("@/pages/vitrine/VitrineCa
 const VitrinePublicaPage = lazyComRetry(() => import("@/pages/vitrine-publica/VitrinePublicaPage"));
 const PrecificacaoPage = lazyComRetry(() => import("@/pages/precificacao/PrecificacaoPage"));
 const EstoquePage = lazyComRetry(() => import("@/pages/estoque/EstoquePage"));
+const InsumosPage = lazyComRetry(() => import("@/pages/insumos/InsumosPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -385,6 +386,19 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <EstoquePage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // ERP próprio · matéria-prima — gate fino na página e no backend.
+    path: "/insumos",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <InsumosPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

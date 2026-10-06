@@ -56,7 +56,8 @@ export class EstoqueService {
     return id;
   }
 
-  private async empresaLigada(user: AuthenticatedUser): Promise<string> {
+  /** Empresa da sessão, desde que o ERP próprio esteja ligado nela (senão 422). */
+  async empresaLigada(user: AuthenticatedUser): Promise<string> {
     const empresaId = this.requireEmpresa(user);
     if (!(await this.ativoNaEmpresa(empresaId))) {
       throw new BusinessRuleException('O estoque (ERP) não está ligado nesta empresa');

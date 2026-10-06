@@ -1,4 +1,4 @@
-import { Boxes, Calculator, Package, Sparkles, Store } from 'lucide-react';
+import { Boxes, Calculator, Layers, Package, Sparkles, Store } from 'lucide-react';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
@@ -30,7 +30,12 @@ export function CatalogoTabs() {
     ...(precificacao.data?.ativa
       ? [{ to: '/precificacao', label: 'Precificação', icon: <Calculator size={14} /> }]
       : []),
-    ...(estoque.data?.ativo ? [{ to: '/estoque', label: 'Estoque', icon: <Boxes size={14} /> }] : []),
+    ...(estoque.data?.ativo
+      ? [
+          { to: '/estoque', label: 'Estoque', icon: <Boxes size={14} /> },
+          { to: '/insumos', label: 'Insumos', icon: <Layers size={14} /> },
+        ]
+      : []),
   ];
 
   return <SubTabsBar tabs={tabs} ariaLabel="Sub-abas de Catálogo" />;

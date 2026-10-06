@@ -70,6 +70,7 @@ describe('CatalogoTabs — abas Vitrine e Precificação só onde existem', () =
     estado.estoque = { ativo: true };
     montar();
     expect(screen.getByText('Estoque')).toBeTruthy();
+    expect(screen.getByText('Insumos')).toBeTruthy();
   });
 
   it('REP nem consulta (e não vê nenhuma das duas abas)', () => {

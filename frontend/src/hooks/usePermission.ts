@@ -302,6 +302,7 @@ export const ROUTE_MODULO: ReadonlyArray<readonly [prefix: string, modulo: Modul
   ['/vitrine', 'catalogo'],
   ['/precificacao', 'catalogo'],
   ['/estoque', 'catalogo'],
+  ['/insumos', 'catalogo'],
   ['/materiais', 'catalogo'],
   ['/comissoes', 'comissoes'],
   ['/amostras', 'amostras'],

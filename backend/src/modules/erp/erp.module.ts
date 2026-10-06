@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { EstoqueController } from './estoque.controller';
 import { EstoqueService } from './estoque.service';
 import { ReservaExpiracaoJob } from './reserva-expiracao.job';
+import { InsumosController } from './insumos.controller';
+import { InsumosService } from './insumos.service';
 
 /**
  * ERP próprio · Fase 2 (Ribelt Distribuidora Têxtil, 07/10/2026).
@@ -10,8 +12,8 @@ import { ReservaExpiracaoJob } from './reserva-expiracao.job';
  * contrário), pra não fechar ciclo de módulo.
  */
 @Module({
-  controllers: [EstoqueController],
-  providers: [EstoqueService, ReservaExpiracaoJob],
+  controllers: [EstoqueController, InsumosController],
+  providers: [EstoqueService, ReservaExpiracaoJob, InsumosService],
   exports: [EstoqueService],
 })
 export class ErpModule {}

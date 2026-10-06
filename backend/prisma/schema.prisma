@@ -4309,3 +4309,79 @@ model EstoqueReserva {
   @@index([pedidoId])
   @@index([status, expiraEm])
 }
+
+// ─── ERP próprio · Fase 2 · entrega 2 · matéria-prima (tecido e aviamento) ───
+// Saldo também é soma de movimentos. Custo médio PONDERADO, recalculado a cada
+// entrada de compra (é ele que a ficha técnica e a OP usam pra custear a peça).
+
+enum InsumoTipo {
+  TECIDO
+  AVIAMENTO
+}
+
+/// Escolhida POR INSUMO (Léo, 06/10: tecido em kg ou metro conforme o tipo).
+enum InsumoUnidade {
+  KG
+  METRO
+  UNIDADE
+  PAR
+}
+
+enum InsumoMovTipo {
+  /// Compra do fornecedor — a única que mexe no custo médio.
+  ENTRADA_COMPRA
+  /// Tecido gasto no corte (ordem de produção — entrega 4).
+  CONSUMO_CORTE
+  /// Aviamento que foi pra facção (entrega 4).
+  ENVIO_FACCAO
+  /// Sobra que voltou da facção/corte.
+  SOBRA_RETORNO
+  /// Perda, defeito, extravio — motivo obrigatório.
+  PERDA
+  /// Inventário ou correção — motivo obrigatório. Pode ser + ou −.
+  AJUSTE
+}
+
+model Insumo {
+  id            String        @id @default(cuid())
+  empresaId     String
+  nome          String
+  tipo          InsumoTipo
+  unidade       InsumoUnidade
+  /// Quando faz sentido (tecido, zíper colorido…).
+  cor           String?
+  fornecedor    String?
+  /// Custo médio ponderado por unidade (R$). 4 casas: tecido por grama soma.
+  custoMedio    Decimal       @default(0) @db.Decimal(14, 4)
+  /// Abaixo disto aparece "repor" (opcional).
+  estoqueMinimo Decimal?      @db.Decimal(14, 3)
+  ativo         Boolean       @default(true)
+  criadoEm      DateTime      @default(now())
+  atualizadoEm  DateTime      @updatedAt
+
+  movimentos InsumoMovimento[]
+
+  @@index([empresaId, ativo])
+}
+
+model InsumoMovimento {
+  id            String        @id @default(cuid())
+  empresaId     String
+  insumoId      String
+  tipo          InsumoMovTipo
+  /// Com sinal: + entra, − sai. 3 casas (kg/metro fracionados).
+  quantidade    Decimal       @db.Decimal(14, 3)
+  /// Só na compra: preço por unidade pago (base do custo médio e, na Fase 3,
+  /// da conta a pagar).
+  custoUnitario Decimal?      @db.Decimal(14, 4)
+  motivo        String?
+  /// Nº da nota do fornecedor, OP etc.
+  documento     String?
+  usuarioId     String?
+  criadoEm      DateTime      @default(now())
+
+  insumo Insumo @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+
+  @@index([empresaId, insumoId])
+  @@index([empresaId, criadoEm])
+}
