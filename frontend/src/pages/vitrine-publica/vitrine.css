@@ -203,3 +203,9 @@
 .vt-reserva b { font-family: var(--f-title); font-weight: 600; font-size: 32px; font-variant-numeric: tabular-nums; color: var(--petroleo); }
 .vt-reserva small { font-size: 12px; color: var(--oliva); }
 .vt-reserva-fim { background: transparent; border: 1px solid var(--terracota); color: var(--terracota); font-weight: 600; }
+
+/* Celular: o app põe `button { min-height: 36px }` abaixo de 768px (alvo de
+   toque do painel). Na vitrine cada botão já tem o tamanho desenhado — essa
+   regra esticava a bolinha de cor (24×24) em oval de 24×36. */
+.vt-app button { min-height: 0; }
+.vt-dot { flex: none; aspect-ratio: 1; padding: 0; }
