@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
-import { formatMoeda } from '@/lib/masks';
+import { formatMoeda, formatNumero } from '@/lib/masks';
 import {
   NOME_FAIXA,
   itensParaEnvio,
@@ -778,7 +778,7 @@ function SeuPedido({
             <div className="vt-kv">
               <span>Faixa de preço</span>
               <span className="vt-muted">
-                {r.pecas} de {alvo} peças
+                {formatNumero(r.pecas)} de {formatNumero(alvo)} peças
               </span>
             </div>
             <div className="vt-bar">
@@ -791,15 +791,12 @@ function SeuPedido({
             </div>
             <span className="vt-muted">
               {prox
-                ? `Faltam ${prox.faltam} peças pra faixa ${NOME_FAIXA[prox.faixa]}.`
-                : 'Você chegou na faixa 500+, o melhor preço.'}
+                ? `Faltam ${formatNumero(prox.faltam)} peças pra faixa ${NOME_FAIXA[prox.faixa]}.`
+                : `Você chegou na faixa ${NOME_FAIXA.atacadao}, o melhor preço.`}
             </span>
-            {r.faltamMinimo > 0 && (
-              <span className="vt-aviso">Pedido mínimo: faltam {r.faltamMinimo} peças.</span>
-            )}
-            {r.faltaValor > 0 && (
-              <span className="vt-aviso" data-testid="vt-falta-valor">
-                Faltam {formatMoeda(r.faltaValor)} pro pedido mínimo de {formatMoeda(v.pedidoMinimo?.valorMin ?? 0)}.
+            {textoMinimo(r, v) && (
+              <span className="vt-aviso" data-testid="vt-falta-minimo">
+                {textoMinimo(r, v)}
               </span>
             )}
           </div>
@@ -831,6 +828,16 @@ function SeuPedido({
       )}
     </section>
   );
+}
+
+/** "Faltam 30 peças ou R$ 120,00 pro pedido mínimo." — null quando já atingiu. */
+function textoMinimo(r: ReturnType<typeof resumoPedido>, v: VitrinePub): string | null {
+  const pecas = r.faltamMinimo > 0 ? `${r.faltamMinimo} ${r.faltamMinimo === 1 ? 'peça' : 'peças'}` : '';
+  const valor = r.faltaValor > 0 ? formatMoeda(r.faltaValor) : '';
+  if (!pecas && !valor) return null;
+  if (pecas && valor) return `Faltam ${pecas} ${r.minimoOu ? 'ou' : 'e'} ${valor} pro pedido mínimo.`;
+  if (valor) return `Faltam ${valor} pro pedido mínimo de ${formatMoeda(v.pedidoMinimo?.valorMin ?? 0)}.`;
+  return `Pedido mínimo: faltam ${pecas}.`;
 }
 
 interface Enviado {

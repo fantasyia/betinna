@@ -192,15 +192,16 @@ export class VitrinePedidoService {
     const total = linhas.reduce((s, l) => s + (l.preco ?? 0) * l.quantidade, 0);
     const semPreco = linhas.filter((l) => l.preco === null);
 
-    // Pedido mínimo da empresa (R$ e/ou peças). Com item "sob consulta" o
-    // valor não é conhecido: aí só a equipe decide, na conversa.
+    // Pedido mínimo da empresa (R$ e/ou peças; E ou OU). Com item "sob
+    // consulta" o VALOR não é conhecido: sai só o critério de valor — o de
+    // peças continua valendo (Ribelt: "50 peças OU R$ 600").
     const minimo = minimoDaVitrine(vitrine.empresa.config);
-    if (minimo && semPreco.length === 0) {
+    if (minimo) {
       const r = avaliarPedidoMinimo(
         {
           tipo: 'combinada',
-          ...minimo,
-          valorMin: minimo.valorMin ?? undefined,
+          modo: minimo.modo,
+          valorMin: semPreco.length ? undefined : (minimo.valorMin ?? undefined),
           quantidadeMin: minimo.quantidadeMin ?? undefined,
         },
         { valor: total, peso: 0, quantidade: totalPecas },

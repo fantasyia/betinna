@@ -506,7 +506,7 @@ export function ModeloEditor({
                       <Field label="Atacado · Volume (R$)">
                         <Input value={rl.precoVolume} inputMode="decimal" onChange={(e) => setLinha(l.id, { precoVolume: e.target.value })} placeholder="sob consulta" />
                       </Field>
-                      <Field label="Atacado · 500+ (R$)">
+                      <Field label="Atacadão (R$)">
                         <Input value={rl.precoAtacadao} inputMode="decimal" onChange={(e) => setLinha(l.id, { precoAtacadao: e.target.value })} placeholder="sob consulta" />
                       </Field>
                       <Field label="Revenda sugerida (R$)">

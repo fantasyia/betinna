@@ -256,6 +256,42 @@ describe('VitrinePedidoService.enviar', () => {
   });
 });
 
+describe('pedido mínimo "50 peças OU R$ 600" (Ribelt, 06/10)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const cfg = { pedidoMinimo: { tipo: 'combinada', valorMin: 600, quantidadeMin: 50, modo: 'OU' } };
+  const vit = { ...vitrineOk, minimoEntrada: null, empresa: { ativo: true, config: cfg } };
+  const itens = (p: number, m: number) => [
+    { corId: 'c1', tamanhoId: 'p', quantidade: p },
+    { corId: 'c1', tamanhoId: 'm', quantidade: m },
+  ];
+
+  it('nenhum dos dois: recusa', async () => {
+    const { svc, prisma } = montar({ vitrine: vit });
+    await expect(svc.enviar('atacado-ribelt', dto())).rejects.toThrow(/OU/);
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+
+  it('atingiu o VALOR antes das peças: passa (14 × R$ 45 = R$ 630)', async () => {
+    const { svc, prisma } = montar({ vitrine: vit });
+    await svc.enviar('atacado-ribelt', dto({ itens: itens(7, 7) }));
+    expect(prisma.pedido.create).toHaveBeenCalled();
+  });
+
+  it('item sob consulta: o critério de 50 PEÇAS continua valendo', async () => {
+    const semPreco = { precoEntrada: null, precoVolume: null };
+    const { svc, prisma } = montar({
+      vitrine: vit,
+      variacoes: [variacao('c1', 'p', 'prod-p'), variacao('c1', 'm', 'prod-m', semPreco)],
+    });
+    // R$ 45 × 20 = R$ 900 em itens com preço, mas o total não é conhecido.
+    await expect(svc.enviar('atacado-ribelt', dto({ itens: itens(20, 5) }))).rejects.toThrow(
+      /50 un/,
+    );
+    await svc.enviar('atacado-ribelt', dto({ itens: itens(25, 25) }));
+    expect(prisma.pedido.create).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('minimoDaVitrine', () => {
   it('lê valor e quantidade; peso e sem_minimo não contam', () => {
     expect(minimoDaVitrine({ pedidoMinimo: { tipo: 'por_valor', valorMin: 600 } })).toEqual({

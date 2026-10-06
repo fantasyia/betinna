@@ -172,25 +172,28 @@ export function resumoPedido(c: Carrinho, v: VitrinePub) {
 }
 
 /**
- * Quanto falta pro pedido mínimo: peças (faixa Entrada e/ou regra da empresa)
- * e R$ (regra da empresa). Com item sob consulta o valor não é conhecido — aí
- * o valor não trava (o servidor faz igual).
+ * Quanto falta pro pedido mínimo: peças (faixa Entrada) e a regra da empresa
+ * (R$ e/ou peças, E ou OU). Com item sob consulta o valor não é conhecido —
+ * sai só o critério de valor; o de peças continua (o servidor faz igual).
  */
-function faltasDoMinimo(pecas: number, investe: number, aConfirmar: boolean, v: VitrinePub) {
+export function faltasDoMinimo(pecas: number, investe: number, aConfirmar: boolean, v: VitrinePub) {
   const m = v.pedidoMinimo;
   const pecasEntrada = v.faixas.minimoEntrada ? Math.max(0, v.faixas.minimoEntrada - pecas) : 0;
-  let pecasRegra = m?.quantidadeMin ? Math.max(0, m.quantidadeMin - pecas) : 0;
-  let valor = m?.valorMin && !aConfirmar ? Math.max(0, Math.round((m.valorMin - investe) * 100) / 100) : 0;
-  // Regra "OU": cumprir um dos dois basta.
-  if (m?.modo === 'OU' && m.valorMin && m.quantidadeMin && (pecasRegra === 0 || valor === 0)) {
-    pecasRegra = 0;
-    valor = 0;
+  const crit: Array<{ tipo: 'pecas' | 'valor'; falta: number }> = [];
+  if (m?.quantidadeMin) crit.push({ tipo: 'pecas', falta: Math.max(0, m.quantidadeMin - pecas) });
+  if (m?.valorMin && !aConfirmar) {
+    crit.push({ tipo: 'valor', falta: Math.max(0, Math.round((m.valorMin - investe) * 100) / 100) });
   }
+  const ou = m?.modo === 'OU' && crit.length > 1;
+  const cumpriu = ou ? crit.some((c) => c.falta === 0) : crit.every((c) => c.falta === 0);
+  const falta = (t: 'pecas' | 'valor') => (cumpriu ? 0 : (crit.find((c) => c.tipo === t)?.falta ?? 0));
   return {
     /** Peças que faltam pro mínimo. */
-    faltamMinimo: Math.max(pecasEntrada, pecasRegra),
+    faltamMinimo: Math.max(pecasEntrada, falta('pecas')),
     /** R$ que falta pro pedido mínimo da empresa. */
-    faltaValor: valor,
+    faltaValor: falta('valor'),
+    /** Regra "OU": cumprir peças OU valor basta (a tela diz "X peças ou R$ Y"). */
+    minimoOu: ou,
   };
 }
 
@@ -201,7 +204,7 @@ export function proximaFaixa(pecas: number, f: Faixas): { faixa: Faixa; faltam: 
   return null;
 }
 
-export const NOME_FAIXA: Record<Faixa, string> = { entrada: 'Entrada', volume: 'Volume', atacadao: '500+' };
+export const NOME_FAIXA: Record<Faixa, string> = { entrada: 'Entrada', volume: 'Volume', atacadao: 'Atacadão' };
 
 /** Texto do "kit pra anunciar" — o que o revendedor cola no marketplace. */
 export function textoKit(m: ModeloPub): string {

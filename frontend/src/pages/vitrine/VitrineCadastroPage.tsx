@@ -292,7 +292,7 @@ function ConfigForm({ config, onSalvou }: { config: VitrineConfig | null; onSalv
           <Field label="Faixa Volume a partir de">
             <Input value={volume} inputMode="numeric" onChange={(e) => setVolume(e.target.value)} />
           </Field>
-          <Field label="Faixa 500+ a partir de">
+          <Field label="Faixa Atacadão a partir de">
             <Input value={atacadao} inputMode="numeric" onChange={(e) => setAtacadao(e.target.value)} />
           </Field>
         </div>

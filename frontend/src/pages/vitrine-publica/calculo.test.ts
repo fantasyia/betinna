@@ -206,6 +206,21 @@ describe('pedido mínimo da empresa', () => {
     const r = resumoPedido(carr(1), vit({ valorMin: 600, quantidadeMin: null, modo: 'E' }, { ...linha, precoEntrada: null }));
     expect(r.faltaValor).toBe(0);
   });
+  it('"50 peças OU R$ 600": falta os dois e diz que é OU', () => {
+    const r = resumoPedido(carr(10), vit({ valorMin: 600, quantidadeMin: 50, modo: 'OU' }));
+    expect(r).toMatchObject({ faltamMinimo: 40, faltaValor: 150, minimoOu: true });
+  });
+  it('"50 peças OU R$ 600": o valor chegou primeiro, libera', () => {
+    const r = resumoPedido(carr(14), vit({ valorMin: 600, quantidadeMin: 50, modo: 'OU' }));
+    expect(r).toMatchObject({ faltamMinimo: 0, faltaValor: 0 });
+  });
+  it('"50 peças OU R$ 600" com item sob consulta: as 50 peças continuam valendo', () => {
+    const r = resumoPedido(
+      carr(20),
+      vit({ valorMin: 600, quantidadeMin: 50, modo: 'OU' }, { ...linha, precoEntrada: null }),
+    );
+    expect(r).toMatchObject({ faltamMinimo: 30, faltaValor: 0 });
+  });
   it('regra OU: cumprir as peças basta', () => {
     const r = resumoPedido(carr(20), vit({ valorMin: 6000, quantidadeMin: 20, modo: 'OU' }));
     expect(r.faltaValor).toBe(0);
