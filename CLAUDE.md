@@ -118,6 +118,11 @@ scripts/  — deploy helpers (start.js, deploy-migrations.js)
    Índice que não existe no `schema.prisma` (unique parcial, índice de expressão)
    vai TAMBÉM em `backend/prisma/sql/objetos-invisiveis.sql` — senão o fallback
    `db push` do deploy o apaga em silêncio.
+   **Apagar ou renomear coluna/tabela = DOIS deploys:** primeiro o código para de usar
+   o nome, só depois a migration com `DROP`/`RENAME`. O container antigo segue atendendo
+   alguns segundos depois da migration (06/10: 500 na vitrine). O teste
+   `backend/src/database/migrations-destrutivas.spec.ts` barra migration destrutiva sem
+   um `-- drop-seguro: <por que é seguro>` no próprio `migration.sql`.
 4. **Sempre criar commit novo** — nunca `--amend` em pre-commit hook failure
 5. **Nunca pular hooks** com `--no-verify`
 6. **Idioma**: PR titles e commits em pt-BR, código em inglês ou pt-BR consistente com o arquivo
