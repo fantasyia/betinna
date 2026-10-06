@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -51,8 +51,11 @@ export default function ProducaoPage() {
   const role = useRole();
   const gestor = role === 'ADMIN' || role === 'DIRECTOR';
   const q = useApiQuery<OpResumo[]>(gestor ? '/erp/ops' : null);
-  const [nova, setNova] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  // Veio da Reposição: abre a Nova OP já com o modelo e a grade do que falta.
+  const pre = (location.state as { nova?: NovaInicial } | null)?.nova ?? null;
+  const [nova, setNova] = useState(Boolean(pre));
 
   return (
     <PageLayout
@@ -115,7 +118,17 @@ export default function ProducaoPage() {
           )}
         </StateView>
       )}
-      {nova && <NovaOpDialog onClose={() => setNova(false)} onCriou={(id) => navigate(`/producao/${id}`)} />}
+      {nova && (
+        <NovaOpDialog
+          inicial={pre}
+          onClose={() => {
+            setNova(false);
+            // Limpa o "veio da reposição" pra não reabrir no voltar.
+            if (pre) navigate('/producao', { replace: true, state: null });
+          }}
+          onCriou={(id) => navigate(`/producao/${id}`)}
+        />
+      )}
     </PageLayout>
   );
 }
@@ -143,7 +156,20 @@ export function paraCelula(v: SaldoVariacao): CelulaGrade {
   };
 }
 
-function NovaOpDialog({ onClose, onCriou }: { onClose: () => void; onCriou: (id: string) => void }) {
+export interface NovaInicial {
+  modeloId: string;
+  grade: ValoresGrade;
+}
+
+function NovaOpDialog({
+  inicial,
+  onClose,
+  onCriou,
+}: {
+  inicial: NovaInicial | null;
+  onClose: () => void;
+  onCriou: (id: string) => void;
+}) {
   const toast = useToast();
   const variacoes = useApiQuery<SaldoVariacao[]>('/erp/estoque/saldos');
   const faccoes = useApiQuery<Array<{ id: string; nome: string; ativo: boolean }>>('/erp/faccoes');
@@ -151,11 +177,11 @@ function NovaOpDialog({ onClose, onCriou }: { onClose: () => void; onCriou: (id:
     () => [...new Map((variacoes.data ?? []).map((v) => [v.modelo.id, v.modelo])).values()].sort((a, b) => a.ordem - b.ordem),
     [variacoes.data],
   );
-  const [modeloId, setModeloId] = useState('');
+  const [modeloId, setModeloId] = useState(inicial?.modeloId ?? '');
   const [faccaoId, setFaccaoId] = useState('');
   const [prazo, setPrazo] = useState('');
   const [obs, setObs] = useState('');
-  const [grade, setGrade] = useState<ValoresGrade>({});
+  const [grade, setGrade] = useState<ValoresGrade>(inicial?.grade ?? {});
   const [sim, setSim] = useState<Simulacao | null>(null);
   const [salvando, setSalvando] = useState(false);
 

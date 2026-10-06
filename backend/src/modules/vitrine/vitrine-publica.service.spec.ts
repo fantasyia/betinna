@@ -108,7 +108,10 @@ describe('VitrinePublicaService', () => {
     const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);
     const r = await svc.carregar('atacado-ribelt');
     const json = JSON.stringify(r);
-    expect(json).not.toMatch(/produtoId|sku|estoque|empresaId|storagePath/i);
+    expect(json).not.toMatch(/produtoId|sku|empresaId|storagePath/i);
+    // Sem "respeita estoque": nenhum número de estoque sai.
+    expect(r.respeitaEstoque).toBe(false);
+    expect(r.modelos.every((m) => m.estoque === null)).toBe(true);
     expect(r.empresa).toEqual({ nome: 'Ribelt Distribuidora', logoUrl: 'https://x/logo.png' });
   });
 
@@ -139,5 +142,31 @@ describe('VitrinePublicaService', () => {
     expect(r.modelos[0].cores[0].fotos[0].url).toBe('https://cdn/e/m/1.webp');
     expect(r.linhas).toEqual([{ id: 'lin-1', nome: 'Regular' }]);
     expect(r.faixas).toEqual({ minimoEntrada: 5, minimoVolume: 50, minimoAtacadao: 500 });
+  });
+});
+
+describe('vitrine que respeita estoque (entrega 5)', () => {
+  it('diz o disponível por cor × tamanho (ids da própria vitrine, sem produto)', async () => {
+    const prisma = makePrisma({ ...vitrineNoAr, respeitaEstoque: true }, [modelo()]);
+    (prisma as unknown as { catalogoVariacao: unknown }).catalogoVariacao = {
+      findMany: vi.fn().mockResolvedValue([
+        { modeloId: 'mod-1', modeloCorId: 'mc-1', modeloTamanhoId: 'mt-p', produtoId: 'prod-x' },
+        { modeloId: 'mod-1', modeloCorId: 'mc-1', modeloTamanhoId: 'mt-m', produtoId: 'prod-y' },
+      ]),
+    };
+    const estoque = {
+      vitrineRespeitaEstoque: vi.fn().mockResolvedValue(true),
+      disponiveis: vi.fn().mockResolvedValue(
+        new Map([
+          ['prod-x', 3],
+          ['prod-y', -2],
+        ]),
+      ),
+    };
+    const svc = new VitrinePublicaService(prisma as never, fotosSvc as never, estoque as never);
+    const r = await svc.carregar('atacado-ribelt');
+    expect(r.respeitaEstoque).toBe(true);
+    expect(r.modelos[0].estoque).toEqual({ 'mc-1': { 'mt-p': 3, 'mt-m': 0 } });
+    expect(JSON.stringify(r)).not.toMatch(/prod-x|produtoId/);
   });
 });

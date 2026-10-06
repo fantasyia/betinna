@@ -27,6 +27,8 @@ export const vitrineConfigSchema = z.object({
   minimoEntrada: z.number().int().min(1).max(100_000).nullable().optional(),
   minimoVolume: z.number().int().min(1).max(100_000).nullable().optional(),
   minimoAtacadao: z.number().int().min(1).max(100_000).nullable().optional(),
+  /** ERP próprio: esconde tamanho esgotado e não aceita pedido além do disponível. */
+  respeitaEstoque: z.boolean().optional(),
 });
 export type VitrineConfigDto = z.infer<typeof vitrineConfigSchema>;
 

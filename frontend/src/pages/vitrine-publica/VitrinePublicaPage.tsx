@@ -5,6 +5,7 @@ import { formatMoeda, formatNumero } from '@/lib/masks';
 import { restante, useAgora } from '@/lib/relogio';
 import {
   NOME_FAIXA,
+  disponivelDe,
   itensParaEnvio,
   mascararWhatsapp,
   limparCarrinho,
@@ -562,7 +563,7 @@ function FolhaGrade({
                   className="vt-full"
                   onClick={() => {
                     let novo = carrinho;
-                    for (const t of linha.tamanhos) novo = somar(novo, m.id, c.id, t.id, delta);
+                    for (const t of linha.tamanhos) novo = somar(novo, m.id, c.id, t.id, delta, disponivelDe(m, c.id, t.id));
                     onMudar(novo);
                   }}
                 >
@@ -572,16 +573,26 @@ function FolhaGrade({
               <div className="vt-cells" style={{ gridTemplateColumns: `repeat(${Math.min(linha.tamanhos.length, 6)}, 1fr)` }}>
                 {linha.tamanhos.map((t) => {
                   const q = carrinho[m.id]?.[c.id]?.[t.id] ?? 0;
+                  const teto = disponivelDe(m, c.id, t.id);
+                  // Esgotado: apagado e sem clique (a não ser pra tirar o que já estava).
+                  const esgotado = teto === 0 && q === 0;
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      className={`vt-cell ${q ? 'vt-has' : ''}`}
-                      aria-label={`${c.nome}, ${t.nome}: ${q} peças`}
-                      onClick={() => onMudar(somar(carrinho, m.id, c.id, t.id, delta))}
+                      className={`vt-cell ${q ? 'vt-has' : ''} ${esgotado ? 'vt-off' : ''}`}
+                      // No limite o "+" só não soma (somar já corta no teto); desabilitar
+                      // apagaria a casa como se estivesse esgotada.
+                      disabled={esgotado}
+                      aria-label={
+                        esgotado ? `${c.nome}, ${t.nome}: esgotado` : `${c.nome}, ${t.nome}: ${q} peças`
+                      }
+                      onClick={() => onMudar(somar(carrinho, m.id, c.id, t.id, delta, teto))}
                     >
                       <b>{t.nome}</b>
-                      <span>{q}</span>
+                      <span>{esgotado ? '—' : q}</span>
+                      {teto !== null && !esgotado && teto <= 20 && <small>resta {teto}</small>}
+                      {esgotado && <small>esgotado</small>}
                     </button>
                   );
                 })}

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -6,8 +6,12 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type AjusteEstoqueDto,
+  type InventarioDto,
+  type MinimosDto,
   type MovimentosQueryDto,
   ajusteEstoqueSchema,
+  inventarioSchema,
+  minimosSchema,
   movimentosQuerySchema,
 } from './estoque.dto';
 import { EstoqueService } from './estoque.service';
@@ -51,6 +55,30 @@ export class EstoqueController {
     @Body(new ZodValidationPipe(ajusteEstoqueSchema)) dto: AjusteEstoqueDto,
   ) {
     return this.svc.ajustar(user, dto);
+  }
+
+  @Get('reposicao')
+  @ApiOperation({ summary: 'Variações abaixo do estoque mínimo (maior falta primeiro)' })
+  reposicao(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.reposicao(user);
+  }
+
+  @Put('minimos')
+  @ApiOperation({ summary: 'Define o estoque mínimo por variação (null tira)' })
+  minimos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(minimosSchema)) dto: MinimosDto,
+  ) {
+    return this.svc.definirMinimos(user, dto);
+  }
+
+  @Post('inventario')
+  @ApiOperation({ summary: 'Inventário: o contado vira ajuste da diferença, de uma vez' })
+  inventario(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(inventarioSchema)) dto: InventarioDto,
+  ) {
+    return this.svc.inventario(user, dto);
   }
 
   @Get('pedidos/:id/reserva')

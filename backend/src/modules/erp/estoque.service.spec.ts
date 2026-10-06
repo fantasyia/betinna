@@ -38,7 +38,9 @@ function montar(opts: { ativo?: boolean } = {}) {
     pedidoItem: { findMany: vi.fn().mockResolvedValue([{ produtoId: 'p1', quantidade: 4 }]) },
     produto: { findFirst: vi.fn().mockResolvedValue({ id: 'p1' }) },
     catalogoVariacao: { findMany: vi.fn().mockResolvedValue([]) },
+    vitrine: { findUnique: vi.fn().mockResolvedValue({ respeitaEstoque: false }) },
     $transaction: vi.fn(),
+    $queryRaw: vi.fn().mockResolvedValue([]),
   };
   prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => unknown) => fn(prisma));
   return { svc: new EstoqueService(prisma as never), prisma };
@@ -249,5 +251,112 @@ describe('saldo e ajuste', () => {
     expect(
       ajusteEstoqueSchema.safeParse({ ...ok, tipo: 'DEVOLUCAO', quantidade: -1 }).success,
     ).toBe(false);
+  });
+});
+
+describe('entrega 5 — trava, inventário, reposição', () => {
+  it('trava os produtos em ordem fixa (FOR UPDATE) e recusa quem pede mais do que tem', async () => {
+    const { svc, prisma } = montar();
+    prisma.estoqueMovimento.groupBy.mockResolvedValue([
+      { produtoId: 'p2', _sum: { quantidade: 5 } },
+      { produtoId: 'p1', _sum: { quantidade: 1 } },
+    ]);
+    prisma.estoqueReserva.groupBy.mockResolvedValue([{ produtoId: 'p1', _sum: { quantidade: 1 } }]);
+    (prisma as unknown as { produto: { findMany: unknown } }).produto.findMany = vi
+      .fn()
+      .mockResolvedValue([{ id: 'p1', nome: 'Short · Preto · M' }]);
+    await expect(
+      svc.travarEConferir(prisma as never, 'emp-1', [
+        { produtoId: 'p2', quantidade: 2 },
+        { produtoId: 'p1', quantidade: 1 },
+      ]),
+    ).rejects.toThrow(/Short · Preto · M \(restam 0\)/);
+    const sql = prisma.$queryRaw.mock.calls[0][0].join('?');
+    expect(sql).toContain('FOR UPDATE');
+    expect(prisma.$queryRaw.mock.calls[0][1].values).toEqual(['p1', 'p2']); // ordenado
+  });
+
+  it('com disponível suficiente, passa', async () => {
+    const { svc, prisma } = montar();
+    prisma.estoqueMovimento.groupBy.mockResolvedValue([
+      { produtoId: 'p1', _sum: { quantidade: 3 } },
+    ]);
+    await expect(
+      svc.travarEConferir(prisma as never, 'emp-1', [{ produtoId: 'p1', quantidade: 3 }]),
+    ).resolves.toBeUndefined();
+  });
+
+  it('inventário: só a DIFERENÇA vira ajuste, com o motivo', async () => {
+    const { svc, prisma } = montar();
+    (prisma.catalogoVariacao as unknown as { count: unknown }).count = vi.fn().mockResolvedValue(3);
+    prisma.estoqueMovimento.groupBy.mockResolvedValue([
+      { produtoId: 'a', _sum: { quantidade: 10 } },
+      { produtoId: 'b', _sum: { quantidade: 4 } },
+    ]);
+    const r = await svc.inventario(user as never, {
+      contagens: [
+        { produtoId: 'a', contado: 8 },
+        { produtoId: 'b', contado: 4 },
+        { produtoId: 'c', contado: 2 },
+      ],
+      motivo: 'Inventário de outubro',
+    });
+    expect(r).toEqual({ ajustes: 2, diferenca: 0, conferidas: 3 });
+    const qs = prisma.estoqueMovimento.create.mock.calls.map((c) => [
+      c[0].data.produtoId,
+      c[0].data.quantidade,
+      c[0].data.motivo,
+    ]);
+    expect(qs).toEqual([
+      ['a', -2, 'Inventário de outubro'],
+      ['c', 2, 'Inventário de outubro'],
+    ]);
+  });
+
+  it('reposição: só quem tem mínimo e está abaixo dele, maior falta primeiro', async () => {
+    const { svc, prisma } = montar();
+    const v = (id: string, minimo: number | null) => ({
+      produtoId: id,
+      ativo: true,
+      estoqueMinimo: minimo,
+      modelo: { id: 'm', nome: 'Short', ordem: 0 },
+      modeloCor: { ordem: 0, cor: { nome: 'Preto', hex: '#000' } },
+      modeloLinha: { linha: { nome: 'Regular', ordem: 0 } },
+      modeloTamanho: { tamanho: { nome: id, ordem: 0 } },
+    });
+    prisma.catalogoVariacao.findMany.mockResolvedValue([
+      v('P', 10),
+      v('M', 5),
+      v('G', null),
+      v('GG', 2),
+    ]);
+    prisma.estoqueMovimento.groupBy.mockResolvedValue([
+      { produtoId: 'P', _sum: { quantidade: 4 } },
+      { produtoId: 'M', _sum: { quantidade: 1 } },
+      { produtoId: 'GG', _sum: { quantidade: 9 } },
+    ]);
+    const r = await svc.reposicao(user as never);
+    expect(r.map((x) => [x.produtoId, x.repor])).toEqual([
+      ['P', 6],
+      ['M', 4],
+    ]);
+  });
+
+  it('reativar com vitrine que respeita estoque: confere o disponível antes', async () => {
+    const { svc, prisma } = montar();
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      numero: 'X',
+      status: 'CANCELADO',
+      observacoes: null,
+    });
+    prisma.estoqueReserva.findFirst.mockResolvedValue({ id: 'r-velha' });
+    prisma.vitrine.findUnique.mockResolvedValue({ respeitaEstoque: true });
+    const trava = vi
+      .spyOn(svc, 'travarEConferir')
+      .mockRejectedValue(new BusinessRuleException('acabou'));
+    await expect(svc.reativar(user as never, 'ped-1')).rejects.toThrow('acabou');
+    expect(trava).toHaveBeenCalled();
+    expect(prisma.pedido.updateMany).not.toHaveBeenCalled();
   });
 });

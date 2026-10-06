@@ -250,63 +250,92 @@ export class VitrinePedidoService {
       };
     }
 
+    // Vitrine que respeita estoque: confere ANTES de criar cliente e número
+    // (recusa barata); a conferência que vale é a de dentro da transação.
+    const itensReserva = linhas.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade }));
+    const respeita = await this.estoque.vitrineRespeitaEstoque(empresaId);
+    if (respeita) {
+      const disp = await this.estoque.disponiveis(
+        empresaId,
+        itensReserva.map((i) => i.produtoId),
+      );
+      if (itensReserva.some((i) => i.quantidade > Math.max(0, disp.get(i.produtoId) ?? 0))) {
+        throw new BusinessRuleException(
+          'Algumas peças do seu pedido acabaram. Atualize a página e ajuste o pedido.',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+    }
+
     const cliente = await this.acharOuCriarCliente(empresaId, dto, whatsapp);
     const seq = await this.sequence.next(empresaId, 'pedido');
     const numero = `PED-${seq.toString().padStart(4, '0')}`;
     const local = [dto.cidade, dto.uf].filter(Boolean).join('/');
 
-    const pedido = await this.prisma.pedido.create({
-      data: {
-        empresaId,
-        numero,
-        clienteId: cliente.id,
-        contatoNome: dto.nome,
-        contatoTelefone: whatsapp,
-        // Venda de canal: sem representante (não gera comissão de rep).
-        representanteId: null,
-        origem: 'VITRINE',
-        status: 'RASCUNHO',
-        subtotal: new Prisma.Decimal(total.toFixed(2)),
-        total: new Prisma.Decimal(total.toFixed(2)),
-        comissao: new Prisma.Decimal(0),
-        observacoes: [
-          `Pedido da vitrine — ${totalPecas} peças, faixa ${ROTULO_FAIXA[faixa]}`,
-          local ? `cliente em ${local}` : '',
-          semPreco.length
-            ? `PREÇO A CONFIRMAR (sob consulta): ${semPreco.map((l) => l.descricao).join('; ')}`
-            : '',
-          dto.observacoes ?? '',
-        ]
-          .filter(Boolean)
-          .join(' — '),
-        itens: {
-          create: linhas.map((l) => ({
-            produtoId: l.produtoId,
-            quantidade: l.quantidade,
-            precoUnitario: new Prisma.Decimal((l.preco ?? 0).toFixed(2)),
-            desconto: 0,
-            total: new Prisma.Decimal(((l.preco ?? 0) * l.quantidade).toFixed(2)),
-          })),
-        },
+    const dadosPedido = {
+      empresaId,
+      numero,
+      clienteId: cliente.id,
+      contatoNome: dto.nome,
+      contatoTelefone: whatsapp,
+      // Venda de canal: sem representante (não gera comissão de rep).
+      representanteId: null,
+      origem: 'VITRINE',
+      status: 'RASCUNHO',
+      subtotal: new Prisma.Decimal(total.toFixed(2)),
+      total: new Prisma.Decimal(total.toFixed(2)),
+      comissao: new Prisma.Decimal(0),
+      observacoes: [
+        `Pedido da vitrine — ${totalPecas} peças, faixa ${ROTULO_FAIXA[faixa]}`,
+        local ? `cliente em ${local}` : '',
+        semPreco.length
+          ? `PREÇO A CONFIRMAR (sob consulta): ${semPreco.map((l) => l.descricao).join('; ')}`
+          : '',
+        dto.observacoes ?? '',
+      ]
+        .filter(Boolean)
+        .join(' — '),
+      itens: {
+        create: linhas.map((l) => ({
+          produtoId: l.produtoId,
+          quantidade: l.quantidade,
+          precoUnitario: new Prisma.Decimal((l.preco ?? 0).toFixed(2)),
+          desconto: 0,
+          total: new Prisma.Decimal(((l.preco ?? 0) * l.quantidade).toFixed(2)),
+        })),
       },
-      select: { id: true, numero: true },
-    });
+    } satisfies Prisma.PedidoUncheckedCreateInput;
+
+    let pedido: { id: string; numero: string };
+    let reservaExpiraEm: Date | null;
+    if (respeita) {
+      // Trava + confere + pedido + reserva numa transação só: dois clientes
+      // pegando a última peça — um passa, o outro recebe "acabou".
+      const r = await this.prisma.$transaction(async (tx) => {
+        await this.estoque.travarEConferir(tx, empresaId, itensReserva);
+        const p = await tx.pedido.create({ data: dadosPedido, select: { id: true, numero: true } });
+        const exp = await this.estoque.criarReservas(tx, empresaId, p.id, itensReserva);
+        return { p, exp };
+      });
+      pedido = r.p;
+      reservaExpiraEm = r.exp;
+    } else {
+      pedido = await this.prisma.pedido.create({
+        data: dadosPedido,
+        select: { id: true, numero: true },
+      });
+      // ERP próprio ligado (sem trava): as peças ficam reservadas por 20 min
+      // esperando o pagamento. Falha aqui não derruba o pedido (ele já existe)
+      // — a equipe vê o pedido sem relógio e segue na mão.
+      reservaExpiraEm = await this.estoque
+        .reservarPedido(empresaId, pedido.id, itensReserva)
+        .catch((err: unknown) => {
+          this.logger.error(`[vitrine] pedido ${pedido.numero}: reserva falhou — ${String(err)}`);
+          return null;
+        });
+    }
 
     this.logger.log(`[vitrine] ${slug}: pedido ${pedido.numero} (${totalPecas} peças, ${faixa})`);
-
-    // ERP próprio ligado: as peças ficam reservadas por 20 min esperando o
-    // pagamento. Falha aqui não derruba o pedido (ele já existe) — a equipe vê
-    // o pedido sem relógio e segue na mão.
-    const reservaExpiraEm = await this.estoque
-      .reservarPedido(
-        empresaId,
-        pedido.id,
-        linhas.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })),
-      )
-      .catch((err: unknown) => {
-        this.logger.error(`[vitrine] pedido ${pedido.numero}: reserva falhou — ${String(err)}`);
-        return null;
-      });
 
     // Alguém precisa SABER: é cliente esperando resposta no WhatsApp.
     await this.notificacoes

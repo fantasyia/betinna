@@ -28,3 +28,33 @@ export const movimentosQuerySchema = z.object({
   limite: z.coerce.number().int().min(1).max(500).default(200),
 });
 export type MovimentosQueryDto = z.infer<typeof movimentosQuerySchema>;
+
+/** Estoque mínimo por variação; null tira o mínimo. */
+export const minimosSchema = z.object({
+  itens: z
+    .array(
+      z.object({
+        produtoId: z.string().min(1).max(40),
+        minimo: z.number().int().min(0).max(1_000_000).nullable(),
+      }),
+    )
+    .min(1)
+    .max(2000),
+});
+export type MinimosDto = z.infer<typeof minimosSchema>;
+
+/** Inventário: o que foi CONTADO de cada variação (vira ajuste da diferença). */
+export const inventarioSchema = z.object({
+  contagens: z
+    .array(
+      z.object({
+        produtoId: z.string().min(1).max(40),
+        contado: z.number().int().min(0).max(1_000_000),
+      }),
+    )
+    .min(1)
+    .max(2000)
+    .refine((xs) => new Set(xs.map((x) => x.produtoId)).size === xs.length, 'Variação repetida'),
+  motivo: z.string().trim().max(300).optional(),
+});
+export type InventarioDto = z.infer<typeof inventarioSchema>;

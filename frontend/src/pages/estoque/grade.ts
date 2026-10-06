@@ -13,6 +13,8 @@ export interface SaldoVariacao {
   fisico: number;
   reservado: number;
   disponivel: number;
+  /** Estoque mínimo (reposição). null = sem mínimo. */
+  minimo?: number | null;
 }
 
 export interface Celula {
@@ -21,6 +23,7 @@ export interface Celula {
   reservado: number;
   disponivel: number;
   ativo: boolean;
+  minimo: number | null;
 }
 
 export interface GradeLinha {
@@ -71,7 +74,14 @@ export function montarGrade(vs: SaldoVariacao[]): GradeModelo[] {
               celulas: tamanhos.map((t) => {
                 const v = daLinha.find((x) => x.cor.nome === c.nome && x.tamanho.nome === t.nome);
                 return v
-                  ? { produtoId: v.produtoId, fisico: v.fisico, reservado: v.reservado, disponivel: v.disponivel, ativo: v.ativo }
+                  ? {
+                      produtoId: v.produtoId,
+                      fisico: v.fisico,
+                      reservado: v.reservado,
+                      disponivel: v.disponivel,
+                      ativo: v.ativo,
+                      minimo: v.minimo ?? null,
+                    }
                   : null;
               }),
             })),

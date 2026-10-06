@@ -4002,6 +4002,9 @@ model Vitrine {
   minimoEntrada  Int?
   minimoVolume   Int?
   minimoAtacadao Int?    @default(500)
+  /// ERP próprio ligado: tamanho sem disponível some da vitrine e o pedido
+  /// não passa do que tem (conferido com trava no envio).
+  respeitaEstoque Boolean @default(false)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -4240,6 +4243,8 @@ model CatalogoVariacao {
   sku             String?
   /// Opcional nesta fase e NÃO bloqueia venda.
   estoque         Int?
+  /// ERP próprio: abaixo disto (disponível) a variação aparece em "Reposição".
+  estoqueMinimo   Int?
   ativo           Boolean @default(true)
 
   criadoEm     DateTime @default(now())

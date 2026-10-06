@@ -209,3 +209,10 @@
    regra esticava a bolinha de cor (24×24) em oval de 24×36. */
 .vt-app button { min-height: 0; }
 .vt-dot { flex: none; aspect-ratio: 1; padding: 0; }
+
+/* vitrine que respeita estoque: tamanho esgotado apagado; pouco estoque avisa */
+.vt-cell small { font-size: 10px; color: var(--oliva); font-weight: 600; line-height: 1.1; }
+.vt-cell.vt-has small { color: var(--quente); }
+.vt-cell.vt-off { opacity: .4; }
+.vt-cell[disabled] { cursor: default; }
+.vt-cell[disabled]:active { transform: none; }

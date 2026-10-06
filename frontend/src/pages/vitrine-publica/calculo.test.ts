@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  disponivelDe,
   itensParaEnvio,
   mascararWhatsapp,
   faixaDoTotal,
@@ -225,5 +226,29 @@ describe('pedido mínimo da empresa', () => {
     const r = resumoPedido(carr(20), vit({ valorMin: 6000, quantidadeMin: 20, modo: 'OU' }));
     expect(r.faltaValor).toBe(0);
     expect(r.faltamMinimo).toBe(0);
+  });
+});
+
+describe('vitrine que respeita estoque', () => {
+  const m = {
+    id: 'm1',
+    estoque: { c1: { p: 3, m: 0 } },
+    cores: [{ id: 'c1' }],
+    linhas: [{ tamanhos: [{ id: 'p' }, { id: 'm' }, { id: 'g' }] }],
+  } as unknown as ModeloPub;
+
+  it('disponível por cor × tamanho; desconhecido = 0; sem controle = null', () => {
+    expect(disponivelDe(m, 'c1', 'p')).toBe(3);
+    expect(disponivelDe(m, 'c1', 'g')).toBe(0);
+    expect(disponivelDe({ ...m, estoque: null }, 'c1', 'p')).toBeNull();
+  });
+  it('somar não passa do que tem', () => {
+    const c = somar({}, 'm1', 'c1', 'p', 6, 3);
+    expect(c.m1.c1.p).toBe(3);
+    expect(somar({}, 'm1', 'c1', 'm', 6, 0)).toEqual({});
+  });
+  it('carrinho salvo no celular volta cortado ao que tem agora', () => {
+    const v = { modelos: [m] } as unknown as VitrinePub;
+    expect(limparCarrinho({ m1: { c1: { p: 10, m: 4 } } }, v)).toEqual({ m1: { c1: { p: 3 } } });
   });
 });

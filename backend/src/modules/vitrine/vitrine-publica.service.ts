@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { NotFoundException } from '@shared/errors/app-exception';
+import { EstoqueService } from '@modules/erp/estoque.service';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import { minimoDaVitrine } from './vitrine-pedido.service';
 
@@ -19,6 +20,9 @@ export class VitrinePublicaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fotos: VitrineFotosService,
+    // ERP próprio: com "respeita estoque", a vitrine diz quanto tem de cada
+    // tamanho (esgotado apaga). Opcional pra quem monta o service à mão.
+    @Optional() private readonly estoque?: EstoqueService,
   ) {}
 
   async carregar(slug: string) {
@@ -29,6 +33,7 @@ export class VitrinePublicaService {
         minimoEntrada: true,
         minimoVolume: true,
         minimoAtacadao: true,
+        respeitaEstoque: true,
         empresaId: true,
         empresa: { select: { nome: true, ativo: true, config: true } },
       },
@@ -114,6 +119,34 @@ export class VitrinePublicaService {
       // Sem cor com foto ou sem grade: não aparece (§6 da especificação).
       .filter((m) => m.cores.length > 0 && m.linhas.length > 0);
 
+    // Disponível por cor × tamanho, só com "respeita estoque" e ERP ligado.
+    // Nada de id de produto: a chave é a mesma cor/tamanho que a vitrine já mostra.
+    const respeita =
+      vitrine.respeitaEstoque && this.estoque
+        ? await this.estoque.vitrineRespeitaEstoque(empresaId)
+        : false;
+    const estoquePorModelo = new Map<string, Record<string, Record<string, number>>>();
+    if (respeita && this.estoque) {
+      const vs = await this.prisma.catalogoVariacao.findMany({
+        where: { empresaId, ativo: true, modeloId: { in: publicos.map((m) => m.id) } },
+        select: { modeloId: true, modeloCorId: true, modeloTamanhoId: true, produtoId: true },
+      });
+      const disp = await this.estoque.disponiveis(
+        empresaId,
+        vs.map((v) => v.produtoId),
+      );
+      for (const v of vs) {
+        const m = estoquePorModelo.get(v.modeloId) ?? {};
+        m[v.modeloCorId] = m[v.modeloCorId] ?? {};
+        // Teto de exibição: ninguém precisa saber se tem 9.999 ou 50.000.
+        m[v.modeloCorId][v.modeloTamanhoId] = Math.min(
+          9999,
+          Math.max(0, disp.get(v.produtoId) ?? 0),
+        );
+        estoquePorModelo.set(v.modeloId, m);
+      }
+    }
+
     // Linhas e categorias da vitrine = só as que têm modelo publicado.
     const linhasMap = new Map<string, { id: string; nome: string }>();
     for (const m of modelos) {
@@ -143,7 +176,12 @@ export class VitrinePublicaService {
       // Pedido mínimo da empresa (R$ e/ou peças) — o envio confere de novo.
       pedidoMinimo: minimoDaVitrine(vitrine.empresa.config),
       linhas,
-      modelos: publicos,
+      respeitaEstoque: respeita,
+      modelos: publicos.map((m) => ({
+        ...m,
+        /** cor → tamanho → disponível. null = vitrine não controla estoque. */
+        estoque: respeita ? (estoquePorModelo.get(m.id) ?? {}) : null,
+      })),
     };
   }
 }

@@ -53,6 +53,22 @@ export default function EstoquePage() {
     <PageLayout
       title="Estoque"
       description="Peça pronta por cor e tamanho. O número grande é o que está disponível pra vender (físico − reservado)."
+      actions={
+        gestor ? (
+          <div className="flex gap-2">
+            <Link to="/estoque/reposicao">
+              <Button variant="secondary" size="sm" data-testid="estoque-reposicao">
+                Reposição
+              </Button>
+            </Link>
+            <Link to="/estoque/inventario">
+              <Button variant="secondary" size="sm" data-testid="estoque-inventario">
+                Inventário
+              </Button>
+            </Link>
+          </div>
+        ) : undefined
+      }
     >
       <CatalogoTabs />
       {!gestor ? (
@@ -109,6 +125,7 @@ export default function EstoquePage() {
                                     className={cn(
                                       'w-full rounded-md border border-border px-2 py-1 hover:border-primary flex flex-col items-center',
                                       !cel.ativo && 'opacity-50',
+                                      cel.minimo !== null && cel.disponivel < cel.minimo && 'border-warning bg-warning/10',
                                     )}
                                     title={`Físico ${cel.fisico} · reservado ${cel.reservado} — clique pra ajustar`}
                                   >
@@ -232,10 +249,25 @@ function AjusteDialog({
   const [tipo, setTipo] = useState<'AJUSTE' | 'DEVOLUCAO'>('AJUSTE');
   const [qtd, setQtd] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [minimo, setMinimo] = useState(alvo.celula.minimo === null ? '' : String(alvo.celula.minimo));
   const [salvando, setSalvando] = useState(false);
   const n = Number.parseInt(qtd.replace(/\s/g, ''), 10);
   const valido = Number.isInteger(n) && n !== 0 && (tipo === 'AJUSTE' || n > 0) && motivo.trim().length >= 3;
   const c = alvo.celula;
+
+  async function salvarMinimo() {
+    setSalvando(true);
+    try {
+      const m = minimo.trim() === '' ? null : Number.parseInt(minimo, 10);
+      await api.put('/erp/estoque/minimos', { itens: [{ produtoId: c.produtoId, minimo: Number.isFinite(m) ? m : null }] });
+      toast.success(m === null ? 'Mínimo tirado' : 'Estoque mínimo salvo');
+      onSalvou();
+    } catch (err) {
+      toast.error('Não foi possível salvar', apiErrorMessage(err));
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   async function salvar() {
     setSalvando(true);
@@ -289,6 +321,14 @@ function AjusteDialog({
         <Field label="Motivo" required hint="Fica no histórico, com seu nome">
           <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} maxLength={300} data-testid="estoque-ajuste-motivo" />
         </Field>
+        <div className="flex items-end gap-2 border-t border-border pt-3">
+          <Field label="Estoque mínimo" hint="Abaixo disto aparece em Reposição. Vazio = sem mínimo.">
+            <Input value={minimo} onChange={(e) => setMinimo(e.target.value.replace(/\D/g, ''))} inputMode="numeric" className="w-28" data-testid="estoque-minimo" />
+          </Field>
+          <Button variant="secondary" size="sm" onClick={salvarMinimo} disabled={salvando} className="mb-1" data-testid="estoque-minimo-salvar">
+            Salvar mínimo
+          </Button>
+        </div>
       </div>
     </Dialog>
   );

@@ -8,7 +8,12 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import type { AjusteEstoqueDto, MovimentosQueryDto } from './estoque.dto';
+import type {
+  AjusteEstoqueDto,
+  InventarioDto,
+  MinimosDto,
+  MovimentosQueryDto,
+} from './estoque.dto';
 
 /** Reserva do pedido da vitrine (Léo, 06/10: "20 minutos com relógio"). */
 export const RESERVA_MINUTOS = 20;
@@ -239,7 +244,10 @@ export class EstoqueService {
       select: { produtoId: true, quantidade: true },
     });
     const expiraEm = new Date(Date.now() + RESERVA_MINUTOS * 60_000);
+    const respeita = await this.vitrineRespeitaEstoque(empresaId);
     await this.prisma.$transaction(async (tx) => {
+      // Vitrine que respeita estoque: só reativa se as peças ainda existem.
+      if (respeita) await this.travarEConferir(tx, empresaId, itens);
       const cas = await tx.pedido.updateMany({
         where: { id: pedidoId, empresaId, status: 'CANCELADO' },
         data: {
@@ -319,6 +327,7 @@ export class EstoqueService {
         select: {
           produtoId: true,
           ativo: true,
+          estoqueMinimo: true,
           modelo: { select: { id: true, nome: true, ordem: true } },
           modeloCor: { select: { ordem: true, cor: { select: { nome: true, hex: true } } } },
           modeloLinha: { select: { linha: { select: { nome: true, ordem: true } } } },
@@ -351,8 +360,180 @@ export class EstoqueService {
         fisico: f,
         reservado: r,
         disponivel: f - r,
+        minimo: v.estoqueMinimo,
       };
     });
+  }
+
+  /** O que está abaixo do mínimo (disponível < mínimo), maior falta primeiro. */
+  async reposicao(user: AuthenticatedUser) {
+    const todos = await this.saldos(user);
+    return todos
+      .filter((v) => v.ativo && v.minimo !== null && v.disponivel < v.minimo)
+      .map((v) => ({ ...v, repor: (v.minimo ?? 0) - v.disponivel }))
+      .sort((a, b) => b.repor - a.repor);
+  }
+
+  /** Estoque mínimo por variação (null = sem mínimo). */
+  async definirMinimos(user: AuthenticatedUser, dto: MinimosDto) {
+    const empresaId = await this.empresaLigada(user);
+    const ids = dto.itens.map((i) => i.produtoId);
+    const deles = await this.prisma.catalogoVariacao.count({
+      where: { empresaId, produtoId: { in: ids } },
+    });
+    if (deles !== ids.length) throw new NotFoundException('Variação', ids.join(','));
+    await this.prisma.$transaction(
+      dto.itens.map((i) =>
+        this.prisma.catalogoVariacao.updateMany({
+          where: { empresaId, produtoId: i.produtoId },
+          data: { estoqueMinimo: i.minimo },
+        }),
+      ),
+    );
+    return { ok: true };
+  }
+
+  /**
+   * Inventário: o que foi CONTADO vira ajuste da diferença pro físico atual,
+   * tudo de uma vez e sob trava (venda no meio da contagem não some no ajuste).
+   */
+  async inventario(user: AuthenticatedUser, dto: InventarioDto) {
+    const empresaId = await this.empresaLigada(user);
+    const ids = dto.contagens.map((c) => c.produtoId);
+    const deles = await this.prisma.catalogoVariacao.count({
+      where: { empresaId, produtoId: { in: ids } },
+    });
+    if (deles !== ids.length) throw new NotFoundException('Variação', ids.join(','));
+    const motivo = dto.motivo?.trim() || `Inventário ${new Date().toLocaleDateString('pt-BR')}`;
+    return this.prisma.$transaction(async (tx) => {
+      await this.travarProdutos(tx, ids);
+      const fis = await tx.estoqueMovimento.groupBy({
+        by: ['produtoId'],
+        where: { empresaId, produtoId: { in: ids } },
+        _sum: { quantidade: true },
+      });
+      const fisico = new Map(fis.map((f) => [f.produtoId, f._sum.quantidade ?? 0]));
+      let ajustes = 0;
+      let diferenca = 0;
+      for (const c of dto.contagens) {
+        const d = c.contado - (fisico.get(c.produtoId) ?? 0);
+        if (d === 0) continue;
+        await tx.estoqueMovimento.create({
+          data: {
+            empresaId,
+            produtoId: c.produtoId,
+            tipo: 'AJUSTE',
+            quantidade: d,
+            motivo,
+            usuarioId: user.id,
+          },
+        });
+        ajustes++;
+        diferenca += d;
+      }
+      return { ajustes, diferenca, conferidas: dto.contagens.length };
+    });
+  }
+
+  // ─── Vitrine respeita estoque ───────────────────────────────────────────
+
+  /** A vitrine desta empresa esconde esgotado e trava o pedido no disponível? */
+  async vitrineRespeitaEstoque(empresaId: string): Promise<boolean> {
+    const v = await this.prisma.vitrine.findUnique({
+      where: { empresaId },
+      select: { respeitaEstoque: true },
+    });
+    return v?.respeitaEstoque === true && (await this.ativoNaEmpresa(empresaId));
+  }
+
+  /** Disponível (físico − reservado válido) por produto. */
+  async disponiveis(
+    empresaId: string,
+    produtoIds: string[],
+    db: Tx | PrismaService = this.prisma,
+  ): Promise<Map<string, number>> {
+    if (!produtoIds.length) return new Map();
+    const agora = new Date();
+    const [fis, res] = await Promise.all([
+      db.estoqueMovimento.groupBy({
+        by: ['produtoId'],
+        where: { empresaId, produtoId: { in: produtoIds } },
+        _sum: { quantidade: true },
+      }),
+      db.estoqueReserva.groupBy({
+        by: ['produtoId'],
+        where: { empresaId, produtoId: { in: produtoIds }, ...reservaValida(agora) },
+        _sum: { quantidade: true },
+      }),
+    ]);
+    const f = new Map(fis.map((x) => [x.produtoId, x._sum.quantidade ?? 0]));
+    const r = new Map(res.map((x) => [x.produtoId, x._sum.quantidade ?? 0]));
+    return new Map(produtoIds.map((id) => [id, (f.get(id) ?? 0) - (r.get(id) ?? 0)]));
+  }
+
+  /**
+   * Trava as linhas dos produtos (ordem fixa = sem deadlock) até o fim da
+   * transação: duas compras da última peça não leem o mesmo disponível.
+   */
+  private async travarProdutos(tx: Tx, produtoIds: string[]) {
+    const ids = [...new Set(produtoIds)].sort();
+    if (!ids.length) return;
+    await tx.$queryRaw`SELECT "id" FROM "Produto" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`;
+  }
+
+  /** Trava e confere: alguma variação pede mais do que tem? Então recusa tudo. */
+  async travarEConferir(
+    tx: Tx,
+    empresaId: string,
+    itens: Array<{ produtoId: string; quantidade: number }>,
+  ): Promise<void> {
+    await this.travarProdutos(
+      tx,
+      itens.map((i) => i.produtoId),
+    );
+    const disp = await this.disponiveis(
+      empresaId,
+      itens.map((i) => i.produtoId),
+      tx,
+    );
+    const falta = itens.filter((i) => i.quantidade > Math.max(0, disp.get(i.produtoId) ?? 0));
+    if (falta.length) {
+      const nomes = await tx.produto.findMany({
+        where: { id: { in: falta.map((f) => f.produtoId) } },
+        select: { id: true, nome: true },
+      });
+      const nome = new Map(nomes.map((n) => [n.id, n.nome]));
+      throw new BusinessRuleException(
+        `Acabou o estoque de: ${falta
+          .map(
+            (f) =>
+              `${nome.get(f.produtoId) ?? 'peça'} (restam ${Math.max(0, disp.get(f.produtoId) ?? 0)})`,
+          )
+          .join('; ')}. Atualize a página e ajuste o pedido.`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+  }
+
+  /** Cria as reservas de 20 min dentro da transação de quem chamou. */
+  async criarReservas(
+    tx: Tx,
+    empresaId: string,
+    pedidoId: string,
+    itens: Array<{ produtoId: string; quantidade: number }>,
+  ): Promise<Date> {
+    const expiraEm = new Date(Date.now() + RESERVA_MINUTOS * 60_000);
+    await tx.estoqueReserva.createMany({
+      data: itens.map((i) => ({
+        empresaId,
+        pedidoId,
+        produtoId: i.produtoId,
+        quantidade: i.quantidade,
+        status: 'ATIVA' as const,
+        expiraEm,
+      })),
+    });
+    return expiraEm;
   }
 
   async movimentos(user: AuthenticatedUser, q: MovimentosQueryDto) {

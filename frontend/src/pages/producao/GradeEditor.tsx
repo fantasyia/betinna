@@ -53,6 +53,7 @@ export function GradeEditor({
   valores,
   onChange,
   maximos,
+  dicas,
   testid,
 }: {
   celulas: CelulaGrade[];
@@ -60,6 +61,8 @@ export function GradeEditor({
   onChange: (v: ValoresGrade) => void;
   /** Teto por variação (ex.: não enviar mais do que cortou). Mostrado como "/ 10". */
   maximos?: Record<string, number>;
+  /** Texto curto embaixo de cada campo (ex.: "sistema 12"). */
+  dicas?: Record<string, string>;
   testid?: string;
 }) {
   const blocos = agrupar(celulas);
@@ -105,6 +108,7 @@ export function GradeEditor({
                             )}
                           />
                           {max !== undefined && <span className="text-[10px] text-muted">de {max}</span>}
+                          {dicas?.[cel.produtoId] && <span className="text-[10px] text-muted">{dicas[cel.produtoId]}</span>}
                         </div>
                       </td>
                     );

@@ -244,6 +244,7 @@ function ConfigForm({ config, onSalvou }: { config: VitrineConfig | null; onSalv
   const [entrada, setEntrada] = useState(config?.minimoEntrada?.toString() ?? '');
   const [volume, setVolume] = useState(config?.minimoVolume?.toString() ?? '');
   const [atacadao, setAtacadao] = useState(config?.minimoAtacadao?.toString() ?? '500');
+  const [respeita, setRespeita] = useState(config?.respeitaEstoque ?? false);
   const [salvando, setSalvando] = useState(false);
 
   const inteiro = (t: string) => (t.trim() ? Number.parseInt(t, 10) : null);
@@ -257,6 +258,7 @@ function ConfigForm({ config, onSalvou }: { config: VitrineConfig | null; onSalv
         minimoEntrada: inteiro(entrada),
         minimoVolume: inteiro(volume),
         minimoAtacadao: inteiro(atacadao),
+        respeitaEstoque: respeita,
       });
       toast.success(config ? 'Configuração salva' : 'Vitrine ligada');
       onSalvou();
@@ -302,6 +304,16 @@ function ConfigForm({ config, onSalvou }: { config: VitrineConfig | null; onSalv
           checked={ativa}
           onChange={(e) => setAtiva(e.target.checked)}
         />
+        <Switch
+          label="Respeitar o estoque"
+          checked={respeita}
+          onChange={(e) => setRespeita(e.target.checked)}
+          data-testid="vitrine-respeita-estoque"
+        />
+        <p className="-mt-2 text-xs text-muted">
+          Ligado (com o ERP): tamanho esgotado fica apagado na vitrine e o cliente não pede mais do que tem. Desligado,
+          vende sem olhar o estoque.
+        </p>
         <div>
           <Button onClick={salvar} loading={salvando} data-testid="vitrine-salvar-config">
             {config ? 'Salvar' : 'Ligar vitrine'}

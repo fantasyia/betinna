@@ -7,6 +7,7 @@ export interface VitrineConfig {
   minimoEntrada: number | null;
   minimoVolume: number | null;
   minimoAtacadao: number | null;
+  respeitaEstoque?: boolean;
 }
 
 export interface Cor {

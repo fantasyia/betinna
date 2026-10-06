@@ -71,6 +71,10 @@ function montar(
   const seq = { next: vi.fn().mockResolvedValue(7) };
   const estoque = {
     reservarPedido: vi.fn().mockResolvedValue(opts.reservaAte ?? null),
+    vitrineRespeitaEstoque: vi.fn().mockResolvedValue(false),
+    disponiveis: vi.fn().mockResolvedValue(new Map()),
+    travarEConferir: vi.fn().mockResolvedValue(undefined),
+    criarReservas: vi.fn().mockResolvedValue(opts.reservaAte ?? new Date()),
   };
   const svc = new VitrinePedidoService(
     prisma as never,
@@ -369,5 +373,63 @@ describe('minimoDaVitrine', () => {
     expect(minimoDaVitrine({ pedidoMinimo: { tipo: 'por_peso', pesoMin: 250 } })).toBeNull();
     expect(minimoDaVitrine({ pedidoMinimo: { tipo: 'sem_minimo', valorMin: 600 } })).toBeNull();
     expect(minimoDaVitrine(null)).toBeNull();
+  });
+});
+
+describe('vitrine que respeita estoque (entrega 5)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('trava + confere + pedido + reserva na MESMA transação', async () => {
+    const ate = new Date('2026-10-07T12:20:00Z');
+    const { svc, estoque, prisma } = montar({ reservaAte: ate });
+    estoque.vitrineRespeitaEstoque.mockResolvedValue(true);
+    estoque.disponiveis.mockResolvedValue(
+      new Map([
+        ['prod-p', 10],
+        ['prod-m', 10],
+      ]),
+    );
+    (prisma as unknown as { $transaction: unknown }).$transaction = vi.fn(
+      (fn: (tx: unknown) => unknown) => fn(prisma),
+    );
+    const r = await svc.enviar('atacado-ribelt', dto());
+    expect(estoque.travarEConferir).toHaveBeenCalledWith(prisma, 'emp-1', [
+      { produtoId: 'prod-p', quantidade: 3 },
+      { produtoId: 'prod-m', quantidade: 3 },
+    ]);
+    expect(estoque.criarReservas).toHaveBeenCalled();
+    expect(estoque.reservarPedido).not.toHaveBeenCalled();
+    expect(r.reservaExpiraEm).toEqual(ate);
+  });
+
+  it('acabou antes de mandar: recusa sem criar cliente nem pedido', async () => {
+    const { svc, estoque, prisma } = montar();
+    estoque.vitrineRespeitaEstoque.mockResolvedValue(true);
+    estoque.disponiveis.mockResolvedValue(
+      new Map([
+        ['prod-p', 1],
+        ['prod-m', 10],
+      ]),
+    );
+    await expect(svc.enviar('atacado-ribelt', dto())).rejects.toThrow(/acabaram/);
+    expect(prisma.cliente.create).not.toHaveBeenCalled();
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+
+  it('outro cliente levou a última peça no meio: a trava recusa e nada é gravado', async () => {
+    const { svc, estoque, prisma } = montar();
+    estoque.vitrineRespeitaEstoque.mockResolvedValue(true);
+    estoque.disponiveis.mockResolvedValue(
+      new Map([
+        ['prod-p', 10],
+        ['prod-m', 10],
+      ]),
+    );
+    estoque.travarEConferir.mockRejectedValue(new BusinessRuleException('Acabou o estoque de: …'));
+    (prisma as unknown as { $transaction: unknown }).$transaction = vi.fn(
+      (fn: (tx: unknown) => unknown) => fn(prisma),
+    );
+    await expect(svc.enviar('atacado-ribelt', dto())).rejects.toThrow(/Acabou o estoque/);
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
   });
 });

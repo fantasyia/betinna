@@ -130,6 +130,7 @@ export class VitrineAdminService {
       ...(dto.minimoEntrada !== undefined ? { minimoEntrada: dto.minimoEntrada } : {}),
       ...(dto.minimoVolume !== undefined ? { minimoVolume: dto.minimoVolume } : {}),
       ...(dto.minimoAtacadao !== undefined ? { minimoAtacadao: dto.minimoAtacadao } : {}),
+      ...(dto.respeitaEstoque !== undefined ? { respeitaEstoque: dto.respeitaEstoque } : {}),
     };
     this.validarFaixas({
       minimoEntrada: dto.minimoEntrada,

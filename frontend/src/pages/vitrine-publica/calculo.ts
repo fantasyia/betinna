@@ -40,6 +40,8 @@ export interface ModeloPub {
   cores: CorPub[];
   linhas: LinhaPub[];
   videos: Array<{ url: string; nomeArquivo: string | null; tamanhoBytes: number | null }>;
+  /** cor → tamanho → disponível. null/ausente = a vitrine não controla estoque. */
+  estoque?: Record<string, Record<string, number>> | null;
 }
 export interface Faixas {
   minimoEntrada: number | null;
@@ -109,9 +111,26 @@ export function totalPecas(c: Carrinho): number {
 }
 
 /** Soma `delta` numa célula (nunca abaixo de zero) e limpa o que zerou. */
-export function somar(c: Carrinho, modeloId: string, corId: string, tamanhoId: string, delta: number): Carrinho {
+/**
+ * Quanto tem dessa cor × tamanho. null = a vitrine não controla estoque (vende
+ * sem teto). Variação que o estoque não conhece = 0 (não aparece como livre).
+ */
+export function disponivelDe(m: ModeloPub, corId: string, tamanhoId: string): number | null {
+  if (!m.estoque) return null;
+  return m.estoque[corId]?.[tamanhoId] ?? 0;
+}
+
+export function somar(
+  c: Carrinho,
+  modeloId: string,
+  corId: string,
+  tamanhoId: string,
+  delta: number,
+  teto: number | null = null,
+): Carrinho {
   const atual = c[modeloId]?.[corId]?.[tamanhoId] ?? 0;
-  const novo = Math.max(0, Math.min(99_999, atual + delta));
+  const max = teto === null ? 99_999 : Math.max(0, Math.min(99_999, teto));
+  const novo = Math.max(0, Math.min(max, atual + delta));
   const porCor = { ...(c[modeloId] ?? {}) };
   const tams = { ...(porCor[corId] ?? {}) };
   if (novo === 0) delete tams[tamanhoId];
@@ -124,7 +143,7 @@ export function somar(c: Carrinho, modeloId: string, corId: string, tamanhoId: s
   return out;
 }
 
-/** Descarta do carrinho salvo o que não existe mais na vitrine. */
+/** Descarta do carrinho salvo o que não existe mais na vitrine — e o que passou do estoque. */
 export function limparCarrinho(c: Carrinho, v: VitrinePub): Carrinho {
   let out: Carrinho = {};
   for (const m of v.modelos) {
@@ -133,7 +152,9 @@ export function limparCarrinho(c: Carrinho, v: VitrinePub): Carrinho {
     for (const [corId, porTam] of Object.entries(c[m.id] ?? {})) {
       if (!cores.has(corId)) continue;
       for (const [tamId, q] of Object.entries(porTam)) {
-        if (tams.has(tamId) && Number.isInteger(q) && q > 0) out = somar(out, m.id, corId, tamId, q);
+        if (tams.has(tamId) && Number.isInteger(q) && q > 0) {
+          out = somar(out, m.id, corId, tamId, q, disponivelDe(m, corId, tamId));
+        }
       }
     }
   }
