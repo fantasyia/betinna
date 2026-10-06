@@ -54,7 +54,7 @@ export function pendenciasDoModelo(m: Modelo): Pendencia[] {
   }
 
   if (!m.tituloMarketplace?.trim() || !m.descricaoMarketplace?.trim()) {
-    p.push({ nivel: 'aviso', texto: 'Kit pra anunciar sem título ou descrição', aba: 'kit' });
+    p.push({ nivel: 'aviso', texto: 'Material de divulgação sem título ou descrição', aba: 'kit' });
   }
   return p;
 }

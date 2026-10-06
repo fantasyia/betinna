@@ -212,6 +212,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
             <article key={m.id} className="vt-slide" data-testid={`vt-slide-${m.id}`}>
               <div className="vt-stage">
                 <Carrossel key={cor.id} cor={cor} nome={m.nome} onAbrir={() => setPdp(m)} />
+                <NomeDaCor cor={cor} />
                 <div className="vt-counter">
                   {String(i + 1).padStart(2, '0')} / {String(lista.length).padStart(2, '0')}
                   {m.categoria ? ` · ${m.categoria.nome}` : ''}
@@ -242,7 +243,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                 <BlocoLucro l={l} f={v.faixas} />
                 <div className="vt-row">
                   <button type="button" className="vt-link" onClick={() => setKit(m)}>
-                    Kit pra anunciar
+                    Material de divulgação
                   </button>
                   <button
                     type="button"
@@ -427,6 +428,15 @@ function BotaoZerar({
   );
 }
 
+/** Nome da cor escolhida, discreto sobre a foto (reaparece suave a cada troca). */
+function NomeDaCor({ cor }: { cor: CorPub }) {
+  return (
+    <span key={cor.id} className="vt-cor-nome" aria-live="polite">
+      {cor.nome}
+    </span>
+  );
+}
+
 function Bolinhas({ m, cor, onCor }: { m: ModeloPub; cor: CorPub; onCor: (id: string) => void }) {
   return (
     <div className="vt-dots">
@@ -554,6 +564,7 @@ function PaginaModelo({
       </button>
       <div className="vt-stage" style={{ position: 'relative' }}>
         <Carrossel key={cor.id} cor={cor} nome={m.nome} />
+        <NomeDaCor cor={cor} />
       </div>
       <div className="vt-pdp-body">
         <div className="vt-row">
@@ -603,7 +614,7 @@ function PaginaModelo({
             <b>Vai anunciar em marketplace?</b>
             <span>Baixe as fotos e a descrição prontas deste modelo</span>
           </div>
-          <i>Kit →</i>
+          <i>Baixar →</i>
         </button>
         <button type="button" className="vt-cta" onClick={onGrade}>
           Montar grade
@@ -789,11 +800,11 @@ function FolhaKit({
   return (
     <>
       <div className="vt-scrim" onClick={onFechar} />
-      <section className="vt-sheet" role="dialog" aria-label={`Kit pra anunciar · ${m.nome}`}>
+      <section className="vt-sheet" role="dialog" aria-label={`Material de divulgação · ${m.nome}`}>
         <div className="vt-grab" />
         <div className="vt-sh-head">
           <div>
-            <span className="vt-over">Kit pra anunciar</span>
+            <span className="vt-over">Material de divulgação</span>
             <div className="vt-name">{m.nome}</div>
           </div>
         </div>

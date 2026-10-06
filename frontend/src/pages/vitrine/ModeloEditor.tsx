@@ -321,7 +321,7 @@ export function ModeloEditor({
           Passo a passo: <strong className="text-text">1. Dados</strong> → Salvar →{' '}
           <strong className="text-text">2. Cores e fotos</strong> →{' '}
           <strong className="text-text">3. Grades e preços</strong> →{' '}
-          <strong className="text-text">4. Kit pra anunciar</strong>.
+          <strong className="text-text">4. Material de divulgação</strong>.
         </p>
       ) : pendencias.length === 0 ? (
         <p className="mb-3 flex items-center gap-2 text-sm text-success">
@@ -355,7 +355,7 @@ export function ModeloEditor({
           { value: 'cores', label: '2. Cores e fotos' },
           { value: 'grades', label: '3. Grades e preços' },
           { value: 'variacoes', label: 'Variações', count: atual?.variacoes.length },
-          { value: 'kit', label: '4. Kit pra anunciar' },
+          { value: 'kit', label: '4. Material de divulgação' },
           ...(erp.data?.ativo && atual ? [{ value: 'ficha', label: 'Ficha técnica' }] : []),
         ]}
         className="mb-4"

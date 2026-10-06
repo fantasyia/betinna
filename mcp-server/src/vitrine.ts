@@ -4,7 +4,7 @@
  * Exige escopo "vitrine" no PAT e dono ADMIN/DIRECTOR; a vitrine precisa
  * estar ligada na empresa (senão a API responde 422). Serve pra o agente
  * cadastrar o produto INTEIRO: cores, categorias, linhas e tamanhos, modelo
- * (preços, medidas, kit de marketplace), fotos e vídeos de uma pasta local
+ * (preços, medidas, material de divulgação), fotos e vídeos de uma pasta local
  * (BETINNA_MCP_ANEXOS_DIR), SKU/estoque e a calculadora de preço.
  *
  * Fotos: o app converte no NAVEGADOR (WebP 1080 px q0.82 + miniatura 360 px
@@ -67,8 +67,8 @@ const camposModelo = {
   etiquetas: z.array(z.string().max(40)).max(12).optional().describe('Ex.: ["Proteção UV 50+"]'),
   ordem: z.number().int().min(0).optional(),
   ativo: z.boolean().optional().describe("Publicado na vitrine (false = escondido)"),
-  tituloMarketplace: z.string().max(60).nullable().optional().describe("Kit pra anunciar"),
-  descricaoMarketplace: z.string().max(8000).nullable().optional().describe("Kit pra anunciar"),
+  tituloMarketplace: z.string().max(60).nullable().optional().describe("Material de divulgação (marketplace)"),
+  descricaoMarketplace: z.string().max(8000).nullable().optional().describe("Material de divulgação (marketplace)"),
   composicao: z.string().max(200).nullable().optional().describe('Ex.: "100% poliamida"'),
   corIds: z
     .array(z.string())
@@ -307,7 +307,7 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     "vitrine_modelo_ver",
     {
       description:
-        "Modelo completo: dados, kit de marketplace, cores (cores[].id = modeloCorId, com as fotos), " +
+        "Modelo completo: dados, material de divulgação, cores (cores[].id = modeloCorId, com as fotos), " +
         "linhas com tamanhos/preços/medidas, vídeos e variações (SKU/estoque por cor × tamanho).",
       inputSchema: { modeloId: z.string() },
       annotations: { readOnlyHint: true, destructiveHint: false },
@@ -524,7 +524,7 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     "vitrine_video_subir",
     {
       description:
-        "Sobe um vídeo MP4 local (máx 50MB) pro modelo — vai no kit pra anunciar. Só lê dentro de " +
+        "Sobe um vídeo MP4 local (máx 50MB) pro modelo — vai no material de divulgação. Só lê dentro de " +
         "BETINNA_MCP_ANEXOS_DIR. O arquivo vai direto pro armazenamento por uma URL assinada.",
       inputSchema: { modeloId: z.string(), caminho: z.string().describe("Caminho ABSOLUTO do .mp4") },
       annotations: { readOnlyHint: false, destructiveHint: false },
