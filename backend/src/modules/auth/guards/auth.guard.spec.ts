@@ -473,3 +473,71 @@ describe('AuthGuard — token de API (bkt_) em /integracoes/email', () => {
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+describe('AuthGuard — token de API (bkt_) na vitrine', () => {
+  let guard: AuthGuard;
+  let prisma: {
+    kanbanApiToken: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    usuario: { findUnique: ReturnType<typeof vi.fn> };
+  };
+
+  const comEscopo = (escopo: string[]) => {
+    prisma.kanbanApiToken.findUnique.mockResolvedValue({
+      id: 'tok-1',
+      empresaId: 'emp-1',
+      usuarioId: 'u1',
+      escopo,
+      revogado: false,
+    });
+  };
+  const chamar = (method: string, path: string) =>
+    guard.canActivate(fakeContext({ method, path, headers: { authorization: 'Bearer bkt_abc' } }));
+
+  beforeEach(() => {
+    prisma = {
+      kanbanApiToken: { findUnique: vi.fn(), update: vi.fn().mockResolvedValue({}) },
+      usuario: { findUnique: vi.fn().mockResolvedValue(bktUser) },
+    };
+    comEscopo(['kanban', 'vitrine']);
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setNxEx: vi.fn().mockResolvedValue(true),
+      eval: vi.fn().mockResolvedValue(1),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const reflector = { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector;
+    guard = new AuthGuard(
+      reflector,
+      {} as never,
+      prisma as never,
+      redis as never,
+      { get: () => 300 } as never,
+    );
+  });
+
+  it('cadastro da vitrine e precificação passam (leitura e escrita), com e sem prefixo', async () => {
+    const rotas: Array<[string, string]> = [
+      ['GET', '/vitrine/admin/modelos'],
+      ['POST', '/api/v1/vitrine/admin/modelos'],
+      ['POST', '/vitrine/admin/cores-modelo/mc-1/fotos'],
+      ['DELETE', '/vitrine/admin/fotos/f-1'],
+      ['GET', '/precificacao'],
+      ['PUT', '/api/v1/precificacao/linhas/l-1'],
+    ];
+    for (const [method, path] of rotas) await expect(chamar(method, path)).resolves.toBe(true);
+  });
+
+  it('sem o escopo vitrine → 403, mesmo com outros escopos', async () => {
+    comEscopo(['kanban', 'fluxos']);
+    await expect(chamar('GET', '/vitrine/admin/modelos')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(chamar('GET', '/precificacao')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('o escopo não vaza: só /vitrine/admin (não /vitrine/outra) nem /erp', async () => {
+    await expect(chamar('GET', '/vitrine/configuracao')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(chamar('GET', '/erp/estoque/saldos')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(chamar('GET', '/leads/vitrine/admin')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});

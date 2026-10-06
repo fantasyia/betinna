@@ -252,7 +252,10 @@
   `/integracoes/email/{status,teste}` (**só essas duas rotas** — o resto de `/integracoes` é
   DIRECTOR-only por D45; o `teste` manda UM e-mail, opcionalmente a AMOSTRA de um template real
   com a marca do tenant, porque preview de navegador e mensagem colada no Gmail não pegam a
-  sanitização que come o fundo do botão)
+  sanitização que come o fundo do botão),
+  `/vitrine/admin/*` **e** `/precificacao` (escopo `vitrine`: cadastro da vitrine de atacado e
+  preços, escrita — o agente cadastra o produto inteiro; `@Roles('ADMIN','DIRECTOR')` e o 422 de
+  vitrine desligada seguem valendo)
   e `/mullerbot/{prompts,persona,bot/modelos}`. Qualquer outra rota → 403; `/kanban/api-tokens`
   NUNCA (token não cunha token). Fonte da verdade = docblock de `autenticarApiToken`
   (`src/modules/auth/guards/auth.guard.ts`) — se mexer lá, atualize aqui.

@@ -11,11 +11,13 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { readFile, realpath } from "node:fs/promises";
-import { basename, extname, resolve, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import { z } from "zod";
 import { api, ApiError } from "./api.js";
+import { pastasPermitidas, resolverPermitido } from "./arquivos.js";
 import { seg } from "./caminho.js";
+import { registrarVitrine } from "./vitrine.js";
 
 const server = new McpServer({ name: "betinna-kanban", version: "1.0.0" });
 
@@ -1501,56 +1503,18 @@ server.registerTool(
       // ── ARQUIVO ──
       if (!caminhoArquivo)
         return erro("Informe caminhoArquivo (arquivo) ou url + nome (link).");
-      // H-1 (auditoria 13/09/2026): `readFile` de QUALQUER caminho absoluto subia
-      // pro bucket do tenant — inclusive `.claude.json`, com os tokens de API —
-      // e qualquer membro do quadro baixava. Só lê dentro das pastas listadas em
-      // BETINNA_MCP_ANEXOS_DIR (separadas por `;`), nunca arquivo oculto. Sem a
-      // variável, anexo por ARQUIVO fica desligado; anexo por LINK segue.
-      const pastas = (process.env.BETINNA_MCP_ANEXOS_DIR ?? "")
-        .split(";")
-        .map((p) => p.trim())
-        .filter(Boolean);
-      if (pastas.length === 0) {
+      // H-1/H-allowlist: o portão (pastas de BETINNA_MCP_ANEXOS_DIR, nada oculto,
+      // nada de caminho de rede, realpath) mora em ./arquivos.ts — o mesmo das
+      // fotos e vídeos da vitrine.
+      if (pastasPermitidas().length === 0) {
         return erro(
           "Anexo por ARQUIVO local está desligado nesta instância (defina BETINNA_MCP_ANEXOS_DIR " +
             "com as pastas permitidas, separadas por ';'). Use url + nome.",
         );
       }
-      const norm = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
-      // Aceito = dentro de uma pasta permitida E sem nenhum segmento oculto ABAIXO
-      // dela (".claude\settings.json", ".ssh\…", ".env"). Só olha o trecho abaixo
-      // da pasta: ela mesma pode morar sob um oculto (os repos ficam em .claude\github).
-      const aceito = (alvo: string) =>
-        pastas.some((p) => {
-          const base = resolve(p);
-          const b = norm(base.endsWith(sep) ? base : base + sep);
-          const a = norm(alvo);
-          if (a !== norm(base) && !a.startsWith(b)) return false;
-          const abaixo = alvo.slice(base.length).split(/[\\/]/).filter(Boolean);
-          return !abaixo.some((s) => s.startsWith("."));
-        });
-      const recusa = erro(
-        `Arquivo fora das pastas permitidas (ou oculto): "${caminhoArquivo}". ` +
-          `Permitidas: ${pastas.join(", ")}.`,
-      );
-      // Checagem LÉXICA antes de tocar o disco (auditoria 29/09/2026): o realpath
-      // num caminho UNC (\\host\share) abre conexão SMB e vaza o hash NTLM do
-      // Windows antes da allowlist recusar. Caminho de rede nunca é aceito, e
-      // fora das pastas permitidas nem chega ao disco. Mesma mensagem nos dois
-      // casos: o erro não diz se o arquivo existe.
-      if (/^[\\/]{2}/.test(caminhoArquivo) || !aceito(resolve(caminhoArquivo))) {
-        return recusa;
-      }
-      let real: string;
-      try {
-        real = await realpath(resolve(caminhoArquivo));
-      } catch {
-        return recusa;
-      }
-      // Depois do realpath: junção/symlink que aponta pra fora também é recusado.
-      if (!aceito(real)) {
-        return recusa;
-      }
+      const resolvido = await resolverPermitido(caminhoArquivo);
+      if (!resolvido.ok) return erro(resolvido.motivo);
+      const real = resolvido.real;
       const ext = extname(real).toLowerCase();
       const mime = EXT_MIME[ext];
       if (!mime) {
@@ -4438,6 +4402,11 @@ server.registerTool(
   }),
 );
 
+// ═══════════════════════════════════════════════════════════════════════
+// VITRINE DE ATACADO + PRECIFICAÇÃO (vitrine_*, precificacao_*) — ./vitrine.ts
+// Exige escopo "vitrine" no PAT. Apagar pede `confirmo: true`.
+registrarVitrine(server, { ok, erro, seguro });
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 // DEPOIS de todas as tools: as `campanha_*` eram registradas após o connect e
 // um cliente que lista tools no handshake não as via (auditoria 13/09, H-10).
@@ -4447,5 +4416,6 @@ await server.connect(transport);
 console.error(
   "[betinna-kanban-mcp] conectado — kanban_* + fluxos_* + funis_/contatos_/crm + prompts_* + " +
     "bot_config_* + usuarios_* + conhecimento_* (base do RAG) + tags_* (etiquetas de LEAD) + " +
-    "inbox_* (SÓ leitura) + campanha_* (conteúdo; NÃO dispara)",
+    "inbox_* (SÓ leitura) + campanha_* (conteúdo; NÃO dispara) + vitrine_*/precificacao_* " +
+    "(cadastro da vitrine de atacado)",
 );

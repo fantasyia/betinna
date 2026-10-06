@@ -145,6 +145,10 @@ export class AuthGuard implements CanActivate {
    *    por rota exata: `GET /integracoes/email/status` e
    *    `POST /integracoes/email/teste` (escopo `email`). É UM e-mail por
    *    chamada, auditado — não é canal de envio.
+   *  - `/vitrine/admin/*` e `/precificacao` (escopo `vitrine`): cadastro da
+   *    vitrine de atacado e calculadora de preço. Leitura e escrita — é o
+   *    produto que o agente cadastra. O `@Roles('ADMIN','DIRECTOR')` dos
+   *    controllers e o 422 de vitrine desligada seguem valendo.
    *  - Carrega o dono (com role/empresa) e injeta req.user — assim @Roles e o
    *    filtro multi-tenant dos controllers continuam valendo sem mudança.
    *  - Atualiza ultimoUso com throttle de 60s (best-effort).
@@ -171,6 +175,7 @@ export class AuthGuard implements CanActivate {
       | 'inbox'
       | 'campanhas'
       | 'email'
+      | 'vitrine'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -222,11 +227,15 @@ export class AuthGuard implements CanActivate {
     // o fundo do botão; com rótulo branco, o CTA some sem deixar rastro e quem
     // revisa conclui que o template está quebrado. Só o caminho real pega isso.
     else if (/^\/integracoes\/email\/(status|teste)\/?$/.test(rel)) moduloRequerido = 'email';
+    // /vitrine/admin/* + /precificacao = cadastro da vitrine de atacado e preços.
+    // ANCORADO em /vitrine/admin: a vitrine pública (/public/vitrine) é @Public e
+    // nem passa por aqui, e nenhuma outra rota /vitrine entra no escopo.
+    else if (/^\/(vitrine\/admin|precificacao)(\/|$)/.test(rel)) moduloRequerido = 'vitrine';
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
           '/conhecimento, /tags, /inbox, /campanhas, /integracoes/email/{status,teste} ' +
-          'e /mullerbot/prompts|persona',
+          '/vitrine/admin, /precificacao e /mullerbot/prompts|persona',
       );
     }
 

@@ -63,6 +63,11 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     label: 'E-mail — status e envio de UM e-mail de teste (não abre o resto das integrações)',
     badge: 'E-mail (teste)',
   },
+  {
+    key: 'vitrine',
+    label: 'Vitrine de atacado — escrita (cadastro de produto, fotos, vídeos e preços)',
+    badge: 'Vitrine',
+  },
 ];
 
 const rotuloEscopo = (key: string) =>

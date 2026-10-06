@@ -87,6 +87,28 @@ estreita: só tags e mover etapa).
 **Contatos = dados pessoais (PII).** Escopo `crm` (escrita) fica sob rotas `/crm` — surface
 estreita; criar lead/campanha e ações em massa seguem só no app.
 
+## Vitrine de atacado + precificação (prefixos `vitrine_` e `precificacao_`)
+
+Exige escopo **`vitrine`** no token e dono ADMIN/DIRECTOR; a vitrine precisa estar ligada na
+empresa (senão 422). Serve pra cadastrar o produto inteiro a partir de uma pasta local.
+
+- **Config e conferência:** `vitrine_config_ver`, `vitrine_config_atualizar`, `vitrine_publica_ver`
+  (o que o lojista vê — use pra conferir depois de salvar).
+- **Listas da empresa:** `vitrine_{cores,categorias,linhas}_listar`, `vitrine_{cor,categoria,linha,tamanho}_{criar,atualizar,excluir}`.
+- **Modelos:** `vitrine_modelos_listar`, `vitrine_modelo_{ver,criar,atualizar,excluir}`, `vitrine_modelos_reordenar`.
+  `corIds` e `linhas` (tamanhos, preços, medidas) SUBSTITUEM a lista; campo ausente fica como está.
+- **SKU/estoque:** `vitrine_variacoes_atualizar` (uma ou várias).
+- **Fotos por cor:** `vitrine_fotos_subir` (caminhos OU pasta, ordem natural do nome; converte como o
+  app — WebP 1080 px + miniatura 360 px, via `sharp`), `vitrine_fotos_listar`, `vitrine_fotos_ordenar`
+  (a 1ª é a capa), `vitrine_bolinha_definir`, `vitrine_foto_excluir`. A cor pode ser dada por
+  `modeloCorId` ou por `modeloId` + nome da cor.
+- **Vídeos:** `vitrine_video_subir` (MP4 ≤ 50MB, direto pra URL assinada), `vitrine_video_excluir`.
+- **Precificação:** `precificacao_ver`, `precificacao_taxas_atualizar`, `precificacao_linha_atualizar`.
+
+Arquivo local só dentro de `BETINNA_MCP_ANEXOS_DIR` (mesmo portão do `kanban_anexar`, em
+`src/arquivos.ts`). Todo `*_excluir` pede `confirmo: true`. Teste sem backend:
+`npm run build && node teste-vitrine.mjs` (API falsa local).
+
 ## Build
 
 ```bash

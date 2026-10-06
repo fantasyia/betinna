@@ -244,6 +244,12 @@ export const API_TOKEN_ESCOPOS = [
   // conferir o layout na caixa de verdade: preview de navegador e mensagem
   // colada no Gmail não pegam a sanitização do cliente, que é onde o botão some.
   'email',
+  // vitrine = cadastro da vitrine de atacado (/vitrine/admin/*) e a calculadora
+  // de preço (/precificacao): cores, linhas, tamanhos, modelos, fotos, vídeos e
+  // preços. Existe pra o agente cadastrar o produto INTEIRO a partir de uma
+  // pasta local. Continua exigindo ADMIN/DIRECTOR no dono do token e a vitrine
+  // ligada na empresa (422). Apagar pede `confirmo: true` no MCP.
+  'vitrine',
 ] as const;
 
 export const createApiTokenSchema = z.object({
