@@ -131,6 +131,10 @@
 .vt-sh-foot strong { font-family: var(--f-title); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; display: block; }
 .vt-sh-foot small { font-size: 11px; color: var(--oliva); }
 .vt-sh-foot .vt-cta { margin-left: auto; }
+/* zerar modelo / esvaziar pedido: 2º toque confirma */
+.vt-zerar { white-space: nowrap; font-size: 12.5px; font-weight: 600; color: var(--terracota); text-decoration: underline; text-underline-offset: 3px; padding: 4px 2px; }
+.vt-zerar-sim { text-decoration: none; color: var(--creme) !important; background: var(--terracota) !important; border-radius: 999px; padding: 6px 11px; }
+.vt-cart header .vt-zerar { margin-left: auto; }
 .vt-kit { padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 12px; overflow-y: auto; }
 .vt-kit ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .vt-kit li { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13.5px; padding: 10px 12px; background: var(--branco); border: 1px solid #e3d8bf; border-radius: 12px; }

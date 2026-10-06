@@ -26,6 +26,7 @@ import {
   type ModeloPub,
   type VitrinePub,
 } from './calculo';
+import { useFundoDaCor } from './amostra';
 import { baixarKit, copiarTexto } from './kit';
 import './vitrine.css';
 
@@ -151,8 +152,10 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
     feed.current?.scrollTo({ top: 0 });
   }, [linhaId, cat]);
 
-  const corAtual = (m: ModeloPub): CorPub => m.cores.find((c) => c.id === corDe[m.id]) ?? m.cores[0];
-  const linhaNoModelo = (m: ModeloPub): LinhaPub => m.linhas.find((l) => l.linhaId === linhaId) ?? m.linhas[0];
+  const corAtual = (m: ModeloPub): CorPub =>
+    m.cores.find((c) => c.id === corDe[m.id]) ?? m.cores[0];
+  const linhaNoModelo = (m: ModeloPub): LinhaPub =>
+    m.linhas.find((l) => l.linhaId === linhaId) ?? m.linhas[0];
   const pecas = totalPecas(carrinho);
   const modelosNoPedido = Object.keys(carrinho).length;
 
@@ -181,7 +184,12 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
         {v.linhas.length > 1 && (
           <div className="vt-linhas" role="group" aria-label="Linha">
             {v.linhas.map((l) => (
-              <button key={l.id} type="button" aria-pressed={linhaId === l.id} onClick={() => setLinhaId(l.id)}>
+              <button
+                key={l.id}
+                type="button"
+                aria-pressed={linhaId === l.id}
+                onClick={() => setLinhaId(l.id)}
+              >
                 {l.nome}
               </button>
             ))}
@@ -220,7 +228,11 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                   <span className="vt-over">
                     {m.categoria?.nome ?? 'Atacado'} · {l.nome}
                   </span>
-                  <Bolinhas m={m} cor={cor} onCor={(id) => setCorDe((s) => ({ ...s, [m.id]: id }))} />
+                  <Bolinhas
+                    m={m}
+                    cor={cor}
+                    onCor={(id) => setCorDe((s) => ({ ...s, [m.id]: id }))}
+                  />
                 </div>
                 <h2 className="vt-name">{m.nome}</h2>
                 {m.etiquetas.length > 0 && (
@@ -237,7 +249,12 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                   <button type="button" className="vt-link" onClick={() => setKit(m)}>
                     Kit pra anunciar
                   </button>
-                  <button type="button" className="vt-cta" onClick={() => setGrade(m)} data-testid={`vt-grade-${m.id}`}>
+                  <button
+                    type="button"
+                    className="vt-cta"
+                    onClick={() => setGrade(m)}
+                    data-testid={`vt-grade-${m.id}`}
+                  >
                     Montar grade
                   </button>
                 </div>
@@ -313,6 +330,11 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           carrinho={carrinho}
           onVoltar={() => setVerPedido(false)}
           onEditar={(m) => setGrade(m)}
+          onEsvaziar={() => {
+            setCarrinho({});
+            setVerPedido(false);
+            avisar('Pedido esvaziado');
+          }}
           onEnviado={(e) => {
             setEnviado(e);
             setVerPedido(false);
@@ -364,22 +386,71 @@ function Carrossel({ cor, nome, onAbrir }: { cor: CorPub; nome: string; onAbrir?
   );
 }
 
+/** Botão que pede confirmação no próprio lugar (2º toque confirma). */
+function BotaoZerar({
+  rotulo,
+  pergunta,
+  onConfirmar,
+  testid,
+}: {
+  rotulo: string;
+  pergunta: string;
+  onConfirmar: () => void;
+  testid: string;
+}) {
+  const [certeza, setCerteza] = useState(false);
+  useEffect(() => {
+    if (!certeza) return;
+    const t = setTimeout(() => setCerteza(false), 4000);
+    return () => clearTimeout(t);
+  }, [certeza]);
+  return certeza ? (
+    <button
+      type="button"
+      className="vt-zerar vt-zerar-sim"
+      onClick={onConfirmar}
+      data-testid={`${testid}-sim`}
+    >
+      {pergunta}
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="vt-zerar"
+      onClick={() => setCerteza(true)}
+      data-testid={testid}
+    >
+      {rotulo}
+    </button>
+  );
+}
+
 function Bolinhas({ m, cor, onCor }: { m: ModeloPub; cor: CorPub; onCor: (id: string) => void }) {
   return (
     <div className="vt-dots">
       {m.cores.map((c) => (
-        <button
-          key={c.id}
-          type="button"
-          className="vt-dot"
-          style={{ background: c.hex }}
-          aria-label={c.nome}
-          aria-pressed={c.id === cor.id}
-          onClick={() => onCor(c.id)}
-        />
+        <Bolinha key={c.id} c={c} ativa={c.id === cor.id} onCor={onCor} />
       ))}
     </div>
   );
+}
+
+function Bolinha({ c, ativa, onCor }: { c: CorPub; ativa: boolean; onCor: (id: string) => void }) {
+  return (
+    <button
+      type="button"
+      className="vt-dot"
+      style={useFundoDaCor(c)}
+      aria-label={c.nome}
+      aria-pressed={ativa}
+      onClick={() => onCor(c.id)}
+    />
+  );
+}
+
+/** Bolinha pequena da linha da grade (só mostra). */
+function AmostraCor({ c }: { c: CorPub }) {
+  return <i style={useFundoDaCor(c)} />;
 }
 
 /** Preço das faixas de cima (Volume, Atacadão) — o card mostra a Entrada. */
@@ -516,7 +587,14 @@ function PaginaModelo({
         </div>
         {m.descricao && <p>{m.descricao}</p>}
         {m.videos.map((vd) => (
-          <video key={vd.url} className="vt-video" src={vd.url} controls preload="metadata" playsInline />
+          <video
+            key={vd.url}
+            className="vt-video"
+            src={vd.url}
+            controls
+            preload="metadata"
+            playsInline
+          />
         ))}
         <button type="button" className="vt-kitlink" onClick={onKit}>
           <div>
@@ -568,7 +646,12 @@ function FolhaGrade({
           {m.linhas.length > 1 && (
             <div className="vt-seg">
               {m.linhas.map((x) => (
-                <button key={x.id} type="button" aria-pressed={x.id === linha.id} onClick={() => setLinha(x)}>
+                <button
+                  key={x.id}
+                  type="button"
+                  aria-pressed={x.id === linha.id}
+                  onClick={() => setLinha(x)}
+                >
                   {x.nome}
                 </button>
               ))}
@@ -594,21 +677,27 @@ function FolhaGrade({
           {m.cores.map((c) => (
             <div key={c.id} className="vt-mrow">
               <div className="vt-rh">
-                <i style={{ background: c.hex }} />
+                <AmostraCor c={c} />
                 {c.nome}
                 <button
                   type="button"
                   className="vt-full"
                   onClick={() => {
                     let novo = carrinho;
-                    for (const t of linha.tamanhos) novo = somar(novo, m.id, c.id, t.id, delta, disponivelDe(m, c.id, t.id));
+                    for (const t of linha.tamanhos)
+                      novo = somar(novo, m.id, c.id, t.id, delta, disponivelDe(m, c.id, t.id));
                     onMudar(novo);
                   }}
                 >
                   {modo === 'por' ? '+' : '−'} grade completa
                 </button>
               </div>
-              <div className="vt-cells" style={{ gridTemplateColumns: `repeat(${Math.min(linha.tamanhos.length, 6)}, 1fr)` }}>
+              <div
+                className="vt-cells"
+                style={{
+                  gridTemplateColumns: `repeat(${Math.min(linha.tamanhos.length, 6)}, 1fr)`,
+                }}
+              >
                 {linha.tamanhos.map((t) => {
                   const q = carrinho[m.id]?.[c.id]?.[t.id] ?? 0;
                   const teto = disponivelDe(m, c.id, t.id);
@@ -623,7 +712,9 @@ function FolhaGrade({
                       // apagaria a casa como se estivesse esgotada.
                       disabled={esgotado}
                       aria-label={
-                        esgotado ? `${c.nome}, ${t.nome}: esgotado` : `${c.nome}, ${t.nome}: ${q} peças`
+                        esgotado
+                          ? `${c.nome}, ${t.nome}: esgotado`
+                          : `${c.nome}, ${t.nome}: ${q} peças`
                       }
                       onClick={() => onMudar(somar(carrinho, m.id, c.id, t.id, delta, teto))}
                     >
@@ -643,6 +734,18 @@ function FolhaGrade({
             <strong>{pecasDoModelo(carrinho, m.id)} peças</strong>
             <small>neste modelo</small>
           </div>
+          {pecasDoModelo(carrinho, m.id) > 0 && (
+            <BotaoZerar
+              rotulo="Zerar modelo"
+              pergunta="Sim, zerar"
+              testid="vt-zerar-modelo"
+              onConfirmar={() => {
+                const c = { ...carrinho };
+                delete c[m.id];
+                onMudar(c);
+              }}
+            />
+          )}
           <button type="button" className="vt-cta" onClick={onFechar}>
             Pronto
           </button>
@@ -652,7 +755,15 @@ function FolhaGrade({
   );
 }
 
-function FolhaKit({ m, onFechar, avisar }: { m: ModeloPub; onFechar: () => void; avisar: (t: string) => void }) {
+function FolhaKit({
+  m,
+  onFechar,
+  avisar,
+}: {
+  m: ModeloPub;
+  onFechar: () => void;
+  avisar: (t: string) => void;
+}) {
   const [baixando, setBaixando] = useState<string | null>(null);
   const texto = textoKit(m);
   const totalFotos = m.cores.reduce((s, c) => s + c.fotos.length, 0);
@@ -709,16 +820,30 @@ function FolhaKit({ m, onFechar, avisar }: { m: ModeloPub; onFechar: () => void;
             <button
               type="button"
               className="vt-ghost"
-              onClick={async () => avisar((await copiarTexto(texto)) ? 'Descrição copiada' : 'Selecione o texto e copie')}
+              onClick={async () =>
+                avisar(
+                  (await copiarTexto(texto)) ? 'Descrição copiada' : 'Selecione o texto e copie',
+                )
+              }
             >
               Copiar descrição
             </button>
-            <button type="button" className="vt-cta" disabled={!!baixando} onClick={() => void baixar(false)}>
+            <button
+              type="button"
+              className="vt-cta"
+              disabled={!!baixando}
+              onClick={() => void baixar(false)}
+            >
               {baixando ?? 'Baixar fotos (.zip)'}
             </button>
           </div>
           {m.videos.length > 0 && (
-            <button type="button" className="vt-link" disabled={!!baixando} onClick={() => void baixar(true)}>
+            <button
+              type="button"
+              className="vt-link"
+              disabled={!!baixando}
+              onClick={() => void baixar(true)}
+            >
               Baixar fotos + vídeos (.zip, ~{Math.ceil(mbVideos)} MB de vídeo)
             </button>
           )}
@@ -735,6 +860,7 @@ function SeuPedido({
   onVoltar,
   onEditar,
   onEnviado,
+  onEsvaziar,
 }: {
   slug: string;
   v: VitrinePub;
@@ -742,6 +868,7 @@ function SeuPedido({
   onVoltar: () => void;
   onEditar: (m: ModeloPub) => void;
   onEnviado: (e: Enviado) => void;
+  onEsvaziar: () => void;
 }) {
   const [envio, setEnvio] = useState(false);
   const r = resumoPedido(carrinho, v);
@@ -757,10 +884,20 @@ function SeuPedido({
           ←
         </button>
         <h2>Seu pedido</h2>
+        {r.pecas > 0 && (
+          <BotaoZerar
+            rotulo="Esvaziar"
+            pergunta="Sim, esvaziar"
+            testid="vt-esvaziar"
+            onConfirmar={onEsvaziar}
+          />
+        )}
       </header>
       <div className="vt-list">
         {itens.length === 0 ? (
-          <div className="vt-empty">Seu pedido está vazio. Volte à vitrine e monte a grade de um modelo.</div>
+          <div className="vt-empty">
+            Seu pedido está vazio. Volte à vitrine e monte a grade de um modelo.
+          </div>
         ) : (
           itens.map((m) => {
             const linhas: string[] = [];
@@ -801,7 +938,8 @@ function SeuPedido({
             <h3>Quanto você lucra</h3>
             {r.aConfirmar ? (
               <p className="vt-muted">
-                Há modelo com preço sob consulta — o total é confirmado pela {v.empresa.nome} depois do pedido.
+                Há modelo com preço sob consulta — o total é confirmado pela {v.empresa.nome} depois
+                do pedido.
               </p>
             ) : (
               <div className="vt-kv">
@@ -843,7 +981,8 @@ function SeuPedido({
               {ganho ? (
                 <>
                   Adicione {formatNumero(ganho.faltam)} peças para seu lucro ser{' '}
-                  <b className="vt-ganho">{formatMoeda(ganho.lucro)}</b> (faixa {NOME_FAIXA[ganho.faixa]}).
+                  <b className="vt-ganho">{formatMoeda(ganho.lucro)}</b> (faixa{' '}
+                  {NOME_FAIXA[ganho.faixa]}).
                 </>
               ) : prox ? (
                 `Adicione ${formatNumero(prox.faltam)} peças pra chegar na faixa ${NOME_FAIXA[prox.faixa]}.`
@@ -889,11 +1028,14 @@ function SeuPedido({
 
 /** "Faltam 30 peças ou R$ 120,00 pro pedido mínimo." — null quando já atingiu. */
 function textoMinimo(r: ReturnType<typeof resumoPedido>, v: VitrinePub): string | null {
-  const pecas = r.faltamMinimo > 0 ? `${r.faltamMinimo} ${r.faltamMinimo === 1 ? 'peça' : 'peças'}` : '';
+  const pecas =
+    r.faltamMinimo > 0 ? `${r.faltamMinimo} ${r.faltamMinimo === 1 ? 'peça' : 'peças'}` : '';
   const valor = r.faltaValor > 0 ? formatMoeda(r.faltaValor) : '';
   if (!pecas && !valor) return null;
-  if (pecas && valor) return `Faltam ${pecas} ${r.minimoOu ? 'ou' : 'e'} ${valor} pro pedido mínimo.`;
-  if (valor) return `Faltam ${valor} pro pedido mínimo de ${formatMoeda(v.pedidoMinimo?.valorMin ?? 0)}.`;
+  if (pecas && valor)
+    return `Faltam ${pecas} ${r.minimoOu ? 'ou' : 'e'} ${valor} pro pedido mínimo.`;
+  if (valor)
+    return `Faltam ${valor} pro pedido mínimo de ${formatMoeda(v.pedidoMinimo?.valorMin ?? 0)}.`;
   return `Pedido mínimo: faltam ${pecas}.`;
 }
 
@@ -1006,7 +1148,9 @@ function FolhaEnvio({
         <div className="vt-sh-head">
           <div>
             <div className="vt-name">Enviar pedido</div>
-            <span className="vt-muted">A {empresa} confirma tudo com você pelo WhatsApp antes de separar.</span>
+            <span className="vt-muted">
+              A {empresa} confirma tudo com você pelo WhatsApp antes de separar.
+            </span>
           </div>
         </div>
         <div className="vt-form">
@@ -1092,9 +1236,16 @@ function FolhaEnvio({
         <div className="vt-sh-foot">
           <div>
             <strong>{resumo.pecas} peças</strong>
-            <small>{resumo.aConfirmar ? 'total confirmado depois' : formatMoeda(resumo.investe)}</small>
+            <small>
+              {resumo.aConfirmar ? 'total confirmado depois' : formatMoeda(resumo.investe)}
+            </small>
           </div>
-          <button type="submit" className="vt-cta" disabled={!pronto || enviando} data-testid="vt-f-enviar">
+          <button
+            type="submit"
+            className="vt-cta"
+            disabled={!pronto || enviando}
+            data-testid="vt-f-enviar"
+          >
             {enviando ? 'Enviando…' : 'Enviar'}
           </button>
         </div>
@@ -1103,7 +1254,15 @@ function FolhaEnvio({
   );
 }
 
-function PedidoEnviado({ e, empresa, onFechar }: { e: Enviado; empresa: string; onFechar: () => void }) {
+function PedidoEnviado({
+  e,
+  empresa,
+  onFechar,
+}: {
+  e: Enviado;
+  empresa: string;
+  onFechar: () => void;
+}) {
   const agora = useAgora(Boolean(e.reservaExpiraEm));
   const relogio = restante(e.reservaExpiraEm, agora);
   return (
@@ -1129,8 +1288,8 @@ function PedidoEnviado({ e, empresa, onFechar }: { e: Enviado; empresa: string; 
             </p>
           ))}
         <p className="vt-muted">
-          A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''} o frete e o
-          pagamento.
+          A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''} o
+          frete e o pagamento.
         </p>
       </div>
       <footer>
