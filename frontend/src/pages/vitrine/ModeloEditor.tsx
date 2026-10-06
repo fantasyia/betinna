@@ -7,6 +7,7 @@ import { useToast } from '@/components/toast';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { Button, Checkbox, Dialog, Field, Input, Select, Switch, Tabs, Textarea } from '@/components/ui';
 import { CorDialog } from './ListasEmpresa';
+import { FichaTecnicaAba } from './FichaTecnica';
 import { FotosDaCor, VideosDoModelo } from './MidiaModelo';
 import { pendenciasDoModelo } from './pendencias';
 import {
@@ -163,7 +164,7 @@ export function copiarPrecos(r: Rascunho, de: string, para: string): Rascunho {
   return { ...r, linhas: { ...r.linhas, [para]: { ...destino, ...precos } } };
 }
 
-type Aba = 'dados' | 'cores' | 'grades' | 'variacoes' | 'kit';
+type Aba = 'dados' | 'cores' | 'grades' | 'variacoes' | 'kit' | 'ficha';
 
 export function ModeloEditor({
   modelo,
@@ -187,6 +188,8 @@ export function ModeloEditor({
 }) {
   const toast = useToast();
   const precificacao = useApiQuery<{ ativa: boolean }>('/precificacao/status');
+  // ERP próprio ligado: aba de ficha técnica (só com o modelo já salvo).
+  const erp = useApiQuery<{ ativo: boolean }>('/erp/estoque/status');
   const [aba, setAba] = useState<Aba>('dados');
   const [atual, setAtual] = useState<Modelo | null>(modelo);
   const [r, setR] = useState<Rascunho>(() => rascunhoDe(modelo, linhas));
@@ -353,6 +356,7 @@ export function ModeloEditor({
           { value: 'grades', label: '3. Grades e preços' },
           { value: 'variacoes', label: 'Variações', count: atual?.variacoes.length },
           { value: 'kit', label: '4. Kit pra anunciar' },
+          ...(erp.data?.ativo && atual ? [{ value: 'ficha', label: 'Ficha técnica' }] : []),
         ]}
         className="mb-4"
       />
@@ -470,7 +474,7 @@ export function ModeloEditor({
                 : null;
             const outras = linhasMarcadas.filter((o) => o.id !== l.id);
             // Atalho pra calculadora: só com a linha JÁ salva no modelo (abre com os preços salvos).
-            const linhaSalva = modelo?.linhas.find((x) => x.linhaId === l.id);
+            const linhaSalva = atual?.linhas.find((x) => x.linhaId === l.id);
             return (
               <div key={l.id} className="rounded-[10px] border border-border p-3">
                 <Switch label={`Linha ${l.nome}`} checked={rl.marcada} onChange={(e) => setLinha(l.id, { marcada: e.target.checked })} />
@@ -559,6 +563,10 @@ export function ModeloEditor({
             );
           })}
         </div>
+      )}
+
+      {aba === 'ficha' && atual && (
+        <FichaTecnicaAba linhas={atual.linhas.map((l) => ({ id: l.id, nome: l.linha.nome }))} />
       )}
 
       {aba === 'variacoes' && (

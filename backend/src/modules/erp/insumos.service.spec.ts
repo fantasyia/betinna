@@ -24,7 +24,7 @@ const insumo = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function montar(opts: { ligado?: boolean; saldo?: number; movs?: number } = {}) {
+function montar(opts: { ligado?: boolean; saldo?: number; movs?: number; emFicha?: number } = {}) {
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([{ custoMedio: new Prisma.Decimal(40) }]),
     insumoMovimento: {
@@ -53,6 +53,7 @@ function montar(opts: { ligado?: boolean; saldo?: number; movs?: number } = {}) 
       create: vi.fn().mockResolvedValue({}),
       findMany: vi.fn().mockResolvedValue([]),
     },
+    fichaTecnicaItem: { count: vi.fn().mockResolvedValue(opts.emFicha ?? 0) },
     $transaction: vi.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   };
   const erp = {
@@ -145,6 +146,12 @@ describe('InsumosService', () => {
   it('excluir insumo com histórico: recusa (desative)', async () => {
     const { svc, prisma } = montar({ movs: 1 });
     await expect(svc.excluir(user as never, 'ins-1')).rejects.toBeInstanceOf(BusinessRuleException);
+    expect(prisma.insumo.delete).not.toHaveBeenCalled();
+  });
+
+  it('excluir insumo que está em ficha técnica: recusa (FK daria erro de banco)', async () => {
+    const { svc, prisma } = montar({ emFicha: 2 });
+    await expect(svc.excluir(user as never, 'ins-1')).rejects.toThrow(/ficha/);
     expect(prisma.insumo.delete).not.toHaveBeenCalled();
   });
 

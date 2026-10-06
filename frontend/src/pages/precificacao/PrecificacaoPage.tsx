@@ -37,7 +37,7 @@ interface LinhaPrec {
   precoVolume: number | null;
   precoAtacadao: number | null;
   precoSugerido: number | null;
-  custo: { manual: number | null; atualizadoEm: string | null };
+  custo: { manual: number | null; atualizadoEm: string | null; previsto?: number | null };
 }
 interface Dados {
   taxas: {
@@ -244,6 +244,18 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
           >
             <Input value={custo} onChange={(e) => setCusto(e.target.value)} inputMode="decimal" data-testid="prec-custo" />
           </Field>
+          {linha?.custo.previsto != null && (
+            <p className="text-xs text-muted" data-testid="prec-previsto">
+              Previsto pela ficha técnica: <b className="text-text">{formatMoeda(linha.custo.previsto)}</b>{' '}
+              <button
+                type="button"
+                className="text-primary underline"
+                onClick={() => setCusto(paraCampo(Math.round(linha.custo.previsto! * 100) / 100))}
+              >
+                usar este
+              </button>
+            </p>
+          )}
         </Secao>
 
         <Secao titulo="Seu preço por faixa (R$ por peça)">

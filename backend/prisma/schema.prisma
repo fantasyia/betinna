@@ -4113,6 +4113,9 @@ model CatalogoModelo {
   variacoes CatalogoVariacao[]
   videos    CatalogoVideo[]
 
+  /// ERP próprio: preço por peça que cada facção cobra por este modelo.
+  faccaoPrecos FaccaoPreco[]
+
   @@index([empresaId, ativo, ordem])
 }
 
@@ -4191,6 +4194,8 @@ model CatalogoModeloLinha {
   linha     CatalogoLinha           @relation(fields: [linhaId], references: [id], onDelete: Restrict)
   tamanhos  CatalogoModeloTamanho[]
   variacoes CatalogoVariacao[]
+  /// ERP próprio: o que vai em cada peça desta grade (consumo médio por insumo).
+  fichaTecnica FichaTecnica?
 
   @@unique([modeloId, linhaId])
 }
@@ -4360,6 +4365,7 @@ model Insumo {
   atualizadoEm  DateTime      @updatedAt
 
   movimentos InsumoMovimento[]
+  fichaItens FichaTecnicaItem[]
 
   @@index([empresaId, ativo])
 }
@@ -4384,4 +4390,70 @@ model InsumoMovimento {
 
   @@index([empresaId, insumoId])
   @@index([empresaId, criadoEm])
+}
+
+// ─── ERP próprio · Fase 2 · entrega 3 · ficha técnica e facções ───
+// Consumo médio por GRADE (a linha do modelo — Regular P–GG, Plus G1–G3), não
+// por tamanho (Léo, 06/10: "fica mais fácil de precificar"). A OP mede o
+// consumo real e o Léo decide se atualiza a ficha.
+
+model FichaTecnica {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  modeloLinhaId       String   @unique
+  /// Custo de facção previsto por peça (R$) — antes de escolher a facção da OP.
+  custoFaccaoPrevisto Decimal? @db.Decimal(14, 2)
+  observacoes         String?
+  criadoEm            DateTime @default(now())
+  atualizadoEm        DateTime @updatedAt
+
+  modeloLinha CatalogoModeloLinha @relation(fields: [modeloLinhaId], references: [id], onDelete: Cascade)
+  itens       FichaTecnicaItem[]
+
+  @@index([empresaId])
+}
+
+model FichaTecnicaItem {
+  id             String  @id @default(cuid())
+  fichaId        String
+  insumoId       String
+  /// Na unidade do insumo (kg, metro, unidade, par) por PEÇA. 4 casas.
+  consumoPorPeca Decimal @db.Decimal(14, 4)
+  observacao     String?
+
+  ficha  FichaTecnica @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+  insumo Insumo       @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+
+  @@unique([fichaId, insumoId])
+}
+
+/// Quem costura. A facção recebe o tecido JÁ CORTADO e cobra por peça ENVIADA.
+model Faccao {
+  id            String   @id @default(cuid())
+  empresaId     String
+  nome          String
+  contato       String?
+  telefone      String?
+  /// O que ela costura (malha, moletom, UV…).
+  especialidade String?
+  observacoes   String?
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  precos FaccaoPreco[]
+
+  @@index([empresaId, ativo])
+}
+
+model FaccaoPreco {
+  id           String  @id @default(cuid())
+  faccaoId     String
+  modeloId     String
+  precoPorPeca Decimal @db.Decimal(14, 2)
+
+  faccao Faccao         @relation(fields: [faccaoId], references: [id], onDelete: Cascade)
+  modelo CatalogoModelo @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+
+  @@unique([faccaoId, modeloId])
 }

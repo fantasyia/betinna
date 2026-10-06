@@ -1,4 +1,4 @@
-import { Boxes, Calculator, Layers, Package, Sparkles, Store } from 'lucide-react';
+import { Boxes, Calculator, Layers, Package, Scissors, Sparkles, Store } from 'lucide-react';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
@@ -34,6 +34,7 @@ export function CatalogoTabs() {
       ? [
           { to: '/estoque', label: 'Estoque', icon: <Boxes size={14} /> },
           { to: '/insumos', label: 'Insumos', icon: <Layers size={14} /> },
+          { to: '/faccoes', label: 'Facções', icon: <Scissors size={14} /> },
         ]
       : []),
   ];

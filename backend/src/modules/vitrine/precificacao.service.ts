@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
@@ -9,6 +9,7 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { PrecosLinhaDto, TaxasPrecificacaoDto } from './precificacao.dto';
+import { FichasService } from '@modules/erp/fichas.service';
 import { VitrineAdminService } from './vitrine-admin.service';
 import { minimoDaVitrine } from './vitrine-pedido.service';
 
@@ -40,6 +41,8 @@ export class PrecificacaoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly admin: VitrineAdminService,
+    // Custo previsto pela ficha técnica (ERP). Opcional: sem ERP, só o manual.
+    @Optional() private readonly fichas?: FichasService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -104,6 +107,12 @@ export class PrecificacaoService {
         },
       }),
     ]);
+    const previstos = this.fichas
+      ? await this.fichas.custosPrevistos(
+          empresaId,
+          modelos.flatMap((m) => m.linhas.map((l) => l.id)),
+        )
+      : new Map<string, number>();
     return {
       taxas: {
         impostoPct: secao.impostoPct ?? null,
@@ -132,7 +141,12 @@ export class PrecificacaoService {
             precoAtacadao: num(l.precoAtacadao),
             precoSugerido: num(l.precoSugerido),
             // Hoje só existe o manual; o custo das OPs entra com o ERP Fase 2.
-            custo: { manual: num(l.custoPorPeca), atualizadoEm: l.custoAtualizadoEm },
+            custo: {
+              manual: num(l.custoPorPeca),
+              atualizadoEm: l.custoAtualizadoEm,
+              /** Σ consumo × custo médio + facção prevista (ficha técnica). */
+              previsto: previstos.get(l.id) ?? null,
+            },
           })),
       })),
     };

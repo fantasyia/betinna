@@ -51,6 +51,7 @@ const VitrinePublicaPage = lazyComRetry(() => import("@/pages/vitrine-publica/Vi
 const PrecificacaoPage = lazyComRetry(() => import("@/pages/precificacao/PrecificacaoPage"));
 const EstoquePage = lazyComRetry(() => import("@/pages/estoque/EstoquePage"));
 const InsumosPage = lazyComRetry(() => import("@/pages/insumos/InsumosPage"));
+const FaccoesPage = lazyComRetry(() => import("@/pages/faccoes/FaccoesPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -399,6 +400,19 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <InsumosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // ERP próprio · facções — gate fino na página e no backend.
+    path: "/faccoes",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <FaccoesPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

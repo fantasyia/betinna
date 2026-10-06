@@ -145,6 +145,13 @@ export class InsumosService {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
+    const emFicha = await this.prisma.fichaTecnicaItem.count({ where: { insumoId: id } });
+    if (emFicha > 0) {
+      throw new BusinessRuleException(
+        `Este insumo está em ${emFicha} ficha(s) técnica(s) — tire de lá antes, ou desative`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
     await this.prisma.insumo.delete({ where: { id } });
     return { ok: true };
   }
