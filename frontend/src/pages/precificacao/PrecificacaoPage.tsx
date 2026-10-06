@@ -115,6 +115,13 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
   const [emb, setEmb] = useState(paraCampo(d.taxas.embalagemPorPedido));
   const [pag, setPag] = useState<'pix' | 'cartao'>('pix');
 
+  // Regras do pedido: vêm do cadastro e dá pra mexer pra simular (não grava).
+  const [minValor, setMinValor] = useState(paraCampo(d.pedidoMinimo?.valorMin));
+  const [minPecas, setMinPecas] = useState(paraCampo(d.pedidoMinimo?.quantidadeMin));
+  const [volIni, setVolIni] = useState(paraCampo(d.faixas.minimoVolume));
+  const [ataIni, setAtaIni] = useState(paraCampo(d.faixas.minimoAtacadao));
+  const [nomeAvulso, setNomeAvulso] = useState('');
+
   const [qtd, setQtd] = useState('');
   const [alvo, setAlvo] = useState('');
   const [alvoQ, setAlvoQ] = useState('500');
@@ -129,13 +136,26 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
     embalagemPorPedido: n(emb),
     precos: { entrada: lerNumero(p1), volume: lerNumero(p2), atacadao: lerNumero(p3) },
     sugerido: lerNumero(sug),
-    faixas: d.faixas,
-    minimo: d.pedidoMinimo,
+    faixas: { minimoVolume: inteiro(volIni), minimoAtacadao: inteiro(ataIni) },
+    minimo:
+      inteiro(minPecas) || lerNumero(minValor)
+        ? {
+            valorMin: lerNumero(minValor),
+            quantidadeMin: inteiro(minPecas),
+            modo: d.pedidoMinimo?.modo ?? 'OU',
+          }
+        : null,
   };
   const qs = quantidades(s, lerNumero(qtd));
   const temPreco = [s.precos.entrada, s.precos.volume, s.precos.atacadao].some((p) => p && p > 0);
-  const vol = d.faixas.minimoVolume;
-  const ata = d.faixas.minimoAtacadao;
+  const vol = s.faixas.minimoVolume;
+  const ata = s.faixas.minimoAtacadao;
+  // Simulando regra diferente da cadastrada? Avisa — quem manda é o cadastro.
+  const regraMudou =
+    vol !== d.faixas.minimoVolume ||
+    ata !== d.faixas.minimoAtacadao ||
+    (s.minimo?.valorMin ?? null) !== (d.pedidoMinimo?.valorMin ?? null) ||
+    (s.minimo?.quantidadeMin ?? null) !== (d.pedidoMinimo?.quantidadeMin ?? null);
   const rotuloQ = (q: number) =>
     q === qs.minimo ? 'Pedido mínimo' : q === vol ? `Início do ${NOME_FAIXA.volume}` : q === ata ? `Início do ${NOME_FAIXA.atacadao}` : `Pedido de ${formatNumero(q)}`;
 
@@ -178,17 +198,6 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
     }
   }
 
-  const textoMinimo = (() => {
-    const m = d.pedidoMinimo;
-    if (!m) return 'Sem pedido mínimo configurado (Configurações → Pedido mínimo).';
-    const partes = [
-      m.quantidadeMin ? `${formatNumero(m.quantidadeMin)} peças` : null,
-      m.valorMin ? formatMoeda(m.valorMin) : null,
-    ].filter(Boolean);
-    return `Pedido mínimo: ${partes.join(m.modo === 'OU' ? ' ou ' : ' e ')}${m.modo === 'OU' && partes.length > 1 ? ', o que vier primeiro' : ''}.`;
-  })();
-  const textoFaixas = `Entrada${vol ? ` até ${formatNumero(vol - 1)}` : ''} · Volume${vol ? ` a partir de ${formatNumero(vol)}` : ' (sem limite)'} · Atacadão${ata ? ` a partir de ${formatNumero(ata)}` : ' (sem limite)'}`;
-
   const alvoN = lerNumero(alvo);
   const alvoQN = Math.max(1, Math.round(lerNumero(alvoQ) ?? 0) || 1);
   const precoAlvo = alvoN ? precoParaLucro(alvoN, alvoQN, s) : null;
@@ -206,6 +215,11 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
             <option value={AVULSO}>Produto avulso (só simular)</option>
           </Select>
         </Field>
+        {!linha && (
+          <Field label="Nome (só pra simular)">
+            <Input value={nomeAvulso} onChange={(e) => setNomeAvulso(e.target.value)} data-testid="prec-nome" />
+          </Field>
+        )}
 
         <Secao titulo="Seu custo">
           <Field
@@ -230,22 +244,19 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
 
         <Secao titulo="Seu preço por faixa (R$ por peça)">
           <div className="grid grid-cols-3 gap-2">
-            <Field label={`Entrada`}>
+            <Field label={<Faixa nome="Entrada" chip={vol ? `até ${formatNumero(vol - 1)}` : null} />}>
               <Input value={p1} onChange={(e) => setP1(e.target.value)} inputMode="decimal" data-testid="prec-p1" />
             </Field>
-            <Field label={`Volume`}>
+            <Field label={<Faixa nome="Volume" chip={vol ? `${formatNumero(vol)}+` : null} />}>
               <Input value={p2} onChange={(e) => setP2(e.target.value)} inputMode="decimal" data-testid="prec-p2" />
             </Field>
-            <Field label={`Atacadão`}>
+            <Field label={<Faixa nome="Atacadão" chip={ata ? `${formatNumero(ata)}+` : null} />}>
               <Input value={p3} onChange={(e) => setP3(e.target.value)} inputMode="decimal" data-testid="prec-p3" />
             </Field>
           </div>
           <Field label="Revenda sugerida pro lojista (R$)" hint="O preço que ele cobra do consumidor final">
             <Input value={sug} onChange={(e) => setSug(e.target.value)} inputMode="decimal" data-testid="prec-sug" />
           </Field>
-          <p className="text-xs text-muted">
-            {textoFaixas}. {textoMinimo}
-          </p>
           <Button
             onClick={salvarLinha}
             loading={salvando === 'linha'}
@@ -254,6 +265,28 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
           >
             Salvar preços no modelo
           </Button>
+        </Secao>
+
+        <Secao titulo="Pedido mínimo e faixas (quantidade de peças)">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Pedido mínimo (R$)">
+              <Input value={minValor} onChange={(e) => setMinValor(e.target.value)} inputMode="decimal" data-testid="prec-min-valor" />
+            </Field>
+            <Field label={`${d.pedidoMinimo?.modo === 'E' ? 'e' : 'ou'} mínimo de peças`}>
+              <Input value={minPecas} onChange={(e) => setMinPecas(e.target.value)} inputMode="numeric" data-testid="prec-min-pecas" />
+            </Field>
+            <Field label="Volume a partir de (peças)">
+              <Input value={volIni} onChange={(e) => setVolIni(e.target.value)} inputMode="numeric" data-testid="prec-vol" />
+            </Field>
+            <Field label="Atacadão a partir de (peças)">
+              <Input value={ataIni} onChange={(e) => setAtaIni(e.target.value)} inputMode="numeric" data-testid="prec-ata" />
+            </Field>
+          </div>
+          <p className={cn('text-xs', regraMudou ? 'text-warning' : 'text-muted')}>
+            {regraMudou
+              ? 'Simulando uma regra diferente da cadastrada — isto NÃO muda a vitrine. Pra valer: Configurações → Pedido mínimo e Vitrine → Configuração.'
+              : `O pedido fecha no mínimo em R$ ${d.pedidoMinimo?.modo === 'E' ? 'e' : 'ou'} no de peças${d.pedidoMinimo?.modo === 'E' ? '' : ', o que vier primeiro'}. Vem do cadastro (Configurações → Pedido mínimo e Vitrine → Configuração); mudar aqui só simula.`}
+          </p>
         </Secao>
 
         <Secao titulo="Custos da empresa (todos os produtos)">
@@ -285,7 +318,7 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
 
       <Card className="p-4 flex flex-col gap-4 min-w-0" aria-label="Resultado">
         <div className="flex flex-wrap items-end gap-3">
-          <h2 className="text-lg font-semibold mr-auto">{linha ? linha.rotulo : 'Produto avulso'}</h2>
+          <h2 className="text-lg font-semibold mr-auto">{linha ? linha.rotulo : nomeAvulso.trim() || 'Produto avulso'}</h2>
           <Field label="Pagamento" className="w-44">
             <Select value={pag} onChange={(e) => setPag(e.target.value as 'pix' | 'cartao')} data-testid="prec-pag">
               <option value="pix">Pix</option>
@@ -393,6 +426,26 @@ function Calculadora({ d, onSalvou }: { d: Dados; onSalvou: () => void }) {
       </Card>
     </div>
   );
+}
+
+/** Rótulo do preço da faixa com a QUANTIDADE dela num chip — o campo é R$. */
+function Faixa({ nome, chip }: { nome: string; chip: string | null }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {nome}
+      {chip && (
+        <Badge variant="neutral" size="sm">
+          {chip}
+        </Badge>
+      )}
+    </span>
+  );
+}
+
+/** Texto → inteiro positivo; vazio/zero → null. */
+function inteiro(t: string): number | null {
+  const v = lerNumero(t);
+  return v && v > 0 ? Math.round(v) : null;
 }
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
