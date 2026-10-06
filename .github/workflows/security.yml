@@ -7,7 +7,8 @@
 #   - Manualmente via workflow_dispatch
 #
 # Quebra o build se:
-#   - npm audit reporta HIGH ou CRITICAL
+#   - npm audit reporta HIGH ou CRITICAL (exceções com motivo em
+#     .github/scripts/npm-audit-gate.mjs)
 #   - Prisma schema inválido
 #   - gitleaks/truffleHog encontra secret hardcoded
 # =====================================================================
@@ -52,8 +53,12 @@ jobs:
         working-directory: ./${{ matrix.service }}
         run: |
           echo "→ Auditando ${{ matrix.service }} para HIGH+ vulnerabilities..."
-          npm audit --audit-level=high
-        # Quebra se HIGH ou CRITICAL encontrado. MODERATE+LOW são apenas
+          # npm audit sai != 0 quando acha qualquer coisa; quem decide é o gate
+          # (que também falha se o próprio audit der erro).
+          npm audit --json > "$RUNNER_TEMP/audit.json" || true
+          node ../.github/scripts/npm-audit-gate.mjs ${{ matrix.service }} < "$RUNNER_TEMP/audit.json"
+        # Quebra se HIGH ou CRITICAL encontrado, salvo advisory liberado com
+        # motivo no gate (só build/dev e sem correção). MODERATE+LOW são apenas
         # informativos (uniformidade com policy de deps transitivas).
 
   # ─── Prisma validate ─────────────────────────────────────────────────
