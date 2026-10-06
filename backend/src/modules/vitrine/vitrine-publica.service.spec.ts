@@ -112,6 +112,22 @@ describe('VitrinePublicaService', () => {
     expect(r.empresa).toEqual({ nome: 'Ribelt Distribuidora', logoUrl: 'https://x/logo.png' });
   });
 
+  it('🔒 CUSTO nunca sai na vitrine pública (calculadora de precificação)', async () => {
+    const m = modelo();
+    const comCusto = {
+      ...m,
+      linhas: m.linhas.map((l) => ({
+        ...l,
+        custoPorPeca: new Prisma.Decimal(9.7),
+        custoAtualizadoEm: new Date(),
+      })),
+    };
+    const prisma = makePrisma(vitrineNoAr, [comCusto]);
+    const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);
+    const json = JSON.stringify(await svc.carregar('atacado-ribelt'));
+    expect(json).not.toMatch(/custo|9\.7/i);
+  });
+
   it('preço vira número, tamanhos na ordem da lista e URL pública das fotos', async () => {
     const prisma = makePrisma(vitrineNoAr, [modelo()]);
     const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);

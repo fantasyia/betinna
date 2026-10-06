@@ -5,14 +5,21 @@ import { MemoryRouter } from 'react-router-dom';
 const estado = vi.hoisted(() => ({
   role: 'DIRECTOR' as string | null,
   config: null as { id: string } | null,
-  pathPedido: undefined as string | null | undefined,
+  precificacao: null as { ativa: boolean } | null,
+  paths: [] as Array<string | null>,
 }));
 
 vi.mock('@/hooks/usePermission', () => ({ useRole: () => estado.role }));
 vi.mock('@/hooks/useApiQuery', () => ({
   useApiQuery: (path: string | null) => {
-    estado.pathPedido = path;
-    return { data: path ? estado.config : null, loading: false, error: null, refetch: vi.fn() };
+    estado.paths.push(path);
+    const data =
+      path === '/vitrine/admin/config'
+        ? estado.config
+        : path === '/precificacao/status'
+          ? estado.precificacao
+          : null;
+    return { data, loading: false, error: null, refetch: vi.fn() };
   },
 }));
 
@@ -25,17 +32,20 @@ const montar = () =>
     </MemoryRouter>,
   );
 
-describe('CatalogoTabs — aba Vitrine só onde ela existe', () => {
+describe('CatalogoTabs — abas Vitrine e Precificação só onde existem', () => {
   beforeEach(() => {
     estado.role = 'DIRECTOR';
     estado.config = null;
-    estado.pathPedido = undefined;
+    estado.precificacao = null;
+    estado.paths = [];
   });
   afterEach(() => cleanup());
 
-  it('empresa SEM vitrine: as abas de sempre, nada novo', () => {
+  it('empresa SEM vitrine nem calculadora: as abas de sempre, nada novo', () => {
+    estado.precificacao = { ativa: false };
     montar();
     expect(screen.queryByText('Vitrine')).toBeNull();
+    expect(screen.queryByText('Precificação')).toBeNull();
     expect(screen.getByText('Produtos')).toBeTruthy();
     expect(screen.getByText('Meu catálogo')).toBeTruthy();
   });
@@ -46,11 +56,19 @@ describe('CatalogoTabs — aba Vitrine só onde ela existe', () => {
     expect(screen.getByText('Vitrine')).toBeTruthy();
   });
 
-  it('REP nem consulta a config (e não vê a aba)', () => {
+  it('calculadora ligada + diretor: mostra a aba Precificação', () => {
+    estado.precificacao = { ativa: true };
+    montar();
+    expect(screen.getByText('Precificação')).toBeTruthy();
+  });
+
+  it('REP nem consulta (e não vê nenhuma das duas abas)', () => {
     estado.role = 'REP';
     estado.config = { id: 'vit-1' };
+    estado.precificacao = { ativa: true };
     montar();
-    expect(estado.pathPedido).toBeNull();
+    expect(estado.paths.every((p) => p === null)).toBe(true);
     expect(screen.queryByText('Vitrine')).toBeNull();
+    expect(screen.queryByText('Precificação')).toBeNull();
   });
 });

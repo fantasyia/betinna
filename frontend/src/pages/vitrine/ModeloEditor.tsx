@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Copy, Plus, Trash2, X } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
 import { useToast } from '@/components/toast';
+import { useApiQuery } from '@/hooks/useApiQuery';
 import { Button, Checkbox, Dialog, Field, Input, Select, Switch, Tabs, Textarea } from '@/components/ui';
 import { CorDialog } from './ListasEmpresa';
 import { FotosDaCor, VideosDoModelo } from './MidiaModelo';
@@ -184,6 +186,7 @@ export function ModeloEditor({
   onListasMudaram: () => void;
 }) {
   const toast = useToast();
+  const precificacao = useApiQuery<{ ativa: boolean }>('/precificacao/status');
   const [aba, setAba] = useState<Aba>('dados');
   const [atual, setAtual] = useState<Modelo | null>(modelo);
   const [r, setR] = useState<Rascunho>(() => rascunhoDe(modelo, linhas));
@@ -466,6 +469,8 @@ export function ModeloEditor({
                 ? sugerido - entrada
                 : null;
             const outras = linhasMarcadas.filter((o) => o.id !== l.id);
+            // Atalho pra calculadora: só com a linha JÁ salva no modelo (abre com os preços salvos).
+            const linhaSalva = modelo?.linhas.find((x) => x.linhaId === l.id);
             return (
               <div key={l.id} className="rounded-[10px] border border-border p-3">
                 <Switch label={`Linha ${l.nome}`} checked={rl.marcada} onChange={(e) => setLinha(l.id, { marcada: e.target.checked })} />
@@ -520,6 +525,15 @@ export function ModeloEditor({
                         </p>
                       ) : (
                         <span />
+                      )}
+                      {precificacao.data?.ativa && linhaSalva && (
+                        <Link
+                          to={`/precificacao?linha=${linhaSalva.id}`}
+                          className="text-xs font-semibold text-primary underline"
+                          title="Abre a calculadora com os preços SALVOS desta linha"
+                        >
+                          Calcular lucro →
+                        </Link>
                       )}
                       {outras.length > 0 && (
                         <label className="flex items-center gap-2 text-xs text-muted">

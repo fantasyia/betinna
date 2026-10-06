@@ -4172,6 +4172,11 @@ model CatalogoModeloLinha {
   precoAtacadao Decimal? @db.Decimal(14, 2)
   /// Quanto o lojista deve cobrar na revenda — base do "seu lucro por peça".
   precoSugerido Decimal? @db.Decimal(14, 2)
+  /// Custo por peça (calculadora de precificação). 🔒 NUNCA sai na vitrine
+  /// pública. Hoje digitado à mão; quando o ERP fechar OP, o custo dele vira o
+  /// padrão e este fica como simulação.
+  custoPorPeca      Decimal?  @db.Decimal(14, 2)
+  custoAtualizadoEm DateTime?
   /// Tabela de medidas desta linha do modelo (kit pra anunciar):
   /// `{ "colunas": ["Tórax","Comprimento"], "linhas": [{ "tamanho": "P", "valores": ["50","70"] }] }`.
   tabelaMedidas Json?

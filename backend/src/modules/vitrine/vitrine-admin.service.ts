@@ -771,6 +771,16 @@ export class VitrineAdminService {
     }
   }
 
+  /**
+   * Preço da linha mudou fora do cadastro (calculadora de precificação):
+   * reescreve o `precoTabela` dos produtos das variações daquele modelo.
+   */
+  async ressincronizarModelo(empresaId: string, modeloId: string): Promise<void> {
+    await this.prisma.$transaction((tx) => this.sincronizarVariacoes(tx, empresaId, modeloId), {
+      timeout: 30_000,
+    });
+  }
+
   /** Renomeou cor/linha/tamanho → reescreve o nome dos produtos que a usam. */
   private async ressincronizarModelosQueUsam(
     empresaId: string,

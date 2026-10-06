@@ -48,6 +48,7 @@ const BotAuditoriaPage = lazyComRetry(() => import("@/pages/BotAuditoriaPage"));
 const RespostasRapidasPage = lazyComRetry(() => import("@/pages/RespostasRapidasPage"));
 const VitrineCadastroPage = lazyComRetry(() => import("@/pages/vitrine/VitrineCadastroPage"));
 const VitrinePublicaPage = lazyComRetry(() => import("@/pages/vitrine-publica/VitrinePublicaPage"));
+const PrecificacaoPage = lazyComRetry(() => import("@/pages/precificacao/PrecificacaoPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -355,6 +356,20 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <VitrineCadastroPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // Calculadora de precificação — o gate fino (ADMIN/DIRECTOR + flag da
+    // empresa) é da própria página e do backend.
+    path: "/precificacao",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <PrecificacaoPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
