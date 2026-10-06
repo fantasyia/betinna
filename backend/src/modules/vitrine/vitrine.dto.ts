@@ -135,3 +135,54 @@ export const variacaoPatchSchema = z.object({
   estoque: z.number().int().min(0).max(10_000_000).nullable().optional(),
 });
 export type VariacaoPatchDto = z.infer<typeof variacaoPatchSchema>;
+
+/** Texto opcional: string vazia vira "não informado". */
+const opcional = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((v) => (v ? v : undefined));
+
+/**
+ * Pedido enviado na vitrine PÚBLICA. Só diz o QUÊ e QUANTO — preço e faixa
+ * são recalculados no servidor (ver `VitrinePedidoService`).
+ */
+export const pedidoVitrineSchema = z.object({
+  nome: z.string().trim().min(2, 'Informe seu nome').max(120),
+  whatsapp: z
+    .string()
+    .trim()
+    .refine((v) => {
+      const d = v.replace(/\D/g, '');
+      return d.length >= 10 && d.length <= 13;
+    }, 'WhatsApp com DDD'),
+  cidade: opcional(80),
+  uf: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{2}$/, 'UF com 2 letras')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  cpfCnpj: opcional(20).refine((v) => {
+    if (!v) return true;
+    const d = v.replace(/\D/g, '');
+    return d.length === 11 || d.length === 14;
+  }, 'CPF ou CNPJ incompleto'),
+  observacoes: opcional(500),
+  /** Isca pra robô: campo invisível na tela. Gente nunca preenche. */
+  site: z.string().max(0).optional(),
+  itens: z
+    .array(
+      z.object({
+        corId: z.string().min(1).max(40),
+        tamanhoId: z.string().min(1).max(40),
+        quantidade: z.number().int().min(1).max(99_999),
+      }),
+    )
+    .min(1, 'Seu pedido está vazio')
+    .max(2000),
+});
+export type PedidoVitrineDto = z.infer<typeof pedidoVitrineSchema>;

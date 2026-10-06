@@ -72,6 +72,8 @@ enum PedidoOrigem {
   MARKETPLACE_TIKTOK
   EMAIL
   FORMULARIO
+  /// Pedido enviado pelo cliente na vitrine pública de atacado (`/v/:slug`).
+  VITRINE
 }
 
 /// Só PIX e CARTÃO DE CRÉDITO (decisão do Léo, 05/09/2026). BOLETO fica pelo
@@ -2250,6 +2252,9 @@ enum FluxoTriggerTipo {
   LEAD_ETAPA_MUDOU
   PEDIDO_APROVADO
   PEDIDO_ENTREGUE
+  /// Pedido NOVO entrou no app. Hoje só a vitrine de atacado dispara (o
+  /// contexto traz `origem`); rep, site e ERP ainda não.
+  PEDIDO_CRIADO
   /// O rastreio PASSOU A EXISTIR (vazio → preenchido). É o momento em que o
   /// cliente quer saber: o despacho, dias antes da entrega. Não dá pra usar
   /// PEDIDO_ENTREGUE pra isso — avisaria o código depois de a encomenda ter

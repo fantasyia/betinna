@@ -91,6 +91,8 @@ interface Pedido {
   numeroErp?: string | null;
   /** Número que o cliente do SITE recebeu (SB…) — é o que ele cita ao ligar. */
   numeroSite?: string | null;
+  /** Canal de entrada (REP_APP, SITE, VITRINE…). */
+  origem?: string;
   enviadoErpEm?: string | null;
   /** Rastreio do ERP — quem despacha é o Tiny, aqui é espelho. */
   rastreioCodigo?: string | null;
@@ -711,6 +713,9 @@ export default function PedidosPage() {
                                 <span className="text-[11px] text-secondary tabular">
                                   Site {p.numeroSite}
                                 </span>
+                              )}
+                              {p.origem === 'VITRINE' && (
+                                <span className="text-[11px] text-secondary">Vitrine</span>
                               )}
                               {p.numeroErp && (
                                 <span className="text-[11px] text-muted tabular">

@@ -208,3 +208,25 @@ export function nomeArquivo(s: string): string {
       .slice(0, 60) || 'arquivo'
   );
 }
+
+/** O que vai no envio: só célula e quantidade — preço quem calcula é o servidor. */
+export function itensParaEnvio(c: Carrinho): Array<{ corId: string; tamanhoId: string; quantidade: number }> {
+  const out: Array<{ corId: string; tamanhoId: string; quantidade: number }> = [];
+  for (const porCor of Object.values(c)) {
+    for (const [corId, porTam] of Object.entries(porCor)) {
+      for (const [tamanhoId, quantidade] of Object.entries(porTam)) {
+        if (Number.isInteger(quantidade) && quantidade > 0) out.push({ corId, tamanhoId, quantidade });
+      }
+    }
+  }
+  return out;
+}
+
+/** WhatsApp digitado: (47) 99999-1234 — só pra exibir enquanto a pessoa digita. */
+export function mascararWhatsapp(bruto: string): string {
+  const d = bruto.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}

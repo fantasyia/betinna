@@ -32,6 +32,7 @@ export const TRIGGER_LABEL: Record<TriggerTipo, string> = {
   LEAD_ETAPA_MUDOU: 'Lead mudou etapa',
   PEDIDO_APROVADO: 'Pedido aprovado',
   PEDIDO_ENTREGUE: 'Pedido entregue',
+  PEDIDO_CRIADO: 'Pedido recebido (vitrine)',
   PEDIDO_RASTREIO_DISPONIVEL: 'Rastreio disponível',
   LEAD_REENGAJOU_SITE: 'Lead voltou pelo site',
   OCORRENCIA_ABERTA: 'Ocorrência aberta',
@@ -146,6 +147,12 @@ export const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> 
       { id: 't-etapa', label: 'Lead mudou etapa', tipo: 'TRIGGER', triggerTipo: 'LEAD_ETAPA_MUDOU' },
       { id: 't-pedido-ok', label: 'Pedido aprovado', tipo: 'TRIGGER', triggerTipo: 'PEDIDO_APROVADO' },
       { id: 't-pedido-ent', label: 'Pedido entregue', tipo: 'TRIGGER', triggerTipo: 'PEDIDO_ENTREGUE' },
+      {
+        id: 't-pedido-novo',
+        label: 'Pedido recebido (vitrine)',
+        tipo: 'TRIGGER',
+        triggerTipo: 'PEDIDO_CRIADO',
+      },
       {
         id: 't-pedido-rastreio',
         label: 'Rastreio disponível',

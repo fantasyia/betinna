@@ -177,3 +177,18 @@
 .vt-slide .vt-pontos { bottom: 30px; }
 .vt-hint { bottom: 46px; }
 .vt-lucro > div { align-content: start; }
+
+/* envio do pedido */
+.vt-envio { max-height: 94%; }
+.vt-form { overflow-y: auto; padding: 0 16px 10px; display: grid; gap: 10px; }
+.vt-form label { display: grid; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--oliva); }
+.vt-form label small { font-weight: 400; }
+.vt-form input { box-sizing: border-box; width: 100%; min-width: 0; height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid #e3d8bf; background: var(--branco); color: var(--petroleo); font: 500 16px var(--f-text); }
+.vt-form input:focus { outline: 2px solid var(--petroleo); outline-offset: 0; }
+.vt-dupla { display: grid; grid-template-columns: 1fr 72px; gap: 10px; }
+.vt-isca { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.vt-ok { z-index: 70; }
+.vt-ok-corpo { flex: 1; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; }
+.vt-ok-corpo h2 { margin: 0; font-family: var(--f-title); font-weight: 500; font-size: 30px; }
+.vt-ok-corpo p { margin: 0; max-width: 320px; line-height: 1.5; }
+.vt-ok-selo { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--lucro); color: var(--creme); font-size: 30px; }

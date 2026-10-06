@@ -10,6 +10,8 @@ export const fluxoTriggerTipoValues = [
   'LEAD_ETAPA_MUDOU',
   'PEDIDO_APROVADO',
   'PEDIDO_ENTREGUE',
+  // Pedido novo entrou no app (hoje só a vitrine de atacado dispara).
+  'PEDIDO_CRIADO',
   'PEDIDO_RASTREIO_DISPONIVEL',
   'LEAD_REENGAJOU_SITE',
   'OCORRENCIA_ABERTA',

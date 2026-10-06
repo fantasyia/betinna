@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
 import {
   NOME_FAIXA,
+  itensParaEnvio,
+  mascararWhatsapp,
   limparCarrinho,
   lucroPorPeca,
   pecasDoModelo,
@@ -22,9 +24,10 @@ import { baixarKit, copiarTexto } from './kit';
 import './vitrine.css';
 
 /**
- * Vitrine pública de atacado (Fase 1, entrega 3) — o link que o cliente abre
- * no celular: feed por linha e categoria, grade por cor × tamanho, carrinho
- * salvo no aparelho e kit pra anunciar. O ENVIO do pedido é a entrega 4.
+ * Vitrine pública de atacado (Fase 1) — o link que o cliente abre no celular:
+ * feed por linha e categoria, grade por cor × tamanho, carrinho salvo no
+ * aparelho, kit pra anunciar e o ENVIO do pedido, que entra no Betinna com
+ * origem VITRINE e preço recalculado no servidor.
  */
 
 const FONTES =
@@ -107,6 +110,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   const [kit, setKit] = useState<ModeloPub | null>(null);
   const [verPedido, setVerPedido] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [enviado, setEnviado] = useState<Enviado | null>(null);
   const feed = useRef<HTMLDivElement>(null);
 
   // Carrinho salvo no aparelho: sair e voltar mantém o pedido montado.
@@ -297,11 +301,21 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
 
       {verPedido && (
         <SeuPedido
+          slug={slug}
           v={v}
           carrinho={carrinho}
           onVoltar={() => setVerPedido(false)}
           onEditar={(m) => setGrade(m)}
+          onEnviado={(e) => {
+            setEnviado(e);
+            setVerPedido(false);
+            setCarrinho({});
+          }}
         />
+      )}
+
+      {enviado && (
+        <PedidoEnviado e={enviado} empresa={v.empresa.nome} onFechar={() => setEnviado(null)} />
       )}
 
       {toast && <div className="vt-toast">{toast}</div>}
@@ -665,16 +679,21 @@ function FolhaKit({ m, onFechar, avisar }: { m: ModeloPub; onFechar: () => void;
 }
 
 function SeuPedido({
+  slug,
   v,
   carrinho,
   onVoltar,
   onEditar,
+  onEnviado,
 }: {
+  slug: string;
   v: VitrinePub;
   carrinho: Carrinho;
   onVoltar: () => void;
   onEditar: (m: ModeloPub) => void;
+  onEnviado: (e: Enviado) => void;
 }) {
+  const [envio, setEnvio] = useState(false);
   const r = resumoPedido(carrinho, v);
   const prox = proximaFaixa(r.pecas, v.faixas);
   const itens = v.modelos.filter((m) => pecasDoModelo(carrinho, m.id) > 0);
@@ -782,9 +801,246 @@ function SeuPedido({
         )}
       </div>
       <footer>
-        {/* Entrega 4: envio do pedido (nome, WhatsApp, cidade/UF, CPF/CNPJ opcional). */}
-        <button type="button" className="vt-cta" disabled>
-          Enviar pedido · em breve
+        <button
+          type="button"
+          className="vt-cta"
+          data-testid="vt-enviar"
+          disabled={itens.length === 0 || r.faltamMinimo > 0}
+          onClick={() => setEnvio(true)}
+        >
+          Enviar pedido · {r.pecas} {r.pecas === 1 ? 'peça' : 'peças'}
+        </button>
+        <span className="vt-byline">
+          feito com <b>Betinna.ai</b>
+        </span>
+      </footer>
+      {envio && (
+        <FolhaEnvio
+          slug={slug}
+          empresa={v.empresa.nome}
+          carrinho={carrinho}
+          resumo={r}
+          onFechar={() => setEnvio(false)}
+          onEnviado={onEnviado}
+        />
+      )}
+    </section>
+  );
+}
+
+interface Enviado {
+  numero: string;
+  pecas: number;
+  total: number;
+  aConfirmar: boolean;
+}
+
+interface Contato {
+  nome: string;
+  whatsapp: string;
+  cidade: string;
+  uf: string;
+  cpfCnpj: string;
+}
+
+// Quem compra de novo não digita tudo outra vez (fica só neste aparelho).
+const CHAVE_CONTATO = 'vitrine:contato';
+const CONTATO_VAZIO: Contato = { nome: '', whatsapp: '', cidade: '', uf: '', cpfCnpj: '' };
+
+function lerContato(): Contato {
+  try {
+    const raw = localStorage.getItem(CHAVE_CONTATO);
+    return raw ? { ...CONTATO_VAZIO, ...(JSON.parse(raw) as Partial<Contato>) } : CONTATO_VAZIO;
+  } catch {
+    return CONTATO_VAZIO;
+  }
+}
+
+function FolhaEnvio({
+  slug,
+  empresa,
+  carrinho,
+  resumo,
+  onFechar,
+  onEnviado,
+}: {
+  slug: string;
+  empresa: string;
+  carrinho: Carrinho;
+  resumo: ReturnType<typeof resumoPedido>;
+  onFechar: () => void;
+  onEnviado: (e: Enviado) => void;
+}) {
+  const [f, setF] = useState<Contato>(lerContato);
+  const [isca, setIsca] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const mudar = (k: keyof Contato, valor: string) => setF((x) => ({ ...x, [k]: valor }));
+  const pronto = f.nome.trim().length >= 2 && f.whatsapp.replace(/\D/g, '').length >= 10;
+
+  async function enviar(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!pronto || enviando) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const r = await api.post<{ numero: string; totalPecas: number; total: number }>(
+        `/public/vitrine/${encodeURIComponent(slug)}/pedido`,
+        {
+          nome: f.nome.trim(),
+          whatsapp: f.whatsapp,
+          cidade: f.cidade.trim(),
+          uf: f.uf.trim(),
+          cpfCnpj: f.cpfCnpj.trim(),
+          site: isca,
+          itens: itensParaEnvio(carrinho),
+        },
+        { skipAuth: true },
+      );
+      try {
+        localStorage.setItem(CHAVE_CONTATO, JSON.stringify(f));
+      } catch {
+        /* sem armazenamento: só não lembra da próxima vez */
+      }
+      onEnviado({ numero: r.numero, pecas: r.totalPecas, total: r.total, aConfirmar: resumo.aConfirmar });
+    } catch (e) {
+      setErro(
+        e instanceof ApiError && e.status === 429
+          ? 'Muitos envios seguidos. Espere alguns minutos e tente de novo.'
+          : e instanceof ApiError && e.status >= 500
+            ? 'Não foi possível enviar agora. Seu pedido continua salvo — tente de novo em instantes.'
+            : apiErrorMessage(e),
+      );
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="vt-scrim" onClick={onFechar} />
+      <form className="vt-sheet vt-envio" onSubmit={enviar} aria-label="Enviar pedido">
+        <div className="vt-grab" />
+        <div className="vt-sh-head">
+          <div>
+            <div className="vt-name">Enviar pedido</div>
+            <span className="vt-muted">A {empresa} confirma tudo com você pelo WhatsApp antes de separar.</span>
+          </div>
+        </div>
+        <div className="vt-form">
+          <label>
+            Seu nome ou da loja
+            <input
+              value={f.nome}
+              onChange={(e) => mudar('nome', e.target.value)}
+              autoComplete="name"
+              maxLength={120}
+              required
+              data-testid="vt-f-nome"
+            />
+          </label>
+          <label>
+            WhatsApp com DDD
+            <input
+              value={f.whatsapp}
+              onChange={(e) => mudar('whatsapp', mascararWhatsapp(e.target.value))}
+              inputMode="tel"
+              autoComplete="tel-national"
+              placeholder="(47) 99999-1234"
+              required
+              data-testid="vt-f-whatsapp"
+            />
+          </label>
+          <div className="vt-dupla">
+            <label>
+              Cidade
+              <input
+                value={f.cidade}
+                onChange={(e) => mudar('cidade', e.target.value)}
+                autoComplete="address-level2"
+                maxLength={80}
+                data-testid="vt-f-cidade"
+              />
+            </label>
+            <label>
+              UF
+              <input
+                value={f.uf}
+                onChange={(e) =>
+                  mudar(
+                    'uf',
+                    e.target.value
+                      .replace(/[^a-z]/gi, '')
+                      .slice(0, 2)
+                      .toUpperCase(),
+                  )
+                }
+                autoComplete="address-level1"
+                data-testid="vt-f-uf"
+              />
+            </label>
+          </div>
+          <label>
+            <span>
+              CPF ou CNPJ <small>(opcional)</small>
+            </span>
+            <input
+              value={f.cpfCnpj}
+              onChange={(e) => mudar('cpfCnpj', e.target.value)}
+              inputMode="numeric"
+              maxLength={20}
+              data-testid="vt-f-doc"
+            />
+          </label>
+          {/* Isca pra robô: fora da tela e fora do Tab. */}
+          <input
+            className="vt-isca"
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            value={isca}
+            onChange={(e) => setIsca(e.target.value)}
+          />
+          {erro && (
+            <p className="vt-aviso" role="alert">
+              {erro}
+            </p>
+          )}
+        </div>
+        <div className="vt-sh-foot">
+          <div>
+            <strong>{resumo.pecas} peças</strong>
+            <small>{resumo.aConfirmar ? 'total confirmado depois' : formatMoeda(resumo.investe)}</small>
+          </div>
+          <button type="submit" className="vt-cta" disabled={!pronto || enviando} data-testid="vt-f-enviar">
+            {enviando ? 'Enviando…' : 'Enviar'}
+          </button>
+        </div>
+      </form>
+    </>
+  );
+}
+
+function PedidoEnviado({ e, empresa, onFechar }: { e: Enviado; empresa: string; onFechar: () => void }) {
+  return (
+    <section className="vt-cart vt-ok" aria-label="Pedido enviado" data-testid="vt-enviado">
+      <div className="vt-ok-corpo">
+        <div className="vt-ok-selo" aria-hidden="true">
+          ✓
+        </div>
+        <h2>Pedido enviado!</h2>
+        <p>
+          Recebemos o pedido <b>{e.numero}</b> com {e.pecas} peças
+          {e.aConfirmar ? '' : ` (${formatMoeda(e.total)})`}.
+        </p>
+        <p className="vt-muted">
+          A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''} o frete e o
+          pagamento.
+        </p>
+      </div>
+      <footer>
+        <button type="button" className="vt-cta" onClick={onFechar}>
+          Voltar à vitrine
         </button>
         <span className="vt-byline">
           feito com <b>Betinna.ai</b>

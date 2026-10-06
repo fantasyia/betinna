@@ -93,6 +93,7 @@ const TRIGGERS: Record<TriggerTipo, string> = {
   LEAD_ETAPA_MUDOU: 'Lead mudou de etapa',
   PEDIDO_APROVADO: 'Pedido aprovado',
   PEDIDO_ENTREGUE: 'Pedido entregue',
+  PEDIDO_CRIADO: 'Pedido recebido (vitrine)',
   PEDIDO_RASTREIO_DISPONIVEL: 'Rastreio disponível',
   LEAD_REENGAJOU_SITE: 'Lead voltou pelo site',
   OCORRENCIA_ABERTA: 'Ocorrência aberta',

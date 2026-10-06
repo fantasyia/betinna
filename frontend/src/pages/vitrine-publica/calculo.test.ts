@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  itensParaEnvio,
+  mascararWhatsapp,
   faixaDoTotal,
   limparCarrinho,
   lucroPorPeca,
@@ -160,5 +162,21 @@ describe('kit pra anunciar', () => {
     expect(nomeArquivo('Cinza Mescla 12%')).toBe('Cinza-Mescla-12');
     expect(nomeArquivo('Verde-Militar ç/ã')).toBe('Verde-Militar-ca');
     expect(nomeArquivo('///')).toBe('arquivo');
+  });
+});
+
+describe('envio do pedido', () => {
+  it('achata o carrinho em célula + quantidade, sem preço', () => {
+    const c = { m1: { c1: { p: 3, m: 2 } }, m2: { c9: { g: 1 } } };
+    expect(itensParaEnvio(c)).toEqual([
+      { corId: 'c1', tamanhoId: 'p', quantidade: 3 },
+      { corId: 'c1', tamanhoId: 'm', quantidade: 2 },
+      { corId: 'c9', tamanhoId: 'g', quantidade: 1 },
+    ]);
+  });
+  it('máscara do WhatsApp', () => {
+    expect(mascararWhatsapp('47999991234')).toBe('(47) 99999-1234');
+    expect(mascararWhatsapp('4733331234')).toBe('(47) 3333-1234');
+    expect(mascararWhatsapp('47')).toBe('47');
   });
 });
