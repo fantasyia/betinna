@@ -47,6 +47,7 @@ const KnowledgePage = lazyComRetry(() => import("@/pages/KnowledgePage"));
 const BotAuditoriaPage = lazyComRetry(() => import("@/pages/BotAuditoriaPage"));
 const RespostasRapidasPage = lazyComRetry(() => import("@/pages/RespostasRapidasPage"));
 const VitrineCadastroPage = lazyComRetry(() => import("@/pages/vitrine/VitrineCadastroPage"));
+const VitrinePublicaPage = lazyComRetry(() => import("@/pages/vitrine-publica/VitrinePublicaPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -134,6 +135,17 @@ const router = createBrowserRouter([
       <ErrorBoundary>
         <PageSuspense>
           <WelcomePage />
+        </PageSuspense>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // Vitrine pública de atacado (sem login): o link que o cliente abre no celular.
+    path: "/v/:slug",
+    element: (
+      <ErrorBoundary>
+        <PageSuspense>
+          <VitrinePublicaPage />
         </PageSuspense>
       </ErrorBoundary>
     ),
