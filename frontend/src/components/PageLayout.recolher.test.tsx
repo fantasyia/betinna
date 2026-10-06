@@ -37,6 +37,10 @@ vi.mock('@/components/EmpresaSwitcher', () => ({
 vi.mock('@/components/FavoritosBar', () => ({ FavoritosBar: () => null }));
 vi.mock('@/hooks/useTheme', () => ({ useTheme: () => ['light', vi.fn(), vi.fn()] }));
 vi.mock('@/lib/auth-store', () => ({ clearSession: vi.fn() }));
+// A barra lateral pergunta se o financeiro está ligado (item por flag da empresa).
+vi.mock('@/hooks/useApiQuery', () => ({
+  useApiQuery: () => ({ data: null, loading: false, error: null, refetch: vi.fn() }),
+}));
 
 const montar = () =>
   render(

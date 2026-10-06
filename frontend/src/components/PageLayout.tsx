@@ -24,6 +24,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   GraduationCap,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -40,6 +41,7 @@ import {
 import { clearSession } from '@/lib/auth-store';
 import { descartarRascunhos } from '@/lib/rascunhos';
 import { useRole, usePermission, type ModuloName } from '@/hooks/usePermission';
+import { useApiQuery } from '@/hooks/useApiQuery';
 import { getPermissoes, subscribePermissoes } from '@/lib/permissions-store';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { logoDaMarca, marca, temaEscuro } from '@/lib/marca';
@@ -94,6 +96,8 @@ interface NavItem {
    *  papel (ex: Calendário de Marketing usa o módulo `quadros`, que o rep tem
    *  pro quadro de tarefas dele — mas planejar campanha não é trabalho dele). */
   ocultarPara?: string[];
+  /** Só aparece onde a função está LIGADA na empresa (ex.: financeiro da Distribuidora). */
+  flag?: 'financeiro';
 }
 
 interface NavSection {
@@ -134,6 +138,13 @@ const SECTIONS: NavSection[] = [
           '/devolucoes',
         ],
         badgeKey: 'vendas',
+      },
+      {
+        // ERP próprio · Fase 3: só ADMIN/DIRECTOR e só com `financeiro.ativo`.
+        to: '/financeiro',
+        label: 'Financeiro',
+        icon: Wallet,
+        flag: 'financeiro',
       },
       {
         to: '/leads',
@@ -530,6 +541,10 @@ function Sidebar({
   onAlternarRecolhida: () => void;
 }) {
   const role = useRole();
+  // Funções ligadas por empresa: só pergunta quem pode vê-las.
+  const financeiro = useApiQuery<{ ativo: boolean }>(
+    role === 'ADMIN' || role === 'DIRECTOR' ? '/financeiro/status' : null,
+  );
   const location = useLocation();
   const badges = useBadges();
 
@@ -545,6 +560,7 @@ function Sidebar({
   const matriz = useSyncExternalStore(subscribePermissoes, getPermissoes, getPermissoes);
 
   function canSee(item: NavItem): boolean {
+    if (item.flag === 'financeiro' && financeiro.data?.ativo !== true) return false;
     if (item.ocultarPara && role && item.ocultarPara.includes(role)) return false;
     if (item.permission && !perms[item.permission as keyof typeof perms]) return false;
     if (item.modulo && role !== 'ADMIN' && matriz) {

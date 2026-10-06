@@ -52,6 +52,7 @@ const PrecificacaoPage = lazyComRetry(() => import("@/pages/precificacao/Precifi
 const EstoquePage = lazyComRetry(() => import("@/pages/estoque/EstoquePage"));
 const ReposicaoPage = lazyComRetry(() => import("@/pages/estoque/ReposicaoPage"));
 const InventarioPage = lazyComRetry(() => import("@/pages/estoque/InventarioPage"));
+const FinanceiroPage = lazyComRetry(() => import("@/pages/financeiro/FinanceiroPage"));
 const InsumosPage = lazyComRetry(() => import("@/pages/insumos/InsumosPage"));
 const FaccoesPage = lazyComRetry(() => import("@/pages/faccoes/FaccoesPage"));
 const ProducaoPage = lazyComRetry(() => import("@/pages/producao/ProducaoPage"));
@@ -415,6 +416,19 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <InventarioPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // ERP próprio · financeiro — gate fino (ADMIN/DIRECTOR + flag) na página e no backend.
+    path: "/financeiro",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <FinanceiroPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

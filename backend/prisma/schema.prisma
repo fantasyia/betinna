@@ -4594,3 +4594,132 @@ model OrdemProducaoCusto {
   @@unique([opId, modeloLinhaId])
   @@index([modeloLinhaId])
 }
+
+// ─── ERP próprio · Fase 3 · financeiro: contas a pagar e a receber (sem NF-e) ───
+// Ribelt Distribuidora (07/10/2026). Ligado por `Empresa.config.financeiro.ativo`.
+// "Vencido" não é status gravado: é ABERTO/PARCIAL com vencimento no passado
+// (calculado na leitura — não depende de job nem fica velho).
+
+enum FinTipo {
+  RECEBER
+  PAGAR
+}
+
+enum FinStatus {
+  ABERTO
+  PARCIAL
+  QUITADO
+  CANCELADO
+}
+
+/// Categoria de receita ou despesa (lista da empresa, editável).
+model FinCategoria {
+  id        String   @id @default(cuid())
+  empresaId String
+  tipo      FinTipo
+  nome      String
+  ordem     Int      @default(0)
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  titulos      FinTitulo[]
+  recorrencias FinRecorrencia[]
+
+  @@unique([empresaId, tipo, nome])
+}
+
+/// Onde o dinheiro entra e sai (banco, Asaas…). Saldo = inicial + baixas.
+model FinConta {
+  id           String   @id @default(cuid())
+  empresaId    String
+  nome         String
+  /// BANCO, ASAAS, DINHEIRO ou OUTRA.
+  tipo         String
+  saldoInicial Decimal  @default(0) @db.Decimal(14, 2)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+
+  baixas FinBaixa[]
+
+  @@unique([empresaId, nome])
+}
+
+model FinTitulo {
+  id           String    @id @default(cuid())
+  empresaId    String
+  tipo         FinTipo
+  descricao    String
+  valor        Decimal   @db.Decimal(14, 2)
+  /// Data (sem hora, gravada 12:00 UTC pra não virar o dia no fuso).
+  vencimento   DateTime
+  status       FinStatus @default(ABERTO)
+  categoriaId  String?
+  /// Com quem: nome livre + vínculo quando houver (cliente do pedido, facção).
+  contatoNome  String?
+  clienteId    String?
+  faccaoId     String?
+  /// Origem automática (Fase 3 · entrega B) — cada uma gera UM título só.
+  pedidoId     String?
+  parcela      Int?
+  totalParcelas Int?
+  opEntregaId  String?   @unique
+  /// Saldo da facção cobrado no fechamento da OP (peças enviadas que não voltaram).
+  opSaldoId    String?   @unique
+  insumoMovimentoId String? @unique
+  recorrenciaId String?
+  observacoes  String?
+  usuarioId    String?
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  categoria   FinCategoria?   @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  recorrencia FinRecorrencia? @relation(fields: [recorrenciaId], references: [id], onDelete: SetNull)
+  baixas      FinBaixa[]
+
+  @@unique([pedidoId, parcela])
+  @@unique([recorrenciaId, vencimento])
+  @@index([empresaId, tipo, status, vencimento])
+  @@index([empresaId, vencimento])
+}
+
+/// Um pagamento/recebimento (total ou parcial) de um título, numa conta.
+model FinBaixa {
+  id          String   @id @default(cuid())
+  tituloId    String
+  contaId     String
+  valor       Decimal  @db.Decimal(14, 2)
+  data        DateTime
+  /// PIX, CARTAO, BOLETO, DINHEIRO, TRANSFERENCIA, OUTRA.
+  forma       String?
+  observacao  String?
+  usuarioId   String?
+  /// Baixa desfeita (lançada errado). Não apaga: fica no histórico.
+  estornadaEm DateTime?
+  criadoEm    DateTime @default(now())
+
+  titulo FinTitulo @relation(fields: [tituloId], references: [id], onDelete: Cascade)
+  conta  FinConta  @relation(fields: [contaId], references: [id], onDelete: Restrict)
+
+  @@index([tituloId])
+  @@index([contaId, data])
+}
+
+/// Despesa/receita que se repete todo mês no dia X (aluguel, contador…).
+model FinRecorrencia {
+  id          String   @id @default(cuid())
+  empresaId   String
+  tipo        FinTipo
+  descricao   String
+  valor       Decimal  @db.Decimal(14, 2)
+  /// Dia do mês (1–28; 29–31 viram o último dia do mês curto).
+  dia         Int
+  categoriaId String?
+  contatoNome String?
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+
+  categoria FinCategoria? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  titulos   FinTitulo[]
+
+  @@index([empresaId, ativo])
+}
