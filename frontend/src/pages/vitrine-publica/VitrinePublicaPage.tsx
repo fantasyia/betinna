@@ -789,9 +789,10 @@ function FolhaGrade({
                 </button>
               </div>
               <div
-                className="vt-cells"
+                // Todos os tamanhos numa linha só (Léo, 07/10); muitos tamanhos = célula compacta.
+                className={linha.tamanhos.length > 6 ? 'vt-cells vt-cells-muitos' : 'vt-cells'}
                 style={{
-                  gridTemplateColumns: `repeat(${Math.min(linha.tamanhos.length, 6)}, 1fr)`,
+                  gridTemplateColumns: `repeat(${linha.tamanhos.length}, minmax(0, 1fr))`,
                 }}
               >
                 {linha.tamanhos.map((t) => {

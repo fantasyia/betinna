@@ -287,3 +287,10 @@
 .vt-pag-ok { justify-items: center; text-align: center; background: var(--linho); border-color: transparent; }
 .vt-pag-ok b { color: var(--lucro); font-size: 16px; }
 .vt-pag-ok span { font-size: 13px; line-height: 1.45; }
+
+/* Grade com mais de 6 tamanhos: todos numa linha só, célula mais justa. */
+.vt-cells-muitos { gap: 4px; }
+.vt-cells-muitos .vt-cell { padding: 5px 0 6px; min-width: 0; }
+.vt-cells-muitos .vt-cell b { font-size: 10px; }
+.vt-cells-muitos .vt-cell span { font-size: 17px; }
+.vt-cells-muitos .vt-cell small { font-size: 9px; }
