@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type FinTipo } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { MAX_PERIODOS, chaveContato, montarFluxo, periodos } from './financeiro.fluxo';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -9,6 +10,8 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type {
+  ContatosDto,
+  FluxoDto,
   BaixaDto,
   BaixaEmMassaDto,
   CategoriaDto,
@@ -471,7 +474,10 @@ export class FinanceiroService {
   }
 
   async contas(user: AuthenticatedUser) {
-    const empresaId = await this.empresaLigada(user);
+    return this.contasDaEmpresa(await this.empresaLigada(user));
+  }
+
+  private async contasDaEmpresa(empresaId: string) {
     const contas = await this.prisma.finConta.findMany({
       where: { empresaId },
       orderBy: [{ ativo: 'desc' }, { nome: 'asc' }],
@@ -499,6 +505,136 @@ export class FinanceiroService {
         centavos(Number(c.saldoInicial)) + (entrou.get(c.id) ?? 0) - (saiu.get(c.id) ?? 0),
       ),
     }));
+  }
+
+  // ─── Fluxo de caixa e visão por contato (entrega C) ─────────────────────
+
+  /**
+   * Fluxo por dia/semana/mês: realizado (baixas), previsto (o que falta e
+   * vence de hoje em diante), vencidos à parte e o saldo projetado a partir
+   * do saldo atual das contas. A conta é pura e testada (financeiro.fluxo).
+   */
+  async fluxo(user: AuthenticatedUser, f: FluxoDto) {
+    const empresaId = await this.empresaLigada(user);
+    const de = dataPura(f.de);
+    const ate = dataPura(f.ate);
+    if (periodos(de, ate, f.agrupar).length > MAX_PERIODOS[f.agrupar]) {
+      throw regra(
+        `Intervalo grande demais pra agrupar por ${f.agrupar === 'mes' ? 'mês' : f.agrupar} ` +
+          `(máx. ${MAX_PERIODOS[f.agrupar]} colunas) — aumente o agrupamento`,
+      );
+    }
+    const hoje = hojePuro();
+    const [contas, abertos, baixas] = await Promise.all([
+      this.contasDaEmpresa(empresaId),
+      this.prisma.finTitulo.findMany({
+        where: { empresaId, status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { lte: ate } },
+        select: {
+          tipo: true,
+          valor: true,
+          vencimento: true,
+          baixas: { where: { estornadaEm: null }, select: { valor: true } },
+        },
+      }),
+      this.prisma.finBaixa.findMany({
+        where: { estornadaEm: null, titulo: { empresaId }, data: { gte: de, lte: ate } },
+        select: { valor: true, data: true, titulo: { select: { tipo: true } } },
+      }),
+    ]);
+    const ativas = contas.filter((c) => c.ativo);
+    const saldoAtualC = ativas.reduce((s, c) => s + centavos(c.saldo), 0);
+    const r = montarFluxo({
+      de: f.de,
+      ate: f.ate,
+      agrupar: f.agrupar,
+      hoje,
+      saldoAtualC,
+      abertos: abertos
+        .map((t) => ({
+          tipo: t.tipo,
+          vencimento: t.vencimento,
+          faltaC:
+            centavos(Number(t.valor)) - t.baixas.reduce((s, b) => s + centavos(Number(b.valor)), 0),
+        }))
+        .filter((t) => t.faltaC > 0),
+      movimentos: baixas.map((b) => ({
+        tipo: b.titulo.tipo,
+        valorC: centavos(Number(b.valor)),
+        data: b.data,
+      })),
+    });
+    return {
+      hoje: hoje.toISOString().slice(0, 10),
+      saldoAtual: reais(saldoAtualC),
+      contas: ativas.map((c) => ({ id: c.id, nome: c.nome, saldo: c.saldo })),
+      vencidos: { aReceber: reais(r.vencidos.aReceberC), aPagar: reais(r.vencidos.aPagarC) },
+      linhas: r.linhas.map((l) => ({
+        inicio: l.inicio,
+        fim: l.fim,
+        rotulo: l.rotulo,
+        atual: l.atual,
+        entrou: reais(l.entrouC),
+        saiu: reais(l.saiuC),
+        aEntrar: reais(l.aEntrarC),
+        aSair: reais(l.aSairC),
+        saldoProjetado: l.saldoProjetadoC === null ? null : reais(l.saldoProjetadoC),
+      })),
+    };
+  }
+
+  /**
+   * Por contato: em aberto e vencido de cada cliente (a receber) ou de cada
+   * facção/fornecedor (a pagar), do maior pro menor. Agrupa pelo nome.
+   */
+  async porContato(user: AuthenticatedUser, f: ContatosDto) {
+    const empresaId = await this.empresaLigada(user);
+    const hoje = hojePuro();
+    const titulos = await this.prisma.finTitulo.findMany({
+      where: { empresaId, tipo: f.tipo, status: { in: ['ABERTO', 'PARCIAL'] } },
+      select: {
+        contatoNome: true,
+        valor: true,
+        vencimento: true,
+        baixas: { where: { estornadaEm: null }, select: { valor: true } },
+      },
+    });
+    const grupos = new Map<
+      string,
+      {
+        contato: string | null;
+        abertoC: number;
+        vencidoC: number;
+        titulos: number;
+        proximo: Date | null;
+      }
+    >();
+    for (const t of titulos) {
+      const faltaC =
+        centavos(Number(t.valor)) - t.baixas.reduce((s, b) => s + centavos(Number(b.valor)), 0);
+      if (faltaC <= 0) continue;
+      const chave = chaveContato(t.contatoNome);
+      const g = grupos.get(chave) ?? {
+        contato: t.contatoNome?.trim() || null,
+        abertoC: 0,
+        vencidoC: 0,
+        titulos: 0,
+        proximo: null,
+      };
+      g.abertoC += faltaC;
+      g.titulos += 1;
+      if (t.vencimento < hoje) g.vencidoC += faltaC;
+      else if (!g.proximo || t.vencimento < g.proximo) g.proximo = t.vencimento;
+      grupos.set(chave, g);
+    }
+    return [...grupos.values()]
+      .sort((a, b) => b.abertoC - a.abertoC)
+      .map((g) => ({
+        contato: g.contato,
+        emAberto: reais(g.abertoC),
+        vencido: reais(g.vencidoC),
+        titulos: g.titulos,
+        proximoVencimento: g.proximo ? g.proximo.toISOString().slice(0, 10) : null,
+      }));
   }
 
   async salvarConta(user: AuthenticatedUser, dto: ContaDto, id?: string) {

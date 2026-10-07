@@ -11,6 +11,7 @@ import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Checkbox, Dialog, Field, Input, Select, Tabs, Textarea } from '@/components/ui';
 import { lerNumero, paraCampo } from '@/pages/precificacao/calculo';
 import { ConfigFinanceiro } from './ConfigFinanceiro';
+import { FluxoCaixa, PorContatoView, Total } from './RelatoriosFinanceiro';
 import { hojeIso, rotuloSituacao, type Categoria, type Conta, type Lista, type Titulo } from './tipos';
 
 /**
@@ -19,7 +20,7 @@ import { hojeIso, rotuloSituacao, type Categoria, type Conta, type Lista, type T
  * `financeiro.ativo` está ligada — o backend recusa fora disso.
  */
 
-type Aba = 'RECEBER' | 'PAGAR' | 'config';
+type Aba = 'RECEBER' | 'PAGAR' | 'fluxo' | 'contatos' | 'config';
 const FORMAS = [
   ['PIX', 'Pix'],
   ['CARTAO', 'Cartão'],
@@ -33,6 +34,8 @@ export default function FinanceiroPage() {
   const role = useRole();
   const gestor = role === 'ADMIN' || role === 'DIRECTOR';
   const [aba, setAba] = useState<Aba>('RECEBER');
+  // "Por contato" → abre a lista daquele contato já filtrada.
+  const [buscaInicial, setBuscaInicial] = useState('');
   return (
     <PageLayout title="Financeiro" description="Contas a receber e a pagar. A nota fiscal sai no faturador externo.">
       {!gestor ? (
@@ -41,26 +44,44 @@ export default function FinanceiroPage() {
         <div className="flex flex-col gap-4">
           <Tabs
             value={aba}
-            onChange={(v) => setAba(v as Aba)}
+            onChange={(v) => {
+              setBuscaInicial('');
+              setAba(v as Aba);
+            }}
             items={[
               { value: 'RECEBER', label: 'A receber' },
               { value: 'PAGAR', label: 'A pagar' },
+              { value: 'fluxo', label: 'Fluxo de caixa' },
+              { value: 'contatos', label: 'Por contato' },
               { value: 'config', label: 'Contas, categorias e recorrentes' },
             ]}
           />
-          {aba === 'config' ? <ConfigFinanceiro /> : <Titulos key={aba} tipo={aba} />}
+          {aba === 'config' ? (
+            <ConfigFinanceiro />
+          ) : aba === 'fluxo' ? (
+            <FluxoCaixa />
+          ) : aba === 'contatos' ? (
+            <PorContatoView
+              onAbrir={(tipo, contato) => {
+                setBuscaInicial(contato);
+                setAba(tipo);
+              }}
+            />
+          ) : (
+            <Titulos key={`${aba}:${buscaInicial}`} tipo={aba} buscaInicial={buscaInicial} />
+          )}
         </div>
       )}
     </PageLayout>
   );
 }
 
-function Titulos({ tipo }: { tipo: 'RECEBER' | 'PAGAR' }) {
+function Titulos({ tipo, buscaInicial = '' }: { tipo: 'RECEBER' | 'PAGAR'; buscaInicial?: string }) {
   const [situacao, setSituacao] = useState('ABERTO');
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = useState(buscaInicial);
   const qs = new URLSearchParams({ tipo, situacao });
   if (de) qs.set('de', de);
   if (ate) qs.set('ate', ate);
@@ -242,17 +263,6 @@ function Titulos({ tipo }: { tipo: 'RECEBER' | 'PAGAR' }) {
       )}
       {dlg?.t === 'historico' && <HistoricoDialog titulo={dlg.titulo} onClose={() => setDlg(null)} onPronto={pronto} />}
     </div>
-  );
-}
-
-function Total({ rotulo, v, tom }: { rotulo: string; v: number | undefined; tom?: 'danger' | 'success' }) {
-  return (
-    <Card className="p-3">
-      <div className="text-[11px] uppercase tracking-wide text-muted">{rotulo}</div>
-      <b className={cn('text-xl tabular-nums', tom === 'danger' && v ? 'text-danger' : '', tom === 'success' ? 'text-success' : '')}>
-        {v === undefined ? '—' : formatMoeda(v)}
-      </b>
-    </Card>
   );
 }
 

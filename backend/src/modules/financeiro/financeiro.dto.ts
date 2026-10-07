@@ -29,6 +29,20 @@ export const listarTitulosSchema = z.object({
 });
 export type ListarTitulosDto = z.infer<typeof listarTitulosSchema>;
 
+/** Fluxo de caixa: intervalo e agrupamento (dia, semana ou mês). */
+export const fluxoSchema = z
+  .object({
+    de: data,
+    ate: data,
+    agrupar: z.enum(['dia', 'semana', 'mes']).default('semana'),
+  })
+  .refine((f) => f.de <= f.ate, { message: 'A data inicial passa da final', path: ['ate'] });
+export type FluxoDto = z.infer<typeof fluxoSchema>;
+
+/** Visão por contato: quanto cada cliente deve / quanto devemos a cada um. */
+export const contatosSchema = z.object({ tipo });
+export type ContatosDto = z.infer<typeof contatosSchema>;
+
 export const tituloSchema = z.object({
   tipo,
   descricao: z.string().trim().min(2, 'Descreva o lançamento').max(200),

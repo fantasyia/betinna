@@ -7,6 +7,10 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type BaixaDto,
   type BaixaEmMassaDto,
+  type ContatosDto,
+  type FluxoDto,
+  contatosSchema,
+  fluxoSchema,
   type CategoriaDto,
   type ContaDto,
   type EditarTituloDto,
@@ -127,6 +131,24 @@ export class FinanceiroController {
     @Body(new ZodValidationPipe(categoriaSchema)) dto: CategoriaDto,
   ) {
     return this.svc.salvarCategoria(user, dto, id);
+  }
+
+  @Get('fluxo')
+  @ApiOperation({ summary: 'Fluxo de caixa: realizado × previsto por dia/semana/mês' })
+  fluxo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(fluxoSchema)) q: FluxoDto,
+  ) {
+    return this.svc.fluxo(user, q);
+  }
+
+  @Get('por-contato')
+  @ApiOperation({ summary: 'Quanto cada cliente deve / quanto devemos a cada contato' })
+  porContato(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(contatosSchema)) q: ContatosDto,
+  ) {
+    return this.svc.porContato(user, q);
   }
 
   @Get('contas')

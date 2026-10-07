@@ -258,3 +258,99 @@ describe('FinanceiroService', () => {
     expect(prisma.finTitulo.createMany.mock.calls[0][0].skipDuplicates).toBe(true);
   });
 });
+
+describe('FinanceiroService — fluxo de caixa e por contato (entrega C)', () => {
+  const comContas = (prisma: ReturnType<typeof montar>['prisma']) => {
+    // Banco: inicial 1.000 + recebido 500 − pago 200 = 1.300 (critério de aceite §9.5)
+    prisma.finBaixa.groupBy
+      .mockResolvedValueOnce([{ contaId: 'banco', _sum: { valor: Dc(500) } }])
+      .mockResolvedValueOnce([{ contaId: 'banco', _sum: { valor: Dc(200) } }]);
+  };
+
+  it('saldo atual = inicial + recebido − pago; projetado soma o previsto a partir de hoje', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-07T15:00:00Z'));
+    try {
+      const { svc, prisma } = montar();
+      comContas(prisma);
+      prisma.finTitulo.findMany.mockResolvedValue([
+        {
+          tipo: 'RECEBER',
+          valor: Dc(300),
+          vencimento: dataPura('2026-10-09'),
+          baixas: [{ valor: Dc(100) }],
+        },
+        { tipo: 'PAGAR', valor: Dc(50), vencimento: dataPura('2026-10-02'), baixas: [] },
+      ]);
+      (prisma.finBaixa as Record<string, unknown>).findMany = vi
+        .fn()
+        .mockResolvedValue([
+          { valor: Dc(200), data: dataPura('2026-10-06'), titulo: { tipo: 'PAGAR' } },
+        ]);
+      const r = await svc.fluxo(user as never, {
+        de: '2026-10-05',
+        ate: '2026-10-11',
+        agrupar: 'semana',
+      });
+      expect(r.saldoAtual).toBe(1300);
+      expect(r.vencidos).toEqual({ aReceber: 0, aPagar: 50 });
+      expect(r.linhas).toHaveLength(1);
+      expect(r.linhas[0]).toMatchObject({
+        atual: true,
+        saiu: 200,
+        aEntrar: 200,
+        saldoProjetado: 1500,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('intervalo grande demais pro agrupamento: recusa (sugere agrupar maior)', async () => {
+    const { svc } = montar();
+    await expect(
+      svc.fluxo(user as never, { de: '2026-01-01', ate: '2026-12-31', agrupar: 'dia' }),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
+  });
+
+  it('por contato: soma o que falta por nome (caixa/espaço não separam), maior primeiro', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-07T15:00:00Z'));
+    try {
+      const { svc, prisma } = montar();
+      prisma.finTitulo.findMany.mockResolvedValue([
+        {
+          contatoNome: 'Loja da Ana',
+          valor: Dc(100),
+          vencimento: dataPura('2026-10-01'),
+          baixas: [],
+        },
+        {
+          contatoNome: ' loja  da ana',
+          valor: Dc(300),
+          vencimento: dataPura('2026-10-20'),
+          baixas: [{ valor: Dc(50) }],
+        },
+        { contatoNome: 'Moda Sul', valor: Dc(900), vencimento: dataPura('2026-10-15'), baixas: [] },
+        { contatoNome: null, valor: Dc(10), vencimento: dataPura('2026-10-15'), baixas: [] },
+      ]);
+      const r = await svc.porContato(user as never, { tipo: 'RECEBER' });
+      expect(r.map((c) => [c.contato, c.emAberto, c.vencido])).toEqual([
+        ['Moda Sul', 900, 0],
+        ['Loja da Ana', 350, 100],
+        [null, 10, 0],
+      ]);
+      expect(r[1]).toMatchObject({ titulos: 2, proximoVencimento: '2026-10-20' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('financeiro desligado: fluxo e por contato não respondem', async () => {
+    const { svc } = montar({ ligado: false });
+    await expect(
+      svc.fluxo(user as never, { de: '2026-10-01', ate: '2026-10-31', agrupar: 'semana' }),
+    ).rejects.toThrow();
+    await expect(svc.porContato(user as never, { tipo: 'PAGAR' })).rejects.toThrow();
+  });
+});
