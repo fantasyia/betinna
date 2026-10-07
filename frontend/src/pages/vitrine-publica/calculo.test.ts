@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   abrirPeloRodizio,
+  quantidadesDoSimulador,
+  simularPedido,
   corDaBolinha,
   corInicial,
   corTemEstoque,
@@ -480,5 +482,57 @@ describe('rodízio da foto de abertura (Léo, 07/10)', () => {
   it('uma só marcada: ela abre pra todo mundo', () => {
     const uma = fotos.map((f) => ({ ...f, rodizio: f.id === 'c' }));
     expect(abrirPeloRodizio(uma, 'k', 'qualquer')[0].id).toBe('c');
+  });
+});
+
+describe('simulador do pedido (Léo, 07/10)', () => {
+  // Bermuda Regular da Ribelt: 19,99 / 17,99 (200+) / 16,99 (1.000+), revenda 39,99.
+  const reg = linha({
+    precoEntrada: 19.99,
+    precoVolume: 17.99,
+    precoAtacadao: 16.99,
+    precoSugerido: 39.99,
+  });
+  const fx = { minimoEntrada: null, minimoVolume: 200, minimoAtacadao: 1000 };
+  const minimo = { valorMin: 600, quantidadeMin: 50, modo: 'OU' as const };
+
+  it('botões: o mínimo, o dobro, e o começo de cada faixa (Ribelt: 50 · 100 · 200 · 1.000)', () => {
+    expect(quantidadesDoSimulador(fx, minimo)).toEqual([50, 100, 200, 1000]);
+    // mínimo perto do Volume: o dobro passaria dele — não entra
+    expect(quantidadesDoSimulador(fx, { ...minimo, quantidadeMin: 150 })).toEqual([150, 200, 1000]);
+    expect(
+      quantidadesDoSimulador({ minimoEntrada: null, minimoVolume: null, minimoAtacadao: null }),
+    ).toEqual([10, 20]);
+  });
+
+  it('50 peças: investe 999,50, vende por 1.999,50, lucro 1.000,00 (preço da Entrada)', () => {
+    expect(simularPedido(reg, fx, 50)).toMatchObject({
+      faixa: 'entrada',
+      preco: 19.99,
+      investe: 999.5,
+      vende: 1999.5,
+      lucro: 1000,
+    });
+  });
+
+  it('o preço acompanha a FAIXA da quantidade (200 → Volume, 1.000 → Atacadão)', () => {
+    expect(simularPedido(reg, fx, 200)).toMatchObject({ preco: 17.99, investe: 3598, lucro: 4400 });
+    expect(simularPedido(reg, fx, 1000)).toMatchObject({
+      preco: 16.99,
+      investe: 16990,
+      lucro: 23000,
+    });
+  });
+
+  it('sem revenda: só o investimento; sem preço: sob consulta', () => {
+    expect(simularPedido({ ...reg, precoSugerido: null }, fx, 50)).toMatchObject({
+      investe: 999.5,
+      vende: null,
+      lucro: null,
+    });
+    expect(
+      simularPedido({ ...reg, precoEntrada: null, precoVolume: null, precoAtacadao: null }, fx, 50)
+        .preco,
+    ).toBeNull();
   });
 });

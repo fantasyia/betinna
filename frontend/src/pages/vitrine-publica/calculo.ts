@@ -155,6 +155,42 @@ export function corDaBolinha(cor: CorPub): CorPub {
 }
 
 /** Lucro por peça e % sobre o custo. null quando falta preço ou sugerido. */
+/**
+ * Quantidades do simulador "Se você levar" (Léo, 07/10): o pedido mínimo (ou o
+ * mínimo da faixa de entrada), o dobro dele quando ainda não chega no Volume,
+ * e o começo de cada faixa (Volume, Atacadão). Ribelt: 50 · 100 · 200 · 1.000.
+ * Sem nada configurado, 10. PURO.
+ */
+export function quantidadesDoSimulador(f: Faixas, minimo?: MinimoPub | null): number[] {
+  const base = minimo?.quantidadeMin || f.minimoEntrada || 10;
+  const xs = [base];
+  if (!f.minimoVolume || base * 2 < f.minimoVolume) xs.push(base * 2);
+  if (f.minimoVolume) xs.push(f.minimoVolume);
+  if (f.minimoAtacadao) xs.push(f.minimoAtacadao);
+  return [...new Set(xs.filter((x) => x > 0))].sort((a, b) => a - b);
+}
+
+/**
+ * Um pedido simulado: preço da FAIXA em que a quantidade cai, quanto investe,
+ * por quanto vende (revenda sugerida) e o lucro. Em centavos (sem resto de
+ * float). `preco` null = sob consulta; `vende`/`lucro` null = sem revenda. PURO.
+ */
+export function simularPedido(l: LinhaPub, f: Faixas, qtd: number) {
+  const faixa = faixaDoTotal(qtd, f);
+  const preco = precoNaFaixa(l, faixa);
+  const investeC = preco === null ? null : Math.round(preco * 100) * qtd;
+  const vendeC = l.precoSugerido === null ? null : Math.round(l.precoSugerido * 100) * qtd;
+  return {
+    qtd,
+    faixa,
+    preco,
+    revenda: l.precoSugerido,
+    investe: investeC === null ? null : investeC / 100,
+    vende: vendeC === null || investeC === null ? null : vendeC / 100,
+    lucro: vendeC === null || investeC === null ? null : (vendeC - investeC) / 100,
+  };
+}
+
 export function lucroPorPeca(atacado: number | null, sugerido: number | null) {
   if (atacado === null || sugerido === null || atacado <= 0) return null;
   const lucro = Math.round((sugerido - atacado) * 100) / 100;

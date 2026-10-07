@@ -15,9 +15,9 @@ import {
   coresPorEstoque,
   fotosDaLinha,
   lucroNaProximaFaixa,
-  lucroPorPeca,
-  precosPorFaixa,
   progressoFaixa,
+  quantidadesDoSimulador,
+  simularPedido,
   pecasDoModelo,
   proximaFaixa,
   resumoPedido,
@@ -336,7 +336,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                     ))}
                   </div>
                 )}
-                <PrecoCompacto l={l} f={v.faixas} />
+                <SimuladorPedido l={l} f={v.faixas} minimo={v.pedidoMinimo} />
                 <div className="vt-row">
                   {/* A página do produto abre só por aqui — a foto só desliza (Léo, 07/10).
                       O Material de divulgação está lá dentro. */}
@@ -374,6 +374,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           cor={corAtual(pdp)}
           l={linhaNoModelo(pdp)}
           f={v.faixas}
+          minimo={v.pedidoMinimo}
           selo={seloDa(linhaNoModelo(pdp).linhaId)}
           visitante={visitante}
           onCor={(id) => setCorDe((s) => ({ ...s, [pdp.id]: id }))}
@@ -595,132 +596,76 @@ function AmostraCor({ c }: { c: CorPub }) {
 }
 
 /** Preço das faixas de cima (Volume, Atacadão) — o card mostra a Entrada. */
-function OutrasFaixas({ l, f }: { l: LinhaPub; f: Faixas }) {
-  const outras = precosPorFaixa(l, f).filter((x) => x.faixa !== 'entrada');
-  if (!outras.length) return null;
-  return (
-    <div className="vt-faixas" data-testid="vt-outras-faixas">
-      {outras.map((x) => {
-        const lp = lucroPorPeca(x.preco, l.precoSugerido);
-        return (
-          <div key={x.faixa}>
-            <small>
-              {NOME_FAIXA[x.faixa]} · {formatNumero(x.minimo ?? 0)}+ peças
-            </small>
-            <b>{formatMoeda(x.preco)}</b>
-            {lp && <span className="vt-pct">lucro {formatMoeda(lp.lucro)}/peça</span>}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /**
  * Preço no FEED, enxuto: a foto é o produto, o preço acompanha. Entrada,
  * revenda e lucro numa linha; as faixas de cima numa linha fina embaixo.
  * A página do modelo mostra o bloco completo (lucro por faixa etc.).
  */
-function PrecoCompacto({ l, f }: { l: LinhaPub; f: Faixas }) {
-  const outras = precosPorFaixa(l, f).filter((x) => x.faixa !== 'entrada');
-  const lp = lucroPorPeca(l.precoEntrada, l.precoSugerido);
-  if (l.precoEntrada === null) {
+/**
+ * Simulador do pedido (Léo, 07/10 — no lugar de Entrada / Revenda / Seu lucro):
+ * "Se você levar" 50 · 100 · 200 · 1.000 → quanto investe, por quanto vende e
+ * o LUCRO NO PEDIDO. O preço da peça acompanha a faixa da quantidade.
+ */
+function SimuladorPedido({
+  l,
+  f,
+  minimo,
+}: {
+  l: LinhaPub;
+  f: Faixas;
+  minimo?: VitrinePub['pedidoMinimo'];
+}) {
+  const qtds = quantidadesDoSimulador(f, minimo);
+  const [qtd, setQtd] = useState(qtds[0]);
+  const s = simularPedido(l, f, qtds.includes(qtd) ? qtd : qtds[0]);
+  if (s.preco === null) {
     return (
-      <div className="vt-preco" data-testid="vt-preco">
-        <div className="vt-preco-l">
-          <div>
-            <small>Atacado</small>
-            <span className="vt-na">preço sob consulta</span>
-          </div>
-        </div>
+      <div className="vt-sim" data-testid="vt-preco">
+        <span className="vt-na">Preço sob consulta</span>
       </div>
     );
   }
   return (
-    <div className="vt-preco" data-testid="vt-preco">
-      <div className="vt-preco-l">
-        <div>
-          <small>{outras.length ? 'Entrada' : 'Atacado'}</small>
-          <b>{formatMoeda(l.precoEntrada)}</b>
-        </div>
-        {l.precoSugerido !== null && (
-          <div>
-            <small>Revenda</small>
-            <b>{formatMoeda(l.precoSugerido)}</b>
-          </div>
-        )}
-        {lp && (
-          <div className="vt-win">
-            <small>
-              Seu lucro <span className="vt-pct">+{lp.pct}%</span>
-            </small>
-            <b>{formatMoeda(lp.lucro)}</b>
-          </div>
-        )}
-      </div>
-      {outras.length > 0 && (
-        <div className="vt-preco-faixas">
-          {outras.map((x) => (
-            <span key={x.faixa}>
-              <em>
-                {NOME_FAIXA[x.faixa]} {formatNumero(x.minimo ?? 0)}+
-              </em>
-              {formatMoeda(x.preco)}
-            </span>
+    <div className="vt-sim" data-testid="vt-preco">
+      <div className="vt-sim-q">
+        <small>Se você levar</small>
+        <div className="vt-sim-btns" role="group" aria-label="Quantidade">
+          {qtds.map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={n === s.qtd}
+              onClick={() => setQtd(n)}
+              data-testid={`vt-sim-${n}`}
+            >
+              {formatNumero(n)}
+            </button>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
-
-function BlocoLucro({ l, f }: { l: LinhaPub; f: Faixas }) {
-  return (
-    <>
-      <BlocoLucroEntrada l={l} rotulo={precosPorFaixa(l, f).length > 1 ? 'Entrada' : 'Atacado'} />
-      <OutrasFaixas l={l} f={f} />
-    </>
-  );
-}
-
-function BlocoLucroEntrada({ l, rotulo }: { l: LinhaPub; rotulo: string }) {
-  const atacado = l.precoEntrada;
-  const lp = lucroPorPeca(atacado, l.precoSugerido);
-  if (atacado === null) {
-    return (
-      <div className="vt-lucro vt-so-atacado">
+      </div>
+      <div className={s.lucro === null ? 'vt-sim-r vt-sim-so' : 'vt-sim-r'}>
         <div>
-          <small>Atacado</small>
-          <span className="vt-na">preço sob consulta</span>
+          <small>Investe</small>
+          <b>{formatMoeda(s.investe ?? 0)}</b>
         </div>
+        {s.lucro !== null && (
+          <>
+            <div>
+              <small>Vende por</small>
+              <b>{formatMoeda(s.vende ?? 0)}</b>
+            </div>
+            <div className="vt-win">
+              <small>Lucro no pedido</small>
+              <b data-testid="vt-sim-lucro">{formatMoeda(s.lucro)}</b>
+            </div>
+          </>
+        )}
       </div>
-    );
-  }
-  if (!lp) {
-    return (
-      <div className="vt-lucro vt-so-atacado">
-        <div>
-          <small>{rotulo} · por peça</small>
-          <b>{formatMoeda(atacado)}</b>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="vt-lucro">
-      <div>
-        <small>{rotulo}</small>
-        <b>{formatMoeda(atacado)}</b>
-      </div>
-      <div>
-        <small>Revenda sugerida</small>
-        <b>{formatMoeda(l.precoSugerido as number)}</b>
-      </div>
-      <div className="vt-win">
-        <small>Seu lucro / peça</small>
-        <b>{formatMoeda(lp.lucro)}</b>
-        <span className="vt-pct">+{lp.pct}% sobre o custo</span>
-      </div>
+      <p className="vt-sim-peca">
+        {formatMoeda(s.preco)} a peça
+        {s.revenda !== null && <> · revenda {formatMoeda(s.revenda)}</>}
+      </p>
     </div>
   );
 }
@@ -730,6 +675,7 @@ function PaginaModelo({
   cor,
   l,
   f,
+  minimo,
   selo,
   visitante,
   onCor,
@@ -741,6 +687,7 @@ function PaginaModelo({
   cor: CorPub;
   l: LinhaPub;
   f: Faixas;
+  minimo: VitrinePub['pedidoMinimo'];
   selo: string | null;
   visitante: string;
   onCor: (id: string) => void;
@@ -778,7 +725,7 @@ function PaginaModelo({
             ))}
           </div>
         )}
-        <BlocoLucro l={l} f={f} />
+        <SimuladorPedido l={l} f={f} minimo={minimo} />
         <div className="vt-gl">
           {m.linhas.map((x) => (
             <div key={x.id}>
