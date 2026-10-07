@@ -34,6 +34,9 @@
 .vt-brand { display: flex; align-items: center; gap: 10px; min-height: 22px; }
 .vt-brand img { height: 20px; width: auto; display: block; }
 .vt-brand .vt-nome { font-family: var(--f-title); font-weight: 600; font-size: 18px; }
+/* "Entrar" discreto no canto direito do topo: acesso à plataforma */
+.vt-brand .vt-entrar { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--petroleo); border: 1px solid #d9cdb0; border-radius: 999px; padding: 4px 12px; text-decoration: none; line-height: 1.2; }
+.vt-brand .vt-entrar:active { background: var(--linho); }
 .vt-linhas { margin-top: 12px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--linho); border-radius: 12px; padding: 3px; }
 .vt-linhas button { height: 34px; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--oliva); }
 .vt-linhas button[aria-pressed='true'] { background: var(--petroleo); color: var(--creme); }

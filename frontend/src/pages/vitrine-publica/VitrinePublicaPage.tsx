@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatMoeda, formatNumero } from '@/lib/masks';
 import { restante, useAgora } from '@/lib/relogio';
@@ -177,6 +177,10 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
       <div className="vt-top">
         <div className="vt-brand">
           <Marca nome={v.empresa.nome} logoUrl={v.empresa.logoUrl} />
+          {/* Pra quem tem acesso à plataforma (equipe, representante). */}
+          <Link to="/login" className="vt-entrar" data-testid="vt-entrar">
+            Entrar
+          </Link>
         </div>
         {v.linhas.length > 1 && (
           <div className="vt-linhas" role="group" aria-label="Linha">
