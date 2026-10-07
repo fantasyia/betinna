@@ -626,8 +626,23 @@ function SimuladorPedido({
       </div>
     );
   }
+  const lucroPeca = s.revenda !== null ? Math.round((s.revenda - s.preco) * 100) / 100 : null;
+  // Preço DA PEÇA em destaque (Léo, 07/10: "precisa ter o preço unitário em mais
+  // destaque"); muda com a faixa da quantidade escolhida. O resto é apoio.
   return (
     <div className="vt-sim" data-testid="vt-preco">
+      <div className="vt-sim-topo">
+        <div className="vt-sim-unit">
+          <b data-testid="vt-sim-unitario">{formatMoeda(s.preco)}</b>
+          <span>/peça</span>
+        </div>
+        {s.revenda !== null && (
+          <div className="vt-sim-rev">
+            <span>revenda {formatMoeda(s.revenda)}</span>
+            {lucroPeca !== null && lucroPeca > 0 && <em>lucro {formatMoeda(lucroPeca)}/peça</em>}
+          </div>
+        )}
+      </div>
       <div className="vt-sim-q">
         <small>Se você levar</small>
         <div className="vt-sim-btns" role="group" aria-label="Quantidade">
@@ -650,22 +665,12 @@ function SimuladorPedido({
           <b>{formatMoeda(s.investe ?? 0)}</b>
         </div>
         {s.lucro !== null && (
-          <>
-            <div>
-              <small>Vende por</small>
-              <b>{formatMoeda(s.vende ?? 0)}</b>
-            </div>
-            <div className="vt-win">
-              <small>Lucro no pedido</small>
-              <b data-testid="vt-sim-lucro">{formatMoeda(s.lucro)}</b>
-            </div>
-          </>
+          <div className="vt-win">
+            <small>Lucro no pedido</small>
+            <b data-testid="vt-sim-lucro">{formatMoeda(s.lucro)}</b>
+          </div>
         )}
       </div>
-      <p className="vt-sim-peca">
-        {formatMoeda(s.preco)} a peça
-        {s.revenda !== null && <> · revenda {formatMoeda(s.revenda)}</>}
-      </p>
     </div>
   );
 }
