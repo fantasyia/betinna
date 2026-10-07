@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FinanceiroModule } from '@modules/financeiro/financeiro.module';
 import { EstoqueController } from './estoque.controller';
 import { EstoqueService } from './estoque.service';
 import { ReservaExpiracaoJob } from './reserva-expiracao.job';
@@ -16,6 +17,8 @@ import { OrdensService } from './ordens.service';
  * contrário), pra não fechar ciclo de módulo.
  */
 @Module({
+  // Financeiro (Fase 3) só depende do banco: gera os títulos automáticos daqui.
+  imports: [FinanceiroModule],
   controllers: [EstoqueController, InsumosController, FichasController, OrdensController],
   providers: [EstoqueService, ReservaExpiracaoJob, InsumosService, FichasService, OrdensService],
   exports: [EstoqueService, FichasService, OrdensService],

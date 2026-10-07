@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { EstoqueService, RESERVA_MINUTOS } from '@modules/erp/estoque.service';
 import { type PedidoMinimoRegra, avaliarPedidoMinimo } from '@modules/pedidos/pedido-minimo.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { SequenceService } from '@shared/utils/sequence.service';
@@ -102,6 +103,8 @@ export class VitrinePedidoService {
     private readonly bus: FluxoEventBusService,
     private readonly notificacoes: NotificacoesService,
     private readonly estoque: EstoqueService,
+    // Financeiro (Fase 3): o pedido vira conta a receber. Melhor esforço.
+    @Optional() private readonly fin?: FinanceiroAutomaticoService,
   ) {}
 
   async enviar(
@@ -336,6 +339,10 @@ export class VitrinePedidoService {
     }
 
     this.logger.log(`[vitrine] ${slug}: pedido ${pedido.numero} (${totalPecas} peças, ${faixa})`);
+
+    // Financeiro: conta a receber do pedido. Nunca derruba o pedido (o
+    // "pagamento recebido" cria o título se ele não tiver nascido aqui).
+    if (this.fin) await this.fin.aoCriarPedidoVitrine(empresaId, pedido.id);
 
     // Alguém precisa SABER: é cliente esperando resposta no WhatsApp.
     await this.notificacoes

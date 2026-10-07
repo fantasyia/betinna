@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -39,6 +40,8 @@ export class InsumosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly erp: EstoqueService,
+    // Financeiro (Fase 3): a compra vira conta a pagar do fornecedor.
+    @Optional() private readonly fin?: FinanceiroAutomaticoService,
   ) {}
 
   private async saldos(empresaId: string, ids?: string[]) {
@@ -160,6 +163,7 @@ export class InsumosService {
   async comprar(user: AuthenticatedUser, id: string, dto: CompraInsumoDto) {
     const empresaId = await this.erp.empresaLigada(user);
     await this.doInsumo(empresaId, id);
+    const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {
       // Lock da linha: a média depende do saldo e do custo LIDOS AGORA.
       const [linha] = await tx.$queryRaw<Array<{ custoMedio: Prisma.Decimal }>>`
@@ -174,7 +178,8 @@ export class InsumosService {
         dto.quantidade,
         dto.custoUnitario,
       );
-      await tx.insumoMovimento.create({
+      const mov = await tx.insumoMovimento.create({
+        select: { id: true },
         data: {
           empresaId,
           insumoId: id,
@@ -187,6 +192,13 @@ export class InsumosService {
         },
       });
       await tx.insumo.update({ where: { id }, data: { custoMedio: D(custo, 4) } });
+      // Financeiro: conta a pagar do fornecedor, com o vencimento informado.
+      if (comFinanceiro && this.fin) {
+        await this.fin.compraInsumoNaTx(tx, mov.id, {
+          vencimento: dto.vencimento ?? null,
+          valorTotal: dto.valorTotal ?? null,
+        });
+      }
     });
     return this.listarUm(empresaId, id);
   }

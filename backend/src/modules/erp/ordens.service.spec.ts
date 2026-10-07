@@ -259,9 +259,9 @@ describe('OrdensService', () => {
         documento: 'OP-0001',
       }),
     });
-    expect(tx.ordemProducaoEntrega.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ quantidade: 4, defeito: 1 }),
-    });
+    expect(tx.ordemProducaoEntrega.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ quantidade: 4, defeito: 1 }) }),
+    );
   });
 
   it('recebimento além do enviado (já vieram 5 de 10): recusa', async () => {
@@ -317,5 +317,26 @@ describe('OrdensService', () => {
     expect(tx.ordemProducao.updateMany.mock.calls[0][0].where.status).toEqual({
       in: ['RASCUNHO', 'CORTADA'],
     });
+  });
+});
+
+describe('OrdensService → financeiro (Fase 3)', () => {
+  it('recebimento passa as linhas desta entrega pro pagamento da facção, dentro da tx', async () => {
+    const { prisma, tx } = montar({ status: 'NA_FACCAO' });
+    tx.ordemProducaoEntrega.create.mockResolvedValue({ id: 'ent-1' });
+    const fin = { preparar: vi.fn().mockResolvedValue(true), entregaFaccaoNaTx: vi.fn() };
+    const erp = { empresaLigada: vi.fn().mockResolvedValue('emp-1') };
+    const svc = new OrdensService(
+      prisma as never,
+      erp as never,
+      {} as never,
+      {} as never,
+      fin as never,
+    );
+    vi.spyOn(svc, 'obter').mockResolvedValue({} as never);
+    await svc.receber(user as never, 'op-1', {
+      itens: [{ produtoId: 'p-m', quantidade: 4, defeito: 1 }],
+    });
+    expect(fin.entregaFaccaoNaTx).toHaveBeenCalledWith(tx, 'op-1', ['ent-1']);
   });
 });

@@ -29,6 +29,14 @@ export const compraInsumoSchema = z.object({
   /** Nº da nota/pedido do fornecedor. */
   documento: textoOpcional(80),
   motivo: textoOpcional(300),
+  /** Financeiro: quando a compra vence (AAAA-MM-DD). Sem ele, hoje. */
+  vencimento: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data no formato AAAA-MM-DD')
+    .nullable()
+    .optional(),
+  /** Financeiro: valor TOTAL pago (o custo por unidade arredonda; o título usa o exato). */
+  valorTotal: z.number().nonnegative().max(100_000_000).nullable().optional(),
 });
 export type CompraInsumoDto = z.infer<typeof compraInsumoSchema>;
 

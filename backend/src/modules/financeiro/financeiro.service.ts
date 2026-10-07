@@ -103,7 +103,7 @@ export class FinanceiroService {
   }
 
   /** Primeira vez: categorias padrão e as contas Banco/Asaas. Idempotente. */
-  private async garantirPadroes(empresaId: string) {
+  async garantirPadroes(empresaId: string) {
     const tem = await this.prisma.finCategoria.count({ where: { empresaId } });
     if (tem === 0) {
       await this.prisma.finCategoria.createMany({
@@ -307,7 +307,7 @@ export class FinanceiroService {
   }
 
   /** Recalcula o status pelo que foi pago (dentro da transação de quem chamou). */
-  private async reaplicarStatus(tx: Tx, tituloId: string) {
+  async reaplicarStatus(tx: Tx, tituloId: string) {
     const t = await tx.finTitulo.findUniqueOrThrow({
       where: { id: tituloId },
       select: {
@@ -333,7 +333,8 @@ export class FinanceiroService {
     return { ok: true };
   }
 
-  private async baixarNaTx(tx: Tx, id: string, dto: BaixaDto, usuarioId: string | null) {
+  /** Baixa dentro da transação de quem chamou (também usada pelos lançamentos automáticos). */
+  async baixarNaTx(tx: Tx, id: string, dto: BaixaDto, usuarioId: string | null) {
     await tx.$queryRaw`SELECT "id" FROM "FinTitulo" WHERE "id" = ${id} FOR UPDATE`;
     const t = await tx.finTitulo.findUniqueOrThrow({
       where: { id },

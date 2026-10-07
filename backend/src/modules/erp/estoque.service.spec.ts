@@ -360,3 +360,50 @@ describe('entrega 5 — trava, inventário, reposição', () => {
     expect(prisma.pedido.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('EstoqueService → financeiro (Fase 3)', () => {
+  const finMock = (ligado = true) => ({
+    preparar: vi.fn().mockResolvedValue(ligado),
+    pagamentoRecebidoNaTx: vi.fn().mockResolvedValue(undefined),
+    aoCancelarPedido: vi.fn().mockResolvedValue(undefined),
+    aoReativarPedidoNaTx: vi.fn().mockResolvedValue(undefined),
+  });
+
+  it('pagamento recebido baixa o título DENTRO da transação do pedido', async () => {
+    const { prisma } = montar();
+    const fin = finMock();
+    const svc = new EstoqueService(prisma as never, fin as never);
+    await svc.pagamentoRecebido(user as never, 'ped-1');
+    // o tx do mock é o próprio prisma: chamou com ele = chamou dentro do $transaction
+    expect(fin.pagamentoRecebidoNaTx).toHaveBeenCalledWith(prisma, 'emp-1', 'ped-1', 'u-1');
+  });
+
+  it('financeiro desligado na empresa: não toca em título', async () => {
+    const { prisma } = montar();
+    const fin = finMock(false);
+    await new EstoqueService(prisma as never, fin as never).pagamentoRecebido(
+      user as never,
+      'ped-1',
+    );
+    expect(fin.pagamentoRecebidoNaTx).not.toHaveBeenCalled();
+  });
+
+  it('reserva expirada que cancelou o pedido cancela o título; pedido já pago não', async () => {
+    const a = montar();
+    const finA = finMock();
+    a.prisma.estoqueReserva.findMany.mockResolvedValue([{ pedidoId: 'ped-1' }]);
+    await new EstoqueService(a.prisma as never, finA as never).expirarVencidas();
+    expect(finA.aoCancelarPedido).toHaveBeenCalledWith('ped-1');
+
+    const b = montar();
+    const finB = finMock();
+    b.prisma.estoqueReserva.findMany.mockResolvedValue([{ pedidoId: 'ped-1' }]);
+    b.prisma.pedido.findUnique.mockResolvedValue({
+      status: 'PAGO',
+      observacoes: null,
+      numero: 'PED-0009',
+    });
+    await new EstoqueService(b.prisma as never, finB as never).expirarVencidas();
+    expect(finB.aoCancelarPedido).not.toHaveBeenCalled();
+  });
+});

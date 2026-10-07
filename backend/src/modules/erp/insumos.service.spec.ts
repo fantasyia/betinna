@@ -104,9 +104,11 @@ describe('InsumosService', () => {
       motivo: null,
     });
     expect(String(tx.$queryRaw.mock.calls[0][0].join('?'))).toContain('FOR UPDATE');
-    expect(tx.insumoMovimento.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ tipo: 'ENTRADA_COMPRA', documento: 'NF 123' }),
-    });
+    expect(tx.insumoMovimento.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ tipo: 'ENTRADA_COMPRA', documento: 'NF 123' }),
+      }),
+    );
     expect(Number(tx.insumo.update.mock.calls[0][0].data.custoMedio)).toBe(42);
   });
 
@@ -176,5 +178,27 @@ describe('InsumosService', () => {
     expect(
       movimentoInsumoSchema.safeParse({ ...base, tipo: 'AJUSTE', quantidade: -2 }).success,
     ).toBe(true);
+  });
+});
+
+describe('InsumosService → financeiro (Fase 3)', () => {
+  it('compra vira conta a pagar com o vencimento e o total informados, dentro da tx', async () => {
+    const { prisma, tx } = montar({ saldo: 0 });
+    tx.insumoMovimento.create.mockResolvedValue({ id: 'mov-9' });
+    const fin = { preparar: vi.fn().mockResolvedValue(true), compraInsumoNaTx: vi.fn() };
+    const erp = { empresaLigada: vi.fn().mockResolvedValue('emp-1') };
+    const svc = new InsumosService(prisma as never, erp as never, fin as never);
+    await svc.comprar(user as never, 'ins-1', {
+      quantidade: 50,
+      custoUnitario: 12.3333,
+      documento: 'NF 991',
+      motivo: null,
+      vencimento: '2026-11-05',
+      valorTotal: 616.67,
+    });
+    expect(fin.compraInsumoNaTx).toHaveBeenCalledWith(tx, 'mov-9', {
+      vencimento: '2026-11-05',
+      valorTotal: 616.67,
+    });
   });
 });

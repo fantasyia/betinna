@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma, type OrdemProducaoStatus } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { SequenceService } from '@shared/utils/sequence.service';
+import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
 import { EstoqueService } from './estoque.service';
 import { FichasService } from './fichas.service';
 import type { CorteDto, CriarOpDto, EnvioDto, RecebimentoDto, SimularOpDto } from './ordens.dto';
@@ -127,6 +128,8 @@ export class OrdensService {
     private readonly erp: EstoqueService,
     private readonly fichas: FichasService,
     private readonly sequence: SequenceService,
+    // Financeiro (Fase 3): conta a pagar da facção por entrega e o saldo no fechamento.
+    @Optional() private readonly fin?: FinanceiroAutomaticoService,
   ) {}
 
   // ─── Leitura ────────────────────────────────────────────────────────────
@@ -631,6 +634,7 @@ export class OrdensService {
   async receber(user: AuthenticatedUser, id: string, dto: RecebimentoDto) {
     const empresaId = await this.erp.empresaLigada(user);
     const op = await this.opDaEmpresa(empresaId, id);
+    const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {
       // CAS primeiro: trava a OP nesta etapa enquanto confere os saldos.
       await this.virar(tx, id, ['NA_FACCAO', 'RECEBENDO'], { status: 'RECEBENDO' });
@@ -656,8 +660,10 @@ export class OrdensService {
           throw regra(`Chegou mais peça do que foi enviada (faltavam ${falta} desta variação)`);
         }
       }
+      const entregaIds: string[] = [];
       for (const i of dto.itens.filter((x) => x.quantidade + x.defeito > 0)) {
-        await tx.ordemProducaoEntrega.create({
+        const entrega = await tx.ordemProducaoEntrega.create({
+          select: { id: true },
           data: {
             opId: id,
             produtoId: i.produtoId,
@@ -666,6 +672,7 @@ export class OrdensService {
             usuarioId: user.id,
           },
         });
+        entregaIds.push(entrega.id);
         if (i.quantidade > 0) {
           await tx.estoqueMovimento.create({
             data: {
@@ -680,6 +687,9 @@ export class OrdensService {
           });
         }
       }
+      // Financeiro: esta entrega vira o pagamento proporcional da facção —
+      // junto com o recebimento, ou nenhum dos dois.
+      if (comFinanceiro && this.fin) await this.fin.entregaFaccaoNaTx(tx, id, entregaIds);
     });
     return this.obter(user, id);
   }
@@ -712,8 +722,11 @@ export class OrdensService {
     }));
     const total = n(op.custoTecido) + n(op.custoAviamentos) + n(op.custoFaccao);
     const custos = ratearCusto(total, grades);
+    const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {
       await this.virar(tx, id, ['RECEBENDO'], { status: 'FECHADA', fechadaEm: new Date() });
+      // Financeiro: peças enviadas que não voltaram = saldo da facção.
+      if (comFinanceiro && this.fin) await this.fin.saldoFaccaoNaTx(tx, id);
       if (custos.length) {
         await tx.ordemProducaoCusto.createMany({
           data: custos.map((c) => ({

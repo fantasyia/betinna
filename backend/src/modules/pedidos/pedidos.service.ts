@@ -7,6 +7,7 @@ import { NotificacoesService } from '@modules/notificacoes/notificacoes.service'
 import { MetricsService } from '@shared/observability/metrics.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { EstoqueService } from '@modules/erp/estoque.service';
+import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import {
   BusinessRuleException,
@@ -88,6 +89,8 @@ export class PedidosService {
     // Só age em pedido que TEM reserva — e reserva só nasce com a flag da
     // empresa. Opcional pra não quebrar quem monta o service à mão (testes).
     @Optional() private readonly estoque?: EstoqueService,
+    // Financeiro (Fase 3): pedido cancelado cancela o título a receber dele.
+    @Optional() private readonly fin?: FinanceiroAutomaticoService,
   ) {}
 
   /**
@@ -765,6 +768,7 @@ export class PedidosService {
           this.logger.error(`Pedido ${existing.numero}: liberar reserva falhou — ${String(err)}`);
         });
     }
+    if (this.fin) await this.fin.aoCancelarPedido(id);
 
     if (existing.numeroErp) {
       this.logger.warn(
@@ -953,7 +957,20 @@ export class PedidosService {
           `ERP (nº ${solicitacao.pedido.numeroErp}) — precisa de cancelamento MANUAL no ERP.`,
       );
     }
-    if (dto.decisao === 'APROVADA') await this.avisarSiteDoCancelamento(solicitacao.pedido.id);
+    if (dto.decisao === 'APROVADA') {
+      await this.avisarSiteDoCancelamento(solicitacao.pedido.id);
+      // Mesmo efeito do cancelar() direto — antes a reserva ficava presa.
+      if (this.estoque) {
+        await this.estoque
+          .liberarDoPedido(solicitacao.pedido.id, `cancelado via solicitação #${solicitacaoId}`)
+          .catch((err: unknown) => {
+            this.logger.error(
+              `Pedido ${solicitacao.pedido.numero}: liberar reserva falhou — ${String(err)}`,
+            );
+          });
+      }
+      if (this.fin) await this.fin.aoCancelarPedido(solicitacao.pedido.id);
+    }
     return updated;
   }
 

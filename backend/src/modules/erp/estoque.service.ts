@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -42,7 +43,12 @@ const reservaValida = (agora: Date): Prisma.EstoqueReservaWhereInput => ({
 export class EstoqueService {
   private readonly logger = new Logger(EstoqueService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Financeiro (Fase 3): título do pedido pago/cancelado/reativado. Opcional
+    // pra não quebrar quem monta o service à mão (testes).
+    @Optional() private readonly fin?: FinanceiroAutomaticoService,
+  ) {}
 
   // ─── Flag ───────────────────────────────────────────────────────────────
 
@@ -197,6 +203,7 @@ export class EstoqueService {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
+    const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {
       // Reserva ainda ATIVA (mesmo vencida há segundos, se o job não passou):
       // quem pagou não perde a peça por causa do relógio da rodada.
@@ -219,6 +226,11 @@ export class EstoqueService {
           'Pedido mudou de status — recarregue e tente novamente',
           ErrorCode.BUSINESS_RULE_VIOLATION,
         );
+      }
+      // Financeiro: baixa no título a receber do pedido (Pix, conta Banco) —
+      // na MESMA transação: pago no pedido = recebido no financeiro.
+      if (comFinanceiro && this.fin) {
+        await this.fin.pagamentoRecebidoNaTx(tx, empresaId, pedidoId, user.id);
       }
     });
     this.logger.log(`[estoque] pedido ${p.numero}: pagamento recebido, reserva confirmada`);
@@ -245,6 +257,7 @@ export class EstoqueService {
     });
     const expiraEm = new Date(Date.now() + RESERVA_MINUTOS * 60_000);
     const respeita = await this.vitrineRespeitaEstoque(empresaId);
+    const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {
       // Vitrine que respeita estoque: só reativa se as peças ainda existem.
       if (respeita) await this.travarEConferir(tx, empresaId, itens);
@@ -271,6 +284,8 @@ export class EstoqueService {
           expiraEm,
         })),
       });
+      // Financeiro: o título cancelado na expiração reabre.
+      if (comFinanceiro && this.fin) await this.fin.aoReativarPedidoNaTx(tx, pedidoId);
     });
     return this.reservaDoPedido(user, pedidoId);
   }
@@ -290,17 +305,17 @@ export class EstoqueService {
     });
     let pedidos = 0;
     for (const { pedidoId } of vencidas) {
-      await this.prisma.$transaction(async (tx: Tx) => {
+      const cancelou = await this.prisma.$transaction(async (tx: Tx) => {
         const lib = await tx.estoqueReserva.updateMany({
           where: { pedidoId, status: 'ATIVA', expiraEm: { lte: agora } },
           data: { status: 'LIBERADA', expiraEm: null, motivoLiberacao: MOTIVO_EXPIRADA },
         });
-        if (lib.count === 0) return;
+        if (lib.count === 0) return false;
         const p = await tx.pedido.findUnique({
           where: { id: pedidoId },
           select: { status: true, observacoes: true, numero: true },
         });
-        if (p?.status !== 'RASCUNHO') return;
+        if (p?.status !== 'RASCUNHO') return false;
         await tx.pedido.updateMany({
           where: { id: pedidoId, status: 'RASCUNHO' },
           data: {
@@ -310,7 +325,10 @@ export class EstoqueService {
         });
         pedidos++;
         this.logger.log(`[estoque] pedido ${p.numero}: ${MOTIVO_EXPIRADA}`);
+        return true;
       });
+      // Financeiro: pedido que expirou sem pagar não é mais conta a receber.
+      if (cancelou && this.fin) await this.fin.aoCancelarPedido(pedidoId);
     }
     return pedidos;
   }

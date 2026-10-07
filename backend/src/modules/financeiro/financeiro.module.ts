@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FinanceiroController } from './financeiro.controller';
+import { FinanceiroAutomaticoService } from './financeiro-automatico.service';
 import { FinanceiroService } from './financeiro.service';
 import { RecorrenciasJob } from './recorrencias.job';
 
@@ -10,7 +11,7 @@ import { RecorrenciasJob } from './recorrencias.job';
  */
 @Module({
   controllers: [FinanceiroController],
-  providers: [FinanceiroService, RecorrenciasJob],
-  exports: [FinanceiroService],
+  providers: [FinanceiroService, FinanceiroAutomaticoService, RecorrenciasJob],
+  exports: [FinanceiroService, FinanceiroAutomaticoService],
 })
 export class FinanceiroModule {}
