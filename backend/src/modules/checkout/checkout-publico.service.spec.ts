@@ -53,6 +53,19 @@ function montar(
   const prisma = {
     pedido: {
       findFirst: vi.fn().mockResolvedValue(opts.pedido === undefined ? pedidoBase : opts.pedido),
+      // Pro contexto do gatilho PEDIDO_PAGO.
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'ped-1',
+        empresaId: 'emp-1',
+        numero: 'PED-0007',
+        total: D(1000),
+        origem: 'VITRINE',
+        clienteId: 'cli-1',
+        contatoNome: 'Loja da Ana',
+        contatoTelefone: '5511987654321',
+        representanteId: null,
+        cliente: { id: 'cli-1', nome: 'Loja da Ana' },
+      }),
     },
     pedidoPagamento: {
       // Ordem das leituras no iniciar: cobrança aberta → pagamentoAtual.
@@ -78,7 +91,10 @@ function montar(
   const fin = {
     preparar: vi.fn().mockResolvedValue(opts.comFin ?? true),
     pagamentoRecebidoNaTx: vi.fn().mockResolvedValue(undefined),
+    parcelarPedidoNaTx: vi.fn().mockResolvedValue(undefined),
+    parcelaAsaasNaTx: vi.fn().mockResolvedValue(undefined),
   };
+  const bus = { disparar: vi.fn().mockResolvedValue(undefined) };
   const notif = { criarParaRole: vi.fn().mockResolvedValue(1) };
   const asaas = {
     acharCliente: vi.fn().mockResolvedValue(null),
@@ -108,8 +124,9 @@ function montar(
     env as never,
     fin as never,
     notif as never,
+    bus as never,
   );
-  return { svc, prisma, tx, asaas, fin, notif };
+  return { svc, prisma, tx, asaas, fin, notif, bus };
 }
 
 const pagPix = {
@@ -344,8 +361,8 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
 
   beforeEach(() => vi.clearAllMocks());
 
-  it('PAYMENT_CONFIRMED: reserva CONFIRMADA, pedido PAGO, baixa na conta Asaas, aviso ALTA', async () => {
-    const { svc, prisma, tx, fin, notif } = montar({
+  it('PAYMENT_CONFIRMED: reserva CONFIRMADA, pedido PAGO, título no crédito previsto, aviso ALTA, PEDIDO_PAGO', async () => {
+    const { svc, prisma, tx, fin, notif, bus } = montar({
       evento: evento('PAYMENT_CONFIRMED'),
       pagamentos: [pagPix],
     });
@@ -364,12 +381,32 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
       where: { id: 'ped-1', status: 'RASCUNHO' },
       data: { status: 'PAGO' },
     });
-    expect(fin.pagamentoRecebidoNaTx).toHaveBeenCalledWith(
+    // Título: à vista, vencendo no crédito; a BAIXA só vem com o RECEBIDO.
+    expect(fin.parcelarPedidoNaTx).toHaveBeenCalledWith(
+      tx,
+      'ped-1',
+      1,
+      expect.any(Date),
+      'Pix (Asaas)',
+    );
+    expect(fin.pagamentoRecebidoNaTx).not.toHaveBeenCalled();
+    expect(fin.parcelaAsaasNaTx).toHaveBeenCalledWith(
       tx,
       'emp-1',
       'ped-1',
-      null,
-      expect.objectContaining({ conta: 'Asaas', forma: 'PIX' }),
+      1,
+      expect.objectContaining({ recebido: false, forma: 'PIX' }),
+    );
+    // Gatilho dos fluxos, uma vez, com o contexto do pedido.
+    expect(bus.disparar).toHaveBeenCalledTimes(1);
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'PEDIDO_PAGO',
+      expect.objectContaining({
+        pedidoId: 'ped-1',
+        telefone: '5511987654321',
+        pagamento: { forma: 'PIX', parcelas: 1, online: true },
+      }),
     );
     expect(notif.criarParaRole.mock.calls[0][0]).toMatchObject({ prioridade: 'ALTA' });
     expect(notif.criarParaRole.mock.calls[0][0].titulo).toMatch(/PED-0007 PAGO online \(Pix\)/);
@@ -379,26 +416,39 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
     });
   });
 
-  it('aviso repetido processando junto: o segundo não dá baixa nem avisa de novo', async () => {
-    const { svc, tx, fin, notif } = montar({
+  it('aviso repetido processando junto: o segundo não confirma, não avisa, não dispara', async () => {
+    const { svc, tx, fin, notif, bus } = montar({
       evento: evento('PAYMENT_RECEIVED'),
       pagamentos: [pagPix],
       casCount: 0,
     });
     await svc.processar('evt_1');
     expect(tx.pedido.updateMany).not.toHaveBeenCalled();
-    expect(fin.pagamentoRecebidoNaTx).not.toHaveBeenCalled();
+    expect(fin.parcelarPedidoNaTx).not.toHaveBeenCalled();
     expect(notif.criarParaRole).not.toHaveBeenCalled();
+    expect(bus.disparar).not.toHaveBeenCalled();
   });
 
-  it('pagamento já PAGO (parcela seguinte do parcelamento): ignora', async () => {
-    const { svc, prisma, fin } = montar({
-      evento: evento('PAYMENT_CONFIRMED', { id: 'pay_2', installment: 'ins_1' }),
+  it('parcela seguinte do parcelamento (pagamento já PAGO): não reconfirma, só cuida DA parcela', async () => {
+    const { svc, prisma, tx, fin, bus } = montar({
+      evento: evento('PAYMENT_CONFIRMED', {
+        id: 'pay_2',
+        installment: 'ins_1',
+        installmentNumber: 2,
+        estimatedCreditDate: '2026-12-11',
+      }),
       pagamentos: [{ ...pagPix, status: 'PAGO', metodo: 'CARTAO', parcelas: 3 }],
     });
     await svc.processar('evt_1');
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(fin.pagamentoRecebidoNaTx).not.toHaveBeenCalled();
+    expect(tx.pedidoPagamento.updateMany).not.toHaveBeenCalled();
+    expect(fin.parcelarPedidoNaTx).not.toHaveBeenCalled();
+    expect(bus.disparar).not.toHaveBeenCalled();
+    expect(fin.parcelaAsaasNaTx).toHaveBeenCalledWith(tx, 'emp-1', 'ped-1', 2, {
+      credito: new Date('2026-12-11T12:00:00.000Z'),
+      recebido: false,
+      forma: 'CARTAO',
+      observacao: 'Cartão parcela 2/3 recebido pelo Asaas',
+    });
     expect(prisma.pedidoPagamento.findFirst).toHaveBeenCalledWith({
       where: { empresaId: 'emp-1', OR: expect.any(Array) },
     });
@@ -411,6 +461,51 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
     ]);
   });
 
+  it('cartão 3x confirmado: título dividido em 3 a partir do crédito previsto da 1ª', async () => {
+    const { svc, tx, fin, bus } = montar({
+      evento: evento('PAYMENT_CONFIRMED', {
+        id: 'pay_1',
+        installment: 'ins_1',
+        installmentNumber: 1,
+        estimatedCreditDate: '2026-11-09',
+      }),
+      pagamentos: [{ ...pagPix, metodo: 'CARTAO', parcelas: 3, asaasParcelamentoId: 'ins_1' }],
+    });
+    await svc.processar('evt_1');
+    expect(fin.parcelarPedidoNaTx).toHaveBeenCalledWith(
+      tx,
+      'ped-1',
+      3,
+      new Date('2026-11-09T12:00:00.000Z'),
+      'cartão (Asaas)',
+    );
+    expect(bus.disparar.mock.calls[0][2].pagamento).toEqual({
+      forma: 'CARTAO',
+      parcelas: 3,
+      online: true,
+    });
+  });
+
+  it('PAYMENT_RECEIVED da parcela 3: baixa DELA (recebido = true)', async () => {
+    const { svc, tx, fin } = montar({
+      evento: evento('PAYMENT_RECEIVED', {
+        id: 'pay_3',
+        installment: 'ins_1',
+        installmentNumber: 3,
+        creditDate: '2027-01-09',
+      }),
+      pagamentos: [{ ...pagPix, status: 'PAGO', metodo: 'CARTAO', parcelas: 3 }],
+    });
+    await svc.processar('evt_1');
+    expect(fin.parcelaAsaasNaTx).toHaveBeenCalledWith(
+      tx,
+      'emp-1',
+      'ped-1',
+      3,
+      expect.objectContaining({ recebido: true, credito: new Date('2027-01-09T12:00:00.000Z') }),
+    );
+  });
+
   it('pedido já CANCELADO (reserva expirou) e o Pix caiu: não reativa sozinho — avisa', async () => {
     const { svc, tx, fin, notif } = montar({
       evento: evento('PAYMENT_RECEIVED'),
@@ -419,7 +514,7 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
     });
     await svc.processar('evt_1');
     expect(tx.pedido.updateMany).not.toHaveBeenCalled();
-    expect(fin.pagamentoRecebidoNaTx).not.toHaveBeenCalled();
+    expect(fin.parcelarPedidoNaTx).not.toHaveBeenCalled();
     expect(notif.criarParaRole.mock.calls[0][0].titulo).toMatch(/CANCELADO — reative ou estorne/);
   });
 
@@ -430,7 +525,7 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
       pedidoNaTx: { numero: 'PED-0007', status: 'PAGO' },
     });
     await svc.processar('evt_1');
-    expect(fin.pagamentoRecebidoNaTx).not.toHaveBeenCalled();
+    expect(fin.parcelarPedidoNaTx).not.toHaveBeenCalled();
     expect(notif.criarParaRole.mock.calls[0][0].titulo).toMatch(/duas vezes/);
   });
 

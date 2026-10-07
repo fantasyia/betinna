@@ -1607,6 +1607,10 @@ const FLUXO_TRIGGER_TIPO = z.enum([
   // Pedido NOVO entrou no app — hoje só a vitrine de atacado dispara
   // (contexto: pedidoId, pedido{numero,total,totalPecas,faixa}, origem, clienteId, telefone).
   "PEDIDO_CRIADO",
+  // Pedido virou PAGO — Asaas (Pix/cartão na vitrine), "Pagamento recebido"
+  // manual ou avanço ENVIADO_ERP → PAGO. Contexto: pedidoId, pedido{numero,total},
+  // origem, clienteId, telefone, pagamento{forma: PIX|CARTAO|MANUAL|ERP, parcelas, online}.
+  "PEDIDO_PAGO",
   // Rastreio PASSOU A EXISTIR (vazio → preenchido) — o despacho, dias antes da
   // entrega. É o momento em que o cliente quer o código; o PEDIDO_ENTREGUE
   // avisaria depois de a encomenda ter chegado.

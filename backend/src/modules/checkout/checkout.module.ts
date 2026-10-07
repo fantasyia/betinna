@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FinanceiroModule } from '@modules/financeiro/financeiro.module';
+import { FluxosModule } from '@modules/fluxos/fluxos.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { AvisosAsaasJob } from './avisos-asaas.job';
@@ -14,7 +15,8 @@ import { CheckoutService } from './checkout.service';
  * (entrega 2).
  */
 @Module({
-  imports: [IntegracoesModule, FinanceiroModule, NotificacoesModule],
+  // Fluxos: o pedido pago pelo Asaas dispara o gatilho PEDIDO_PAGO.
+  imports: [IntegracoesModule, FinanceiroModule, NotificacoesModule, FluxosModule],
   controllers: [CheckoutController, AsaasWebhookController, CheckoutPublicoController],
   providers: [CheckoutService, CheckoutPublicoService, AvisosAsaasJob],
   exports: [CheckoutService, CheckoutPublicoService],

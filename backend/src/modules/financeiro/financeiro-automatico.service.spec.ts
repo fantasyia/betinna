@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
-import { FinanceiroAutomaticoService } from './financeiro-automatico.service';
+import {
+  FinanceiroAutomaticoService,
+  dividirEmParcelas,
+  somarMeses,
+} from './financeiro-automatico.service';
 
 const D = (v: number) => new Prisma.Decimal(v);
 
@@ -19,8 +23,13 @@ function montar(over: Record<string, unknown> = {}) {
         id: 't-1',
         ...data,
       })),
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn().mockResolvedValue({}),
     },
-    finBaixa: { aggregate: vi.fn().mockResolvedValue({ _sum: { valor: null } }) },
+    finBaixa: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { valor: null } }),
+      count: vi.fn().mockResolvedValue(0),
+    },
     finCategoria: {
       findUnique: vi.fn(
         async ({ where }: { where: { empresaId_tipo_nome: { nome: string } } }) => ({
@@ -154,7 +163,7 @@ describe('FinanceiroAutomaticoService', () => {
 
     it('cancelar: título sem recebimento vira CANCELADO; com recebimento fica (devolução é de gente)', async () => {
       const a = montar();
-      a.prisma.finTitulo.findUnique.mockResolvedValue({ id: 't-1', status: 'ABERTO', baixas: [] });
+      a.prisma.finTitulo.findMany.mockResolvedValue([{ id: 't-1', status: 'ABERTO', baixas: [] }]);
       await a.svc.aoCancelarPedido('ped-1');
       expect(a.prisma.finTitulo.update).toHaveBeenCalledWith({
         where: { id: 't-1' },
@@ -162,19 +171,184 @@ describe('FinanceiroAutomaticoService', () => {
       });
 
       const b = montar();
-      b.prisma.finTitulo.findUnique.mockResolvedValue({
-        id: 't-1',
-        status: 'QUITADO',
-        baixas: [{ id: 'b1' }],
-      });
+      b.prisma.finTitulo.findMany.mockResolvedValue([
+        { id: 't-1', status: 'QUITADO', baixas: [{ id: 'b1' }] },
+      ]);
       await b.svc.aoCancelarPedido('ped-1');
       expect(b.prisma.finTitulo.update).not.toHaveBeenCalled();
+    });
+
+    it('cancelar pedido parcelado: cancela as parcelas sem recebimento, guarda a que recebeu', async () => {
+      const { svc, prisma } = montar();
+      prisma.finTitulo.findMany.mockResolvedValue([
+        { id: 'p1', status: 'QUITADO', baixas: [{ id: 'b1' }] },
+        { id: 'p2', status: 'ABERTO', baixas: [] },
+        { id: 'p3', status: 'ABERTO', baixas: [] },
+      ]);
+      await svc.aoCancelarPedido('ped-1');
+      const ids = (
+        prisma.finTitulo.update.mock.calls as unknown as [{ where: { id: string } }][]
+      ).map((c) => c[0].where.id);
+      expect(ids).toEqual(['p2', 'p3']);
     });
 
     it('criação nunca derruba o pedido: erro no banco vira log', async () => {
       const { svc, prisma } = montar();
       prisma.$transaction.mockRejectedValue(new Error('banco fora'));
       await expect(svc.aoCriarPedidoVitrine('emp-1', 'ped-1')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('pagamento online (Asaas): um título por parcela', () => {
+    const primeiro = new Date('2026-11-09T12:00:00.000Z');
+    const tituloP1 = (over: Record<string, unknown> = {}) => ({
+      id: 't-1',
+      empresaId: 'emp-1',
+      status: 'ABERTO',
+      valor: D(1000),
+      descricao: 'Pedido PED-0007 (vitrine)',
+      categoriaId: 'cat-venda',
+      contatoNome: 'Loja da Ana',
+      clienteId: 'cli-1',
+      totalParcelas: 1,
+      baixas: [],
+      ...over,
+    });
+
+    it('divide em centavos: a sobra vai nas primeiras e a soma bate', () => {
+      expect(dividirEmParcelas(100, 3)).toEqual([33.34, 33.33, 33.33]);
+      expect(dividirEmParcelas(1000, 1)).toEqual([1000]);
+      const v = dividirEmParcelas(1234.57, 12);
+      expect(Math.round(v.reduce((a, b) => a + b, 0) * 100)).toBe(123457);
+    });
+
+    it('mês seguinte: 31/jan → 28/fev (não pula pra março)', () => {
+      const d = somarMeses(new Date('2027-01-31T12:00:00.000Z'), 1);
+      expect(d.toISOString().slice(0, 10)).toBe('2027-02-28');
+    });
+
+    it('cartão 3x: a parcela 1 encolhe e nascem a 2 e a 3, um mês depois cada', async () => {
+      const { svc, tx } = montar();
+      tx.pedido.findUnique.mockResolvedValue(pedidoVitrine({ total: D(1000) }));
+      tx.finTitulo.findUnique.mockResolvedValue(tituloP1());
+      await svc.parcelarPedidoNaTx(tx as never, 'ped-1', 3, primeiro, 'cartão (Asaas)');
+      expect(tx.finTitulo.update).toHaveBeenCalledWith({
+        where: { id: 't-1' },
+        data: {
+          valor: expect.anything(),
+          vencimento: primeiro,
+          totalParcelas: 3,
+          descricao: 'Pedido PED-0007 (vitrine) · 1/3 cartão (Asaas)',
+        },
+      });
+      expect(Number(tx.finTitulo.update.mock.calls[0][0].data.valor)).toBe(333.34);
+      const novos = tx.finTitulo.upsert.mock.calls.map((c) => c[0].create);
+      expect(
+        novos.map((n) => [n.parcela, Number(n.valor), n.vencimento.toISOString().slice(0, 10)]),
+      ).toEqual([
+        [2, 333.33, '2026-12-09'],
+        [3, 333.33, '2027-01-09'],
+      ]);
+      expect(novos[0]).toMatchObject({ pedidoId: 'ped-1', totalParcelas: 3, tipo: 'RECEBER' });
+    });
+
+    it('à vista: o mesmo título, vencendo no crédito previsto; repetir não empilha rótulo', async () => {
+      const { svc, tx } = montar();
+      tx.pedido.findUnique.mockResolvedValue(pedidoVitrine({ total: D(1000) }));
+      tx.finTitulo.findUnique.mockResolvedValue(
+        tituloP1({ descricao: 'Pedido PED-0007 (vitrine) · Pix (Asaas)' }),
+      );
+      await svc.parcelarPedidoNaTx(tx as never, 'ped-1', 1, primeiro, 'Pix (Asaas)');
+      expect(tx.finTitulo.update.mock.calls[0][0].data.descricao).toBe(
+        'Pedido PED-0007 (vitrine) · Pix (Asaas)',
+      );
+      expect(tx.finTitulo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('título que já recebeu algo (baixa manual) não é dividido', async () => {
+      const { svc, tx } = montar();
+      tx.pedido.findUnique.mockResolvedValue(pedidoVitrine({ total: D(1000) }));
+      tx.finTitulo.findUnique.mockResolvedValue(tituloP1());
+      tx.finBaixa.count.mockResolvedValue(1);
+      await svc.parcelarPedidoNaTx(tx as never, 'ped-1', 3, primeiro, 'cartão (Asaas)');
+      expect(tx.finTitulo.update).not.toHaveBeenCalled();
+      expect(tx.finTitulo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('RECEBIDO da parcela 2: baixa o que falta DELA na conta Asaas', async () => {
+      const { svc, tx, fin } = montar();
+      tx.finTitulo.findUnique.mockResolvedValue({
+        id: 't-2',
+        status: 'ABERTO',
+        valor: D(333.33),
+        baixas: [],
+      });
+      await svc.parcelaAsaasNaTx(tx as never, 'emp-1', 'ped-1', 2, {
+        recebido: true,
+        forma: 'CARTAO',
+        observacao: 'parcela 2/3',
+      });
+      expect(tx.finTitulo.findUnique.mock.calls[0][0].where).toEqual({
+        pedidoId_parcela: { pedidoId: 'ped-1', parcela: 2 },
+      });
+      expect(tx.finConta.findFirst.mock.calls[0][0].where).toMatchObject({ nome: 'Asaas' });
+      expect(fin.baixarNaTx).toHaveBeenCalledWith(
+        tx,
+        't-2',
+        expect.objectContaining({ valor: 333.33, forma: 'CARTAO', contaId: 'conta-banco' }),
+        null,
+      );
+    });
+
+    it('CONFIRMADO (sem dinheiro ainda): só ajusta o vencimento, sem baixa', async () => {
+      const { svc, tx, fin } = montar();
+      tx.finTitulo.findUnique.mockResolvedValue({
+        id: 't-2',
+        status: 'ABERTO',
+        valor: D(333.33),
+        baixas: [],
+      });
+      const credito = new Date('2026-12-11T12:00:00.000Z');
+      await svc.parcelaAsaasNaTx(tx as never, 'emp-1', 'ped-1', 2, {
+        credito,
+        recebido: false,
+        forma: 'CARTAO',
+        observacao: 'x',
+      });
+      expect(tx.finTitulo.update).toHaveBeenCalledWith({
+        where: { id: 't-2' },
+        data: { vencimento: credito },
+      });
+      expect(fin.baixarNaTx).not.toHaveBeenCalled();
+    });
+
+    it('RECEBIDO repetido (parcela já quitada) ou pedido cancelado: nada', async () => {
+      const a = montar();
+      a.tx.finTitulo.findUnique.mockResolvedValue({
+        id: 't-2',
+        status: 'QUITADO',
+        valor: D(333.33),
+        baixas: [{ valor: D(333.33) }],
+      });
+      await a.svc.parcelaAsaasNaTx(a.tx as never, 'emp-1', 'ped-1', 2, {
+        recebido: true,
+        forma: 'CARTAO',
+        observacao: 'x',
+      });
+      expect(a.fin.baixarNaTx).not.toHaveBeenCalled();
+      const b = montar();
+      b.tx.finTitulo.findUnique.mockResolvedValue({
+        id: 't-2',
+        status: 'CANCELADO',
+        valor: D(1),
+        baixas: [],
+      });
+      await b.svc.parcelaAsaasNaTx(b.tx as never, 'emp-1', 'ped-1', 2, {
+        recebido: true,
+        forma: 'CARTAO',
+        observacao: 'x',
+      });
+      expect(b.fin.baixarNaTx).not.toHaveBeenCalled();
     });
   });
 

@@ -12,6 +12,8 @@ export const fluxoTriggerTipoValues = [
   'PEDIDO_ENTREGUE',
   // Pedido novo entrou no app (hoje só a vitrine de atacado dispara).
   'PEDIDO_CRIADO',
+  // Pedido virou PAGO (Asaas, "Pagamento recebido" manual ou avanço de status).
+  'PEDIDO_PAGO',
   'PEDIDO_RASTREIO_DISPONIVEL',
   'LEAD_REENGAJOU_SITE',
   'OCORRENCIA_ABERTA',

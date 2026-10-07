@@ -780,6 +780,42 @@ describe('PedidosService', () => {
       expect(estoque.liberarDoPedido).toHaveBeenCalledWith('ped-1', 'cancelado: desistiu');
     });
 
+    it('ENVIADO_ERP → PAGO dispara o gatilho PEDIDO_PAGO (forma ERP); outros avanços não', async () => {
+      const bus = (svc as unknown as { bus: { disparar: ReturnType<typeof vi.fn> } }).bus;
+      bus.disparar.mockClear();
+      prisma.pedido.findFirst.mockResolvedValue({ ...pedidoBase, status: 'ENVIADO_ERP' });
+      prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+      prisma.pedido.findUniqueOrThrow.mockResolvedValue({ ...pedidoBase, status: 'PAGO' });
+      prisma.pedido.findUnique.mockResolvedValue({
+        id: 'ped-1',
+        empresaId: 'emp-1',
+        numero: 'PED-0009',
+        total: 500,
+        origem: 'REP',
+        clienteId: 'cli-1',
+        contatoNome: null,
+        contatoTelefone: '11999990000',
+        representanteId: 'rep-1',
+        cliente: { id: 'cli-1', nome: 'X' },
+      });
+      await svc.avancarStatus(fakeUser({ role: 'ADMIN' }), 'ped-1');
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'PEDIDO_PAGO',
+        expect.objectContaining({
+          pedidoId: 'ped-1',
+          representanteId: 'rep-1',
+          pagamento: { forma: 'ERP', parcelas: 1, online: false },
+        }),
+      );
+
+      bus.disparar.mockClear();
+      prisma.pedido.findFirst.mockResolvedValue({ ...pedidoBase, status: 'PAGO' });
+      prisma.pedido.findUniqueOrThrow.mockResolvedValue({ ...pedidoBase, status: 'EM_SEPARACAO' });
+      await svc.avancarStatus(fakeUser({ role: 'ADMIN' }), 'ped-1');
+      expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'PEDIDO_PAGO', expect.anything());
+    });
+
     it('falha no estoque não desfaz o despacho', async () => {
       const estoque = comEstoque();
       estoque.baixarNoDespacho.mockRejectedValue(new Error('banco fora'));

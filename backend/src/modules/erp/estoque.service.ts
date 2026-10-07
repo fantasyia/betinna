@@ -1,7 +1,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
+import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { dispararPedidoPago } from '@modules/pedidos/pedido-pago.evento';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -48,7 +51,19 @@ export class EstoqueService {
     // Financeiro (Fase 3): título do pedido pago/cancelado/reativado. Opcional
     // pra não quebrar quem monta o service à mão (testes).
     @Optional() private readonly fin?: FinanceiroAutomaticoService,
+    // Gatilho PEDIDO_PAGO no "Pagamento recebido" (Léo, 07/10). O bus é
+    // buscado na hora (strict: false), sem importar o FluxosModule: ele arrasta
+    // WhatsApp/Redis/BullMQ pro grafo do ERP.
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
+
+  private bus(): FluxoEventBusService | undefined {
+    try {
+      return this.moduleRef?.get(FluxoEventBusService, { strict: false });
+    } catch {
+      return undefined;
+    }
+  }
 
   // ─── Flag ───────────────────────────────────────────────────────────────
 
@@ -234,6 +249,11 @@ export class EstoqueService {
       }
     });
     this.logger.log(`[estoque] pedido ${p.numero}: pagamento recebido, reserva confirmada`);
+    await dispararPedidoPago(this.prisma, this.bus(), pedidoId, {
+      forma: 'MANUAL',
+      parcelas: 1,
+      online: false,
+    });
     return this.reservaDoPedido(user, pedidoId);
   }
 

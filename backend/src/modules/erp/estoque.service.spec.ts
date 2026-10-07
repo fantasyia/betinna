@@ -378,6 +378,42 @@ describe('EstoqueService → financeiro (Fase 3)', () => {
     expect(fin.pagamentoRecebidoNaTx).toHaveBeenCalledWith(prisma, 'emp-1', 'ped-1', 'u-1');
   });
 
+  it('pagamento recebido dispara PEDIDO_PAGO (forma MANUAL) depois de gravar', async () => {
+    const { prisma } = montar();
+    const bus = { disparar: vi.fn().mockResolvedValue(undefined) };
+    const moduleRef = { get: vi.fn().mockReturnValue(bus) };
+    (prisma.pedido as unknown as { findUnique: unknown }).findUnique = vi.fn().mockResolvedValue({
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      numero: 'PED-0009',
+      total: 300,
+      origem: 'VITRINE',
+      clienteId: 'cli-1',
+      contatoNome: 'Loja',
+      contatoTelefone: '5511900000000',
+      representanteId: null,
+      cliente: { id: 'cli-1', nome: 'Loja' },
+    });
+    const svc = new EstoqueService(prisma as never, finMock() as never, moduleRef as never);
+    await svc.pagamentoRecebido(user as never, 'ped-1');
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'PEDIDO_PAGO',
+      expect.objectContaining({ pagamento: { forma: 'MANUAL', parcelas: 1, online: false } }),
+    );
+  });
+
+  it('sem o bus no contexto (teste/worker): o pagamento segue, sem disparo', async () => {
+    const { prisma } = montar();
+    const moduleRef = {
+      get: vi.fn(() => {
+        throw new Error('não registrado');
+      }),
+    };
+    const svc = new EstoqueService(prisma as never, finMock() as never, moduleRef as never);
+    await expect(svc.pagamentoRecebido(user as never, 'ped-1')).resolves.toBeTruthy();
+  });
+
   it('financeiro desligado na empresa: não toca em título', async () => {
     const { prisma } = montar();
     const fin = finMock(false);

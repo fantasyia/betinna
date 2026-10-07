@@ -33,6 +33,7 @@ export const TRIGGER_LABEL: Record<TriggerTipo, string> = {
   PEDIDO_APROVADO: 'Pedido aprovado',
   PEDIDO_ENTREGUE: 'Pedido entregue',
   PEDIDO_CRIADO: 'Pedido recebido (vitrine)',
+  PEDIDO_PAGO: 'Pedido pago',
   PEDIDO_RASTREIO_DISPONIVEL: 'Rastreio disponível',
   LEAD_REENGAJOU_SITE: 'Lead voltou pelo site',
   OCORRENCIA_ABERTA: 'Ocorrência aberta',
@@ -153,6 +154,7 @@ export const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> 
         tipo: 'TRIGGER',
         triggerTipo: 'PEDIDO_CRIADO',
       },
+      { id: 't-pedido-pago', label: 'Pedido pago', tipo: 'TRIGGER', triggerTipo: 'PEDIDO_PAGO' },
       {
         id: 't-pedido-rastreio',
         label: 'Rastreio disponível',

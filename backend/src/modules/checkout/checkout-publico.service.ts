@@ -7,6 +7,8 @@ import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-auto
 import { hojePuro } from '@modules/financeiro/financeiro.regras';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { dispararPedidoPago } from '@modules/pedidos/pedido-pago.evento';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import {
@@ -33,6 +35,23 @@ const ESTORNO = new Set([
   'PAYMENT_CHARGEBACK_REQUESTED',
 ]);
 const CANCELA = new Set(['PAYMENT_DELETED', 'PAYMENT_OVERDUE']);
+
+/** Pagamento como o aviso do Asaas descreve (só o que usamos). */
+interface PagamentoAviso {
+  id?: string;
+  installment?: string | null;
+  /** Qual parcela (1..N) esta cobrança é, no parcelado. */
+  installmentNumber?: number | null;
+  netValue?: number;
+  billingType?: string;
+  /** Data (AAAA-MM-DD) em que o dinheiro cai / caiu na conta Asaas. */
+  estimatedCreditDate?: string | null;
+  creditDate?: string | null;
+}
+
+/** "2026-11-08" → data pura (12:00 UTC); inválida → null. */
+const dataAsaas = (v: string | null | undefined): Date | null =>
+  v && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(`${v.slice(0, 10)}T12:00:00.000Z`) : null;
 
 export interface PagamentoPublico {
   metodo: 'PIX' | 'CARTAO';
@@ -62,6 +81,8 @@ export class CheckoutPublicoService {
     private readonly env: EnvService,
     @Optional() private readonly fin?: FinanceiroAutomaticoService,
     @Optional() private readonly notificacoes?: NotificacoesService,
+    // Gatilho PEDIDO_PAGO dos fluxos (Léo, 07/10).
+    @Optional() private readonly bus?: FluxoEventBusService,
   ) {}
 
   /** Injetável nos testes. */
@@ -344,12 +365,7 @@ export class CheckoutPublicoService {
   }
 
   private async aplicar(empresaId: string, evento: string, payload: Record<string, unknown>) {
-    const pay = (payload.payment ?? {}) as {
-      id?: string;
-      installment?: string | null;
-      netValue?: number;
-      billingType?: string;
-    };
+    const pay = (payload.payment ?? {}) as PagamentoAviso;
     if (!pay.id) return;
     const pg = await this.prisma.pedidoPagamento.findFirst({
       where: {
@@ -363,8 +379,10 @@ export class CheckoutPublicoService {
     if (!pg) return; // cobrança que não é de pedido da vitrine: só registra
 
     if (PAGO.has(evento)) {
-      if (pg.status === 'PAGO') return; // parcela seguinte do mesmo parcelamento, ou aviso repetido
-      await this.confirmar(pg, pay.netValue);
+      // 1º aviso de pago (de qualquer parcela): pedido PAGO + títulos por parcela.
+      if (pg.status !== 'PAGO') await this.confirmar(pg, pay);
+      // Todo aviso: vencimento previsto da parcela e, se RECEBIDO, a baixa dela.
+      await this.financeiroDaParcela(pg, pay, evento === 'PAYMENT_RECEIVED');
     } else if (ESTORNO.has(evento)) {
       await this.prisma.pedidoPagamento.update({
         where: { id: pg.id },
@@ -383,11 +401,28 @@ export class CheckoutPublicoService {
     }
   }
 
-  /** Pago: cobrança PAGA, reserva garantida, pedido PAGO e baixa no financeiro — numa transação. */
+  /**
+   * Pago: cobrança PAGA, reserva garantida, pedido PAGO e o título a receber
+   * dividido nas parcelas do cartão (vencendo quando o dinheiro cai) — numa
+   * transação. A BAIXA não é aqui: vem com o aviso de RECEBIDO de cada parcela
+   * (o cartão só cai ~30 dias depois; dar baixa antes mentia no caixa).
+   */
   private async confirmar(
     pg: { id: string; empresaId: string; pedidoId: string; metodo: string; parcelas: number },
-    netValue?: number,
+    pay: PagamentoAviso,
   ) {
+    const netValue = pay.netValue;
+    const pix = pg.metodo === 'PIX';
+    // Sem a data do Asaas: Pix cai na hora; cartão, em ~30 dias.
+    const primeiroCredito =
+      dataAsaas(pay.estimatedCreditDate) ??
+      dataAsaas(pay.creditDate) ??
+      new Date(hojePuro().getTime() + (pix ? 0 : 30 * 86_400_000));
+    const rotulo = pix
+      ? 'Pix (Asaas)'
+      : pg.parcelas > 1
+        ? 'cartão (Asaas)'
+        : 'cartão à vista (Asaas)';
     const comFinanceiro = this.fin ? await this.fin.preparar(pg.empresaId) : false;
     const pedido = await this.prisma.$transaction(async (tx) => {
       // CAS: aviso repetido processando junto (ACK + job) — só um passa daqui.
@@ -418,11 +453,7 @@ export class CheckoutPublicoService {
         data: { status: 'PAGO', pagoEm: new Date() },
       });
       if (comFinanceiro && this.fin) {
-        await this.fin.pagamentoRecebidoNaTx(tx, pg.empresaId, pg.pedidoId, null, {
-          conta: 'Asaas',
-          forma: pg.metodo === 'PIX' ? 'PIX' : 'CARTAO',
-          observacao: `Pago online (${pg.metodo === 'PIX' ? 'Pix' : `cartão ${pg.parcelas}x`}) pelo Asaas`,
-        });
+        await this.fin.parcelarPedidoNaTx(tx, pg.pedidoId, pg.parcelas, primeiroCredito, rotulo);
       }
       return { numero: p.numero, status: 'PAGO', confirmadoAgora: true };
     });
@@ -435,6 +466,12 @@ export class CheckoutPublicoService {
         `Pedido ${pedido.numero} PAGO online (${como})`,
         'ALTA',
       );
+      // Só quem virou o pedido (CAS) dispara — uma vez por pedido.
+      await dispararPedidoPago(this.prisma, this.bus, pg.pedidoId, {
+        forma: pix ? 'PIX' : 'CARTAO',
+        parcelas: pg.parcelas,
+        online: true,
+      });
     } else if (pedido.status === 'PAGO') {
       // Alguém já tinha dado o pedido como pago à mão: a baixa pode estar em dobro.
       await this.avisar(
@@ -451,6 +488,32 @@ export class CheckoutPublicoService {
         'ALTA',
       );
     }
+  }
+
+  /**
+   * Financeiro de UMA parcela do Asaas: ajusta o vencimento pela data prevista
+   * e, no RECEBIDO, dá a baixa na conta Asaas. Pedido cancelado (títulos
+   * cancelados) ou parcela já quitada: não faz nada.
+   */
+  private async financeiroDaParcela(
+    pg: { empresaId: string; pedidoId: string; metodo: string; parcelas: number },
+    pay: PagamentoAviso,
+    recebido: boolean,
+  ) {
+    if (!this.fin || !(await this.fin.preparar(pg.empresaId))) return;
+    const fin = this.fin;
+    const parcela = pay.installmentNumber && pay.installmentNumber > 0 ? pay.installmentNumber : 1;
+    const pix = pg.metodo === 'PIX';
+    await this.prisma.$transaction((tx) =>
+      fin.parcelaAsaasNaTx(tx, pg.empresaId, pg.pedidoId, parcela, {
+        credito: dataAsaas(pay.creditDate) ?? dataAsaas(pay.estimatedCreditDate),
+        recebido,
+        forma: pix ? 'PIX' : 'CARTAO',
+        observacao: pix
+          ? 'Pix recebido pelo Asaas'
+          : `Cartão ${pg.parcelas > 1 ? `parcela ${parcela}/${pg.parcelas}` : 'à vista'} recebido pelo Asaas`,
+      }),
+    );
   }
 
   private async avisar(

@@ -6,6 +6,7 @@ import { TinyPedidoPushService } from '@integrations/tiny/tiny-pedido-push.servi
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { MetricsService } from '@shared/observability/metrics.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { dispararPedidoPago } from './pedido-pago.evento';
 import { EstoqueService } from '@modules/erp/estoque.service';
 import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
 import { PricingService } from '@modules/produtos/pricing.service';
@@ -679,6 +680,15 @@ export class PedidosService {
     if (proximo === 'ENVIADO' && this.estoque) {
       await this.estoque.baixarNoDespacho(id, user.id).catch((err: unknown) => {
         this.logger.error(`Pedido ${pedido.numero}: baixa de estoque falhou — ${String(err)}`);
+      });
+    }
+
+    // Trigger: PEDIDO_PAGO — o avanço manual ENVIADO_ERP → PAGO também é "pago".
+    if (proximo === 'PAGO') {
+      await dispararPedidoPago(this.prisma, this.bus, pedido.id, {
+        forma: 'ERP',
+        parcelas: 1,
+        online: false,
       });
     }
 

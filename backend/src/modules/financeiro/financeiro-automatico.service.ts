@@ -9,6 +9,27 @@ const D = (v: number) => new Prisma.Decimal(v.toFixed(2));
 const isoDe = (d: Date) => d.toISOString().slice(0, 10);
 
 /**
+ * Divide um valor em N parcelas em centavos: a sobra da divisão vai nas
+ * PRIMEIRAS (R$ 100 em 3 = 33,34 + 33,33 + 33,33). A soma bate exato. PURO.
+ */
+export function dividirEmParcelas(valor: number, n: number): number[] {
+  const totalC = Math.round(valor * 100);
+  const base = Math.floor(totalC / n);
+  const sobra = totalC - base * n;
+  return Array.from({ length: n }, (_, i) => (base + (i < sobra ? 1 : 0)) / 100);
+}
+
+/** Mesma data, `meses` depois (dia 31 → último dia do mês). Data pura, 12:00 UTC. */
+export function somarMeses(d: Date, meses: number): Date {
+  const alvo = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + meses, 1, 12));
+  const ultimo = new Date(
+    Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0, 12),
+  ).getUTCDate();
+  alvo.setUTCDate(Math.min(d.getUTCDate(), ultimo));
+  return alvo;
+}
+
+/**
  * Lançamentos AUTOMÁTICOS do financeiro (ERP Fase 3 · entrega B):
  *  - pedido da vitrine → conta a RECEBER; "pagamento recebido" dá baixa;
  *    pedido cancelado cancela o título (reativado, reabre);
@@ -103,6 +124,7 @@ export class FinanceiroAutomaticoService {
       const { baixas, ...titulo } = existente;
       if (
         titulo.status === 'ABERTO' &&
+        (titulo.totalParcelas ?? 1) === 1 &&
         baixas.length === 0 &&
         total > 0 &&
         Math.abs(Number(titulo.valor) - total) > 0.004
@@ -180,28 +202,133 @@ export class FinanceiroAutomaticoService {
     );
   }
 
+  // ─── Pagamento online (Asaas) ────────────────────────────────────────────
+
   /**
-   * Pedido cancelado → título cancelado. Se já houve recebimento, NÃO cancela
-   * (devolução é decisão de gente): fica registrado no log pra conferir.
+   * Pedido PAGO no Asaas: o título a receber passa a refletir QUANDO o
+   * dinheiro cai. Cartão parcelado em N vezes → N títulos (parcela 1..N), um
+   * por mês a partir do 1º crédito previsto, somando o valor do pedido (a taxa
+   * do parcelado é do cliente, Léo 07/10). À vista (Pix, cartão 1x) → o mesmo
+   * título, vencendo no crédito previsto. Título que já recebeu algo não é
+   * mexido. Repetir não duplica (chave pedidoId+parcela).
+   */
+  async parcelarPedidoNaTx(
+    tx: Tx,
+    pedidoId: string,
+    parcelas: number,
+    primeiroCredito: Date,
+    rotulo: string,
+  ) {
+    const t = await this.tituloDoPedidoNaTx(tx, pedidoId);
+    if (!t || t.status === 'CANCELADO') return;
+    const recebeu = await tx.finBaixa.count({ where: { tituloId: t.id, estornadaEm: null } });
+    if (recebeu > 0) return;
+    const n = Math.max(1, Math.trunc(parcelas));
+    if ((t.totalParcelas ?? 1) === n && n > 1) return; // já dividido
+    const valores = dividirEmParcelas(Number(t.valor), n);
+    // "Pedido PED-0007 (vitrine)" + " · 1/3 cartão" — sem empilhar rótulo ao repetir.
+    const base = t.descricao.replace(/ · .*$/, '');
+    await tx.finTitulo.update({
+      where: { id: t.id },
+      data: {
+        valor: D(valores[0]),
+        vencimento: primeiroCredito,
+        totalParcelas: n,
+        descricao: n > 1 ? `${base} · 1/${n} ${rotulo}` : `${base} · ${rotulo}`,
+      },
+    });
+    for (let k = 2; k <= n; k++) {
+      await tx.finTitulo.upsert({
+        where: { pedidoId_parcela: { pedidoId, parcela: k } },
+        create: {
+          empresaId: t.empresaId,
+          tipo: 'RECEBER',
+          descricao: `${base} · ${k}/${n} ${rotulo}`,
+          valor: D(valores[k - 1]),
+          vencimento: somarMeses(primeiroCredito, k - 1),
+          categoriaId: t.categoriaId,
+          contatoNome: t.contatoNome,
+          clienteId: t.clienteId,
+          pedidoId,
+          parcela: k,
+          totalParcelas: n,
+        },
+        update: {},
+      });
+    }
+  }
+
+  /**
+   * Uma parcela do Asaas: o aviso de CONFIRMADO traz a data prevista do
+   * crédito (ajusta o vencimento); o de RECEBIDO dá a baixa na conta Asaas.
+   * Parcela já quitada ou cancelada: nada (aviso repetido).
+   */
+  async parcelaAsaasNaTx(
+    tx: Tx,
+    empresaId: string,
+    pedidoId: string,
+    parcela: number,
+    opts: {
+      credito?: Date | null;
+      recebido: boolean;
+      forma: 'PIX' | 'CARTAO';
+      observacao: string;
+    },
+  ) {
+    const t = await tx.finTitulo.findUnique({
+      where: { pedidoId_parcela: { pedidoId, parcela } },
+      include: { baixas: { where: { estornadaEm: null }, select: { valor: true } } },
+    });
+    if (!t || t.status === 'CANCELADO') return;
+    const pagoC = t.baixas.reduce((s, b) => s + Math.round(Number(b.valor) * 100), 0);
+    const faltaC = Math.round(Number(t.valor) * 100) - pagoC;
+    if (opts.credito && pagoC === 0) {
+      await tx.finTitulo.update({ where: { id: t.id }, data: { vencimento: opts.credito } });
+    }
+    if (!opts.recebido || faltaC <= 0) return;
+    const contaId = await this.contaDoPix(tx, empresaId, 'Asaas');
+    if (!contaId) {
+      this.logger.warn(`[financeiro] pedido ${pedidoId}: recebido no Asaas, mas sem conta ativa`);
+      return;
+    }
+    await this.fin.baixarNaTx(
+      tx,
+      t.id,
+      {
+        valor: faltaC / 100,
+        data: isoDe(hojePuro()),
+        contaId,
+        forma: opts.forma,
+        observacao: opts.observacao,
+      },
+      null,
+    );
+  }
+
+  /**
+   * Pedido cancelado → títulos cancelados (todas as parcelas). Parcela que já
+   * recebeu NÃO cancela (devolução é decisão de gente): fica no log.
    */
   async aoCancelarPedido(pedidoId: string): Promise<void> {
     try {
-      const t = await this.prisma.finTitulo.findUnique({
-        where: { pedidoId_parcela: { pedidoId, parcela: 1 } },
+      const ts = await this.prisma.finTitulo.findMany({
+        where: { pedidoId, tipo: 'RECEBER' },
         select: {
           id: true,
           status: true,
           baixas: { where: { estornadaEm: null }, select: { id: true } },
         },
       });
-      if (!t || t.status === 'CANCELADO') return;
-      if (t.baixas.length > 0) {
-        this.logger.warn(
-          `[financeiro] pedido ${pedidoId} cancelado com recebimento no título ${t.id} — confira a devolução`,
-        );
-        return;
+      for (const t of ts) {
+        if (t.status === 'CANCELADO') continue;
+        if (t.baixas.length > 0) {
+          this.logger.warn(
+            `[financeiro] pedido ${pedidoId} cancelado com recebimento no título ${t.id} — confira a devolução`,
+          );
+          continue;
+        }
+        await this.prisma.finTitulo.update({ where: { id: t.id }, data: { status: 'CANCELADO' } });
       }
-      await this.prisma.finTitulo.update({ where: { id: t.id }, data: { status: 'CANCELADO' } });
     } catch (err) {
       this.logger.error(
         `[financeiro] título do pedido ${pedidoId} não foi cancelado: ${String(err)}`,
@@ -211,17 +338,19 @@ export class FinanceiroAutomaticoService {
 
   /** Pedido reativado (voltou a RASCUNHO): o título cancelado reabre. */
   async aoReativarPedidoNaTx(tx: Tx, pedidoId: string) {
-    const t = await tx.finTitulo.findUnique({
-      where: { pedidoId_parcela: { pedidoId, parcela: 1 } },
+    const ts = await tx.finTitulo.findMany({
+      where: { pedidoId, tipo: 'RECEBER' },
       select: { id: true, status: true },
     });
-    if (!t) {
+    if (!ts.length) {
       await this.tituloDoPedidoNaTx(tx, pedidoId);
       return;
     }
-    if (t.status !== 'CANCELADO') return;
-    await tx.finTitulo.update({ where: { id: t.id }, data: { status: 'ABERTO' } });
-    await this.fin.reaplicarStatus(tx, t.id);
+    for (const t of ts) {
+      if (t.status !== 'CANCELADO') continue;
+      await tx.finTitulo.update({ where: { id: t.id }, data: { status: 'ABERTO' } });
+      await this.fin.reaplicarStatus(tx, t.id);
+    }
   }
 
   // ─── Facção → a pagar ────────────────────────────────────────────────────
