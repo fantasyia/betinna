@@ -51,6 +51,19 @@ export interface Branding {
    * tem site institucional ligado ao app).
    */
   siteUrl: string | null;
+  /**
+   * Frase do PREVIEW do link (WhatsApp, Instagram…) e da meta description. O
+   * robô que monta o preview não roda o app — lê o HTML que o servidor do front
+   * entrega, e é lá que isto entra (frontend/server.mjs).
+   */
+  descricao: string | null;
+  /** Imagem do preview do link (ideal 1200×630). Sem ela, o logo. */
+  imagemCompartilhamento: string | null;
+  /**
+   * Slug da vitrine de atacado ATIVA do tenant. Com ela, a raiz do domínio
+   * próprio abre a vitrine (o link que vai pro lojista é só o domínio).
+   */
+  vitrineSlug: string | null;
   cores: { primaria: string; secundaria: string; acao: string };
 }
 
@@ -70,6 +83,9 @@ export const BRANDING_PADRAO: Branding = {
   iconeUrl: null,
   tituloApp: null,
   siteUrl: null,
+  descricao: null,
+  imagemCompartilhamento: null,
+  vitrineSlug: null,
   cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
 };
 
@@ -124,9 +140,14 @@ export class BrandingService {
 
   /** Marca de um tenant conhecido — e-mails, links, notificações. */
   async doTenant(empresaId: string): Promise<Branding> {
-    const empresa = await this.prisma.empresa
-      .findUnique({ where: { id: empresaId }, select: { nome: true, config: true } })
-      .catch(() => null);
+    const [empresa, vitrine] = await Promise.all([
+      this.prisma.empresa
+        .findUnique({ where: { id: empresaId }, select: { nome: true, config: true } })
+        .catch(() => null),
+      this.prisma.vitrine
+        .findUnique({ where: { empresaId }, select: { slug: true, ativa: true } })
+        .catch(() => null),
+    ]);
     const cfg = ((empresa?.config as Record<string, unknown> | null)?.branding ?? {}) as {
       nome?: string;
       nomeCurto?: string;
@@ -136,6 +157,8 @@ export class BrandingService {
       iconeUrl?: string;
       tituloApp?: string;
       siteUrl?: string;
+      descricao?: string;
+      imagemCompartilhamento?: string;
       cores?: { primaria?: string; secundaria?: string; acao?: string };
     };
     const nome = cfg.nome?.trim() || empresa?.nome?.trim() || BRANDING_PADRAO.nome;
@@ -150,6 +173,9 @@ export class BrandingService {
       iconeUrl: cfg.iconeUrl?.trim() || null,
       tituloApp: cfg.tituloApp?.trim() || null,
       siteUrl: cfg.siteUrl?.trim() || null,
+      descricao: cfg.descricao?.trim() || null,
+      imagemCompartilhamento: cfg.imagemCompartilhamento?.trim() || null,
+      vitrineSlug: vitrine?.ativa ? vitrine.slug : null,
       cores: {
         primaria: cfg.cores?.primaria || BRANDING_PADRAO.cores.primaria,
         secundaria: cfg.cores?.secundaria || BRANDING_PADRAO.cores.secundaria,

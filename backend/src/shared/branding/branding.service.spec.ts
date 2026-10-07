@@ -10,10 +10,16 @@ import { BRANDING_PADRAO, BrandingService } from './branding.service';
  * "simplificar" isso pra uma marca só, é aqui que quebra.
  */
 const build = (
-  over: { empresas?: Array<{ id: string }>; config?: unknown; nome?: string } = {},
+  over: {
+    empresas?: Array<{ id: string }>;
+    config?: unknown;
+    nome?: string;
+    vitrine?: { slug: string; ativa: boolean } | null;
+  } = {},
 ) => {
   const prisma = {
     $queryRaw: vi.fn().mockResolvedValue(over.empresas ?? []),
+    vitrine: { findUnique: vi.fn().mockResolvedValue(over.vitrine ?? null) },
     empresa: {
       findUnique: vi.fn().mockResolvedValue({
         nome: over.nome ?? 'Somatec Blocking',
@@ -96,5 +102,32 @@ describe('BrandingService', () => {
     const c = build({ config: {} });
 
     expect(await c.svc.urlDoApp('emp-2')).toBe('https://frontend-production.up.railway.app');
+  });
+
+  it('preview do link: descrição, imagem e a vitrine ATIVA do tenant (desligada não vale)', async () => {
+    const config = {
+      branding: {
+        dominio: 'atacado.exemplo.com.br',
+        descricao: '  Moda no atacado  ',
+        imagemCompartilhamento: 'https://atacado.exemplo.com.br/og.png',
+      },
+    };
+    const ativa = build({
+      empresas: [{ id: 'emp-2' }],
+      config,
+      vitrine: { slug: 'loja', ativa: true },
+    });
+    const b = await ativa.svc.porHost('atacado.exemplo.com.br');
+    expect(b).toMatchObject({
+      descricao: 'Moda no atacado',
+      imagemCompartilhamento: 'https://atacado.exemplo.com.br/og.png',
+      vitrineSlug: 'loja',
+    });
+    const desligada = build({
+      empresas: [{ id: 'emp-2' }],
+      config,
+      vitrine: { slug: 'loja', ativa: false },
+    });
+    expect((await desligada.svc.porHost('atacado.exemplo.com.br')).vitrineSlug).toBeNull();
   });
 });

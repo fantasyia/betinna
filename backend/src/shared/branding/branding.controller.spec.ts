@@ -12,6 +12,9 @@ const SOMATEC: Branding = {
   iconeUrl: 'https://www.somatecblocking.com.br/icon.png',
   tituloApp: 'APP Somatec Blocking',
   siteUrl: null,
+  descricao: null,
+  imagemCompartilhamento: null,
+  vitrineSlug: null,
   cores: { primaria: '#00416E', secundaria: '#008CC8', acao: '#F39200' },
 };
 

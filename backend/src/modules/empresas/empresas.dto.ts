@@ -403,6 +403,10 @@ const brandingSchema = z
      * saída, ainda mais agora que o site redireciona pra cá.
      */
     siteUrl: z.string().url().max(300).nullable().optional(),
+    /** Frase do preview do link (WhatsApp etc.) e da meta description. */
+    descricao: z.string().max(200).nullable().optional(),
+    /** Imagem do preview do link (ideal 1200×630). Sem ela, o logo. */
+    imagemCompartilhamento: z.string().url().max(300).nullable().optional(),
     cores: z
       .object({
         primaria: z

@@ -35,6 +35,8 @@ export interface Marca {
   tituloApp: string | null;
   /** Site institucional do tenant — o "voltar para o site" da tela de login. */
   siteUrl: string | null;
+  /** Vitrine de atacado ATIVA do tenant: a raiz do domínio próprio abre ela. */
+  vitrineSlug?: string | null;
   cores: CoresDaMarca;
 }
 
@@ -329,6 +331,20 @@ export async function carregarMarca(): Promise<Marca> {
     // Backend fora: a tela de login abre com a marca do cache (ou a padrão).
     return atual;
   }
+}
+
+/**
+ * Pra onde vai a RAIZ do app neste host: domínio próprio de um tenant com
+ * vitrine ativa → a vitrine (o link que vai pro lojista é só o domínio);
+ * qualquer outro caso → login. O servidor do front faz o mesmo 302 — isto
+ * cobre quem já tem o app em cache (service worker).
+ */
+export function destinoDaRaiz(m: Marca, host: string): string {
+  const limpo = (h: string) => h.trim().toLowerCase().replace(/:\d+$/, '').replace(/^www\./, '');
+  if (m.vitrineSlug && m.dominio && limpo(m.dominio) === limpo(host)) {
+    return `/v/${encodeURIComponent(m.vitrineSlug)}`;
+  }
+  return '/login';
 }
 
 /** Só pra teste: devolve o módulo ao estado inicial. */

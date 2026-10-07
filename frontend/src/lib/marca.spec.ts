@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  destinoDaRaiz,
   MARCA_PADRAO,
   _resetarMarca,
   aplicarMarcaCacheada,
@@ -224,5 +225,17 @@ describe('paleta das telas públicas', () => {
 
   it('comAlfa devolve rgba a partir do hex (vidro e sombra do card de login)', () => {
     expect(comAlfa('#00416E', 0.88)).toBe('rgba(0, 65, 110, 0.88)');
+  });
+});
+
+describe('raiz do app no domínio próprio', () => {
+  const ribelt = { ...MARCA_PADRAO, nome: 'Ribelt', dominio: 'atacado.ribelt.com.br', vitrineSlug: 'atacado-ribelt' };
+
+  it('domínio do tenant com vitrine ativa → vitrine; sem vitrine ou outro host → login', () => {
+    expect(destinoDaRaiz(ribelt, 'atacado.ribelt.com.br')).toBe('/v/atacado-ribelt');
+    expect(destinoDaRaiz(ribelt, 'WWW.Atacado.Ribelt.com.br:443')).toBe('/v/atacado-ribelt');
+    expect(destinoDaRaiz({ ...ribelt, vitrineSlug: null }, 'atacado.ribelt.com.br')).toBe('/login');
+    expect(destinoDaRaiz(ribelt, 'app.somatecblocking.com.br')).toBe('/login');
+    expect(destinoDaRaiz(MARCA_PADRAO, 'app.somatecblocking.com.br')).toBe('/login');
   });
 });

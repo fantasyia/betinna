@@ -14,7 +14,12 @@ buildCommand = "npm install && npm run build"
 [deploy]
 # Para Railway static site: usar `npx serve dist -l $PORT`
 # Como alternativa, configurar como static hosting no dashboard.
-startCommand = "./node_modules/.bin/serve dist -l ${PORT:-4173} -s"
+# ⚠️ O serviço no Railway usa o comando do PAINEL (Settings → Deploy), não
+# este arquivo. Mantido igual ao painel pra documentar.
+# 07/10/2026: `node server.mjs` no lugar do `serve dist -s` — mesmo SPA e os
+# mesmos cabeçalhos do serve.json, mais o preview do link com a marca do
+# domínio (o robô do WhatsApp lê o HTML cru). Ver o topo de server.mjs.
+startCommand = "node server.mjs"
 healthcheckPath = "/"
 healthcheckTimeout = 10
 restartPolicyType = "ON_FAILURE"

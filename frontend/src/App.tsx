@@ -1,4 +1,5 @@
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { carregarMarca, destinoDaRaiz, marca } from "@/lib/marca";
 import { lazyComRetry } from "@/lib/lazy-com-retry";
 import {
   createBrowserRouter,
@@ -122,10 +123,35 @@ function RedirectOcorrencia() {
   );
 }
 
+/**
+ * Raiz do app: login — ou, no domínio próprio de um tenant com vitrine, a
+ * vitrine. Espera a marca do host (cache ou API) no máximo 1,5 s.
+ */
+function RaizDoApp() {
+  const host = window.location.host;
+  const [destino, setDestino] = useState<string | null>(() => {
+    const d = destinoDaRaiz(marca(), host);
+    return d === "/login" ? null : d;
+  });
+  useEffect(() => {
+    if (destino) return;
+    let vivo = true;
+    const desiste = setTimeout(() => vivo && setDestino("/login"), 1500);
+    void carregarMarca().then((m) => {
+      if (vivo) setDestino(destinoDaRaiz(m, host));
+    });
+    return () => {
+      vivo = false;
+      clearTimeout(desiste);
+    };
+  }, [destino, host]);
+  return destino ? <Navigate to={destino} replace /> : null;
+}
+
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <Navigate to="/login" replace />,
+    element: <RaizDoApp />,
   },
   {
     path: "/login",
