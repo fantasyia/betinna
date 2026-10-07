@@ -28,7 +28,6 @@ import {
   type ModeloPub,
   type VitrinePub,
 } from './calculo';
-import { useFundoDaCor } from './amostra';
 import { baixarKit, copiarTexto } from './kit';
 import { Pagamento, type AcessoPagamento } from './Pagamento';
 import './vitrine.css';
@@ -36,7 +35,7 @@ import './vitrine.css';
 /**
  * Vitrine pública de atacado (Fase 1) — o link que o cliente abre no celular:
  * feed por linha e categoria, grade por cor × tamanho, carrinho salvo no
- * aparelho, kit pra anunciar e o ENVIO do pedido, que entra no Betinna com
+ * aparelho, material de divulgação e o ENVIO do pedido, que entra no Betinna com
  * origem VITRINE e preço recalculado no servidor.
  */
 
@@ -472,7 +471,8 @@ function Bolinha({ c, ativa, onCor }: { c: CorPub; ativa: boolean; onCor: (id: s
     <button
       type="button"
       className="vt-dot"
-      style={useFundoDaCor(corDaBolinha(c))}
+      // Cor lisa, do hex cadastrado (Léo, 07/10: recorte da foto não ficou bom).
+      style={{ background: c.hex }}
       aria-label={c.nome}
       aria-pressed={ativa}
       onClick={() => onCor(c.id)}
@@ -482,7 +482,7 @@ function Bolinha({ c, ativa, onCor }: { c: CorPub; ativa: boolean; onCor: (id: s
 
 /** Bolinha pequena da linha da grade (só mostra). */
 function AmostraCor({ c }: { c: CorPub }) {
-  return <i style={useFundoDaCor(corDaBolinha(c))} />;
+  return <i style={{ background: c.hex }} />;
 }
 
 /** Preço das faixas de cima (Volume, Atacadão) — o card mostra a Entrada. */
@@ -693,8 +693,8 @@ function PaginaModelo({
         ))}
         <button type="button" className="vt-kitlink" onClick={onKit}>
           <div>
-            <b>Vai anunciar em marketplace?</b>
-            <span>Baixe as fotos e a descrição prontas deste modelo</span>
+            <b>Material de divulgação</b>
+            <span>Fotos, vídeos e descrição deste modelo pra divulgar pros seus clientes</span>
           </div>
           <i>Baixar →</i>
         </button>
