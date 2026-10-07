@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react';
-import { Crosshair, Film, GripVertical, ImagePlus, Star, Trash2 } from 'lucide-react';
+import { Film, GripVertical, ImagePlus, Star, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useToast } from '@/components/toast';
 import { Button } from '@/components/ui';
-import { ZOOM, useFundoDaCor } from '@/pages/vitrine-publica/amostra';
 import { useArrastar } from './arrastar';
 import { prepararFoto } from './imagem';
 import type { Foto, ModeloCor, Video } from './tipos';
@@ -31,7 +30,6 @@ export function FotosDaCor({
   // Grupo aberto: null = fotos GERAIS da cor; id = fotos daquela linha.
   const [grupo, setGrupo] = useState<string | null>(null);
   const doGrupo = (g: string | null) => modeloCor.fotos.filter((f) => (f.linhaId ?? null) === g);
-  const gerais = doGrupo(null);
   // Ordem otimista: a foto fica onde foi solta enquanto o servidor salva.
   const [ordemLocal, setOrdemLocal] = useState<string[] | null>(null);
   const fotos = ordemLocal
@@ -102,10 +100,9 @@ export function FotosDaCor({
     <div className="rounded-[10px] border border-border p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <BolinhaPreview
-            modeloCor={modeloCor}
-            fotos={gerais.length ? gerais : modeloCor.fotos}
-            className="h-5 w-5"
+          <span
+            className="inline-block h-5 w-5 shrink-0 rounded-full border border-border"
+            style={{ background: modeloCor.cor.hex }}
           />
           <span className="font-medium text-text">{modeloCor.cor.nome}</span>
           <span className="text-xs text-muted">{modeloCor.fotos.length} foto(s)</span>
@@ -158,7 +155,7 @@ export function FotosDaCor({
         <p className="text-xs text-muted mb-2">
           {grupo
             ? 'Fotos desta linha (o biotipo certo). Sem fotos aqui, a vitrine mostra as gerais.'
-            : 'Fotos gerais: valem pra toda linha que não tiver fotos próprias. A bolinha da cor sai daqui.'}
+            : 'Fotos gerais: valem pra toda linha que não tiver fotos próprias.'}
         </p>
       )}
       {enviando && <p className="text-xs text-muted mb-2">{enviando}</p>}
@@ -218,136 +215,6 @@ export function FotosDaCor({
             </li>
           ))}
         </ul>
-      )}
-      {/* A bolinha sai da capa GERAL — o escolher só aparece na aba Geral. */}
-      {!grupo && gerais[0] && (
-        <EscolherBolinha modeloCor={modeloCor} capa={gerais[0]} fotos={gerais} onMudou={onMudou} />
-      )}
-    </div>
-  );
-}
-
-function pontoSalvo(mc: ModeloCor): { x: number; y: number } | null {
-  return mc.amostraX != null && mc.amostraY != null ? { x: mc.amostraX, y: mc.amostraY } : null;
-}
-
-/** A bolinha como a vitrine mostra (ponto escolhido ou automático). */
-function BolinhaPreview({
-  modeloCor,
-  fotos,
-  ponto,
-  className,
-}: {
-  modeloCor: ModeloCor;
-  fotos: Foto[];
-  ponto?: { x: number; y: number } | null;
-  className: string;
-}) {
-  const estilo = useFundoDaCor({
-    hex: modeloCor.cor.hex,
-    fotos,
-    amostra: ponto === undefined ? pontoSalvo(modeloCor) : ponto,
-  });
-  return (
-    <span
-      className={`inline-block shrink-0 rounded-full border border-border ${className}`}
-      style={estilo}
-    />
-  );
-}
-
-/**
- * Escolher o pedaço da capa que vira a bolinha da cor: toque no tecido.
- * "Automático" devolve a escolha pra vitrine.
- */
-function EscolherBolinha({
-  modeloCor,
-  capa,
-  fotos,
-  onMudou,
-}: {
-  modeloCor: ModeloCor;
-  capa: Foto;
-  fotos: Foto[];
-  onMudou: () => void;
-}) {
-  const toast = useToast();
-  const [aberto, setAberto] = useState(false);
-  // Otimista: o marcador e a prévia mudam no toque, antes do servidor responder.
-  const [local, setLocal] = useState<{ x: number; y: number } | null | undefined>(undefined);
-  const ponto = local === undefined ? pontoSalvo(modeloCor) : local;
-
-  async function salvar(p: { x: number; y: number } | null) {
-    setLocal(p);
-    try {
-      await api.put(`/vitrine/admin/cores-modelo/${modeloCor.id}/amostra`, { ponto: p });
-      onMudou();
-    } catch (err) {
-      setLocal(undefined);
-      toast.error('Não foi possível salvar a bolinha', apiErrorMessage(err));
-    }
-  }
-
-  return (
-    <div className="mt-3 border-t border-border pt-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <BolinhaPreview modeloCor={modeloCor} fotos={fotos} ponto={ponto} className="h-8 w-8" />
-        <div className="mr-auto text-xs text-muted">
-          <span className="font-medium text-text">Bolinha na vitrine</span>
-          <br />
-          {ponto ? 'Pedaço escolhido por você.' : 'Automático: a vitrine procura o tecido da cor.'}
-        </div>
-        {ponto && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void salvar(null)}
-            data-testid={`bolinha-auto-${modeloCor.id}`}
-          >
-            Automático
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => setAberto((a) => !a)}
-          data-testid={`bolinha-escolher-${modeloCor.id}`}
-        >
-          <Crosshair size={14} /> {aberto ? 'Fechar' : 'Escolher pedaço'}
-        </Button>
-      </div>
-      {aberto && (
-        <div className="mt-2 flex flex-col gap-1">
-          <p className="text-xs text-muted">Toque na capa, no tecido que deve virar a bolinha.</p>
-          <div className="relative w-56 max-w-full cursor-crosshair">
-            <img
-              src={capa.url ?? capa.thumbUrl ?? ''}
-              alt={`Capa de ${modeloCor.cor.nome}`}
-              className="block w-full rounded-[10px] border border-border"
-              draggable={false}
-              data-testid={`bolinha-capa-${modeloCor.id}`}
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                const arred = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000;
-                void salvar({
-                  x: arred((e.clientX - r.left) / r.width),
-                  y: arred((e.clientY - r.top) / r.height),
-                });
-              }}
-            />
-            {ponto && (
-              <span
-                // Do tamanho do pedaço que vira a bolinha (1/ZOOM da largura da foto).
-                className="pointer-events-none absolute aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,.6)]"
-                style={{
-                  left: `${ponto.x * 100}%`,
-                  top: `${ponto.y * 100}%`,
-                  width: `${100 / ZOOM}%`,
-                }}
-              />
-            )}
-          </div>
-        </div>
       )}
     </div>
   );
