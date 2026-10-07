@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatMoeda, formatNumero } from '@/lib/masks';
@@ -309,7 +309,6 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                   key={`${cor.id}:${l.linhaId}`}
                   cor={{ ...cor, fotos: fotosDoCliente(cor, l.linhaId, visitante) }}
                   nome={m.nome}
-                  onAbrir={() => setPdp(m)}
                 />
                 <NomeDaCor cor={cor} />
                 {i === 0 && slides.length > 1 && <div className="vt-hint">deslize pra cima ↑</div>}
@@ -326,7 +325,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                     onCor={(id) => setCorDe((s) => ({ ...s, [m.id]: id }))}
                   />
                 </div>
-                <h2 className="vt-name">{m.nome}</h2>
+                <NomeDoModelo nome={m.nome} base={22} />
                 {!semALinha && <Selo texto={seloDa(l.linhaId)} />}
                 {m.etiquetas.length > 0 && (
                   <div className="vt-tags">
@@ -339,8 +338,15 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                 )}
                 <PrecoCompacto l={l} f={v.faixas} />
                 <div className="vt-row">
-                  <button type="button" className="vt-link" onClick={() => setKit(m)}>
-                    Material de divulgação
+                  {/* A página do produto abre só por aqui — a foto só desliza (Léo, 07/10).
+                      O Material de divulgação está lá dentro. */}
+                  <button
+                    type="button"
+                    className="vt-link"
+                    onClick={() => setPdp(m)}
+                    data-testid={`vt-ficha-${m.id}`}
+                  >
+                    Ficha técnica
                   </button>
                   <button
                     type="button"
@@ -761,9 +767,7 @@ function PaginaModelo({
           {m.categoria && <span className="vt-over">{m.categoria.nome}</span>}
           <Bolinhas m={m} cor={cor} linha={l} onCor={onCor} />
         </div>
-        <h2 className="vt-name" style={{ fontSize: 28 }}>
-          {m.nome}
-        </h2>
+        <NomeDoModelo nome={m.nome} base={28} />
         <Selo texto={selo} />
         {m.etiquetas.length > 0 && (
           <div className="vt-tags">
@@ -824,6 +828,43 @@ function PaginaModelo({
       </div>
       {guia && <GuiaTamanhos m={m} linhaInicial={l} onFechar={() => setGuia(false)} />}
     </section>
+  );
+}
+
+/**
+ * Nome do modelo numa linha só (Léo, 07/10: "o título caindo pra linha de
+ * baixo"): a fonte desce até caber; só no mínimo é que corta com "…".
+ */
+function NomeDoModelo({ nome, base }: { nome: string; base: number }) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const caber = () => {
+      let tam = base;
+      el.style.fontSize = `${tam}px`;
+      while (el.scrollWidth > el.clientWidth && tam > 15) {
+        tam -= 1;
+        el.style.fontSize = `${tam}px`;
+      }
+    };
+    caber();
+    // A fonte do título chega depois (Google Fonts) e muda a largura do texto:
+    // refaz quando ela termina de carregar (o `ready` pode já ter resolvido).
+    const fontes = document.fonts;
+    void fontes?.ready.then(caber);
+    fontes?.addEventListener?.('loadingdone', caber);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(caber);
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      fontes?.removeEventListener?.('loadingdone', caber);
+    };
+  }, [nome, base]);
+  return (
+    <h2 ref={ref} className="vt-name vt-name-1l" title={nome}>
+      {nome}
+    </h2>
   );
 }
 

@@ -312,3 +312,9 @@
 .vt-guia-tab thead th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--oliva); font-weight: 600; }
 .vt-guia-tab tbody th { text-align: left; font-weight: 700; }
 .vt-guia-tab tr > :first-child { position: sticky; left: 0; background: var(--creme); }
+
+/* Nome do modelo numa linha só: a fonte encolhe (NomeDoModelo); "…" só no limite. */
+.vt-name.vt-name-1l, .vt-slide .vt-name.vt-name-1l { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-wrap: nowrap; -webkit-line-clamp: unset; }
+/* Muitas cores (7+): bolinhas mais justas, numa linha só em celular estreito. */
+.vt-dots:has(> :nth-child(7)) { gap: 5px; }
+.vt-dots:has(> :nth-child(7)) .vt-dot { width: 22px; height: 22px; border-width: 2px; }
