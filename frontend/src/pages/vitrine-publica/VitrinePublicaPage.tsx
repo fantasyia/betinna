@@ -192,6 +192,8 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
     m.cores.find((c) => c.id === corDe[m.id]) ?? corInicial(m, linhaNoModelo(m));
   const pecas = totalPecas(carrinho);
   const modelosNoPedido = Object.keys(carrinho).length;
+  // Selo da linha (Léo, 07/10: "Plus Size de verdade · veste até 150 kg…").
+  const seloDa = (id: string) => v.linhas.find((x) => x.id === id)?.selo ?? null;
 
   if (v.modelos.length === 0) {
     return (
@@ -299,6 +301,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                   />
                 </div>
                 <h2 className="vt-name">{m.nome}</h2>
+                {!semALinha && <Selo texto={seloDa(l.linhaId)} />}
                 {m.etiquetas.length > 0 && (
                   <div className="vt-tags">
                     {m.etiquetas.map((t) => (
@@ -339,6 +342,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           cor={corAtual(pdp)}
           l={linhaNoModelo(pdp)}
           f={v.faixas}
+          selo={seloDa(linhaNoModelo(pdp).linhaId)}
           onCor={(id) => setCorDe((s) => ({ ...s, [pdp.id]: id }))}
           onFechar={() => setPdp(null)}
           onGrade={() => {
@@ -693,6 +697,7 @@ function PaginaModelo({
   cor,
   l,
   f,
+  selo,
   onCor,
   onFechar,
   onGrade,
@@ -702,11 +707,13 @@ function PaginaModelo({
   cor: CorPub;
   l: LinhaPub;
   f: Faixas;
+  selo: string | null;
   onCor: (id: string) => void;
   onFechar: () => void;
   onGrade: () => void;
   onKit: () => void;
 }) {
+  const [guia, setGuia] = useState(false);
   return (
     <section className="vt-pdp" aria-label={m.nome}>
       <button type="button" className="vt-close" onClick={onFechar} aria-label="Fechar">
@@ -728,6 +735,7 @@ function PaginaModelo({
         <h2 className="vt-name" style={{ fontSize: 28 }}>
           {m.nome}
         </h2>
+        <Selo texto={selo} />
         {m.etiquetas.length > 0 && (
           <div className="vt-tags">
             {m.etiquetas.map((t) => (
@@ -752,6 +760,17 @@ function PaginaModelo({
             </div>
           )}
         </div>
+        {temGuia(m) && (
+          <button
+            type="button"
+            className="vt-link"
+            style={{ justifySelf: 'start' }}
+            onClick={() => setGuia(true)}
+            data-testid="vt-guia-abrir"
+          >
+            Guia de tamanhos
+          </button>
+        )}
         {m.descricao && <p>{m.descricao}</p>}
         {m.videos.map((vd) => (
           <video
@@ -774,7 +793,107 @@ function PaginaModelo({
           Montar grade
         </button>
       </div>
+      {guia && <GuiaTamanhos m={m} linhaInicial={l} onFechar={() => setGuia(false)} />}
     </section>
+  );
+}
+
+/** Selo da linha escolhida (ex.: Plus Size de verdade). Sem texto, nada. */
+function Selo({ texto }: { texto: string | null }) {
+  if (!texto) return null;
+  return (
+    <p className="vt-selo" data-testid="vt-selo">
+      <i aria-hidden="true">✓</i>
+      {texto}
+    </p>
+  );
+}
+
+const temGuia = (m: ModeloPub) => m.linhas.some((l) => (l.tabelaMedidas?.linhas.length ?? 0) > 0);
+
+/**
+ * Guia de tamanhos (Léo, 07/10): a tabela de medidas da linha — inclusive a
+ * coluna "Veste bem até (média)" do Plus. Troca de linha dentro da folha.
+ */
+function GuiaTamanhos({
+  m,
+  linhaInicial,
+  onFechar,
+}: {
+  m: ModeloPub;
+  linhaInicial: LinhaPub;
+  onFechar: () => void;
+}) {
+  const comTabela = m.linhas.filter((l) => (l.tabelaMedidas?.linhas.length ?? 0) > 0);
+  const [linha, setLinha] = useState(
+    comTabela.find((l) => l.id === linhaInicial.id) ?? comTabela[0],
+  );
+  const t = linha?.tabelaMedidas;
+  return (
+    <>
+      <div className="vt-scrim vt-guia-scrim" onClick={onFechar} />
+      <section
+        className="vt-sheet vt-guia"
+        role="dialog"
+        aria-label={`Guia de tamanhos · ${m.nome}`}
+        data-testid="vt-guia"
+      >
+        <div className="vt-grab" />
+        <div className="vt-sh-head">
+          <div>
+            <span className="vt-over">Guia de tamanhos</span>
+            <div className="vt-name">{m.nome}</div>
+          </div>
+        </div>
+        {comTabela.length > 1 && (
+          <div className="vt-mode">
+            <div className="vt-seg">
+              {comTabela.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  aria-pressed={x.id === linha?.id}
+                  onClick={() => setLinha(x)}
+                >
+                  {x.nome}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {t && (
+          <div className="vt-guia-tab">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tamanho</th>
+                  {t.colunas.map((c) => (
+                    <th key={c}>{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {t.linhas.map((r) => (
+                  <tr key={r.tamanho}>
+                    <th>{r.tamanho}</th>
+                    {r.valores.map((v, i) => (
+                      <td key={i}>{v || '—'}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="vt-muted">Medidas em média — podem variar um pouco de peça pra peça.</p>
+          </div>
+        )}
+        <div className="vt-sh-foot">
+          <span />
+          <button type="button" className="vt-cta" onClick={onFechar}>
+            Fechar
+          </button>
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -792,6 +911,7 @@ function FolhaGrade({
   onFechar: () => void;
 }) {
   const [linha, setLinha] = useState<LinhaPub>(linhaInicial);
+  const [guia, setGuia] = useState(false);
   const [passo, setPasso] = useState(1);
   const [modo, setModo] = useState<'por' | 'tirar'>('por');
   const delta = modo === 'por' ? passo : -passo;
@@ -808,6 +928,16 @@ function FolhaGrade({
           <div>
             {m.categoria && <span className="vt-over">{m.categoria.nome}</span>}
             <div className="vt-name">{m.nome}</div>
+            {(linha.tabelaMedidas?.linhas.length ?? 0) > 0 && (
+              <button
+                type="button"
+                className="vt-link"
+                onClick={() => setGuia(true)}
+                data-testid="vt-guia-grade"
+              >
+                Guia de tamanhos
+              </button>
+            )}
           </div>
         </div>
         <div className="vt-mode">
@@ -920,6 +1050,7 @@ function FolhaGrade({
           </button>
         </div>
       </section>
+      {guia && <GuiaTamanhos m={m} linhaInicial={linha} onFechar={() => setGuia(false)} />}
     </>
   );
 }

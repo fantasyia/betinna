@@ -300,3 +300,15 @@
 .vt-semlinha b { font-weight: 600; }
 .vt-semlinha div { display: flex; flex-wrap: wrap; gap: 6px; }
 .vt-semlinha button { height: 32px; padding: 0 12px; border-radius: 999px; background: var(--creme); color: var(--petroleo); font-size: 13px; font-weight: 600; }
+
+/* Selo da linha (Léo, 07/10: Plus Size de verdade) e guia de tamanhos. */
+.vt-selo { margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: 12.5px; line-height: 1.4; color: var(--lucro); font-weight: 600; }
+.vt-selo i { font-style: normal; flex: none; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; background: var(--lucro); color: var(--creme); font-size: 10px; margin-top: 1px; }
+.vt-guia-scrim { z-index: 90; }
+.vt-guia { z-index: 91; }
+.vt-guia-tab { overflow: auto; padding: 4px 16px 12px; display: grid; gap: 8px; }
+.vt-guia-tab table { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.vt-guia-tab th, .vt-guia-tab td { padding: 8px 6px; border-bottom: 1px solid #e3d8bf; text-align: center; }
+.vt-guia-tab thead th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--oliva); font-weight: 600; }
+.vt-guia-tab tbody th { text-align: left; font-weight: 700; }
+.vt-guia-tab tr > :first-child { position: sticky; left: 0; background: var(--creme); }

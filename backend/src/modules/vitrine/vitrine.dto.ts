@@ -42,6 +42,14 @@ export type CorDto = z.infer<typeof corSchema>;
 
 export const linhaSchema = z.object({
   nome: z.string().trim().min(1).max(40),
+  /** Selo da linha na vitrine; vazio/null = sem selo. Ausente = não mexe. */
+  selo: z
+    .string()
+    .trim()
+    .max(160)
+    .nullable()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v || null)),
   ordem: z.number().int().min(0).max(10_000).optional(),
   ativo: z.boolean().optional(),
 });

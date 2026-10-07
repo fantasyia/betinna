@@ -283,7 +283,23 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     "uma COR da empresa",
   );
   crud("categoria", "categorias", { nome: z.string().min(1).max(60) }, "uma CATEGORIA");
-  crud("linha", "linhas", { nome: z.string().min(1).max(40) }, "uma LINHA de grade (Regular, Plus Size…)");
+  crud(
+    "linha",
+    "linhas",
+    {
+      nome: z.string().min(1).max(40),
+      selo: z
+        .string()
+        .max(160)
+        .nullable()
+        .optional()
+        .describe(
+          "Selo que a vitrine mostra nesta linha (ex.: \"Plus Size de verdade · veste até 150 kg ou mais\"). " +
+            "Vazio/null = sem selo. Ausente = não mexe.",
+        ),
+    },
+    "uma LINHA de grade (Regular, Plus Size…)",
+  );
 
   server.registerTool(
     "vitrine_tamanho_criar",

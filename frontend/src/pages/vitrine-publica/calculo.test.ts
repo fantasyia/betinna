@@ -426,3 +426,22 @@ describe('1ª opção com estoque e linha sem o modelo (Léo, 07/10)', () => {
     expect(temLinha(modelo(), 'lin-plus')).toBe(false);
   });
 });
+
+describe('tabela de medidas no material de divulgação', () => {
+  it('usa a unidade de cada coluna — não carimba "(cm)" na tabela do Plus (que tem kg)', () => {
+    const plus = linha({
+      id: 'ml-plus',
+      linhaId: 'lin-plus',
+      nome: 'Plus Size',
+      tabelaMedidas: {
+        colunas: ['Veste bem até (média)', 'Cintura esticada (cm)'],
+        linhas: [{ tamanho: 'G1', valores: ['130 kg', '64'] }],
+      },
+    });
+    const txt = textoKit(modelo({ linhas: [plus] }));
+    expect(txt).toContain(
+      'Plus Size\nG1: Veste bem até (média) 130 kg · Cintura esticada (cm) 64',
+    );
+    expect(txt).not.toContain('Plus Size (cm)');
+  });
+});

@@ -154,11 +154,12 @@ export class VitrinePublicaService {
     }
 
     // Linhas e categorias da vitrine = só as que têm modelo publicado.
-    const linhasMap = new Map<string, { id: string; nome: string }>();
+    const linhasMap = new Map<string, { id: string; nome: string; selo: string | null }>();
     for (const m of modelos) {
       for (const l of m.linhas) {
         if (publicos.some((p) => p.id === m.id && p.linhas.some((x) => x.linhaId === l.linhaId))) {
-          linhasMap.set(l.linhaId, { id: l.linhaId, nome: l.linha.nome });
+          // Selo da linha (Plus Size de verdade…) — aparece quando o lojista a escolhe.
+          linhasMap.set(l.linhaId, { id: l.linhaId, nome: l.linha.nome, selo: l.linha.selo });
         }
       }
     }

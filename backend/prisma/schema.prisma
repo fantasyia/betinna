@@ -4049,6 +4049,9 @@ model CatalogoLinha {
   nome      String
   ordem     Int     @default(0)
   ativo     Boolean @default(true)
+  /// Selo que a vitrine mostra nesta linha (Léo, 07/10: "Plus Size de verdade ·
+  /// veste até 150 kg ou mais…"). Vazio = sem selo — o liga/desliga é ele.
+  selo      String?
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt

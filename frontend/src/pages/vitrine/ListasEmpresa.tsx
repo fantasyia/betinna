@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
-import { Badge, Button, Card, Dialog, Field, Input, Switch } from '@/components/ui';
+import { Badge, Button, Card, Dialog, Field, Input, Switch, Textarea } from '@/components/ui';
 import type { Categoria, Cor, Linha, Tamanho } from './tipos';
 
 /**
@@ -186,6 +186,7 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
   );
   const [nomeEdicao, setNomeEdicao] = useState('');
   const [ativoEdicao, setAtivoEdicao] = useState(true);
+  const [seloEdicao, setSeloEdicao] = useState('');
 
   async function criarLinha() {
     if (!novaLinha.trim()) return;
@@ -218,7 +219,12 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
     const { tipo, item } = editando;
     try {
       const url = tipo === 'linha' ? `/vitrine/admin/linhas/${item.id}` : `/vitrine/admin/tamanhos/${item.id}`;
-      await api.put(url, { nome: nomeEdicao.trim(), ativo: ativoEdicao });
+      await api.put(url, {
+        nome: nomeEdicao.trim(),
+        ativo: ativoEdicao,
+        // Selo só existe na linha; vazio = sem selo.
+        ...(tipo === 'linha' ? { selo: seloEdicao.trim() || null } : {}),
+      });
       setEditando(null);
       onMudou();
     } catch (err) {
@@ -245,6 +251,7 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
     setEditando({ tipo, item });
     setNomeEdicao(item.nome);
     setAtivoEdicao(item.ativo);
+    setSeloEdicao(tipo === 'linha' ? ((item as Linha).selo ?? '') : '');
   }
 
   return (
@@ -259,6 +266,7 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
             <div className="flex items-center gap-2 mb-2">
               <span className="font-medium text-text">{l.nome}</span>
               {!l.ativo && <Badge variant="neutral">inativa</Badge>}
+              {l.selo && <span className="text-xs text-success truncate" title={l.selo}>✓ {l.selo}</span>}
               <button
                 type="button"
                 onClick={() => abrirEdicao('linha', l)}
@@ -327,6 +335,21 @@ export function LinhasPanel({ linhas, onMudou }: { linhas: Linha[]; onMudou: () 
           <Field label="Nome" required>
             <Input value={nomeEdicao} onChange={(e) => setNomeEdicao(e.target.value)} />
           </Field>
+          {editando?.tipo === 'linha' && (
+            <Field
+              label="Selo na vitrine (opcional)"
+              hint="Aparece quando o lojista escolhe esta linha. Vazio = sem selo."
+            >
+              <Textarea
+                value={seloEdicao}
+                onChange={(e) => setSeloEdicao(e.target.value)}
+                rows={2}
+                maxLength={160}
+                placeholder="Plus Size de verdade · veste até 150 kg ou mais (em média)"
+                data-testid="vitrine-linha-selo"
+              />
+            </Field>
+          )}
           <Switch
             label="Ativo"
             checked={ativoEdicao}

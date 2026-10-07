@@ -311,7 +311,13 @@ export class VitrineAdminService {
     const empresaId = await this.empresaComVitrine(user);
     try {
       return await this.prisma.catalogoLinha.create({
-        data: { empresaId, nome: dto.nome, ordem: dto.ordem ?? 0, ativo: dto.ativo ?? true },
+        data: {
+          empresaId,
+          nome: dto.nome,
+          ordem: dto.ordem ?? 0,
+          ativo: dto.ativo ?? true,
+          selo: dto.selo ?? null,
+        },
         include: { tamanhos: true },
       });
     } catch (err) {
@@ -330,6 +336,7 @@ export class VitrineAdminService {
           nome: dto.nome,
           ...(dto.ordem !== undefined ? { ordem: dto.ordem } : {}),
           ...(dto.ativo !== undefined ? { ativo: dto.ativo } : {}),
+          ...(dto.selo !== undefined ? { selo: dto.selo } : {}),
         },
         include: { tamanhos: { orderBy: [{ ordem: 'asc' }, { nome: 'asc' }] } },
       });

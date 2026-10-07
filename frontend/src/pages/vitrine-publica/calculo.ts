@@ -67,7 +67,8 @@ export interface VitrinePub {
   empresa: { nome: string; logoUrl: string | null };
   faixas: Faixas;
   pedidoMinimo?: MinimoPub | null;
-  linhas: Array<{ id: string; nome: string }>;
+  /** `selo`: aviso da linha (Plus Size de verdade…); null = sem selo. */
+  linhas: Array<{ id: string; nome: string; selo?: string | null }>;
   modelos: ModeloPub[];
 }
 
@@ -379,7 +380,8 @@ export function textoKit(m: ModeloPub): string {
         (r) =>
           `${r.tamanho}: ${t.colunas.map((c, i) => `${c} ${r.valores[i] || '-'}`).join(' · ')}`,
       );
-      return `${l.nome} (cm)\n${linhas.join('\n')}`;
+      // A unidade vem no cabeçalho de cada coluna (cm, kg — o Plus tem "Veste bem até").
+      return `${l.nome}\n${linhas.join('\n')}`;
     });
   if (medidas.length) partes.push(`TABELA DE MEDIDAS\n${medidas.join('\n\n')}`);
   partes.push(`CORES\n${m.cores.map((c) => c.nome).join(', ')}`);

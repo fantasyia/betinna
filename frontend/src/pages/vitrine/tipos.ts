@@ -38,6 +38,8 @@ export interface Linha {
   nome: string;
   ordem: number;
   ativo: boolean;
+  /** Selo da linha na vitrine (Plus Size de verdade…). */
+  selo?: string | null;
   tamanhos: Tamanho[];
 }
 
