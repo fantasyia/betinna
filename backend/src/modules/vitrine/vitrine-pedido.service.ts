@@ -6,6 +6,8 @@ import { EstoqueService, RESERVA_MINUTOS } from '@modules/erp/estoque.service';
 import { type PedidoMinimoRegra, avaliarPedidoMinimo } from '@modules/pedidos/pedido-minimo.util';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
+import { CheckoutPublicoService } from '@modules/checkout/checkout-publico.service';
+import { pagamentoOnlineLigado } from '@modules/checkout/checkout.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { SequenceService } from '@shared/utils/sequence.service';
@@ -105,7 +107,15 @@ export class VitrinePedidoService {
     private readonly estoque: EstoqueService,
     // Financeiro (Fase 3): o pedido vira conta a receber. Melhor esforço.
     @Optional() private readonly fin?: FinanceiroAutomaticoService,
+    // Pagamento online (Asaas): o código que abre a tela de pagar o pedido.
+    @Optional() private readonly checkout?: CheckoutPublicoService,
   ) {}
+
+  /** Só quem acabou de enviar o pedido recebe o código de pagar. */
+  private pagamento(config: unknown, pedidoId: string): { pedidoId: string; token: string } | null {
+    if (!this.checkout || !pagamentoOnlineLigado(config)) return null;
+    return { pedidoId, token: this.checkout.tokenDoPedido(pedidoId) };
+  }
 
   async enviar(
     slug: string,
@@ -117,6 +127,8 @@ export class VitrinePedidoService {
     duplicado: boolean;
     /** Até quando as peças ficam reservadas (ERP ligado). null = sem reserva. */
     reservaExpiraEm: Date | null;
+    /** Pagamento online ligado: abre a tela de Pix/cartão. null = combina no WhatsApp. */
+    pagamento: { pedidoId: string; token: string } | null;
   }> {
     const vitrine = await this.prisma.vitrine.findUnique({
       where: { slug },
@@ -238,6 +250,7 @@ export class VitrinePedidoService {
         criadoEm: { gte: new Date(Date.now() - 10 * 60_000) },
       },
       select: {
+        id: true,
         numero: true,
         itens: { select: { quantidade: true } },
         estoqueReservas: { where: { status: 'ATIVA' }, select: { expiraEm: true }, take: 1 },
@@ -250,6 +263,7 @@ export class VitrinePedidoService {
         total,
         duplicado: true,
         reservaExpiraEm: recente.estoqueReservas[0]?.expiraEm ?? null,
+        pagamento: this.pagamento(vitrine.empresa.config, recente.id),
       };
     }
 
@@ -371,7 +385,14 @@ export class VitrinePedidoService {
       reservaMinutos: reservaExpiraEm ? RESERVA_MINUTOS : null,
     });
 
-    return { numero: pedido.numero, totalPecas, total, duplicado: false, reservaExpiraEm };
+    return {
+      numero: pedido.numero,
+      totalPecas,
+      total,
+      duplicado: false,
+      reservaExpiraEm,
+      pagamento: this.pagamento(vitrine.empresa.config, pedido.id),
+    };
   }
 
   /**

@@ -3,6 +3,7 @@ import { FluxosModule } from '@modules/fluxos/fluxos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { ErpModule } from '@modules/erp/erp.module';
 import { FinanceiroModule } from '@modules/financeiro/financeiro.module';
+import { CheckoutModule } from '@modules/checkout/checkout.module';
 import { PrecificacaoController } from './precificacao.controller';
 import { PrecificacaoService } from './precificacao.service';
 import { VitrineAdminController } from './vitrine-admin.controller';
@@ -21,7 +22,7 @@ import { VitrinePedidoService } from './vitrine-pedido.service';
 @Module({
   // O pedido da vitrine acende fluxo (PEDIDO_CRIADO) e avisa a equipe.
   // ERP: o pedido enviado reserva as peças por 20 min.
-  imports: [FluxosModule, NotificacoesModule, ErpModule, FinanceiroModule],
+  imports: [FluxosModule, NotificacoesModule, ErpModule, FinanceiroModule, CheckoutModule],
   controllers: [
     VitrineAdminController,
     VitrineMidiaController,

@@ -44,6 +44,7 @@ function montar(
     recente?: unknown;
     clientes?: unknown[];
     reservaAte?: Date;
+    checkout?: unknown;
   } = {},
 ) {
   const prisma = {
@@ -82,6 +83,8 @@ function montar(
     bus as never,
     notif as never,
     estoque as never,
+    undefined,
+    opts.checkout as never,
   );
   return { svc, prisma, bus, notif, estoque };
 }
@@ -135,6 +138,7 @@ describe('VitrinePedidoService.enviar', () => {
       total: 270,
       duplicado: false,
       reservaExpiraEm: null,
+      pagamento: null,
     });
     const data = prisma.pedido.create.mock.calls[0][0].data;
     expect(data.origem).toBe('VITRINE');
@@ -205,6 +209,47 @@ describe('VitrinePedidoService.enviar', () => {
     expect(r).toMatchObject({ numero: 'PED-0006', duplicado: true });
     expect(prisma.pedido.create).not.toHaveBeenCalled();
     expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  describe('pagamento online (Asaas)', () => {
+    const checkout = { tokenDoPedido: vi.fn((id: string) => `tok-${id}`) };
+    const ligado = {
+      ...vitrineOk,
+      empresa: { ativo: true, config: { checkout: { ativo: true, taxas: { pix: {} } } } },
+    };
+
+    it('ligado: devolve o código que abre a tela de pagar', async () => {
+      const { svc } = montar({ vitrine: ligado, checkout });
+      const r = await svc.enviar('atacado-ribelt', dto());
+      expect(r.pagamento).toEqual({ pedidoId: 'ped-1', token: 'tok-ped-1' });
+    });
+
+    it('reenvio do mesmo pedido também recebe o código (é o mesmo pedido)', async () => {
+      const { svc } = montar({
+        vitrine: ligado,
+        checkout,
+        recente: {
+          id: 'ped-6',
+          numero: 'PED-0006',
+          itens: [{ quantidade: 6 }],
+          estoqueReservas: [],
+        },
+      });
+      const r = await svc.enviar('atacado-ribelt', dto());
+      expect(r.pagamento).toEqual({ pedidoId: 'ped-6', token: 'tok-ped-6' });
+    });
+
+    it('desligado (ou sem taxas lidas): sem código — combina pelo WhatsApp', async () => {
+      const semTaxas = {
+        ...vitrineOk,
+        empresa: { ativo: true, config: { checkout: { ativo: true } } },
+      };
+      expect((await montar({ checkout }).svc.enviar('atacado-ribelt', dto())).pagamento).toBeNull();
+      expect(
+        (await montar({ vitrine: semTaxas, checkout }).svc.enviar('atacado-ribelt', dto()))
+          .pagamento,
+      ).toBeNull();
+    });
   });
 
   it('item sem preço (sob consulta) entra a R$ 0 e fica marcado na observação', async () => {

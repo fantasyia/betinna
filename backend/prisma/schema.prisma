@@ -549,8 +549,8 @@ model Permissao {
 /// sem linha → vale a matriz do papel (Permissao). Usuário é criado sem overrides
 /// (herda o padrão do papel); ADMIN/DIRECTOR ajustam individualmente depois.
 model UsuarioPermissao {
-  id        String @id @default(cuid())
-  usuarioId String
+  id           String   @id @default(cuid())
+  usuarioId    String
   /// A empresa em que este override vale — e SÓ ela.
   ///
   /// Sem esta coluna a unicidade era `(usuarioId, modulo)`, então um override
@@ -796,7 +796,7 @@ model Produto {
   vendavel              Boolean                      @default(true)
   /// Quanto o equipamento VALE (≠ aluguel): é o valor que vai na NF de comodato.
   /// Vazio até a contabilidade definir — sem ele o app RECUSA emitir a remessa.
-  valorBem              Decimal?             @db.Decimal(14, 2)
+  valorBem              Decimal?                     @db.Decimal(14, 2)
   /// Camada de MARKETING (editável no app, não vem do ERP). Tier comercial livre por
   /// tenant: entrada / valor_agregado / nobre, etc.
   tierComercial         String?
@@ -826,21 +826,22 @@ model Produto {
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
-  precosEspeciais ClientePrecoEspecial[]
-  pedidoItens     PedidoItem[]
-  catalogoReps    RepCatalogoItem[]
-  amostras        Amostra[]
+  precosEspeciais   ClientePrecoEspecial[]
+  pedidoItens       PedidoItem[]
+  catalogoReps      RepCatalogoItem[]
+  amostras          Amostra[]
   /// Vitrine de atacado: a variação (modelo × cor × linha × tamanho) que este
   /// produto representa. Null = produto comum (ERP ou cadastro plano).
-  catalogoVariacao CatalogoVariacao?
+  catalogoVariacao  CatalogoVariacao?
   /// ERP próprio (Fase 2): saldo = soma dos movimentos; reservas do pedido.
   estoqueMovimentos EstoqueMovimento[]
   estoqueReservas   EstoqueReserva[]
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
   /// ERP próprio: linhas de OP (grade cor × linha × tamanho) desta variação.
-  opItens OrdemProducaoItem[]
+  opItens    OrdemProducaoItem[]
   opEntregas OrdemProducaoEntrega[]
+
   @@unique([empresaId, sku])
   @@unique([empresaId, codigoErp])
   @@index([empresaId, linha])
@@ -1131,12 +1132,12 @@ model PedidoItem {
   /// agora é de propósito.)
   ///
   /// Null = pedido que não veio de levantamento (venda comum).
-  quadroPainel  String?
-  secaoTecnica  PropostaSecaoTecnica?
+  quadroPainel String?
+  secaoTecnica PropostaSecaoTecnica?
   /// Tensão medida no quadro, em volts.
-  tensaoV       Int?
+  tensaoV      Int?
   /// Corrente de carga medida, em ampères — foi ela que selecionou o modelo.
-  correnteA     Int?
+  correnteA    Int?
 
   pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   produto Produto @relation(fields: [produtoId], references: [id])
@@ -1298,12 +1299,12 @@ model Proposta {
   /// Quando o rep "envia pro cliente aprovar", gera token JWT único.
   /// Cliente clica → página pública /proposta/aceite/<token> → aceitar/recusar.
   /// Token usado uma vez (limpado após aceite/recusa). TTL default 7 dias.
-  aceiteToken    String?   @unique
-  aceiteExpiraEm DateTime?
+  aceiteToken                String?   @unique
+  aceiteExpiraEm             DateTime?
   /// O e-mail do link de aceite sai UMA vez por link (Léo, 25/09). Também é a
   /// trava do clique duplo: o envio só segue se conseguir gravar isto primeiro.
-  aceiteEmailEnviadoEm   DateTime?
-  aceiteEmailEnviadoPara String?
+  aceiteEmailEnviadoEm       DateTime?
+  aceiteEmailEnviadoPara     String?
   /// Contrato CONGELADO ao gerar o link (Léo, 25/09: "o contrato é o mesmo"):
   /// o .docx que o cliente lê na página de aceite é o que vai pra ClickSign.
   contratoPreviaPath         String?
@@ -1322,8 +1323,8 @@ model Proposta {
   /// pra ClickSign — um documento, uma assinatura — e o "Baixar tudo" da página.
   documentoPdfPath           String?
   documentoPdfSha256         String?
-  aceitoEm       DateTime?
-  aceitoDoIp     String? // auditoria do aceite
+  aceitoEm                   DateTime?
+  aceitoDoIp                 String? // auditoria do aceite
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -1457,18 +1458,18 @@ model PropostaItem {
   ///
   /// Null = item que não veio de levantamento (proposta de venda comum).
   /// Tag do quadro/painel como o cliente o chama ("QGBT", "Painel 3").
-  quadroPainel  String?
+  quadroPainel String?
   /// Em qual das duas tabelas do Anexo II este item entra.
-  secaoTecnica  PropostaSecaoTecnica?
+  secaoTecnica PropostaSecaoTecnica?
   /// Tensão medida no quadro, em volts.
-  tensaoV       Int?
+  tensaoV      Int?
   /// 🔴 Corrente de carga medida, em ampères — é ela que SELECIONA o modelo.
   ///
   /// O modelo de proposta técnica (17/09) tem as colunas ITEM / QUADRO-PAINEL /
   /// TENSÃO / MODELO e **não tem a corrente** — mas é a corrente que decide qual
   /// MB entra. Sem registrar o medido, ninguém confere depois por que aquele
   /// modelo foi escolhido, e um modelo menor que o necessário não protege.
-  correnteA     Int?
+  correnteA    Int?
 
   proposta Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
 
@@ -1509,12 +1510,12 @@ model Treinamento {
   /// 🔴 O critério não é "é sensível?" no abstrato: é se o vídeo vazar pra um
   /// concorrente, isso custa alguma coisa. Pitch, margem e processo custam;
   /// "como instalar" normalmente não.
-  fonte     TreinamentoFonte @default(YOUTUBE)
+  fonte TreinamentoFonte @default(YOUTUBE)
 
   /// O ID do vídeo (11 caracteres), NUNCA a URL colada: cada forma de link
   /// monta um embed diferente, e a de `watch?v=` nem embeda. Quem normaliza é o
   /// `youtube-id.util`. Preenchido só quando `fonte = YOUTUBE`.
-  youtubeId String?
+  youtubeId      String?
   /// Caminho no bucket `treinamentos`. Guardamos o PATH, nunca uma URL: a URL de
   /// leitura é assinada e expira, então gravá-la criaria um link permanente pra
   /// um arquivo que deveria exigir login.
@@ -1524,16 +1525,16 @@ model Treinamento {
   arquivoTipo    String?
   /// Agrupa na tela ("Comercial", "Instalação"). Livre de propósito: a operação
   /// é pequena e uma tabela de categorias seria cadastro pra manter sem ganho.
-  categoria String?
+  categoria      String?
   /// Ordem de exibição. O treinamento tem sequência — assistir na ordem errada
   /// é pior que não assistir.
-  ordem     Int    @default(0)
+  ordem          Int     @default(0)
   /// Tirar do ar sem apagar: vídeo substituído por versão nova continua sendo
   /// histórico de quem assistiu o quê.
-  ativo     Boolean @default(true)
+  ativo          Boolean @default(true)
 
-  criadoPorId String?
-  criadoEm    DateTime @default(now())
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
   empresa   Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
@@ -2319,21 +2320,21 @@ enum FluxoExecucaoStatus {
  * O grafo é composto por FluxoNos (nós) conectados por FluxoEdges (arestas).
  */
 model Fluxo {
-  id            String            @id @default(cuid())
-  empresaId     String
+  id             String            @id @default(cuid())
+  empresaId      String
   /// DONO do fluxo (card 👤 21/08). null = fluxo da EMPRESA (tudo que existia
   /// até aqui); preenchido = fluxo PESSOAL do usuário — o rep monta régua pros
   /// clientes DELE, disparando pelo WhatsApp pessoal dele. Mesmo padrão dos
   /// quadros de rep: fora da lista principal, gestão enxerga sob demanda.
-  usuarioId     String?
-  nome          String
-  descricao     String?
-  status        FluxoStatus       @default(RASCUNHO)
-  versao        Int               @default(1)
+  usuarioId      String?
+  nome           String
+  descricao      String?
+  status         FluxoStatus       @default(RASCUNHO)
+  versao         Int               @default(1)
   /// Tipo do trigger raiz (define o evento que dispara o fluxo).
-  triggerTipo   FluxoTriggerTipo?
+  triggerTipo    FluxoTriggerTipo?
   /// Config extra do trigger: p.ex. { cronExpr: "0 9 * * 1", diasInativo: 30 }
-  triggerConfig Json?
+  triggerConfig  Json?
   /// Endereço de ENVIO dos e-mails deste fluxo. null = `RESEND_FROM_EMAIL` do
   /// ambiente (o de hoje). Existe pra separar reputação: régua fria mira base
   /// de 30 mil, e reclamação de spam nessa escala derruba a entrega do
@@ -2347,9 +2348,9 @@ model Fluxo {
   /// sai NA HORA, fora da janela de envio, e não conta no teto diário de
   /// abordagens (Léo, 25/09: "imagina o susto do cliente comprar de noite e
   /// só receber a informação de dia"). Marca do FLUXO, ligada pela gestão.
-  transacional  Boolean           @default(false)
-  criadoEm      DateTime          @default(now())
-  atualizadoEm  DateTime          @updatedAt
+  transacional   Boolean           @default(false)
+  criadoEm       DateTime          @default(now())
+  atualizadoEm   DateTime          @updatedAt
 
   empresa   Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   usuario   Usuario?        @relation("FluxosPessoais", fields: [usuarioId], references: [id], onDelete: Cascade)
@@ -2534,7 +2535,7 @@ model FluxoStepClaim {
   /// (proximos)" — a coluna é NOT NULL. Derrubou o motor em produção em 07/09
   /// (R2 100% no chão por ~40min); o DEFAULT do Postgres não salva, porque a
   /// coluna vem no INSERT com NULL em vez de ser omitida.
-  proximos    String[] @default([])
+  proximos    String[]  @default([])
 
   @@index([execucaoId])
   @@index([estado, criadoEm])
@@ -3990,18 +3991,18 @@ model ModeloContrato {
 
 /// Liga a vitrine pra UMA empresa. Existir = a empresa usa catálogo próprio.
 model Vitrine {
-  id             String  @id @default(cuid())
-  empresaId      String  @unique
+  id              String  @id @default(cuid())
+  empresaId       String  @unique
   /// Endereço público: `/v/<slug>`. Único entre TODAS as empresas.
-  slug           String  @unique
+  slug            String  @unique
   /// Desligada = o link responde "indisponível"; o cadastro segue funcionando.
-  ativa          Boolean @default(false)
+  ativa           Boolean @default(false)
   /// Limites das faixas de preço, pelo TOTAL de peças do pedido: Entrada a
   /// partir de `minimoEntrada`, Volume a partir de `minimoVolume`, 500+ a
   /// partir de `minimoAtacadao`. Null = ainda não definido.
-  minimoEntrada  Int?
-  minimoVolume   Int?
-  minimoAtacadao Int?    @default(500)
+  minimoEntrada   Int?
+  minimoVolume    Int?
+  minimoAtacadao  Int?    @default(500)
   /// ERP próprio ligado: tamanho sem disponível some da vitrine e o pedido
   /// não passa do que tem (conferido com trava no envio).
   respeitaEstoque Boolean @default(false)
@@ -4093,11 +4094,11 @@ model CatalogoModelo {
   empresaId   String
   nome        String
   categoriaId String?
-  descricao String?  @db.Text
+  descricao   String?  @db.Text
   /// Chips do cartão (ex.: "Gramatura 280", "Capuz").
-  etiquetas String[] @default([])
-  ordem     Int      @default(0)
-  ativo     Boolean  @default(true)
+  etiquetas   String[] @default([])
+  ordem       Int      @default(0)
+  ativo       Boolean  @default(true)
 
   // ── KIT PRA ANUNCIAR (Léo, 05/10) ──
   // O revendedor de marketplace baixa fotos + texto pra montar o PRÓPRIO
@@ -4121,7 +4122,7 @@ model CatalogoModelo {
   videos    CatalogoVideo[]
 
   /// ERP próprio: preço por peça que cada facção cobra por este modelo.
-  faccaoPrecos FaccaoPreco[]
+  faccaoPrecos  FaccaoPreco[]
   /// ERP próprio: regras de ENCAIXE do produto (ficha técnica) — tubular/aberto,
   /// largura útil, espelhar, giro do corpo e do forro, encavalamento, espaçamento.
   /// Validado no DTO (`regrasEncaixeSchema`); null = ainda não definido.
@@ -4129,6 +4130,7 @@ model CatalogoModelo {
 
   /// ERP próprio: ordens de produção deste modelo.
   ordensProducao OrdemProducao[]
+
   @@index([empresaId, ativo, ordem])
 }
 
@@ -4196,14 +4198,14 @@ model CatalogoVideo {
 /// Linha marcada num modelo, com o preço por faixa e o preço sugerido de
 /// revenda. Preço null = "sob consulta" na vitrine (o pedido entra mesmo assim).
 model CatalogoModeloLinha {
-  id            String   @id @default(cuid())
-  modeloId      String
-  linhaId       String
-  precoEntrada  Decimal? @db.Decimal(14, 2)
-  precoVolume   Decimal? @db.Decimal(14, 2)
-  precoAtacadao Decimal? @db.Decimal(14, 2)
+  id                String    @id @default(cuid())
+  modeloId          String
+  linhaId           String
+  precoEntrada      Decimal?  @db.Decimal(14, 2)
+  precoVolume       Decimal?  @db.Decimal(14, 2)
+  precoAtacadao     Decimal?  @db.Decimal(14, 2)
   /// Quanto o lojista deve cobrar na revenda — base do "seu lucro por peça".
-  precoSugerido Decimal? @db.Decimal(14, 2)
+  precoSugerido     Decimal?  @db.Decimal(14, 2)
   /// Custo por peça (calculadora de precificação). 🔒 NUNCA sai na vitrine
   /// pública. Hoje digitado à mão; quando o ERP fechar OP, o custo dele vira o
   /// padrão e este fica como simulação.
@@ -4211,17 +4213,18 @@ model CatalogoModeloLinha {
   custoAtualizadoEm DateTime?
   /// Tabela de medidas desta linha do modelo (kit pra anunciar):
   /// `{ "colunas": ["Tórax","Comprimento"], "linhas": [{ "tamanho": "P", "valores": ["50","70"] }] }`.
-  tabelaMedidas Json?
+  tabelaMedidas     Json?
 
-  modelo    CatalogoModelo          @relation(fields: [modeloId], references: [id], onDelete: Cascade)
-  linha     CatalogoLinha           @relation(fields: [linhaId], references: [id], onDelete: Restrict)
-  tamanhos  CatalogoModeloTamanho[]
-  variacoes CatalogoVariacao[]
+  modelo       CatalogoModelo          @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+  linha        CatalogoLinha           @relation(fields: [linhaId], references: [id], onDelete: Restrict)
+  tamanhos     CatalogoModeloTamanho[]
+  variacoes    CatalogoVariacao[]
   /// ERP próprio: o que vai em cada peça desta grade (consumo médio por insumo).
   fichaTecnica FichaTecnica?
 
   /// ERP próprio: custo real por peça de cada OP fechada (alimenta a calculadora).
   opCustos OrdemProducaoCusto[]
+
   @@unique([modeloId, linhaId])
 }
 
@@ -4395,6 +4398,7 @@ model Insumo {
   fichaItens FichaTecnicaItem[]
 
   opConsumos OrdemProducaoConsumo[]
+
   @@index([empresaId, ativo])
 }
 
@@ -4472,6 +4476,7 @@ model Faccao {
   precos FaccaoPreco[]
 
   ordensProducao OrdemProducao[]
+
   @@index([empresaId, ativo])
 }
 
@@ -4526,12 +4531,12 @@ model OrdemProducao {
   criadoEm           DateTime            @default(now())
   atualizadoEm       DateTime            @updatedAt
 
-  modelo    CatalogoModelo          @relation(fields: [modeloId], references: [id], onDelete: Restrict)
-  faccao    Faccao?                 @relation(fields: [faccaoId], references: [id], onDelete: SetNull)
-  itens     OrdemProducaoItem[]
-  consumos  OrdemProducaoConsumo[]
-  entregas  OrdemProducaoEntrega[]
-  custos    OrdemProducaoCusto[]
+  modelo   CatalogoModelo         @relation(fields: [modeloId], references: [id], onDelete: Restrict)
+  faccao   Faccao?                @relation(fields: [faccaoId], references: [id], onDelete: SetNull)
+  itens    OrdemProducaoItem[]
+  consumos OrdemProducaoConsumo[]
+  entregas OrdemProducaoEntrega[]
+  custos   OrdemProducaoCusto[]
 
   @@unique([empresaId, numero])
   @@index([empresaId, status])
@@ -4656,32 +4661,32 @@ model FinConta {
 }
 
 model FinTitulo {
-  id           String    @id @default(cuid())
-  empresaId    String
-  tipo         FinTipo
-  descricao    String
-  valor        Decimal   @db.Decimal(14, 2)
+  id                String    @id @default(cuid())
+  empresaId         String
+  tipo              FinTipo
+  descricao         String
+  valor             Decimal   @db.Decimal(14, 2)
   /// Data (sem hora, gravada 12:00 UTC pra não virar o dia no fuso).
-  vencimento   DateTime
-  status       FinStatus @default(ABERTO)
-  categoriaId  String?
+  vencimento        DateTime
+  status            FinStatus @default(ABERTO)
+  categoriaId       String?
   /// Com quem: nome livre + vínculo quando houver (cliente do pedido, facção).
-  contatoNome  String?
-  clienteId    String?
-  faccaoId     String?
+  contatoNome       String?
+  clienteId         String?
+  faccaoId          String?
   /// Origem automática (Fase 3 · entrega B) — cada uma gera UM título só.
-  pedidoId     String?
-  parcela      Int?
-  totalParcelas Int?
-  opEntregaId  String?   @unique
+  pedidoId          String?
+  parcela           Int?
+  totalParcelas     Int?
+  opEntregaId       String?   @unique
   /// Saldo da facção cobrado no fechamento da OP (peças enviadas que não voltaram).
-  opSaldoId    String?   @unique
-  insumoMovimentoId String? @unique
-  recorrenciaId String?
-  observacoes  String?
-  usuarioId    String?
-  criadoEm     DateTime  @default(now())
-  atualizadoEm DateTime  @updatedAt
+  opSaldoId         String?   @unique
+  insumoMovimentoId String?   @unique
+  recorrenciaId     String?
+  observacoes       String?
+  usuarioId         String?
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
 
   categoria   FinCategoria?   @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
   recorrencia FinRecorrencia? @relation(fields: [recorrenciaId], references: [id], onDelete: SetNull)
@@ -4695,10 +4700,10 @@ model FinTitulo {
 
 /// Um pagamento/recebimento (total ou parcial) de um título, numa conta.
 model FinBaixa {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   tituloId    String
   contaId     String
-  valor       Decimal  @db.Decimal(14, 2)
+  valor       Decimal   @db.Decimal(14, 2)
   data        DateTime
   /// PIX, CARTAO, BOLETO, DINHEIRO, TRANSFERENCIA, OUTRA.
   forma       String?
@@ -4706,7 +4711,7 @@ model FinBaixa {
   usuarioId   String?
   /// Baixa desfeita (lançada errado). Não apaga: fica no histórico.
   estornadaEm DateTime?
-  criadoEm    DateTime @default(now())
+  criadoEm    DateTime  @default(now())
 
   titulo FinTitulo @relation(fields: [tituloId], references: [id], onDelete: Cascade)
   conta  FinConta  @relation(fields: [contaId], references: [id], onDelete: Restrict)
@@ -4752,4 +4757,34 @@ model AsaasEvento {
 
   @@index([empresaId, recebidoEm])
   @@index([pagamentoId])
+}
+
+/// Cobrança online de um pedido da vitrine (checkout Asaas). Uma linha por
+/// TENTATIVA: trocar de Pix pra cartão (ou de parcelas) cancela a anterior.
+model PedidoPagamento {
+  id                  String    @id @default(cuid())
+  empresaId           String
+  pedidoId            String
+  /// PIX | CARTAO
+  metodo              String
+  parcelas            Int       @default(1)
+  /// Total do pedido (o que a empresa quer receber).
+  valorPedido         Decimal   @db.Decimal(14, 2)
+  /// O que foi cobrado do cliente (parcelado = pedido + taxa do Asaas).
+  valorCobrado        Decimal   @db.Decimal(14, 2)
+  /// Id da cobrança no Asaas (`pay_…`) — no parcelado, a 1ª parcela.
+  asaasCobrancaId     String    @unique
+  /// Id do parcelamento no Asaas (`ins_…`), quando parcelado.
+  asaasParcelamentoId String?
+  /// PENDENTE | PAGO | CANCELADO | ESTORNADO
+  status              String    @default("PENDENTE")
+  invoiceUrl          String?
+  pagoEm              DateTime?
+  /// Valor líquido que o Asaas informou (depois da taxa dele).
+  valorLiquido        Decimal?  @db.Decimal(14, 2)
+  criadoEm            DateTime  @default(now())
+  atualizadoEm        DateTime  @updatedAt
+
+  @@index([pedidoId, criadoEm])
+  @@index([asaasParcelamentoId])
 }

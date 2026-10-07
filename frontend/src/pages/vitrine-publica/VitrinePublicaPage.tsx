@@ -30,6 +30,7 @@ import {
 } from './calculo';
 import { useFundoDaCor } from './amostra';
 import { baixarKit, copiarTexto } from './kit';
+import { Pagamento, type AcessoPagamento } from './Pagamento';
 import './vitrine.css';
 
 /**
@@ -347,7 +348,12 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
       )}
 
       {enviado && (
-        <PedidoEnviado e={enviado} empresa={v.empresa.nome} onFechar={() => setEnviado(null)} />
+        <PedidoEnviado
+          slug={slug}
+          e={enviado}
+          empresa={v.empresa.nome}
+          onFechar={() => setEnviado(null)}
+        />
       )}
 
       {toast && <div className="vt-toast">{toast}</div>}
@@ -1136,6 +1142,10 @@ interface Enviado {
   aConfirmar: boolean;
   /** Até quando as peças ficam reservadas (estoque próprio). null = sem reserva. */
   reservaExpiraEm: string | null;
+  /** Pagamento online ligado: abre Pix/cartão. null = combina no WhatsApp. */
+  pagamento: AcessoPagamento | null;
+  /** O documento digitado no envio já vem preenchido na hora de pagar. */
+  cpfCnpj: string;
 }
 
 interface Contato {
@@ -1192,6 +1202,7 @@ function FolhaEnvio({
         totalPecas: number;
         total: number;
         reservaExpiraEm?: string | null;
+        pagamento?: AcessoPagamento | null;
       }>(
         `/public/vitrine/${encodeURIComponent(slug)}/pedido`,
         {
@@ -1216,6 +1227,8 @@ function FolhaEnvio({
         total: r.total,
         aConfirmar: resumo.aConfirmar,
         reservaExpiraEm: r.reservaExpiraEm ?? null,
+        pagamento: r.pagamento ?? null,
+        cpfCnpj: f.cpfCnpj.trim(),
       });
     } catch (e) {
       setErro(
@@ -1344,17 +1357,32 @@ function FolhaEnvio({
   );
 }
 
+/** Minutos que a reserva ganha quando o cliente gera a cobrança (RESERVA_PAGANDO_MIN no servidor). */
+const RESERVA_PAGANDO_MIN = 60;
+
 function PedidoEnviado({
+  slug,
   e,
   empresa,
   onFechar,
 }: {
+  slug: string;
   e: Enviado;
   empresa: string;
   onFechar: () => void;
 }) {
-  const agora = useAgora(Boolean(e.reservaExpiraEm));
-  const relogio = restante(e.reservaExpiraEm, agora);
+  const [reservaAte, setReservaAte] = useState(e.reservaExpiraEm);
+  const [pago, setPago] = useState(false);
+  const agora = useAgora(Boolean(reservaAte) && !pago);
+  const relogio = pago ? null : restante(reservaAte, agora);
+  const online = Boolean(e.pagamento) && !e.aConfirmar;
+  const aoPagar = useCallback(() => setPago(true), []);
+  const aoComecar = useCallback(() => {
+    // Mesma conta do servidor: quem está pagando não perde a peça pelo relógio.
+    setReservaAte((r) =>
+      r ? new Date(Date.now() + RESERVA_PAGANDO_MIN * 60_000).toISOString() : r,
+    );
+  }, []);
   return (
     <section className="vt-cart vt-ok" aria-label="Pedido enviado" data-testid="vt-enviado">
       <div className="vt-ok-corpo">
@@ -1377,10 +1405,21 @@ function PedidoEnviado({
               <small>Pague dentro desse prazo pra garantir o pedido.</small>
             </p>
           ))}
-        <p className="vt-muted">
-          A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''} o
-          frete e o pagamento.
-        </p>
+        {online && e.pagamento ? (
+          <Pagamento
+            slug={slug}
+            acesso={e.pagamento}
+            docInicial={e.cpfCnpj}
+            empresa={empresa}
+            onPago={aoPagar}
+            onComecou={aoComecar}
+          />
+        ) : (
+          <p className="vt-muted">
+            A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''} o
+            frete e o pagamento.
+          </p>
+        )}
       </div>
       <footer>
         <button type="button" className="vt-cta" onClick={onFechar}>

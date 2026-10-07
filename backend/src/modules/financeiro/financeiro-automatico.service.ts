@@ -50,10 +50,13 @@ export class FinanceiroAutomaticoService {
     return c?.id ?? null;
   }
 
-  /** Onde cai o Pix manual: a conta "Banco"; sem ela, a 1ª conta ativa. */
-  private async contaDoPix(tx: Tx, empresaId: string) {
+  /**
+   * Onde o dinheiro caiu: a conta com esse nome ("Banco" no Pix manual,
+   * "Asaas" no pagamento online); sem ela, a 1ª conta ativa.
+   */
+  private async contaDoPix(tx: Tx, empresaId: string, nome = 'Banco') {
     const banco = await tx.finConta.findFirst({
-      where: { empresaId, ativo: true, nome: 'Banco' },
+      where: { empresaId, ativo: true, nome },
       select: { id: true },
     });
     if (banco) return banco.id;
@@ -146,6 +149,7 @@ export class FinanceiroAutomaticoService {
     empresaId: string,
     pedidoId: string,
     usuarioId: string | null,
+    opts: { conta?: string; forma?: 'PIX' | 'CARTAO'; observacao?: string } = {},
   ) {
     const t = await this.tituloDoPedidoNaTx(tx, pedidoId);
     if (!t || t.status === 'CANCELADO' || t.status === 'QUITADO') return;
@@ -155,7 +159,7 @@ export class FinanceiroAutomaticoService {
     });
     const falta = Number(t.valor) - Number(pago._sum.valor ?? 0);
     if (falta <= 0.004) return;
-    const contaId = await this.contaDoPix(tx, empresaId);
+    const contaId = await this.contaDoPix(tx, empresaId, opts.conta);
     if (!contaId) {
       this.logger.warn(
         `[financeiro] pedido ${pedidoId} pago, mas a empresa não tem conta ativa pra baixa`,
@@ -169,8 +173,8 @@ export class FinanceiroAutomaticoService {
         valor: Math.round(falta * 100) / 100,
         data: isoDe(hojePuro()),
         contaId,
-        forma: 'PIX',
-        observacao: 'Pagamento recebido no pedido',
+        forma: opts.forma ?? 'PIX',
+        observacao: opts.observacao ?? 'Pagamento recebido no pedido',
       },
       usuarioId,
     );

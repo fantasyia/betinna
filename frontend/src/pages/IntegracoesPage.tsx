@@ -70,6 +70,8 @@ interface ServicoMeta {
   credentialFields?: Array<{ name: string; label: string; type?: 'text' | 'password' }>;
   /** QR: rota interna do app pra fluxo de pareamento */
   qrRoute?: string;
+  /** Conectado: o próximo passo mora em outra tela (ex.: Asaas → ativar na vitrine). */
+  atalho?: { rotulo: string; rota: string };
 }
 
 const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
@@ -217,6 +219,7 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
       'em Vitrine → Configuração → Pagamento online.',
     connectMode: 'credentials',
     credentialFields: [{ name: 'apiKey', label: 'Chave da API do Asaas ($aact_...)', type: 'password' }],
+    atalho: { rotulo: 'Ativar na vitrine →', rota: '/vitrine?aba=config' },
   },
 };
 
@@ -636,6 +639,15 @@ function ServicoCard({
         ) : (
           <>
             {servico === 'tiny' && <SyncTinyButton onDone={onRefetch} />}
+            {meta.atalho && (
+              <a
+                href={meta.atalho.rota}
+                data-testid={`atalho-${servico}`}
+                className="text-primary px-2.5 h-9 inline-flex items-center text-[13px] font-semibold no-underline hover:underline"
+              >
+                {meta.atalho.rotulo}
+              </a>
+            )}
             <button
               type="button"
               data-testid={`reconectar-${servico}`}

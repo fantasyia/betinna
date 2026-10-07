@@ -208,4 +208,103 @@ export class AsaasClient {
       ? this.req<WebhookAsaas>('PUT', `/webhooks/${encodeURIComponent(id)}`, corpo)
       : this.req<WebhookAsaas>('POST', '/webhooks', corpo);
   }
+
+  // ─── Cobrança (entrega 2) ──────────────────────────────────────────────
+
+  async acharCliente(cpfCnpj: string): Promise<ClienteAsaas | null> {
+    const r = await this.req<{ data: ClienteAsaas[] }>(
+      'GET',
+      `/customers?cpfCnpj=${encodeURIComponent(cpfCnpj)}&limit=1`,
+    );
+    return r.data?.[0] ?? null;
+  }
+
+  /** `notificationDisabled`: quem avisa o cliente é a vitrine, não o Asaas. */
+  criarCliente(dados: {
+    name: string;
+    cpfCnpj: string;
+    mobilePhone?: string;
+    email?: string;
+    externalReference?: string;
+  }): Promise<ClienteAsaas> {
+    return this.req<ClienteAsaas>('POST', '/customers', { ...dados, notificationDisabled: true });
+  }
+
+  criarCobranca(dados: {
+    customer: string;
+    billingType: 'PIX' | 'CREDIT_CARD';
+    dueDate: string;
+    description: string;
+    externalReference: string;
+    value?: number;
+    installmentCount?: number;
+    totalValue?: number;
+  }): Promise<CobrancaAsaas> {
+    return this.req<CobrancaAsaas>('POST', '/payments', dados);
+  }
+
+  obterCobranca(id: string): Promise<CobrancaAsaas> {
+    return this.req<CobrancaAsaas>('GET', `/payments/${encodeURIComponent(id)}`);
+  }
+
+  pixQrCode(id: string): Promise<PixAsaas> {
+    return this.req<PixAsaas>('GET', `/payments/${encodeURIComponent(id)}/pixQrCode`);
+  }
+
+  cancelarCobranca(id: string): Promise<{ deleted: boolean; id: string }> {
+    return this.req<{ deleted: boolean; id: string }>(
+      'DELETE',
+      `/payments/${encodeURIComponent(id)}`,
+    );
+  }
+}
+
+// ─── Cobrança (entrega 2) ────────────────────────────────────────────────
+
+export interface OpcaoCartao {
+  parcelas: number;
+  /** Total cobrado no cartão (centavos). */
+  totalC: number;
+  /** Valor aproximado de cada parcela (centavos) — o Asaas joga o resto do arredondamento na última. */
+  parcelaC: number;
+}
+
+/**
+ * Opções de cartão (1x a 12x) pela regra do Léo (07/10): à vista = preço da
+ * vitrine (a empresa cobre a taxa); parcelado = o cliente paga a taxa do Asaas
+ * da faixa, pra empresa receber o valor cheio: cobrado = (total + tarifa fixa)
+ * ÷ (1 − %), arredondado pra CIMA no centavo. PURO (testado).
+ */
+export function opcoesCartao(totalC: number, taxas: TaxasAsaas, max = 12): OpcaoCartao[] {
+  const out: OpcaoCartao[] = [{ parcelas: 1, totalC, parcelaC: totalC }];
+  const fixaC = Math.round(taxas.cartao.fixa * 100);
+  for (let n = 2; n <= max; n++) {
+    const pct = (n <= 6 ? taxas.cartao.ateSeis : taxas.cartao.ateDoze) / 100;
+    const cobradoC = Math.ceil((totalC + fixaC) / (1 - pct));
+    out.push({ parcelas: n, totalC: cobradoC, parcelaC: Math.ceil(cobradoC / n) });
+  }
+  return out;
+}
+
+export interface ClienteAsaas {
+  id: string;
+  name: string;
+  cpfCnpj: string | null;
+}
+
+export interface CobrancaAsaas {
+  id: string;
+  status: string;
+  value: number;
+  netValue?: number;
+  billingType: string;
+  invoiceUrl: string;
+  installment?: string | null;
+  externalReference?: string | null;
+}
+
+export interface PixAsaas {
+  encodedImage: string;
+  payload: string;
+  expirationDate: string;
 }

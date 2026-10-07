@@ -7,6 +7,7 @@ import { Roles } from '@shared/decorators/roles.decorator';
 import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { CheckoutPublicoService } from './checkout-publico.service';
 import { CheckoutService } from './checkout.service';
 
 /** Pagamento online da vitrine — ligar/desligar a conta Asaas da empresa. */
@@ -47,7 +48,10 @@ export class CheckoutController {
 @ApiTags('webhooks')
 @Controller('webhooks/asaas')
 export class AsaasWebhookController {
-  constructor(private readonly svc: CheckoutService) {}
+  constructor(
+    private readonly svc: CheckoutService,
+    private readonly publico: CheckoutPublicoService,
+  ) {}
 
   @Post(':empresaId')
   @Public()
@@ -60,7 +64,10 @@ export class AsaasWebhookController {
     @Body() corpo: unknown,
   ): Promise<{ ok: true }> {
     try {
-      await this.svc.registrarAviso(empresaId, token, corpo);
+      const { novo } = await this.svc.registrarAviso(empresaId, token, corpo);
+      // ACK primeiro; o pedido vira PAGO logo em seguida (e o job refaz se falhar).
+      const id = (corpo as { id?: unknown })?.id;
+      if (novo && typeof id === 'string') void this.publico.processar(id).catch(() => undefined);
     } catch (err) {
       if (err instanceof IntegrationException && err.code === ErrorCode.AUTH_INVALID_TOKEN) {
         throw new UnauthorizedException('Código inválido', ErrorCode.AUTH_INVALID_TOKEN);

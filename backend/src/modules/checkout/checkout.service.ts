@@ -23,6 +23,12 @@ export interface ConfigCheckout {
   ativadoEm?: string;
 }
 
+/** A vitrine oferece pagar online? (ativado no painel e com as taxas lidas). */
+export function pagamentoOnlineLigado(config: unknown): boolean {
+  const cfg = ((config ?? {}) as { checkout?: ConfigCheckout }).checkout;
+  return cfg?.ativo === true && !!cfg.taxas;
+}
+
 /** Credenciais da conexão `asaas` (cifradas em IntegracaoConexao). */
 interface CredAsaas {
   apiKey?: string;

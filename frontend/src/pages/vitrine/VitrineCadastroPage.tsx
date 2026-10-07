@@ -62,7 +62,10 @@ export default function VitrineCadastroPage() {
 
 function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMudou: () => void }) {
   const toast = useToast();
-  const [aba, setAba] = useState('modelos');
+  // `?aba=config` abre direto na configuração (atalho do card do Asaas).
+  const [aba, setAba] = useState(
+    () => new URLSearchParams(window.location.search).get('aba') ?? 'modelos',
+  );
   const modelos = useApiQuery<Modelo[]>('/vitrine/admin/modelos');
   const cores = useApiQuery<Cor[]>('/vitrine/admin/cores');
   const linhas = useApiQuery<Linha[]>('/vitrine/admin/linhas');

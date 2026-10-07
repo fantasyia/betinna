@@ -263,3 +263,27 @@
 .vt-cell.vt-off { opacity: .4; }
 .vt-cell[disabled] { cursor: default; }
 .vt-cell[disabled]:active { transform: none; }
+
+/* Pagamento online (Asaas, 07/10): Pix na tela, cartão na página do Asaas. */
+.vt-ok-corpo { overflow-y: auto; }
+.vt-ok-corpo:has(.vt-pag) { place-content: start center; }
+.vt-pag { width: 100%; max-width: 340px; display: grid; gap: 10px; justify-items: stretch; padding: 14px; border-radius: 16px; background: var(--branco); border: 1px solid #e3d8bf; text-align: left; }
+.vt-pag-tit { font-size: 15px; font-weight: 600; text-align: center; }
+.vt-pag-tit b { font-family: var(--f-title); font-weight: 600; }
+.vt-pag-abas { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--linho); }
+.vt-pag-abas button { height: 38px; border-radius: 9px; font-weight: 600; font-size: 14px; color: var(--oliva); }
+.vt-pag-abas button.on { background: var(--branco); color: var(--petroleo); box-shadow: 0 1px 2px rgba(26, 45, 56, .12); }
+.vt-pag-valor { display: grid; justify-items: center; gap: 2px; padding: 6px 0; }
+.vt-pag-valor b { font-family: var(--f-title); font-weight: 600; font-size: 30px; font-variant-numeric: tabular-nums; }
+.vt-pag-valor span, .vt-parcelas small { font-size: 12px; color: var(--oliva); }
+.vt-parcelas { display: grid; gap: 4px; max-height: 236px; overflow-y: auto; }
+.vt-parcelas label { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px; border-radius: 10px; border: 1px solid #e3d8bf; font-size: 14px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.vt-parcelas label.on { border-color: var(--petroleo); background: var(--creme); font-weight: 600; }
+.vt-parcelas input { accent-color: var(--petroleo); margin: 0; }
+.vt-pag-form { padding: 0; overflow: visible; }
+.vt-pix-qr { justify-self: center; width: 200px; height: 200px; image-rendering: pixelated; border-radius: 8px; background: #fff; }
+.vt-pag-espera { font-size: 12px; color: var(--oliva); text-align: center; line-height: 1.45; }
+.vt-pag-link { justify-self: center; font-size: 12.5px; font-weight: 600; color: var(--oliva); text-decoration: underline; }
+.vt-pag-ok { justify-items: center; text-align: center; background: var(--linho); border-color: transparent; }
+.vt-pag-ok b { color: var(--lucro); font-size: 16px; }
+.vt-pag-ok span { font-size: 13px; line-height: 1.45; }

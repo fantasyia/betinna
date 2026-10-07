@@ -1,3 +1,4 @@
+import { pagamentoOnlineLigado } from '@modules/checkout/checkout.service';
 import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
@@ -180,6 +181,8 @@ export class VitrinePublicaService {
       },
       // Pedido mínimo da empresa (R$ e/ou peças) — o envio confere de novo.
       pedidoMinimo: minimoDaVitrine(vitrine.empresa.config),
+      // Aceita Pix/cartão pela vitrine (Asaas): o cliente sabe antes de enviar.
+      pagamentoOnline: pagamentoOnlineLigado(vitrine.empresa.config),
       linhas,
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({

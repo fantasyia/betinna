@@ -1,17 +1,22 @@
 import { Module } from '@nestjs/common';
+import { FinanceiroModule } from '@modules/financeiro/financeiro.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
+import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
+import { AvisosAsaasJob } from './avisos-asaas.job';
+import { CheckoutPublicoController } from './checkout-publico.controller';
+import { CheckoutPublicoService } from './checkout-publico.service';
 import { AsaasWebhookController, CheckoutController } from './checkout.controller';
 import { CheckoutService } from './checkout.service';
 
 /**
- * Pagamento online da vitrine (Asaas). Entrega 1: ligar a conta da empresa e
- * receber os avisos de pagamento. A cobrança e a confirmação automática do
- * pedido vêm na entrega 2.
+ * Pagamento online da vitrine (Asaas): ligar a conta da empresa (entrega 1),
+ * cobrar o pedido pela vitrine e confirmar sozinho pelo aviso do Asaas
+ * (entrega 2).
  */
 @Module({
-  imports: [IntegracoesModule],
-  controllers: [CheckoutController, AsaasWebhookController],
-  providers: [CheckoutService],
-  exports: [CheckoutService],
+  imports: [IntegracoesModule, FinanceiroModule, NotificacoesModule],
+  controllers: [CheckoutController, AsaasWebhookController, CheckoutPublicoController],
+  providers: [CheckoutService, CheckoutPublicoService, AvisosAsaasJob],
+  exports: [CheckoutService, CheckoutPublicoService],
 })
 export class CheckoutModule {}
