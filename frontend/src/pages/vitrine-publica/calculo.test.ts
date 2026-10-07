@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   corDaBolinha,
+  corInicial,
+  corTemEstoque,
+  coresPorEstoque,
+  temLinha,
   fotosDaLinha,
   disponivelDe,
   itensParaEnvio,
@@ -374,5 +378,51 @@ describe('vitrine que respeita estoque', () => {
   it('carrinho salvo no celular volta cortado ao que tem agora', () => {
     const v = { modelos: [m] } as unknown as VitrinePub;
     expect(limparCarrinho({ m1: { c1: { p: 10, m: 4 } } }, v)).toEqual({ m1: { c1: { p: 3 } } });
+  });
+});
+
+describe('1ª opção com estoque e linha sem o modelo (Léo, 07/10)', () => {
+  // Preto esgotado nos dois tamanhos; Bege com M.
+  const comEstoque = modelo({
+    estoque: { 'mc-preto': { 't-p': 0, 't-m': 0 }, 'mc-bege': { 't-p': 0, 't-m': 3 } },
+  });
+
+  it('cor esgotada nesta linha nunca é a 1ª: abre na 1ª com estoque', () => {
+    expect(corTemEstoque(comEstoque, 'mc-preto', linha())).toBe(false);
+    expect(corTemEstoque(comEstoque, 'mc-bege', linha())).toBe(true);
+    expect(corInicial(comEstoque, linha()).nome).toBe('Bege');
+    expect(coresPorEstoque(comEstoque, linha()).map((c) => c.nome)).toEqual(['Bege', 'Preto']);
+  });
+
+  it('sem controle de estoque: a ordem do cadastro, como antes', () => {
+    const m = modelo({ estoque: null });
+    expect(corInicial(m, linha()).nome).toBe('Preto');
+    expect(coresPorEstoque(m, linha())).toBe(m.cores);
+  });
+
+  it('tudo esgotado: abre na 1ª do cadastro (não some cor nenhuma)', () => {
+    const m = modelo({ estoque: { 'mc-preto': {}, 'mc-bege': {} } });
+    expect(corInicial(m, linha()).nome).toBe('Preto');
+    expect(coresPorEstoque(m, linha())).toHaveLength(2);
+  });
+
+  it('o estoque é DA LINHA: a mesma cor pode ter no Regular e faltar no Plus', () => {
+    const plus = linha({
+      id: 'ml-plus',
+      linhaId: 'lin-plus',
+      nome: 'Plus',
+      tamanhos: [{ id: 't-g1', nome: 'G1' }],
+    });
+    const m = modelo({
+      linhas: [linha(), plus],
+      estoque: { 'mc-preto': { 't-m': 5, 't-g1': 0 }, 'mc-bege': { 't-g1': 2 } },
+    });
+    expect(corInicial(m, linha()).nome).toBe('Preto');
+    expect(corInicial(m, plus).nome).toBe('Bege');
+  });
+
+  it('temLinha: só as linhas que o modelo tem', () => {
+    expect(temLinha(modelo(), 'lin-reg')).toBe(true);
+    expect(temLinha(modelo(), 'lin-plus')).toBe(false);
   });
 });

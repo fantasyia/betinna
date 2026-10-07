@@ -294,3 +294,9 @@
 .vt-cells-muitos .vt-cell b { font-size: 10px; }
 .vt-cells-muitos .vt-cell span { font-size: 17px; }
 .vt-cells-muitos .vt-cell small { font-size: 9px; }
+
+/* Linha sem o modelo (Léo, 07/10): o modelo fica, com o aviso e o atalho pra linha que ele tem. */
+.vt-semlinha { position: absolute; z-index: 3; left: 12px; right: 12px; top: 106px; display: grid; gap: 8px; padding: 10px 12px; border-radius: 14px; background: rgba(26, 45, 56, .88); color: var(--creme); font-size: 13px; line-height: 1.4; }
+.vt-semlinha b { font-weight: 600; }
+.vt-semlinha div { display: flex; flex-wrap: wrap; gap: 6px; }
+.vt-semlinha button { height: 32px; padding: 0 12px; border-radius: 999px; background: var(--creme); color: var(--petroleo); font-size: 13px; font-weight: 600; }

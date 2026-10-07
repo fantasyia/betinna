@@ -154,6 +154,34 @@ export function disponivelDe(m: ModeloPub, corId: string, tamanhoId: string): nu
   return m.estoque[corId]?.[tamanhoId] ?? 0;
 }
 
+/**
+ * A cor tem peça em ALGUM tamanho desta linha? Vitrine sem controle de
+ * estoque (`estoque` null): sempre tem.
+ */
+export function corTemEstoque(m: ModeloPub, corId: string, linha: LinhaPub | undefined): boolean {
+  if (!m.estoque) return true;
+  return (linha?.tamanhos ?? []).some((t) => (disponivelDe(m, corId, t.id) ?? 0) > 0);
+}
+
+/**
+ * Cores na ordem de mostrar (Léo, 07/10): as com estoque primeiro, as
+ * esgotadas por último — esgotada nunca é a 1ª opção. Dentro de cada grupo,
+ * a ordem do cadastro. Sem controle de estoque, a ordem do cadastro.
+ */
+export function coresPorEstoque(m: ModeloPub, linha: LinhaPub | undefined): CorPub[] {
+  if (!m.estoque) return m.cores;
+  const com = m.cores.filter((c) => corTemEstoque(m, c.id, linha));
+  return [...com, ...m.cores.filter((c) => !com.includes(c))];
+}
+
+/** A cor que abre: a 1ª com estoque nesta linha (ou a 1ª do cadastro). */
+export const corInicial = (m: ModeloPub, linha: LinhaPub | undefined): CorPub =>
+  coresPorEstoque(m, linha)[0];
+
+/** O modelo existe nesta linha da empresa (filtro do topo)? */
+export const temLinha = (m: ModeloPub, linhaId: string): boolean =>
+  m.linhas.some((l) => l.linhaId === linhaId);
+
 export function somar(
   c: Carrinho,
   modeloId: string,

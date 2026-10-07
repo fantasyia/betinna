@@ -10,6 +10,8 @@ import {
   mascararWhatsapp,
   limparCarrinho,
   corDaBolinha,
+  corInicial,
+  coresPorEstoque,
   fotosDaLinha,
   lucroNaProximaFaixa,
   lucroPorPeca,
@@ -19,6 +21,7 @@ import {
   proximaFaixa,
   resumoPedido,
   somar,
+  temLinha,
   textoKit,
   totalPecas,
   type Carrinho,
@@ -120,6 +123,9 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   const [verPedido, setVerPedido] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [enviado, setEnviado] = useState<Enviado | null>(null);
+  // Modelo que estava na tela quando o lojista trocou pra uma linha que ele não
+  // tem: fica no topo com o aviso, em vez de sumir (Léo, 07/10).
+  const [fixado, setFixado] = useState<string | null>(null);
   const feed = useRef<HTMLDivElement>(null);
 
   // Carrinho salvo no aparelho: sair e voltar mantém o pedido montado.
@@ -150,14 +156,40 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   useEffect(() => {
     if (cat !== 'todos' && !categorias.some(([id]) => id === cat)) setCat('todos');
   }, [categorias, cat]);
+
+  /** O modelo que está ocupando o meio do feed agora. */
+  const modeloNaTela = (): string | null => {
+    const el = feed.current;
+    if (!el) return null;
+    const caixa = el.getBoundingClientRect();
+    const meio = caixa.top + caixa.height / 2;
+    for (const a of el.querySelectorAll<HTMLElement>('[data-modelo]')) {
+      const r = a.getBoundingClientRect();
+      if (r.top <= meio && r.bottom > meio) return a.dataset.modelo ?? null;
+    }
+    return null;
+  };
+
+  const trocarLinha = (id: string) => {
+    const atual = modeloNaTela();
+    const m = atual ? v.modelos.find((x) => x.id === atual) : undefined;
+    setFixado(m && !temLinha(m, id) ? m.id : null);
+    setLinhaId(id);
+  };
+  const modeloFixado =
+    fixado && cat === 'todos'
+      ? v.modelos.find((m) => m.id === fixado && !temLinha(m, linhaId))
+      : undefined;
+  const slides = modeloFixado ? [modeloFixado, ...lista] : lista;
   useEffect(() => {
     feed.current?.scrollTo({ top: 0 });
   }, [linhaId, cat]);
 
-  const corAtual = (m: ModeloPub): CorPub =>
-    m.cores.find((c) => c.id === corDe[m.id]) ?? m.cores[0];
   const linhaNoModelo = (m: ModeloPub): LinhaPub =>
     m.linhas.find((l) => l.linhaId === linhaId) ?? m.linhas[0];
+  // Cor que abre: a escolhida, ou a 1ª com estoque nesta linha (esgotada nunca abre).
+  const corAtual = (m: ModeloPub): CorPub =>
+    m.cores.find((c) => c.id === corDe[m.id]) ?? corInicial(m, linhaNoModelo(m));
   const pecas = totalPecas(carrinho);
   const modelosNoPedido = Object.keys(carrinho).length;
 
@@ -189,7 +221,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                 key={l.id}
                 type="button"
                 aria-pressed={linhaId === l.id}
-                onClick={() => setLinhaId(l.id)}
+                onClick={() => trocarLinha(l.id)}
               >
                 {l.nome}
               </button>
@@ -211,12 +243,40 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
       </div>
 
       <div className="vt-feed" ref={feed} data-bag={pecas > 0 || undefined}>
-        {lista.map((m, i) => {
+        {slides.map((m, i) => {
           const cor = corAtual(m);
           const l = linhaNoModelo(m);
+          const semALinha = m === modeloFixado;
           return (
-            <article key={m.id} className="vt-slide" data-testid={`vt-slide-${m.id}`}>
+            <article
+              key={m.id}
+              className="vt-slide"
+              data-modelo={m.id}
+              data-testid={`vt-slide-${m.id}`}
+            >
               <div className="vt-stage">
+                {semALinha && (
+                  <div className="vt-semlinha" role="status" data-testid="vt-sem-linha">
+                    <span>
+                      Este modelo não tem{' '}
+                      <b>{v.linhas.find((x) => x.id === linhaId)?.nome ?? 'esta linha'}</b>.
+                    </span>
+                    <div>
+                      {m.linhas.map((x) => (
+                        <button
+                          key={x.id}
+                          type="button"
+                          onClick={() => {
+                            setFixado(null);
+                            setLinhaId(x.linhaId);
+                          }}
+                        >
+                          Ver em {x.nome}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <Carrossel
                   key={`${cor.id}:${l.linhaId}`}
                   cor={{ ...cor, fotos: fotosDaLinha(cor, l.linhaId) }}
@@ -224,7 +284,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                   onAbrir={() => setPdp(m)}
                 />
                 <NomeDaCor cor={cor} />
-                {i === 0 && lista.length > 1 && <div className="vt-hint">deslize pra cima ↑</div>}
+                {i === 0 && slides.length > 1 && <div className="vt-hint">deslize pra cima ↑</div>}
               </div>
               <div className="vt-info">
                 <div className="vt-row">
@@ -234,6 +294,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                   <Bolinhas
                     m={m}
                     cor={cor}
+                    linha={l}
                     onCor={(id) => setCorDe((s) => ({ ...s, [m.id]: id }))}
                   />
                 </div>
@@ -265,7 +326,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
             </article>
           );
         })}
-        {lista.length === 0 && (
+        {slides.length === 0 && (
           <div className="vt-centro">
             <p className="vt-muted">Nenhum modelo nesta categoria.</p>
           </div>
@@ -456,10 +517,21 @@ function NomeDaCor({ cor }: { cor: CorPub }) {
   );
 }
 
-function Bolinhas({ m, cor, onCor }: { m: ModeloPub; cor: CorPub; onCor: (id: string) => void }) {
+function Bolinhas({
+  m,
+  cor,
+  linha,
+  onCor,
+}: {
+  m: ModeloPub;
+  cor: CorPub;
+  linha: LinhaPub;
+  onCor: (id: string) => void;
+}) {
+  // Esgotada nesta linha vai pro fim — nunca é a 1ª opção (Léo, 07/10).
   return (
     <div className="vt-dots">
-      {m.cores.map((c) => (
+      {coresPorEstoque(m, linha).map((c) => (
         <Bolinha key={c.id} c={c} ativa={c.id === cor.id} onCor={onCor} />
       ))}
     </div>
@@ -651,7 +723,7 @@ function PaginaModelo({
       <div className="vt-pdp-body">
         <div className="vt-row">
           {m.categoria && <span className="vt-over">{m.categoria.nome}</span>}
-          <Bolinhas m={m} cor={cor} onCor={onCor} />
+          <Bolinhas m={m} cor={cor} linha={l} onCor={onCor} />
         </div>
         <h2 className="vt-name" style={{ fontSize: 28 }}>
           {m.nome}
@@ -770,7 +842,7 @@ function FolhaGrade({
           </div>
         </div>
         <div className="vt-matrix">
-          {m.cores.map((c) => (
+          {coresPorEstoque(m, linha).map((c) => (
             <div key={c.id} className="vt-mrow">
               <div className="vt-rh">
                 <AmostraCor c={c} />
