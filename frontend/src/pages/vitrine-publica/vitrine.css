@@ -345,8 +345,27 @@
 .vt-sim-r .vt-win { background: #f3eedd; }
 .vt-sim-r .vt-win small, .vt-sim-r .vt-win b { color: var(--lucro); }
 .vt-sim .vt-na { display: block; padding: 10px; font-size: 12.5px; font-weight: 500; color: var(--terracota); }
-/* Tela baixa (iPhone SE e afins): a caixa da foto fica quase quadrada e qualquer
-   corte some cabeça OU produto. Mostra a foto inteira, com o fundo nas laterais. */
-@media (max-height: 740px) {
-  .vt-slide .vt-fotos img { object-fit: contain; }
+/* Tela baixa (iPhone SE, e celular com a barra do navegador comendo altura):
+   a foto SEMPRE ocupa a largura (Léo, 07/10: "cortando as laterais" ficou
+   feio). O bloco de baixo fica mais justo pra a foto ganhar altura, e o corte
+   segura um pouco mais pro alto: cabeça e produto. */
+@media (max-height: 760px) {
+  .vt-slide .vt-fotos img { object-position: 50% 35%; }
+  .vt-slide .vt-info { gap: 6px; padding-top: 8px; }
+  .vt-slide .vt-tags { display: none; }
+  .vt-slide .vt-sim-topo { padding: 6px 12px 4px; }
+  .vt-slide .vt-sim-unit b { font-size: 25px; }
+  .vt-slide .vt-sim-q { padding: 4px 10px; }
+  .vt-slide .vt-sim-r > div { padding: 4px 12px 5px; }
+  .vt-slide .vt-cta { height: 40px; }
+  /* Topo mais baixo: a foto começa mais cedo. */
+  .vt-top { padding-top: 6px; }
+  .vt-linhas { margin-top: 6px; }
+  .vt-linhas button { height: 28px; }
+  .vt-slide .vt-fotos { top: 70px; }
+  .vt-counter { top: 80px; }
+  /* Investe | Lucro no pedido fica só na Ficha técnica; o preço e o "Se você
+     levar" continuam. O aviso "deslize" também sai. */
+  .vt-slide .vt-sim-r { display: none; }
+  .vt-slide .vt-hint { display: none; }
 }
