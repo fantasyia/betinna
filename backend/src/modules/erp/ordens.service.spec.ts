@@ -12,7 +12,7 @@ const variacao = (produtoId: string, modeloLinhaId: string) => ({
   produtoId,
   modeloLinhaId,
   ativo: true,
-  modeloCor: { ordem: 0, cor: { nome: 'Preto', hex: '#000000' } },
+  modeloCor: { ordem: 0, corId: 'cor-preto', cor: { nome: 'Preto', hex: '#000000' } },
   modeloLinha: { linha: { nome: modeloLinhaId === 'ml-reg' ? 'Regular' : 'Plus', ordem: 0 } },
   modeloTamanho: { tamanho: { nome: produtoId, ordem: 0 } },
 });
@@ -38,7 +38,11 @@ function montar(opts: { status?: string; ligado?: boolean } = {}) {
     ordemProducaoConsumo: { create: vi.fn().mockResolvedValue({}) },
     ordemProducaoCusto: { createMany: vi.fn().mockResolvedValue({}) },
     insumo: {
-      findMany: vi.fn().mockResolvedValue([{ id: 'tec', tipo: 'TECIDO', custoMedio: Dc(42) }]),
+      findMany: vi
+        .fn()
+        .mockResolvedValue([
+          { id: 'tec', nome: 'Tactel', tipo: 'TECIDO', custoMedio: Dc(42), cores: [] },
+        ]),
     },
     insumoMovimento: { create: vi.fn().mockResolvedValue({}) },
     estoqueMovimento: { create: vi.fn().mockResolvedValue({}) },
@@ -57,12 +61,14 @@ function montar(opts: { status?: string; ligado?: boolean } = {}) {
             {
               insumoId: 'tec',
               consumoPorPeca: Dc(0.3),
+              corFixaId: null,
               insumo: {
                 nome: 'Tactel',
                 cor: null,
                 tipo: 'TECIDO',
                 unidade: 'KG',
                 custoMedio: Dc(42),
+                cores: [],
               },
             },
           ],
@@ -70,7 +76,12 @@ function montar(opts: { status?: string; ligado?: boolean } = {}) {
       ]),
     },
     insumoMovimento: {
-      groupBy: vi.fn().mockResolvedValue([{ insumoId: 'tec', _sum: { quantidade: Dc(2) } }]),
+      groupBy: vi
+        .fn()
+        .mockResolvedValue([{ insumoId: 'tec', insumoCorId: null, _sum: { quantidade: Dc(2) } }]),
+    },
+    catalogoCor: {
+      findMany: vi.fn().mockResolvedValue([{ id: 'cor-preto', nome: 'Preto', hex: '#000000' }]),
     },
     faccaoPreco: { findUnique: vi.fn().mockResolvedValue({ precoPorPeca: Dc(5) }) },
     faccao: { findFirst: vi.fn().mockResolvedValue({ id: 'f-1', nome: 'Dona Rosa' }) },
@@ -107,11 +118,13 @@ function montar(opts: { status?: string; ligado?: boolean } = {}) {
 }
 
 describe('contas da OP', () => {
+  const semCor = (pecas: number) => new Map<string | null, number>([[null, pecas]]);
+
   it('necessidade = peças da grade × consumo da ficha daquela grade', () => {
     const m = necessidadesDaGrade(
       new Map([
-        ['reg', 100],
-        ['plus', 20],
+        ['reg', semCor(100)],
+        ['plus', semCor(20)],
       ]),
       new Map([
         ['reg', [{ insumoId: 'tec', consumoPorPeca: 0.3 }]],
@@ -124,8 +137,75 @@ describe('contas da OP', () => {
         ],
       ]),
     );
-    expect(m.get('tec')).toBeCloseTo(38, 6);
-    expect(m.get('elast')).toBeCloseTo(22, 6);
+    expect(m.get('tec|')?.quantidade).toBeCloseTo(38, 6);
+    expect(m.get('elast|')?.quantidade).toBeCloseTo(22, 6);
+  });
+
+  describe('insumo com cores (Léo, 07/10)', () => {
+    // Moletinho em Preto e Bege; a lista da empresa tem também Cinza.
+    const moletinho = {
+      insumoId: 'mol',
+      consumoPorPeca: 0.25,
+      cores: new Map([
+        ['preto', 'mol-preto'],
+        ['bege', 'mol-bege'],
+      ]),
+    };
+    const grade = new Map([
+      [
+        'reg',
+        new Map<string | null, number>([
+          ['preto', 40],
+          ['bege', 20],
+        ]),
+      ],
+    ]);
+
+    it('a OP baixa o insumo DA COR da peça', () => {
+      const m = necessidadesDaGrade(grade, new Map([['reg', [moletinho]]]));
+      expect(m.get('mol|mol-preto')).toMatchObject({ insumoCorId: 'mol-preto', semCor: false });
+      expect(m.get('mol|mol-preto')?.quantidade).toBeCloseTo(10, 6);
+      expect(m.get('mol|mol-bege')?.quantidade).toBeCloseTo(5, 6);
+      expect(m.size).toBe(2);
+    });
+
+    it('cor fixa na ficha: toda peça usa aquela cor (cordão sempre Branco)', () => {
+      const cordao = {
+        insumoId: 'cordao',
+        consumoPorPeca: 1,
+        corFixaId: 'branco',
+        cores: new Map([
+          ['branco', 'cordao-branco'],
+          ['preto', 'cordao-preto'],
+        ]),
+      };
+      const m = necessidadesDaGrade(grade, new Map([['reg', [cordao]]]));
+      expect([...m.keys()]).toEqual(['cordao|cordao-branco']);
+      expect(m.get('cordao|cordao-branco')?.quantidade).toBe(60);
+    });
+
+    it('peça numa cor que o insumo NÃO tem: vem marcada, sem cor do insumo pra baixar', () => {
+      const m = necessidadesDaGrade(
+        new Map([['reg', new Map<string | null, number>([['cinza', 10]])]]),
+        new Map([['reg', [moletinho]]]),
+      );
+      expect(m.get('mol|sem:cinza')).toEqual({
+        insumoId: 'mol',
+        insumoCorId: null,
+        corId: 'cinza',
+        quantidade: 2.5,
+        semCor: true,
+      });
+    });
+
+    it('insumo SEM cores soma todas as cores numa linha só (como antes)', () => {
+      const m = necessidadesDaGrade(
+        grade,
+        new Map([['reg', [{ insumoId: 'etiqueta', consumoPorPeca: 1, cores: null }]]]),
+      );
+      expect([...m.keys()]).toEqual(['etiqueta|']);
+      expect(m.get('etiqueta|')?.quantidade).toBe(60);
+    });
   });
 
   it('rateio pelo previsto da ficha; custo por peça sobre as RECEBIDAS', () => {
@@ -196,6 +276,128 @@ describe('OrdensService', () => {
     const virada = tx.ordemProducao.updateMany.mock.calls[0][0];
     expect(virada.where.status).toEqual({ in: ['RASCUNHO'] });
     expect(Number(virada.data.custoTecido)).toBeCloseTo(134.4, 2);
+  });
+
+  describe('insumo com cores (Léo, 07/10)', () => {
+    // Moletinho em Preto (R$ 30) e Bege (R$ 36); a bermuda é Preta.
+    const comCores = (svcPrisma: ReturnType<typeof montar>) => {
+      const { prisma, tx } = svcPrisma;
+      const ficha = {
+        modeloLinhaId: 'ml-reg',
+        custoFaccaoPrevisto: Dc(4),
+        itens: [
+          {
+            insumoId: 'mol',
+            consumoPorPeca: Dc(0.3),
+            corFixaId: null,
+            insumo: {
+              nome: 'Moletinho',
+              cor: null,
+              tipo: 'TECIDO',
+              unidade: 'KG',
+              custoMedio: Dc(33),
+              cores: [
+                {
+                  id: 'mol-preto',
+                  corId: 'cor-preto',
+                  custoMedio: Dc(30),
+                  cor: { nome: 'Preto', hex: '#000' },
+                },
+                {
+                  id: 'mol-bege',
+                  corId: 'cor-bege',
+                  custoMedio: Dc(36),
+                  cor: { nome: 'Bege', hex: '#d5ba98' },
+                },
+              ],
+            },
+          },
+        ],
+      };
+      prisma.fichaTecnica.findMany.mockResolvedValue([ficha]);
+      prisma.insumoMovimento.groupBy.mockResolvedValue([
+        { insumoId: 'mol', insumoCorId: 'mol-preto', _sum: { quantidade: Dc(1) } },
+        { insumoId: 'mol', insumoCorId: 'mol-bege', _sum: { quantidade: Dc(50) } },
+      ]);
+      tx.insumo.findMany.mockResolvedValue([
+        {
+          id: 'mol',
+          nome: 'Moletinho',
+          tipo: 'TECIDO',
+          custoMedio: Dc(33),
+          cores: [
+            { id: 'mol-preto', ativo: true, custoMedio: Dc(30) },
+            { id: 'mol-bege', ativo: true, custoMedio: Dc(36) },
+          ],
+        },
+      ]);
+    };
+
+    it('simulação: necessidade, saldo e custo DA COR da peça (não do insumo inteiro)', async () => {
+      const m = montar();
+      comCores(m);
+      const s = await m.svc.simular(user as never, {
+        modeloId: 'm-1',
+        itens: [{ produtoId: 'p-m', quantidade: 10 }],
+      });
+      expect(s.insumos).toHaveLength(1);
+      // 10 bermudas Pretas × 0,3 = 3 kg de Moletinho PRETO; saldo do Preto = 1 (o Bege tem 50)
+      expect(s.insumos[0]).toMatchObject({
+        insumoId: 'mol',
+        insumoCorId: 'mol-preto',
+        cor: 'Preto',
+        necessario: 3,
+        saldo: 1,
+        falta: 2,
+        semCor: false,
+      });
+      expect(s.custoInsumos).toBeCloseTo(90, 6); // 3 kg × R$ 30 (custo do Preto)
+    });
+
+    it('peça numa cor que o insumo não tem: falta tudo e vem marcada', async () => {
+      const m = montar();
+      comCores(m);
+      m.prisma.catalogoVariacao.findMany.mockResolvedValue([
+        {
+          ...variacao('p-m', 'ml-reg'),
+          modeloCor: { ordem: 0, corId: 'cor-cinza', cor: { nome: 'Cinza', hex: '#999' } },
+        },
+      ]);
+      m.prisma.catalogoCor.findMany.mockResolvedValue([
+        { id: 'cor-cinza', nome: 'Cinza', hex: '#999' },
+      ]);
+      const s = await m.svc.simular(user as never, {
+        modeloId: 'm-1',
+        itens: [{ produtoId: 'p-m', quantidade: 10 }],
+      });
+      expect(s.insumos[0]).toMatchObject({ semCor: true, cor: 'Cinza', saldo: 0, falta: 3 });
+    });
+
+    it('corte: baixa DA COR, com o custo da cor', async () => {
+      const m = montar();
+      comCores(m);
+      await m.svc.cortar(user as never, 'op-1', {
+        tecidos: [{ insumoId: 'mol', insumoCorId: 'mol-preto', quantidade: 3 }],
+        itens: [{ produtoId: 'p-m', cortada: 10 }],
+      });
+      expect(m.tx.insumoMovimento.create.mock.calls[0][0].data.insumoCorId).toBe('mol-preto');
+      const consumo = m.tx.ordemProducaoConsumo.create.mock.calls[0][0].data;
+      expect(consumo.insumoCorId).toBe('mol-preto');
+      expect(Number(consumo.custoUnitario)).toBe(30);
+      expect(Number(m.tx.ordemProducao.updateMany.mock.calls[0][0].data.custoTecido)).toBe(90);
+    });
+
+    it('corte de insumo com cores SEM dizer a cor: recusa, nada baixa', async () => {
+      const m = montar();
+      comCores(m);
+      await expect(
+        m.svc.cortar(user as never, 'op-1', {
+          tecidos: [{ insumoId: 'mol', quantidade: 3 }],
+          itens: [{ produtoId: 'p-m', cortada: 10 }],
+        }),
+      ).rejects.toThrow(/escolha de qual cor/);
+      expect(m.tx.insumoMovimento.create).not.toHaveBeenCalled();
+    });
   });
 
   it('corte concorrente (outra aba já cortou): CAS recusa', async () => {

@@ -42,7 +42,10 @@ function montar(opts: { ligado?: boolean } = {}) {
               unidade: 'KG',
               tipo: 'TECIDO',
               custoMedio: Dc(42),
+              cores: [],
             },
+            corFixaId: null,
+            corFixa: null,
           },
           {
             insumoId: 'cord',
@@ -55,13 +58,21 @@ function montar(opts: { ligado?: boolean } = {}) {
               unidade: 'UNIDADE',
               tipo: 'AVIAMENTO',
               custoMedio: Dc(0),
+              cores: [],
             },
+            corFixaId: null,
+            corFixa: null,
           },
         ],
       }),
       findMany: vi.fn().mockResolvedValue([]),
     },
-    insumo: { count: vi.fn().mockResolvedValue(2) },
+    insumo: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 'tec', nome: 'Moletom', cores: [] },
+        { id: 'cord', nome: 'Cordão', cores: [] },
+      ]),
+    },
     catalogoModelo: {
       count: vi.fn().mockResolvedValue(1),
       findFirst: vi.fn().mockResolvedValue({ id: 'm-1', nome: 'Short', regrasEncaixe: null }),
@@ -147,9 +158,54 @@ describe('FichasService', () => {
     expect(tx.fichaTecnicaItem.createMany.mock.calls[0][0].data).toHaveLength(2);
   });
 
+  it('cor fixa (cordão sempre Branco): o custo do item é o DAQUELA cor', async () => {
+    const { svc, prisma } = montar();
+    const ficha = await prisma.fichaTecnica.findUnique();
+    ficha.itens[1].corFixaId = 'cor-branco';
+    ficha.itens[1].corFixa = { id: 'cor-branco', nome: 'Branco', hex: '#fff' };
+    ficha.itens[1].insumo.custoMedio = Dc(0.5); // média das cores
+    ficha.itens[1].insumo.cores = [
+      { corId: 'cor-branco', custoMedio: Dc(0.3), cor: { nome: 'Branco', hex: '#fff' } },
+      { corId: 'cor-preto', custoMedio: Dc(0.7), cor: { nome: 'Preto', hex: '#000' } },
+    ];
+    prisma.fichaTecnica.findUnique.mockResolvedValue(ficha);
+    const r = await svc.obter(user as never, 'ml-1');
+    expect(r.itens[1].custoPorPeca).toBeCloseTo(0.3, 6);
+    expect(r.itens[1].corFixa).toEqual({ id: 'cor-branco', nome: 'Branco', hex: '#fff' });
+  });
+
+  it('cor fixa que não é do insumo (ou insumo sem cores): recusa', async () => {
+    const { svc, prisma, tx } = montar();
+    const tec = { id: 'tec', nome: 'Moletom', cores: [] };
+    const cord = { id: 'cord', nome: 'Cordão', cores: [{ corId: 'cor-branco' }] };
+    prisma.insumo.findMany
+      .mockResolvedValueOnce([tec])
+      .mockResolvedValueOnce([cord])
+      .mockResolvedValueOnce([cord]);
+    const base = { insumoId: 'tec', consumoPorPeca: 0.32, observacao: null };
+    await expect(
+      svc.salvar(user as never, 'ml-1', {
+        observacoes: null,
+        itens: [{ ...base, corFixaId: 'cor-branco' }],
+      }),
+    ).rejects.toThrow(/não tem cores/);
+    await expect(
+      svc.salvar(user as never, 'ml-1', {
+        observacoes: null,
+        itens: [{ insumoId: 'cord', consumoPorPeca: 1, observacao: null, corFixaId: 'cor-roxo' }],
+      }),
+    ).rejects.toThrow(/não é uma das cores/);
+    expect(tx.fichaTecnica.upsert).not.toHaveBeenCalled();
+    await svc.salvar(user as never, 'ml-1', {
+      observacoes: null,
+      itens: [{ insumoId: 'cord', consumoPorPeca: 1, observacao: null, corFixaId: 'cor-branco' }],
+    });
+    expect(tx.fichaTecnicaItem.createMany.mock.calls[0][0].data[0].corFixaId).toBe('cor-branco');
+  });
+
   it('insumo de outra empresa na ficha: recusa', async () => {
     const { svc, prisma, tx } = montar();
-    prisma.insumo.count.mockResolvedValue(1);
+    prisma.insumo.findMany.mockResolvedValue([{ id: 'tec', nome: 'Moletom', cores: [] }]);
     await expect(
       svc.salvar(user as never, 'ml-1', {
         observacoes: null,

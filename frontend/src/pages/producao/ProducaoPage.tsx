@@ -135,7 +135,22 @@ export default function ProducaoPage() {
 
 interface Simulacao {
   pecas: number;
-  insumos: Array<{ insumoId: string; nome: string; cor: string | null; tipo: string; unidade: Unidade; necessario: number; saldo: number; falta: number; custo: number }>;
+  insumos: Array<{
+    insumoId: string;
+    /** Insumo com cores: a necessidade vem POR COR (a cor da peça, ou a fixada na ficha). */
+    insumoCorId?: string | null;
+    nome: string;
+    cor: string | null;
+    corHex?: string | null;
+    /** O insumo tem cores, mas não a da peça — cadastre a cor no insumo. */
+    semCor?: boolean;
+    tipo: string;
+    unidade: Unidade;
+    necessario: number;
+    saldo: number;
+    falta: number;
+    custo: number;
+  }>;
   custoInsumos: number;
   custoFaccao: number;
   precoFaccaoTabela: number | null;
@@ -326,10 +341,11 @@ function SimulacaoCard({ s }: { s: Simulacao }) {
           </thead>
           <tbody>
             {s.insumos.map((i) => (
-              <tr key={i.insumoId} className="border-t border-border">
+              <tr key={`${i.insumoId}|${i.insumoCorId ?? i.cor ?? ''}`} className="border-t border-border">
                 <td className="py-1">
                   {i.nome}
                   {i.cor ? ` · ${i.cor}` : ''}
+                  {i.semCor && <span className="ml-1 text-xs text-warning">(o insumo não tem esta cor)</span>}
                 </td>
                 <td className="py-1 text-right">
                   {formatNumero(Math.round(i.necessario * 100) / 100)} {SIGLA[i.unidade]}

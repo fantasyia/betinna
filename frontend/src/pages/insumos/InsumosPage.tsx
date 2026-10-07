@@ -27,8 +27,10 @@ import {
   NOME_TIPO,
   NOME_UNIDADE,
   SIGLA,
+  coresAtivas,
   custoMedioDepois,
   precoPorUnidade,
+  type CorEmpresa,
   type Insumo,
   type TipoInsumo,
   type Unidade,
@@ -38,6 +40,8 @@ import {
  * Matéria-prima (ERP próprio · Fase 2 · entrega 2): tecido e aviamento, cada
  * um na sua unidade. Saldo = soma dos movimentos; a compra recalcula o custo
  * médio ponderado, que é o que a ficha técnica e a OP usam pra custear a peça.
+ * Insumo com cores (Léo, 07/10): saldo, custo e movimento POR COR — a OP baixa
+ * a cor da peça.
  */
 
 const qtd = (v: number, u: Unidade) => `${formatNumero(Math.round(v * 1000) / 1000)} ${SIGLA[u]}`;
@@ -46,11 +50,21 @@ const qtd = (v: number, u: Unidade) => `${formatNumero(Math.round(v * 1000) / 10
 const custoUn = (v: number, u: Unidade) =>
   `${v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 })}/${SIGLA[u]}`;
 
+/** `cor` = id da cor do insumo já escolhida (botão na linha da cor). */
 type Dlg =
   | { tipo: 'cadastro'; insumo: Insumo | null }
-  | { tipo: 'compra'; insumo: Insumo }
-  | { tipo: 'movimento'; insumo: Insumo }
-  | { tipo: 'historico'; insumo: Insumo };
+  | { tipo: 'compra'; insumo: Insumo; cor?: string }
+  | { tipo: 'movimento'; insumo: Insumo; cor?: string }
+  | { tipo: 'historico'; insumo: Insumo; cor?: string };
+
+function Bolinha({ hex }: { hex: string }) {
+  return (
+    <span
+      className="inline-block h-3 w-3 shrink-0 rounded-full border border-border align-middle"
+      style={{ background: hex }}
+    />
+  );
+}
 
 export default function InsumosPage() {
   const role = useRole();
@@ -132,7 +146,7 @@ export default function InsumosPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {lista.map((i) => (
+                    {lista.flatMap((i) => [
                       <tr
                         key={i.id}
                         className={cn('border-t border-border', !i.ativo && 'opacity-50')}
@@ -146,6 +160,12 @@ export default function InsumosPage() {
                             {i.nome}
                           </button>
                           {i.cor && <span className="text-muted"> · {i.cor}</span>}
+                          {i.temCores && (
+                            <span className="text-muted">
+                              {' '}
+                              · {i.cores.length} {i.cores.length === 1 ? 'cor' : 'cores'}
+                            </span>
+                          )}
                           {!i.ativo && (
                             <Badge variant="neutral" size="sm" className="ml-2">
                               inativo
@@ -168,6 +188,9 @@ export default function InsumosPage() {
                         </td>
                         <td className="px-2 py-2 text-right">
                           {i.custoMedio > 0 ? custoUn(i.custoMedio, i.unidade) : '—'}
+                          {i.temCores && i.custoMedio > 0 && (
+                            <span className="block text-[11px] text-muted">média das cores</span>
+                          )}
                         </td>
                         <td className="px-2 py-2 text-right">{formatMoeda(i.valorEmEstoque)}</td>
                         <td className="px-2 py-2 text-muted">{i.fornecedor ?? '—'}</td>
@@ -196,8 +219,70 @@ export default function InsumosPage() {
                             </Button>
                           </div>
                         </td>
-                      </tr>
-                    ))}
+                      </tr>,
+                      // Uma linha por cor: saldo, custo e valor DAQUELA cor.
+                      ...i.cores.map((c) => (
+                        <tr
+                          key={`${i.id}-${c.id}`}
+                          className={cn('text-[13px]', (!i.ativo || !c.ativo) && 'opacity-50')}
+                          data-testid={`insumo-cor-${c.id}`}
+                        >
+                          <td className="py-1 pl-6 pr-2">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Bolinha hex={c.hex} />
+                              {c.nome}
+                              {!c.ativo && <span className="text-muted">(tirada)</span>}
+                            </span>
+                          </td>
+                          <td />
+                          <td className={cn('px-2 py-1 text-right', c.saldo < 0 && 'text-danger')}>
+                            {qtd(c.saldo, i.unidade)}
+                            {c.repor && (
+                              <Badge variant="warning" size="sm" className="ml-2">
+                                repor
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            {c.custoMedio > 0 ? custoUn(c.custoMedio, i.unidade) : '—'}
+                          </td>
+                          <td className="px-2 py-1 text-right">{formatMoeda(c.valorEmEstoque)}</td>
+                          <td />
+                          <td className="px-2 py-1">
+                            {c.ativo && (
+                              <div className="flex justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setDlg({ tipo: 'compra', insumo: i, cor: c.id })}
+                                  data-testid={`insumo-cor-compra-${c.id}`}
+                                >
+                                  Compra
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setDlg({ tipo: 'movimento', insumo: i, cor: c.id })
+                                  }
+                                >
+                                  Perda
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setDlg({ tipo: 'historico', insumo: i, cor: c.id })
+                                  }
+                                >
+                                  Histórico
+                                </Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )),
+                    ])}
                   </tbody>
                 </table>
               </div>
@@ -210,12 +295,14 @@ export default function InsumosPage() {
         <CadastroDialog insumo={dlg.insumo} onClose={fechar} onSalvou={salvou} />
       )}
       {dlg?.tipo === 'compra' && (
-        <CompraDialog insumo={dlg.insumo} onClose={fechar} onSalvou={salvou} />
+        <CompraDialog insumo={dlg.insumo} cor={dlg.cor} onClose={fechar} onSalvou={salvou} />
       )}
       {dlg?.tipo === 'movimento' && (
-        <MovimentoDialog insumo={dlg.insumo} onClose={fechar} onSalvou={salvou} />
+        <MovimentoDialog insumo={dlg.insumo} cor={dlg.cor} onClose={fechar} onSalvou={salvou} />
       )}
-      {dlg?.tipo === 'historico' && <HistoricoDialog insumo={dlg.insumo} onClose={fechar} />}
+      {dlg?.tipo === 'historico' && (
+        <HistoricoDialog insumo={dlg.insumo} cor={dlg.cor} onClose={fechar} />
+      )}
     </PageLayout>
   );
 }
@@ -238,6 +325,28 @@ function useEnviar(onSalvou: () => void, okMsg: string) {
   return { salvando, enviar };
 }
 
+/**
+ * Escolha da cor num movimento de insumo com cores. Começa na cor do botão
+ * clicado (ou na primeira). Sem cores, não aparece.
+ */
+function useCorDoMovimento(insumo: Insumo, inicial: string | undefined) {
+  const ativas = coresAtivas(insumo);
+  const [cor, setCor] = useState(inicial ?? ativas[0]?.id ?? '');
+  const escolhida = insumo.cores.find((c) => c.id === cor) ?? null;
+  const campo = insumo.temCores ? (
+    <Field label="Cor" required>
+      <Select value={cor} onChange={(e) => setCor(e.target.value)} data-testid="mov-cor">
+        {ativas.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.nome}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  ) : null;
+  return { insumoCorId: insumo.temCores ? cor || null : null, escolhida, campo };
+}
+
 function CadastroDialog({
   insumo,
   onClose,
@@ -251,6 +360,13 @@ function CadastroDialog({
   const [tipo, setTipo] = useState<TipoInsumo>(insumo?.tipo ?? 'TECIDO');
   const [unidade, setUnidade] = useState<Unidade>(insumo?.unidade ?? 'KG');
   const [cor, setCor] = useState(insumo?.cor ?? '');
+  // Cores da lista da empresa (a mesma da vitrine). Sem a lista, o campo de texto de antes.
+  const coresEmpresa = useApiQuery<CorEmpresa[]>('/erp/insumos/cores');
+  const [cores, setCores] = useState<string[]>(
+    () => insumo?.cores.filter((c) => c.ativo).map((c) => c.corId) ?? [],
+  );
+  const alternar = (id: string) =>
+    setCores((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
   const [fornecedor, setFornecedor] = useState(insumo?.fornecedor ?? '');
   const [minimo, setMinimo] = useState(paraCampo(insumo?.estoqueMinimo));
   const [ativo, setAtivo] = useState(insumo?.ativo ?? true);
@@ -259,7 +375,9 @@ function CadastroDialog({
     nome: nome.trim(),
     tipo,
     unidade,
-    cor,
+    cor: cores.length ? null : cor,
+    // Só manda as cores se a lista carregou — senão "nenhuma marcada" apagaria as dele.
+    ...(coresEmpresa.data ? { cores } : {}),
     fornecedor,
     estoqueMinimo: lerNumero(minimo),
     ativo,
@@ -336,10 +454,48 @@ function CadastroDialog({
             ))}
           </Select>
         </Field>
-        <Field label="Cor (opcional)">
-          <Input value={cor} onChange={(e) => setCor(e.target.value)} />
-        </Field>
-        <Field label={`Estoque mínimo (${SIGLA[unidade]})`} hint="Abaixo disso aparece “repor”">
+        {(coresEmpresa.data ?? []).length > 0 && (
+          <Field
+            label="Cores"
+            className="col-span-2"
+            hint="Cada cor tem saldo e custo próprios; a OP baixa a cor da peça. Sem cor marcada, funciona como antes."
+          >
+            <div className="flex flex-wrap gap-1.5" data-testid="insumo-cores">
+              {(coresEmpresa.data ?? [])
+                .filter((c) => c.ativo || cores.includes(c.id))
+                .map((c) => {
+                  const on = cores.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => alternar(c.id)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full border px-2.5 h-8 text-[13px]',
+                        on
+                          ? 'border-primary bg-primary-light font-semibold text-text'
+                          : 'border-border text-muted hover:text-text',
+                      )}
+                      data-testid={`insumo-cor-opcao-${c.id}`}
+                    >
+                      <Bolinha hex={c.hex} />
+                      {c.nome}
+                    </button>
+                  );
+                })}
+            </div>
+          </Field>
+        )}
+        {cores.length === 0 && (
+          <Field label="Cor (opcional)">
+            <Input value={cor} onChange={(e) => setCor(e.target.value)} />
+          </Field>
+        )}
+        <Field
+          label={`Estoque mínimo (${SIGLA[unidade]})`}
+          hint={cores.length ? 'Vale pra cada cor' : 'Abaixo disso aparece “repor”'}
+        >
           <Input value={minimo} onChange={(e) => setMinimo(e.target.value)} inputMode="decimal" />
         </Field>
         <Field label="Fornecedor (opcional)" className="col-span-2">
@@ -357,13 +513,18 @@ function CadastroDialog({
 
 function CompraDialog({
   insumo,
+  cor,
   onClose,
   onSalvou,
 }: {
   insumo: Insumo;
+  cor?: string;
   onClose: () => void;
   onSalvou: () => void;
 }) {
+  const daCor = useCorDoMovimento(insumo, cor);
+  // Prévia do custo: com cor, o saldo e o custo DA COR.
+  const base = daCor.escolhida ?? insumo;
   const [quantidade, setQuantidade] = useState('');
   const [modo, setModo] = useState<'total' | 'unidade'>('total');
   const [valor, setValor] = useState('');
@@ -377,7 +538,8 @@ function CompraDialog({
   // Total EXATO (o preço por unidade arredonda): é o valor da conta a pagar.
   const valorTotal =
     v === null ? null : modo === 'total' ? v : q === null ? null : Math.round(q * v * 100) / 100;
-  const valido = q !== null && q > 0 && preco !== null && preco >= 0;
+  const valido =
+    q !== null && q > 0 && preco !== null && preco >= 0 && (!insumo.temCores || !!daCor.escolhida);
   const u = insumo.unidade;
 
   return (
@@ -397,6 +559,7 @@ function CompraDialog({
             onClick={() =>
               enviar(() =>
                 api.post(`/erp/insumos/${insumo.id}/compras`, {
+                  insumoCorId: daCor.insumoCorId,
                   quantidade: q,
                   custoUnitario: preco,
                   documento,
@@ -414,6 +577,7 @@ function CompraDialog({
     >
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
+          {daCor.campo && <div className="col-span-2">{daCor.campo}</div>}
           <Field label={`Quantidade (${SIGLA[u]})`} required>
             <Input
               value={quantidade}
@@ -453,13 +617,12 @@ function CompraDialog({
         </div>
         {valido && (
           <p className="text-sm text-muted" data-testid="compra-previa">
-            {custoUn(preco!, u)} nesta compra. Custo médio passa de{' '}
-            <b className="text-text">
-              {insumo.custoMedio > 0 ? custoUn(insumo.custoMedio, u) : '—'}
-            </b>{' '}
+            {custoUn(preco!, u)} nesta compra. Custo médio
+            {daCor.escolhida ? ` do ${daCor.escolhida.nome}` : ''} passa de{' '}
+            <b className="text-text">{base.custoMedio > 0 ? custoUn(base.custoMedio, u) : '—'}</b>{' '}
             pra{' '}
             <b className="text-text">
-              {custoUn(custoMedioDepois(insumo.saldo, insumo.custoMedio, q!, preco!), u)}
+              {custoUn(custoMedioDepois(base.saldo, base.custoMedio, q!, preco!), u)}
             </b>
             .
           </p>
@@ -471,27 +634,36 @@ function CompraDialog({
 
 function MovimentoDialog({
   insumo,
+  cor,
   onClose,
   onSalvou,
 }: {
   insumo: Insumo;
+  cor?: string;
   onClose: () => void;
   onSalvou: () => void;
 }) {
+  const daCor = useCorDoMovimento(insumo, cor);
   const [tipo, setTipo] = useState<'PERDA' | 'SOBRA_RETORNO' | 'AJUSTE'>('PERDA');
   const [quantidade, setQuantidade] = useState('');
   const [motivo, setMotivo] = useState('');
   const { salvando, enviar } = useEnviar(onSalvou, 'Movimento lançado');
   const q = lerNumero(quantidade);
-  const valido = q !== null && q !== 0 && (tipo === 'AJUSTE' || q > 0) && motivo.trim().length >= 3;
+  const valido =
+    q !== null &&
+    q !== 0 &&
+    (tipo === 'AJUSTE' || q > 0) &&
+    motivo.trim().length >= 3 &&
+    (!insumo.temCores || !!daCor.escolhida);
   const u = insumo.unidade;
+  const saldo = daCor.escolhida?.saldo ?? insumo.saldo;
 
   return (
     <Dialog
       open
       onClose={onClose}
       title="Perda, sobra ou ajuste"
-      description={`${insumo.nome} · saldo ${qtd(insumo.saldo, u)}`}
+      description={`${insumo.nome}${daCor.escolhida ? ` ${daCor.escolhida.nome}` : ''} · saldo ${qtd(saldo, u)}`}
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
@@ -503,6 +675,7 @@ function MovimentoDialog({
             onClick={() =>
               enviar(() =>
                 api.post(`/erp/insumos/${insumo.id}/movimentos`, {
+                  insumoCorId: daCor.insumoCorId,
                   tipo,
                   quantidade: q,
                   motivo: motivo.trim(),
@@ -517,6 +690,7 @@ function MovimentoDialog({
     >
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
+          {daCor.campo && <div className="col-span-2">{daCor.campo}</div>}
           <Field label="O que aconteceu">
             <Select value={tipo} onChange={(e) => setTipo(e.target.value as typeof tipo)}>
               <option value="PERDA">Perda (sai do estoque)</option>
@@ -556,6 +730,7 @@ interface MovInsumo {
   motivo: string | null;
   documento: string | null;
   criadoEm: string;
+  cor: { nome: string; hex: string } | null;
 }
 
 const TIPO_MOV: Record<string, string> = {
@@ -567,11 +742,29 @@ const TIPO_MOV: Record<string, string> = {
   AJUSTE: 'Ajuste',
 };
 
-function HistoricoDialog({ insumo, onClose }: { insumo: Insumo; onClose: () => void }) {
-  const q = useApiQuery<MovInsumo[]>(`/erp/insumos/${insumo.id}/movimentos`);
+function HistoricoDialog({
+  insumo,
+  cor,
+  onClose,
+}: {
+  insumo: Insumo;
+  cor?: string;
+  onClose: () => void;
+}) {
+  // Aberto pela linha de uma cor: só aquela cor.
+  const q = useApiQuery<MovInsumo[]>(
+    `/erp/insumos/${insumo.id}/movimentos${cor ? `?cor=${encodeURIComponent(cor)}` : ''}`,
+  );
   const u = insumo.unidade;
+  const daCor = insumo.cores.find((c) => c.id === cor);
   return (
-    <Dialog open onClose={onClose} title="Histórico" description={insumo.nome} size="lg">
+    <Dialog
+      open
+      onClose={onClose}
+      title="Histórico"
+      description={daCor ? `${insumo.nome} ${daCor.nome}` : insumo.nome}
+      size="lg"
+    >
       <StateView loading={q.loading} error={q.error} onRetry={q.refetch}>
         {(q.data ?? []).length === 0 ? (
           <p className="text-sm text-muted">Nada lançado ainda.</p>
@@ -586,7 +779,15 @@ function HistoricoDialog({ insumo, onClose }: { insumo: Insumo; onClose: () => v
                       timeStyle: 'short',
                     })}
                   </td>
-                  <td className="py-1.5 pr-2">{TIPO_MOV[m.tipo] ?? m.tipo}</td>
+                  <td className="py-1.5 pr-2">
+                    {TIPO_MOV[m.tipo] ?? m.tipo}
+                    {m.cor && !cor && (
+                      <span className="ml-1.5 inline-flex items-center gap-1 text-muted">
+                        <Bolinha hex={m.cor.hex} />
+                        {m.cor.nome}
+                      </span>
+                    )}
+                  </td>
                   <td
                     className={cn(
                       'py-1.5 pr-2 text-right font-semibold',

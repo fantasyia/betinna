@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -29,6 +29,12 @@ export class InsumosController {
   @ApiOperation({ summary: 'Insumos com saldo, custo médio e alerta de reposição' })
   listar(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.listar(user);
+  }
+
+  @Get('cores')
+  @ApiOperation({ summary: 'Cores da empresa (a mesma lista da vitrine) pra dar cor ao insumo' })
+  cores(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.coresDaEmpresa(user);
   }
 
   @Post()
@@ -78,7 +84,12 @@ export class InsumosController {
 
   @Get(':id/movimentos')
   @ApiOperation({ summary: 'Histórico do insumo (mais recentes primeiro)' })
-  movimentos(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.svc.movimentos(user, id);
+  movimentos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    // Só uma cor do insumo (opcional).
+    @Query('cor') insumoCorId?: string,
+  ) {
+    return this.svc.movimentos(user, id, insumoCorId || undefined);
   }
 }

@@ -21,13 +21,20 @@ interface FichaApi {
   existe: boolean;
   custoFaccaoPrevisto: number | null;
   observacoes: string | null;
-  itens: Array<{ insumoId: string; consumoPorPeca: number; observacao: string | null }>;
+  itens: Array<{
+    insumoId: string;
+    consumoPorPeca: number;
+    observacao: string | null;
+    corFixa: { id: string; nome: string; hex: string } | null;
+  }>;
   semCusto: string[];
 }
 
 interface Linha {
   insumoId: string;
   consumo: string;
+  /** Insumo com cores: '' = a cor da própria peça; senão a cor fixa (corId da lista). */
+  corFixaId: string;
 }
 
 export function FichaTecnicaAba({
@@ -66,13 +73,19 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
 
   useEffect(() => {
     if (!q.data) return;
-    setItens(q.data.itens.map((i) => ({ insumoId: i.insumoId, consumo: paraCampo(i.consumoPorPeca) })));
+    setItens(q.data.itens.map((i) => ({ insumoId: i.insumoId, consumo: paraCampo(i.consumoPorPeca), corFixaId: i.corFixa?.id ?? '' })));
     setFaccao(paraCampo(q.data.custoFaccaoPrevisto));
     setObs(q.data.observacoes ?? '');
   }, [q.data]);
 
   const porId = new Map(insumos.map((i) => [i.id, i]));
-  const custoItem = (l: Linha) => (lerNumero(l.consumo) ?? 0) * (porId.get(l.insumoId)?.custoMedio ?? 0);
+  // Cor fixa: custo DAQUELA cor; senão o do insumo (com cores, a média delas).
+  const custoUnit = (l: Linha) => {
+    const ins = porId.get(l.insumoId);
+    const fixa = l.corFixaId ? ins?.cores.find((c) => c.corId === l.corFixaId) : undefined;
+    return fixa ? fixa.custoMedio : (ins?.custoMedio ?? 0);
+  };
+  const custoItem = (l: Linha) => (lerNumero(l.consumo) ?? 0) * custoUnit(l);
   const custoInsumos = itens.reduce((s, l) => s + custoItem(l), 0);
   const total = custoInsumos + (lerNumero(faccao) ?? 0);
   const usados = new Set(itens.map((l) => l.insumoId));
@@ -85,7 +98,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
       await api.put(`/erp/fichas/${modeloLinhaId}`, {
         custoFaccaoPrevisto: lerNumero(faccao),
         observacoes: obs,
-        itens: itens.map((l) => ({ insumoId: l.insumoId, consumoPorPeca: lerNumero(l.consumo) })),
+        itens: itens.map((l) => ({ insumoId: l.insumoId, consumoPorPeca: lerNumero(l.consumo), corFixaId: l.corFixaId || null })),
       });
       toast.success(`Ficha da grade ${nome} salva`);
       q.refetch();
@@ -112,11 +125,11 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           {itens.map((l, idx) => {
             const ins = porId.get(l.insumoId);
             return (
-              <div key={`${l.insumoId}-${idx}`} className="grid grid-cols-[minmax(0,1fr)_9rem_7rem_auto] items-end gap-2">
+              <div key={`${l.insumoId}-${idx}`} className="grid grid-cols-[minmax(0,1fr)_9rem_9rem_7rem_auto] items-end gap-2">
                 <Field label={idx === 0 ? 'Insumo' : undefined}>
                   <Select
                     value={l.insumoId}
-                    onChange={(e) => setItens((xs) => xs.map((x, i) => (i === idx ? { ...x, insumoId: e.target.value } : x)))}
+                    onChange={(e) => setItens((xs) => xs.map((x, i) => (i === idx ? { ...x, insumoId: e.target.value, corFixaId: '' } : x)))}
                   >
                     {ins && (
                       <option value={ins.id}>
@@ -143,8 +156,29 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
                     <span className="text-xs text-muted w-6">{ins ? SIGLA[ins.unidade] : ''}</span>
                   </div>
                 </Field>
+                {/* Insumo com cores: a OP baixa a cor da peça, ou a cor fixada aqui (cordão sempre Branco). */}
+                {ins?.temCores ? (
+                  <Field label={idx === 0 ? 'Cor' : undefined}>
+                    <Select
+                      value={l.corFixaId}
+                      onChange={(e) => setItens((xs) => xs.map((x, i) => (i === idx ? { ...x, corFixaId: e.target.value } : x)))}
+                      data-testid={`ficha-cor-${idx}`}
+                    >
+                      <option value="">Cor da peça</option>
+                      {ins.cores
+                        .filter((c) => c.ativo || c.corId === l.corFixaId)
+                        .map((c) => (
+                          <option key={c.corId} value={c.corId}>
+                            Sempre {c.nome}
+                          </option>
+                        ))}
+                    </Select>
+                  </Field>
+                ) : (
+                  <div />
+                )}
                 <div className="pb-2 text-right text-sm tabular-nums">
-                  {ins && ins.custoMedio > 0 ? formatMoeda(custoItem(l)) : <span className="text-warning text-xs">sem custo</span>}
+                  {ins && custoUnit(l) > 0 ? formatMoeda(custoItem(l)) : <span className="text-warning text-xs">sem custo</span>}
                 </div>
                 <IconButton
                   aria-label="Tirar da ficha"
@@ -163,7 +197,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           variant="secondary"
           leftIcon={<Plus className="h-3.5 w-3.5" />}
           disabled={livres.length === 0}
-          onClick={() => setItens((xs) => [...xs, { insumoId: livres[0].id, consumo: '' }])}
+          onClick={() => setItens((xs) => [...xs, { insumoId: livres[0].id, consumo: '', corFixaId: '' }])}
           data-testid={`ficha-add-${modeloLinhaId}`}
         >
           Adicionar insumo

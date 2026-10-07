@@ -26,6 +26,29 @@ export function custoPrevistoDaFicha(
 }
 
 /**
+ * Custo por unidade de um item da ficha: cor fixada → o custo DAQUELA cor;
+ * senão o custo do insumo (com cores, é a média das cores com custo).
+ */
+export function custoDoItem(item: {
+  corFixaId: string | null;
+  insumo: {
+    custoMedio: Prisma.Decimal | number;
+    cores: Array<{ corId: string; custoMedio: Prisma.Decimal | number }>;
+  };
+}): number {
+  if (item.corFixaId) {
+    const c = item.insumo.cores.find((x) => x.corId === item.corFixaId);
+    if (c) return Number(c.custoMedio);
+  }
+  return Number(item.insumo.custoMedio);
+}
+
+const CORES_DO_INSUMO = {
+  where: { ativo: true },
+  select: { corId: true, custoMedio: true, cor: { select: { nome: true, hex: true } } },
+} as const;
+
+/**
  * ERP próprio · entrega 3 — ficha técnica (consumo médio por grade) e facções.
  * Gate: `config.erpInterno.ativo` (EstoqueService.empresaLigada).
  */
@@ -97,20 +120,29 @@ export class FichasService {
                 unidade: true,
                 tipo: true,
                 custoMedio: true,
+                cores: CORES_DO_INSUMO,
               },
             },
+            corFixa: { select: { id: true, nome: true, hex: true } },
           },
         },
       },
     });
     const itens = (ficha?.itens ?? []).map((i) => {
       const consumo = Number(i.consumoPorPeca);
-      const custoMedio = Number(i.insumo.custoMedio);
+      const custoMedio = custoDoItem(i);
+      const { cores, ...insumo } = i.insumo;
       return {
         insumoId: i.insumoId,
-        insumo: { ...i.insumo, custoMedio },
+        insumo: {
+          ...insumo,
+          custoMedio,
+          cores: cores.map((c) => ({ corId: c.corId, nome: c.cor.nome, hex: c.cor.hex })),
+        },
         consumoPorPeca: consumo,
         observacao: i.observacao,
+        /** Cor fixa (cordão sempre Branco). null = a cor da própria peça. */
+        corFixa: i.corFixa,
         custoPorPeca: consumo * custoMedio,
       };
     });
@@ -135,14 +167,33 @@ export class FichasService {
     const empresaId = await this.erp.empresaLigada(user);
     await this.linhaDaEmpresa(empresaId, modeloLinhaId);
     if (dto.itens.length) {
-      const deles = await this.prisma.insumo.count({
+      const deles = await this.prisma.insumo.findMany({
         where: { empresaId, id: { in: dto.itens.map((i) => i.insumoId) } },
+        select: {
+          id: true,
+          nome: true,
+          cores: { where: { ativo: true }, select: { corId: true } },
+        },
       });
-      if (deles !== dto.itens.length) {
+      if (deles.length !== dto.itens.length) {
         throw new BusinessRuleException(
           'Algum insumo da ficha não existe nesta empresa',
           ErrorCode.BUSINESS_RULE_VIOLATION,
         );
+      }
+      // Cor fixa só existe pra insumo com cores, e tem que ser uma cor DELE.
+      const porId = new Map(deles.map((d) => [d.id, d]));
+      for (const i of dto.itens) {
+        if (!i.corFixaId) continue;
+        const ins = porId.get(i.insumoId)!;
+        if (!ins.cores.some((c) => c.corId === i.corFixaId)) {
+          throw new BusinessRuleException(
+            ins.cores.length
+              ? `${ins.nome}: a cor fixa não é uma das cores deste insumo`
+              : `${ins.nome} não tem cores — tire a cor fixa`,
+            ErrorCode.BUSINESS_RULE_VIOLATION,
+          );
+        }
       }
     }
     await this.prisma.$transaction(async (tx) => {
@@ -164,6 +215,7 @@ export class FichasService {
             insumoId: i.insumoId,
             consumoPorPeca: D(i.consumoPorPeca, 4),
             observacao: i.observacao ?? null,
+            corFixaId: i.corFixaId ?? null,
           })),
         });
       }
@@ -183,7 +235,13 @@ export class FichasService {
       select: {
         modeloLinhaId: true,
         custoFaccaoPrevisto: true,
-        itens: { select: { consumoPorPeca: true, insumo: { select: { custoMedio: true } } } },
+        itens: {
+          select: {
+            consumoPorPeca: true,
+            corFixaId: true,
+            insumo: { select: { custoMedio: true, cores: CORES_DO_INSUMO } },
+          },
+        },
       },
     });
     return new Map(
@@ -192,7 +250,7 @@ export class FichasService {
         custoPrevistoDaFicha(
           f.itens.map((i) => ({
             consumoPorPeca: Number(i.consumoPorPeca),
-            custoMedio: Number(i.insumo.custoMedio),
+            custoMedio: custoDoItem(i),
           })),
           num(f.custoFaccaoPrevisto),
         ).total,

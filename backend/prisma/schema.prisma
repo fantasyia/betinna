@@ -4026,8 +4026,12 @@ model CatalogoCor {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  modelos CatalogoModeloCor[]
+  empresa       Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  modelos       CatalogoModeloCor[]
+  /// Insumos com esta cor (Moletinho Preto/Bege/Cinza…) — a mesma lista da vitrine.
+  insumoCores   InsumoCor[]
+  /// Itens de ficha que fixam esta cor (ex.: cordão sempre Branco).
+  fichaItensCor FichaTecnicaItem[]
 
   @@unique([empresaId, nome])
   @@index([empresaId, ordem])
@@ -4398,8 +4402,34 @@ model Insumo {
   fichaItens FichaTecnicaItem[]
 
   opConsumos OrdemProducaoConsumo[]
+  /// Com cores: saldo, custo e movimento são POR COR (sem cores: como antes).
+  cores      InsumoCor[]
 
   @@index([empresaId, ativo])
+}
+
+/// Cor de um insumo (Léo, 07/10: "cada matéria-prima já nasce com várias
+/// cores"). Saldo = soma dos movimentos da cor; custo médio próprio. Insumo
+/// com ao menos uma cor exige a cor em todo movimento.
+model InsumoCor {
+  id           String   @id @default(cuid())
+  empresaId    String
+  insumoId     String
+  corId        String
+  /// Custo médio ponderado DESTA cor (R$ por unidade do insumo).
+  custoMedio   Decimal  @default(0) @db.Decimal(14, 4)
+  /// Cor tirada do insumo depois de ter histórico: some da tela, o histórico fica.
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  insumo     Insumo                 @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  cor        CatalogoCor            @relation(fields: [corId], references: [id], onDelete: Restrict)
+  movimentos InsumoMovimento[]
+  opConsumos OrdemProducaoConsumo[]
+
+  @@unique([insumoId, corId])
+  @@index([empresaId])
 }
 
 model InsumoMovimento {
@@ -4416,11 +4446,15 @@ model InsumoMovimento {
   /// Nº da nota do fornecedor, OP etc.
   documento     String?
   usuarioId     String?
+  /// Cor do insumo (obrigatória quando o insumo tem cores).
+  insumoCorId   String?
   criadoEm      DateTime      @default(now())
 
-  insumo Insumo @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  insumo    Insumo     @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  insumoCor InsumoCor? @relation(fields: [insumoCorId], references: [id], onDelete: Restrict)
 
   @@index([empresaId, insumoId])
+  @@index([insumoCorId])
   @@index([empresaId, criadoEm])
 }
 
@@ -4452,9 +4486,13 @@ model FichaTecnicaItem {
   /// Na unidade do insumo (kg, metro, unidade, par) por PEÇA. 4 casas.
   consumoPorPeca Decimal @db.Decimal(14, 4)
   observacao     String?
+  /// Insumo com cores: fixa UMA cor pra toda peça (cordão sempre Branco).
+  /// null = a OP usa a cor da própria peça.
+  corFixaId      String?
 
-  ficha  FichaTecnica @relation(fields: [fichaId], references: [id], onDelete: Cascade)
-  insumo Insumo       @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  ficha   FichaTecnica @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+  insumo  Insumo       @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  corFixa CatalogoCor? @relation(fields: [corFixaId], references: [id], onDelete: Restrict)
 
   @@unique([fichaId, insumoId])
 }
@@ -4568,10 +4606,13 @@ model OrdemProducaoConsumo {
   etapa         String
   quantidade    Decimal  @db.Decimal(14, 3)
   custoUnitario Decimal  @db.Decimal(14, 4)
+  /// Cor do insumo consumida (insumo com cores).
+  insumoCorId   String?
   criadoEm      DateTime @default(now())
 
-  op     OrdemProducao @relation(fields: [opId], references: [id], onDelete: Cascade)
-  insumo Insumo        @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  op        OrdemProducao @relation(fields: [opId], references: [id], onDelete: Cascade)
+  insumo    Insumo        @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  insumoCor InsumoCor?    @relation(fields: [insumoCorId], references: [id], onDelete: Restrict)
 
   @@index([opId])
 }

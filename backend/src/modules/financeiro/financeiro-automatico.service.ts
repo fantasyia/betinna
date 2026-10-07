@@ -334,9 +334,12 @@ export class FinanceiroAutomaticoService {
         custoUnitario: true,
         documento: true,
         insumo: { select: { nome: true, tipo: true, fornecedor: true } },
+        insumoCor: { select: { cor: { select: { nome: true } } } },
       },
     });
     if (!m || m.tipo !== 'ENTRADA_COMPRA') return null;
+    // Insumo com cores: a conta diz QUAL cor foi comprada.
+    const nome = m.insumoCor ? `${m.insumo.nome} ${m.insumoCor.cor.nome}` : m.insumo.nome;
     const valor =
       opts.valorTotal != null
         ? opts.valorTotal
@@ -347,7 +350,7 @@ export class FinanceiroAutomaticoService {
       data: {
         empresaId: m.empresaId,
         tipo: 'PAGAR',
-        descricao: `Compra de ${m.insumo.nome}${m.documento ? ` · NF/pedido ${m.documento}` : ''}`,
+        descricao: `Compra de ${nome}${m.documento ? ` · NF/pedido ${m.documento}` : ''}`,
         valor: D(valor),
         vencimento: opts.vencimento ? new Date(`${opts.vencimento}T12:00:00.000Z`) : hojePuro(),
         categoriaId: await this.categoria(tx, m.empresaId, 'PAGAR', categoria),

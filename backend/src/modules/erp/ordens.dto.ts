@@ -34,10 +34,20 @@ export const criarOpSchema = simularOpSchema.extend({
 });
 export type CriarOpDto = z.infer<typeof criarOpSchema>;
 
+/** Insumo com cores vai com a cor (`insumoCorId`); a mesma cor não repete. */
 const consumoSchema = z
-  .array(z.object({ insumoId: id, quantidade: z.number().positive().max(1_000_000) }))
+  .array(
+    z.object({
+      insumoId: id,
+      insumoCorId: id.nullable().optional(),
+      quantidade: z.number().positive().max(1_000_000),
+    }),
+  )
   .max(100)
-  .refine(semRepetir, 'Insumo repetido');
+  .refine(
+    (xs) => new Set(xs.map((x) => `${x.insumoId}|${x.insumoCorId ?? ''}`)).size === xs.length,
+    'Insumo repetido (mesma cor)',
+  );
 
 /** Corte: tecido realmente gasto e peças cortadas por variação. */
 export const corteSchema = z.object({

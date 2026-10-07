@@ -31,10 +31,21 @@ interface ItemOp extends CelulaGrade {
 }
 interface Sugestao {
   insumoId: string;
+  /** Cor do insumo que sai (null = insumo sem cores, ou cor que o insumo não tem). */
+  insumoCorId: string | null;
   nome: string;
   cor: string | null;
+  /** O insumo tem cores, mas não a da peça: escolha outra ou cadastre a cor. */
+  semCor: boolean;
   unidade: Unidade;
   quantidade: number;
+}
+
+/** Uma linha de consumo na tela: insumo + cor (insumo com cores) + quantidade. */
+interface LinhaConsumo {
+  insumoId: string;
+  insumoCorId: string | null;
+  qtd: string;
 }
 interface Op {
   id: string;
@@ -264,31 +275,71 @@ function useEtapa(onPronto: () => void, ok: string) {
   return { salvando, enviar };
 }
 
-/** Lista editável de insumos (tecido no corte, aviamento no envio). */
+const chaveLinha = (l: { insumoId: string; insumoCorId: string | null }) => `${l.insumoId}|${l.insumoCorId ?? ''}`;
+
+/** Insumo com cores e a linha sem cor escolhida: não dá pra baixar. */
+const faltaCor = (linhas: LinhaConsumo[], opcoes: Insumo[]) =>
+  linhas.some((l) => !l.insumoCorId && (lerNumero(l.qtd) ?? 0) > 0 && opcoes.find((i) => i.id === l.insumoId)?.temCores);
+
+/**
+ * Lista editável de insumos (tecido no corte, aviamento no envio). Insumo com
+ * cores entra POR COR (Moletinho Preto, Moletinho Bege): cada uma baixa da sua.
+ */
 function ListaInsumos({
   linhas,
   onChange,
   opcoes,
   rotulo,
 }: {
-  linhas: Array<{ insumoId: string; qtd: string }>;
-  onChange: (l: Array<{ insumoId: string; qtd: string }>) => void;
+  linhas: LinhaConsumo[];
+  onChange: (l: LinhaConsumo[]) => void;
   opcoes: Insumo[];
   rotulo: string;
 }) {
   const porId = new Map(opcoes.map((i) => [i.id, i]));
-  const livres = opcoes.filter((i) => i.ativo && !linhas.some((l) => l.insumoId === i.id));
+  const usadas = new Set(linhas.map(chaveLinha));
+  // O que dá pra adicionar: cada insumo sem cores, ou cada COR de quem tem.
+  const livres = opcoes
+    .filter((i) => i.ativo)
+    .flatMap((i) =>
+      i.temCores
+        ? i.cores.filter((c) => c.ativo).map((c) => ({ insumoId: i.id, insumoCorId: c.id as string | null, rotulo: `${i.nome} · ${c.nome}` }))
+        : [{ insumoId: i.id, insumoCorId: null, rotulo: `${i.nome}${i.cor ? ` · ${i.cor}` : ''}` }],
+    )
+    .filter((x) => !usadas.has(chaveLinha(x)));
   return (
     <div className="flex flex-col gap-2">
       <span className="text-sm font-semibold">{rotulo}</span>
       {linhas.map((l, idx) => {
         const ins = porId.get(l.insumoId);
+        const daCor = ins?.cores.find((c) => c.id === l.insumoCorId);
+        const saldo = daCor ? daCor.saldo : ins?.saldo;
         return (
-          <div key={l.insumoId} className="grid grid-cols-[minmax(0,1fr)_8rem_auto] items-center gap-2">
+          <div key={`${chaveLinha(l)}-${idx}`} className="grid grid-cols-[minmax(0,1fr)_8rem_auto] items-center gap-2">
             <span className="text-sm">
               {ins?.nome ?? '?'}
-              {ins?.cor ? ` · ${ins.cor}` : ''}
-              {ins && <span className="text-muted"> (tem {qtd(ins.saldo, ins.unidade)})</span>}
+              {daCor ? ` · ${daCor.nome}` : ins?.cor ? ` · ${ins.cor}` : ''}
+              {ins && saldo !== undefined && (ins.temCores ? daCor : true) && (
+                <span className="text-muted"> (tem {qtd(saldo, ins.unidade)})</span>
+              )}
+              {ins?.temCores && !daCor && (
+                // Sugestão numa cor que o insumo não tem: escolhe de qual cor saiu.
+                <Select
+                  value=""
+                  onChange={(e) => onChange(linhas.map((x, i) => (i === idx ? { ...x, insumoCorId: e.target.value || null } : x)))}
+                  className="mt-1 w-56"
+                  data-testid={`consumo-cor-${idx}`}
+                >
+                  <option value="">Escolha a cor que saiu…</option>
+                  {ins.cores
+                    .filter((c) => c.ativo && !usadas.has(chaveLinha({ insumoId: ins.id, insumoCorId: c.id })))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome} (tem {qtd(c.saldo, ins.unidade)})
+                      </option>
+                    ))}
+                </Select>
+              )}
             </span>
             <div className="flex items-center gap-1">
               <Input
@@ -303,12 +354,18 @@ function ListaInsumos({
         );
       })}
       {livres.length > 0 && (
-        <Select value="" onChange={(e) => e.target.value && onChange([...linhas, { insumoId: e.target.value, qtd: '' }])} className="w-64">
+        <Select
+          value=""
+          onChange={(e) => {
+            const x = livres.find((l) => chaveLinha(l) === e.target.value);
+            if (x) onChange([...linhas, { insumoId: x.insumoId, insumoCorId: x.insumoCorId, qtd: '' }]);
+          }}
+          className="w-64"
+        >
           <option value="">+ adicionar…</option>
-          {livres.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.nome}
-              {i.cor ? ` · ${i.cor}` : ''}
+          {livres.map((x) => (
+            <option key={chaveLinha(x)} value={chaveLinha(x)}>
+              {x.rotulo}
             </option>
           ))}
         </Select>
@@ -317,9 +374,12 @@ function ListaInsumos({
   );
 }
 
-const deSugestao = (s: Sugestao[]) => s.map((x) => ({ insumoId: x.insumoId, qtd: paraCampo(x.quantidade) }));
-const paraEnvio = (l: Array<{ insumoId: string; qtd: string }>) =>
-  l.map((x) => ({ insumoId: x.insumoId, quantidade: lerNumero(x.qtd) ?? 0 })).filter((x) => x.quantidade > 0);
+const deSugestao = (s: Sugestao[]): LinhaConsumo[] =>
+  s.map((x) => ({ insumoId: x.insumoId, insumoCorId: x.insumoCorId, qtd: paraCampo(x.quantidade) }));
+const paraEnvio = (l: LinhaConsumo[]) =>
+  l
+    .map((x) => ({ insumoId: x.insumoId, insumoCorId: x.insumoCorId, quantidade: lerNumero(x.qtd) ?? 0 }))
+    .filter((x) => x.quantidade > 0);
 const gradeDe = (op: Op, k: 'planejada' | 'cortada') =>
   Object.fromEntries(op.itens.map((i) => [i.produtoId, String(i[k] ?? 0)]));
 
@@ -343,7 +403,7 @@ function CorteDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; o
           </Button>
           <Button
             loading={salvando}
-            disabled={totalGrade(grade) === 0}
+            disabled={totalGrade(grade) === 0 || faltaCor(tecidos, insumos.data ?? [])}
             data-testid="corte-salvar"
             onClick={() =>
               enviar(() =>
@@ -407,7 +467,7 @@ function EnvioDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; o
           </Button>
           <Button
             loading={salvando}
-            disabled={!faccaoId || enviadas === 0 || passou || precoUsado === null}
+            disabled={!faccaoId || enviadas === 0 || passou || precoUsado === null || faltaCor(aviamentos, insumos.data ?? [])}
             data-testid="envio-salvar"
             onClick={() =>
               enviar(() =>

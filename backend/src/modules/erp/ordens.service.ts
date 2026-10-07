@@ -8,6 +8,7 @@ import { SequenceService } from '@shared/utils/sequence.service';
 import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-automatico.service';
 import { EstoqueService } from './estoque.service';
 import { FichasService } from './fichas.service';
+import { chaveSaldo } from './insumos.service';
 import type { CorteDto, CriarOpDto, EnvioDto, RecebimentoDto, SimularOpDto } from './ordens.dto';
 
 type Tx = Prisma.TransactionClient;
@@ -15,18 +16,61 @@ const D = (v: number, casas: number) => new Prisma.Decimal(v.toFixed(casas));
 const n = (v: Prisma.Decimal | null | undefined) => (v == null ? 0 : Number(v));
 const regra = (msg: string) => new BusinessRuleException(msg, ErrorCode.BUSINESS_RULE_VIOLATION);
 
+/** Item da ficha como a OP precisa: consumo + como achar a cor do insumo. */
+export interface ItemFichaOp {
+  insumoId: string;
+  consumoPorPeca: number;
+  /** Cor fixada na ficha (cordão sempre Branco). */
+  corFixaId?: string | null;
+  /** Insumo com cores: corId da lista → id da cor DO insumo. null = sem cores. */
+  cores?: Map<string, string> | null;
+}
+
+export interface Necessidade {
+  insumoId: string;
+  /** Cor do insumo que sai do estoque (null = insumo sem cores, ou cor que falta). */
+  insumoCorId: string | null;
+  /** Cor da lista pedida (null = insumo sem cores). */
+  corId: string | null;
+  quantidade: number;
+  /** O insumo tem cores, mas NÃO esta — não há de onde baixar. */
+  semCor: boolean;
+}
+
 /**
- * Quanto de cada insumo a grade pede: Σ (peças da grade × consumo por peça da
- * ficha daquela grade). Grade sem ficha não entra (a tela avisa).
+ * Quanto de cada insumo — e de que COR — a grade pede: Σ (peças × consumo por
+ * peça da ficha daquela grade). Insumo com cores sai na cor fixada na ficha
+ * ou, sem cor fixa, na cor da própria peça (Moletinho Preto pra bermuda
+ * Preta). Insumo sem cores soma tudo junto. Grade sem ficha não entra (a tela
+ * avisa). PURO.
  */
 export function necessidadesDaGrade(
-  pecasPorLinha: Map<string, number>,
-  fichas: Map<string, Array<{ insumoId: string; consumoPorPeca: number }>>,
-): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const [linha, pecas] of pecasPorLinha) {
+  pecas: Map<string, Map<string | null, number>>,
+  fichas: Map<string, ItemFichaOp[]>,
+): Map<string, Necessidade> {
+  const out = new Map<string, Necessidade>();
+  for (const [linha, porCor] of pecas) {
     for (const i of fichas.get(linha) ?? []) {
-      out.set(i.insumoId, (out.get(i.insumoId) ?? 0) + pecas * i.consumoPorPeca);
+      for (const [corDaPeca, qtd] of porCor) {
+        let insumoCorId: string | null = null;
+        let corId: string | null = null;
+        let semCor = false;
+        if (i.cores) {
+          corId = i.corFixaId ?? corDaPeca;
+          insumoCorId = (corId && i.cores.get(corId)) || null;
+          semCor = insumoCorId === null;
+        }
+        const k = `${i.insumoId}|${insumoCorId ?? (semCor ? `sem:${corId ?? ''}` : '')}`;
+        const atual = out.get(k) ?? {
+          insumoId: i.insumoId,
+          insumoCorId,
+          corId,
+          quantidade: 0,
+          semCor,
+        };
+        atual.quantidade += qtd * i.consumoPorPeca;
+        out.set(k, atual);
+      }
     }
   }
   return out;
@@ -142,7 +186,9 @@ export class OrdensService {
         produtoId: true,
         modeloLinhaId: true,
         ativo: true,
-        modeloCor: { select: { ordem: true, cor: { select: { nome: true, hex: true } } } },
+        modeloCor: {
+          select: { ordem: true, corId: true, cor: { select: { nome: true, hex: true } } },
+        },
         modeloLinha: { select: { linha: { select: { nome: true, ordem: true } } } },
         modeloTamanho: { select: { tamanho: { select: { nome: true, ordem: true } } } },
       },
@@ -160,8 +206,24 @@ export class OrdensService {
           select: {
             insumoId: true,
             consumoPorPeca: true,
+            corFixaId: true,
             insumo: {
-              select: { nome: true, cor: true, tipo: true, unidade: true, custoMedio: true },
+              select: {
+                nome: true,
+                cor: true,
+                tipo: true,
+                unidade: true,
+                custoMedio: true,
+                cores: {
+                  where: { ativo: true },
+                  select: {
+                    id: true,
+                    corId: true,
+                    custoMedio: true,
+                    cor: { select: { nome: true, hex: true } },
+                  },
+                },
+              },
             },
           },
         },
@@ -170,14 +232,80 @@ export class OrdensService {
     return new Map(fs.map((f) => [f.modeloLinhaId, f]));
   }
 
+  /** Itens da ficha no formato da conta (só um tipo, se pedir). */
+  private itensParaConta(
+    fichas: Awaited<ReturnType<OrdensService['fichasDasLinhas']>>,
+    tipo?: 'TECIDO' | 'AVIAMENTO',
+  ): Map<string, ItemFichaOp[]> {
+    return new Map(
+      [...fichas].map(([l, f]) => [
+        l,
+        f.itens
+          .filter((i) => !tipo || i.insumo.tipo === tipo)
+          .map((i) => ({
+            insumoId: i.insumoId,
+            consumoPorPeca: Number(i.consumoPorPeca),
+            corFixaId: i.corFixaId,
+            cores: i.insumo.cores.length
+              ? new Map(i.insumo.cores.map((c) => [c.corId, c.id]))
+              : null,
+          })),
+      ]),
+    );
+  }
+
+  /** Nome, cor e custo de cada necessidade (insumo × cor) pra tela. */
+  private descrever(
+    fichas: Awaited<ReturnType<OrdensService['fichasDasLinhas']>>,
+    nec: Necessidade,
+    nomesDasCores: Map<string, { nome: string; hex: string }>,
+  ) {
+    const ins = [...fichas.values()]
+      .flatMap((f) => f.itens)
+      .find((i) => i.insumoId === nec.insumoId)?.insumo;
+    const daCor = ins?.cores.find((c) => c.id === nec.insumoCorId);
+    const cor = daCor?.cor ?? (nec.corId ? nomesDasCores.get(nec.corId) : undefined);
+    return {
+      nome: ins?.nome ?? '?',
+      // Cor da lista quando o insumo tem cores; senão o texto livre de antes.
+      cor: cor?.nome ?? ins?.cor ?? null,
+      corHex: cor?.hex ?? null,
+      tipo: ins?.tipo ?? 'TECIDO',
+      unidade: ins?.unidade ?? 'UNIDADE',
+      custoUnitario: daCor ? Number(daCor.custoMedio) : Number(ins?.custoMedio ?? 0),
+    };
+  }
+
+  /** Saldo por insumo E cor (chave `chaveSaldo`). */
   private async saldosInsumos(empresaId: string, ids: string[]) {
     if (!ids.length) return new Map<string, number>();
     const g = await this.prisma.insumoMovimento.groupBy({
-      by: ['insumoId'],
+      by: ['insumoId', 'insumoCorId'],
       where: { empresaId, insumoId: { in: ids } },
       _sum: { quantidade: true },
     });
-    return new Map(g.map((x) => [x.insumoId, n(x._sum.quantidade)]));
+    return new Map(g.map((x) => [chaveSaldo(x.insumoId, x.insumoCorId), n(x._sum.quantidade)]));
+  }
+
+  /** Peças por grade E cor da peça. */
+  private pecasPorLinhaECor(
+    itens: Array<{ modeloLinhaId: string; corId: string | null; quantidade: number }>,
+  ) {
+    const m = new Map<string, Map<string | null, number>>();
+    for (const i of itens) {
+      const porCor = m.get(i.modeloLinhaId) ?? new Map<string | null, number>();
+      porCor.set(i.corId, (porCor.get(i.corId) ?? 0) + i.quantidade);
+      m.set(i.modeloLinhaId, porCor);
+    }
+    return m;
+  }
+
+  private async nomesDasCores(empresaId: string) {
+    const cs = await this.prisma.catalogoCor.findMany({
+      where: { empresaId },
+      select: { id: true, nome: true, hex: true },
+    });
+    return new Map(cs.map((c) => [c.id, { nome: c.nome, hex: c.hex }]));
   }
 
   private async precoFaccao(faccaoId: string | null | undefined, modeloId: string) {
@@ -213,31 +341,39 @@ export class OrdensService {
       const l = vs.get(i.produtoId)!.modeloLinhaId;
       pecasPorLinha.set(l, (pecasPorLinha.get(l) ?? 0) + i.quantidade);
     }
+    const porCor = this.pecasPorLinhaECor(
+      dto.itens.map((i) => {
+        const v = vs.get(i.produtoId)!;
+        return {
+          modeloLinhaId: v.modeloLinhaId,
+          corId: v.modeloCor.corId,
+          quantidade: i.quantidade,
+        };
+      }),
+    );
     const fichas = await this.fichasDasLinhas(empresaId, [...pecasPorLinha.keys()]);
-    const consumos = new Map(
-      [...fichas].map(([l, f]) => [
-        l,
-        f.itens.map((i) => ({ insumoId: i.insumoId, consumoPorPeca: Number(i.consumoPorPeca) })),
-      ]),
-    );
-    const precisa = necessidadesDaGrade(pecasPorLinha, consumos);
-    const saldos = await this.saldosInsumos(empresaId, [...precisa.keys()]);
-    const infoInsumo = new Map(
-      [...fichas.values()].flatMap((f) => f.itens.map((i) => [i.insumoId, i.insumo] as const)),
-    );
-    const insumos = [...precisa].map(([insumoId, necessario]) => {
-      const i = infoInsumo.get(insumoId)!;
-      const saldo = saldos.get(insumoId) ?? 0;
+    const precisa = necessidadesDaGrade(porCor, this.itensParaConta(fichas));
+    const [saldos, nomes] = await Promise.all([
+      this.saldosInsumos(empresaId, [...new Set([...precisa.values()].map((x) => x.insumoId))]),
+      this.nomesDasCores(empresaId),
+    ]);
+    const insumos = [...precisa.values()].map((nec) => {
+      const d = this.descrever(fichas, nec, nomes);
+      // Cor que o insumo não tem: estoque zero — falta tudo.
+      const saldo = nec.semCor ? 0 : (saldos.get(chaveSaldo(nec.insumoId, nec.insumoCorId)) ?? 0);
       return {
-        insumoId,
-        nome: i.nome,
-        cor: i.cor,
-        tipo: i.tipo,
-        unidade: i.unidade,
-        necessario,
+        insumoId: nec.insumoId,
+        insumoCorId: nec.insumoCorId,
+        nome: d.nome,
+        cor: d.cor,
+        corHex: d.corHex,
+        semCor: nec.semCor,
+        tipo: d.tipo,
+        unidade: d.unidade,
+        necessario: nec.quantidade,
         saldo,
-        falta: Math.max(0, necessario - saldo),
-        custo: necessario * Number(i.custoMedio),
+        falta: Math.max(0, nec.quantidade - saldo),
+        custo: nec.quantidade * d.custoUnitario,
       };
     });
     const pecas = dto.itens.reduce((s, i) => s + i.quantidade, 0);
@@ -254,7 +390,12 @@ export class OrdensService {
     return {
       modelo,
       pecas,
-      insumos: insumos.sort((a, b) => a.tipo.localeCompare(b.tipo) || a.nome.localeCompare(b.nome)),
+      insumos: insumos.sort(
+        (a, b) =>
+          a.tipo.localeCompare(b.tipo) ||
+          a.nome.localeCompare(b.nome) ||
+          (a.cor ?? '').localeCompare(b.cor ?? ''),
+      ),
       custoInsumos,
       custoFaccao,
       precoFaccaoTabela: precoFaccao,
@@ -292,7 +433,10 @@ export class OrdensService {
         entregas: { orderBy: { criadoEm: 'asc' } },
         consumos: {
           orderBy: { criadoEm: 'asc' },
-          include: { insumo: { select: { nome: true, cor: true, unidade: true, tipo: true } } },
+          include: {
+            insumo: { select: { nome: true, cor: true, unidade: true, tipo: true } },
+            insumoCor: { select: { cor: { select: { nome: true, hex: true } } } },
+          },
         },
         custos: { include: { modeloLinha: { select: { linha: { select: { nome: true } } } } } },
       },
@@ -317,6 +461,7 @@ export class OrdensService {
         return {
           produtoId: i.produtoId,
           modeloLinhaId: i.modeloLinhaId,
+          corId: v?.modeloCor.corId ?? null,
           cor: v?.modeloCor.cor ?? { nome: '?', hex: '#999999' },
           corOrdem: v?.modeloCor.ordem ?? 0,
           linha: v?.modeloLinha.linha.nome ?? '?',
@@ -336,34 +481,35 @@ export class OrdensService {
       );
 
     // Sugestões pra próxima etapa, pela ficha técnica.
-    const pecasPorLinha = (k: 'planejada' | 'cortada') => {
-      const m = new Map<string, number>();
-      for (const i of itens) m.set(i.modeloLinhaId, (m.get(i.modeloLinhaId) ?? 0) + (i[k] ?? 0));
-      return m;
-    };
+    const pecasPorLinha = (k: 'planejada' | 'cortada') =>
+      this.pecasPorLinhaECor(
+        itens.map((i) => ({
+          modeloLinhaId: i.modeloLinhaId,
+          corId: i.corId,
+          quantidade: i[k] ?? 0,
+        })),
+      );
     const fichas = await this.fichasDasLinhas(empresaId, [
       ...new Set(itens.map((i) => i.modeloLinhaId)),
     ]);
-    const consumoPorTipo = (tipo: 'TECIDO' | 'AVIAMENTO') =>
-      new Map(
-        [...fichas].map(([l, f]) => [
-          l,
-          f.itens
-            .filter((i) => i.insumo.tipo === tipo)
-            .map((i) => ({ insumoId: i.insumoId, consumoPorPeca: Number(i.consumoPorPeca) })),
-        ]),
-      );
-    const infoInsumo = new Map(
-      [...fichas.values()].flatMap((f) => f.itens.map((i) => [i.insumoId, i.insumo] as const)),
-    );
-    const sugestao = (m: Map<string, number>) =>
-      [...m].map(([insumoId, quantidade]) => ({
-        insumoId,
-        nome: infoInsumo.get(insumoId)?.nome ?? '?',
-        cor: infoInsumo.get(insumoId)?.cor ?? null,
-        unidade: infoInsumo.get(insumoId)?.unidade ?? 'UNIDADE',
-        quantidade: Math.round(quantidade * 1000) / 1000,
-      }));
+    const nomes = await this.nomesDasCores(empresaId);
+    // Sugestão por insumo E cor; cor que o insumo não tem vem marcada (`semCor`).
+    const sugestao = (m: Map<string, Necessidade>) =>
+      [...m.values()]
+        .filter((nec) => nec.quantidade > 0)
+        .map((nec) => {
+          const d = this.descrever(fichas, nec, nomes);
+          return {
+            insumoId: nec.insumoId,
+            insumoCorId: nec.insumoCorId,
+            nome: d.nome,
+            cor: d.cor,
+            corHex: d.corHex,
+            semCor: nec.semCor,
+            unidade: d.unidade,
+            quantidade: Math.round(nec.quantidade * 1000) / 1000,
+          };
+        });
     const tecidoReal = op.consumos
       .filter((c) => c.etapa === 'CORTE')
       .reduce((s, c) => s + Number(c.quantidade), 0);
@@ -388,7 +534,11 @@ export class OrdensService {
       itens,
       consumos: op.consumos.map((c) => ({
         insumoId: c.insumoId,
-        insumo: c.insumo,
+        insumoCorId: c.insumoCorId,
+        // Cor da lista quando o insumo tem cores (sobrepõe o texto livre).
+        insumo: c.insumoCor
+          ? { ...c.insumo, cor: c.insumoCor.cor.nome, corHex: c.insumoCor.cor.hex }
+          : c.insumo,
         etapa: c.etapa,
         quantidade: Number(c.quantidade),
         custoUnitario: Number(c.custoUnitario),
@@ -410,13 +560,13 @@ export class OrdensService {
       consumoRealPorPeca: cortadas > 0 && tecidoReal > 0 ? tecidoReal / cortadas : null,
       sugestoes: {
         tecidos: sugestao(
-          necessidadesDaGrade(pecasPorLinha('planejada'), consumoPorTipo('TECIDO')),
+          necessidadesDaGrade(pecasPorLinha('planejada'), this.itensParaConta(fichas, 'TECIDO')),
         ),
         aviamentos: sugestao(
           necessidadesDaGrade(
             // Aviamento acompanha o que foi CORTADO (é o que vai pra facção).
             op.status === 'RASCUNHO' ? pecasPorLinha('planejada') : pecasPorLinha('cortada'),
-            consumoPorTipo('AVIAMENTO'),
+            this.itensParaConta(fichas, 'AVIAMENTO'),
           ),
         ),
       },
@@ -521,25 +671,44 @@ export class OrdensService {
     empresaId: string,
     op: { id: string; numero: string },
     etapa: 'CORTE' | 'ENVIO',
-    itens: Array<{ insumoId: string; quantidade: number }>,
+    itens: Array<{ insumoId: string; insumoCorId?: string | null; quantidade: number }>,
     usuarioId: string,
   ): Promise<number> {
     if (!itens.length) return 0;
+    const ids = [...new Set(itens.map((i) => i.insumoId))];
     const insumos = await tx.insumo.findMany({
-      where: { empresaId, id: { in: itens.map((i) => i.insumoId) } },
-      select: { id: true, tipo: true, custoMedio: true },
+      where: { empresaId, id: { in: ids } },
+      select: {
+        id: true,
+        nome: true,
+        tipo: true,
+        custoMedio: true,
+        cores: { select: { id: true, ativo: true, custoMedio: true } },
+      },
     });
-    if (insumos.length !== itens.length) throw regra('Algum insumo não existe nesta empresa');
+    if (insumos.length !== ids.length) throw regra('Algum insumo não existe nesta empresa');
     const porId = new Map(insumos.map((i) => [i.id, i]));
     let custo = 0;
     for (const i of itens) {
       const ins = porId.get(i.insumoId)!;
-      const unit = Number(ins.custoMedio);
+      // Insumo com cores baixa DA COR (e com o custo dela); sem cores, como antes.
+      let unit = Number(ins.custoMedio);
+      let corId: string | null = null;
+      if (ins.cores.length) {
+        const c = ins.cores.find((x) => x.id === i.insumoCorId);
+        if (!c) throw regra(`${ins.nome}: escolha de qual cor saiu`);
+        if (!c.ativo) throw regra(`${ins.nome}: esta cor foi tirada do insumo`);
+        unit = Number(c.custoMedio);
+        corId = c.id;
+      } else if (i.insumoCorId) {
+        throw regra(`${ins.nome} não tem cores — lance sem cor`);
+      }
       custo += unit * i.quantidade;
       await tx.insumoMovimento.create({
         data: {
           empresaId,
           insumoId: i.insumoId,
+          insumoCorId: corId,
           tipo: etapa === 'CORTE' ? 'CONSUMO_CORTE' : 'ENVIO_FACCAO',
           quantidade: D(-i.quantidade, 3),
           documento: op.numero,
@@ -551,6 +720,7 @@ export class OrdensService {
         data: {
           opId: op.id,
           insumoId: i.insumoId,
+          insumoCorId: corId,
           etapa,
           quantidade: D(i.quantidade, 3),
           custoUnitario: D(unit, 4),
@@ -769,6 +939,7 @@ export class OrdensService {
           select: {
             quantidade: true,
             insumo: { select: { id: true, nome: true, unidade: true } },
+            insumoCor: { select: { id: true, cor: { select: { nome: true } } } },
           },
         },
       },
@@ -789,13 +960,14 @@ export class OrdensService {
       };
       g.ops.push(resumoDaOp(op, hoje));
       for (const c of op.consumos) {
-        const a = g.aviamentos.get(c.insumo.id) ?? {
-          nome: c.insumo.nome,
+        const k = chaveSaldo(c.insumo.id, c.insumoCor?.id);
+        const a = g.aviamentos.get(k) ?? {
+          nome: c.insumoCor ? `${c.insumo.nome} ${c.insumoCor.cor.nome}` : c.insumo.nome,
           unidade: c.insumo.unidade,
           quantidade: 0,
         };
         a.quantidade += Number(c.quantidade);
-        g.aviamentos.set(c.insumo.id, a);
+        g.aviamentos.set(k, a);
       }
       porFaccao.set(op.faccaoId!, g);
     }

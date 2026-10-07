@@ -16,7 +16,36 @@ export interface Insumo {
   saldo: number;
   valorEmEstoque: number;
   repor: boolean;
+  /** Com cores: saldo, custo e movimento são POR COR (Léo, 07/10). */
+  temCores: boolean;
+  cores: CorInsumo[];
 }
+
+/** Uma cor do insumo (Moletinho Preto), com saldo e custo próprios. */
+export interface CorInsumo {
+  /** id da cor DO insumo — é o que vai no movimento (`insumoCorId`). */
+  id: string;
+  /** id da cor na lista da empresa. */
+  corId: string;
+  nome: string;
+  hex: string;
+  ativo: boolean;
+  custoMedio: number;
+  saldo: number;
+  valorEmEstoque: number;
+  repor: boolean;
+}
+
+/** Cor da lista da empresa (a mesma da vitrine). */
+export interface CorEmpresa {
+  id: string;
+  nome: string;
+  hex: string;
+  ativo: boolean;
+}
+
+/** Cores em que dá pra lançar movimento (as desligadas só aparecem com saldo). */
+export const coresAtivas = (i: Insumo) => i.cores.filter((c) => c.ativo);
 
 export const SIGLA: Record<Unidade, string> = { KG: 'kg', METRO: 'm', UNIDADE: 'un', PAR: 'par' };
 export const NOME_UNIDADE: Record<Unidade, string> = {
