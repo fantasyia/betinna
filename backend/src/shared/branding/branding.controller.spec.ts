@@ -15,7 +15,7 @@ const SOMATEC: Branding = {
   descricao: null,
   imagemCompartilhamento: null,
   vitrineSlug: null,
-  cores: { primaria: '#00416E', secundaria: '#008CC8', acao: '#F39200' },
+  cores: { primaria: '#00416E', secundaria: '#008CC8', acao: '#F39200', fundo: null },
 };
 
 const build = (marca: Branding = SOMATEC) => {

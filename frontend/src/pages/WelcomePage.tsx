@@ -184,7 +184,7 @@ export default function WelcomePage() {
       <div
         aria-hidden
         className="pointer-events-none absolute -bottom-32 -right-32 w-96 h-96 rounded-full opacity-15 blur-3xl"
-        style={{ background: COLORS.magenta }}
+        style={{ background: COLORS.claro ? COLORS.cyan : COLORS.magenta }}
       />
 
       <div
@@ -203,7 +203,7 @@ export default function WelcomePage() {
         >
           {/* Logo */}
           <div className="flex justify-center mb-7">
-            {logoQuebrou || !logoDaMarca('/betinna-horizontal.png', 'escuro') ? (
+            {logoQuebrou || !logoDaMarca('/betinna-horizontal.png', COLORS.claro ? 'claro' : 'escuro') ? (
               // Sem logo utilizável, o NOME — nunca o logotipo do produto, que
               // seria a marca de outra empresa na tela de quem entra aqui.
               <span
@@ -214,7 +214,7 @@ export default function WelcomePage() {
               </span>
             ) : (
               <img
-                src={logoDaMarca('/betinna-horizontal.png', 'escuro') ?? undefined}
+                src={logoDaMarca('/betinna-horizontal.png', COLORS.claro ? 'claro' : 'escuro') ?? undefined}
                 alt={marcaAtual.nome}
                 className="h-10 sm:h-12 w-auto"
                 draggable={false}
@@ -267,7 +267,7 @@ export default function WelcomePage() {
                 <label
                   htmlFor="welcome-password"
                   className="block text-[10px] font-semibold uppercase tracking-[0.1em] mb-2"
-                  style={{ color: 'rgba(248, 247, 242, 0.65)' }}
+                  style={{ color: COLORS.textoSuave }}
                 >
                   Nova senha
                 </label>
@@ -284,7 +284,7 @@ export default function WelcomePage() {
                   placeholder="Mínimo 8 caracteres"
                   className="login-input w-full text-base"
                   style={{
-                    background: COLORS.navyDeep,
+                    background: COLORS.campo,
                     color: COLORS.white,
                     border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                     borderRadius: 10,
@@ -300,7 +300,7 @@ export default function WelcomePage() {
                 <label
                   htmlFor="welcome-confirm"
                   className="block text-[10px] font-semibold uppercase tracking-[0.1em] mb-2"
-                  style={{ color: 'rgba(248, 247, 242, 0.65)' }}
+                  style={{ color: COLORS.textoSuave }}
                 >
                   Confirmar senha
                 </label>
@@ -316,7 +316,7 @@ export default function WelcomePage() {
                   placeholder="Repita a senha"
                   className="login-input w-full text-base"
                   style={{
-                    background: COLORS.navyDeep,
+                    background: COLORS.campo,
                     color: COLORS.white,
                     border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                     borderRadius: 10,
@@ -352,7 +352,7 @@ export default function WelcomePage() {
                 className="w-full flex items-center justify-center gap-2 rounded-[10px] font-bold text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   background: COLORS.magenta,
-                  color: COLORS.white,
+                  color: COLORS.botaoTexto,
                   border: 'none',
                   padding: '0.9rem 1rem',
                   cursor: loading ? 'wait' : 'pointer',
@@ -399,7 +399,7 @@ export default function WelcomePage() {
           )}
         </div>
 
-        <p className="mt-6 text-center text-xs" style={{ color: 'rgba(248, 247, 242, 0.4)' }}>
+        <p className="mt-6 text-center text-xs" style={{ color: COLORS.textoFraco }}>
           Já tem conta?{' '}
           <a
             href="/login"

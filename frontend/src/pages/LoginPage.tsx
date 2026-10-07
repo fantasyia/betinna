@@ -224,7 +224,7 @@ export default function LoginPage() {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-20 blur-3xl"
-        style={{ background: COLORS.magenta }}
+        style={{ background: COLORS.claro ? COLORS.cyan : COLORS.magenta }}
       />
       <div
         aria-hidden="true"
@@ -252,7 +252,7 @@ export default function LoginPage() {
         >
           {/* Logo horizontal */}
           <div className="flex justify-center mb-7">
-            {logoQuebrou || !logoDaMarca('/betinna-horizontal.png', 'escuro') ? (
+            {logoQuebrou || !logoDaMarca('/betinna-horizontal.png', COLORS.claro ? 'claro' : 'escuro') ? (
               // Sem logo utilizável, o NOME — nunca o logotipo do produto, que
               // seria a marca de outra empresa na tela de quem entra aqui.
               <span
@@ -263,7 +263,7 @@ export default function LoginPage() {
               </span>
             ) : (
               <img
-                src={logoDaMarca('/betinna-horizontal.png', 'escuro') ?? undefined}
+                src={logoDaMarca('/betinna-horizontal.png', COLORS.claro ? 'claro' : 'escuro') ?? undefined}
                 alt={marcaAtual.nome}
                 className="h-10 sm:h-12 w-auto"
                 draggable={false}
@@ -297,7 +297,7 @@ export default function LoginPage() {
             <label
               htmlFor="login-email"
               className="block text-[10px] font-semibold uppercase tracking-[0.1em] mb-2"
-              style={{ color: 'rgba(248, 247, 242, 0.65)' }}
+              style={{ color: COLORS.textoSuave }}
             >
               E-mail
             </label>
@@ -315,7 +315,7 @@ export default function LoginPage() {
               aria-describedby={error ? 'login-error' : undefined}
               className="login-input w-full text-base"
               style={{
-                background: COLORS.navyDeep,
+                background: COLORS.campo,
                 color: COLORS.white,
                 border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                 borderRadius: 10,
@@ -332,7 +332,7 @@ export default function LoginPage() {
             <label
               htmlFor="login-password"
               className="block text-[10px] font-semibold uppercase tracking-[0.1em] mb-2"
-              style={{ color: 'rgba(248, 247, 242, 0.65)' }}
+              style={{ color: COLORS.textoSuave }}
             >
               Senha
             </label>
@@ -349,7 +349,7 @@ export default function LoginPage() {
               aria-describedby={error ? 'login-error' : undefined}
               className="login-input w-full text-base"
               style={{
-                background: COLORS.navyDeep,
+                background: COLORS.campo,
                 color: COLORS.white,
                 border: `2px solid ${comAlfa(COLORS.cyan, 0.18)}`,
                 borderRadius: 10,
@@ -416,7 +416,7 @@ export default function LoginPage() {
             className="login-submit w-full inline-flex items-center justify-center gap-2"
             style={{
               background: loading ? COLORS.magentaHover : COLORS.magenta,
-              color: '#FFFFFF',
+              color: COLORS.botaoTexto,
               border: 'none',
               borderRadius: 10,
               padding: '0.875rem 1.5rem',
@@ -482,7 +482,7 @@ export default function LoginPage() {
           {/* Rodapé sutil */}
           <p
             className="text-center text-xs mt-6"
-            style={{ color: 'rgba(248, 247, 242, 0.45)', fontFamily: '"Cabin", sans-serif' }}
+            style={{ color: COLORS.textoFraco, fontFamily: '"Cabin", sans-serif' }}
           >
             Plataforma comercial B2B · {marcaAtual.nome}
           </p>
@@ -493,7 +493,7 @@ export default function LoginPage() {
       <style>
         {`
           .login-input::placeholder {
-            color: rgba(248, 247, 242, 0.35);
+            color: ${COLORS.textoFraco};
           }
           .login-input:focus {
             border-color: ${COLORS.cyan} !important;

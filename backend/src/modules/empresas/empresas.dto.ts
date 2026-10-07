@@ -425,6 +425,12 @@ const brandingSchema = z
           .regex(/^#[0-9a-fA-F]{6}$/)
           .nullable()
           .optional(),
+        /** Fundo CLARO das telas públicas (login): vira tema claro. */
+        fundo: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable()
+          .optional(),
       })
       .partial()
       .nullable()

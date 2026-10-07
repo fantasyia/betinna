@@ -18,6 +18,12 @@ export interface CoresDaMarca {
   primaria: string;
   secundaria: string;
   acao: string;
+  /**
+   * Fundo das telas públicas (login, primeiro acesso). CLARO (ex.: o bege da
+   * Ribelt) vira tema claro: texto escuro, campos claros. Ausente = o fundo
+   * escuro de sempre, feito da primária.
+   */
+  fundo?: string | null;
 }
 
 export interface Marca {
@@ -152,9 +158,41 @@ export function comAlfa(hex: string, alfa: number): string {
  * que o representante vê). Os nomes seguem os do desenho original pra a troca
  * não virar um redesign.
  */
+/** Luminância relativa (0 = preto, 1 = branco) — decide tema claro × escuro. */
+export function luminancia(hex: string): number {
+  const { r, g, b } = paraRgb(hex);
+  const lin = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
 export function paletaPublica(m: Marca = atual) {
   const { primaria, secundaria, acao } = m.cores;
+  const fundo = m.cores.fundo;
+  if (fundo && luminancia(fundo) > 0.5) {
+    // Tema CLARO: fundo da marca, texto e botão na primária (escura).
+    return {
+      claro: true,
+      navy: fundo,
+      navyDeep: escurecer(fundo, 0.05),
+      cyan: secundaria,
+      cyanHover: escurecer(secundaria, 0.2),
+      magenta: acao,
+      magentaHover: escurecer(acao, 0.15),
+      magentaLight: clarear(acao, 0.15),
+      white: primaria,
+      textoSuave: comAlfa(primaria, 0.72),
+      textoFraco: comAlfa(primaria, 0.5),
+      campo: clarear(fundo, 0.6),
+      botaoTexto: '#FFFFFF',
+      danger: '#c0392b',
+      success: '#2e7d4f',
+    } as const;
+  }
   return {
+    claro: false,
     navy: primaria,
     navyDeep: escurecer(primaria, 0.4),
     cyan: secundaria,
@@ -163,6 +201,10 @@ export function paletaPublica(m: Marca = atual) {
     magentaHover: escurecer(acao, 0.15),
     magentaLight: clarear(acao, 0.15),
     white: '#F8F7F2',
+    textoSuave: 'rgba(248, 247, 242, 0.65)',
+    textoFraco: 'rgba(248, 247, 242, 0.45)',
+    campo: escurecer(primaria, 0.4),
+    botaoTexto: '#FFFFFF',
     danger: '#ee5a5a',
     success: '#4cc984',
   } as const;

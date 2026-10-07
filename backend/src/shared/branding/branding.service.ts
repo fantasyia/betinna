@@ -64,7 +64,8 @@ export interface Branding {
    * próprio abre a vitrine (o link que vai pro lojista é só o domínio).
    */
   vitrineSlug: string | null;
-  cores: { primaria: string; secundaria: string; acao: string };
+  /** `fundo`: fundo CLARO das telas públicas (login); null = escuro da primária. */
+  cores: { primaria: string; secundaria: string; acao: string; fundo: string | null };
 }
 
 /**
@@ -86,7 +87,7 @@ export const BRANDING_PADRAO: Branding = {
   descricao: null,
   imagemCompartilhamento: null,
   vitrineSlug: null,
-  cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf' },
+  cores: { primaria: '#201554', secundaria: '#2bcae5', acao: '#bd1fbf', fundo: null },
 };
 
 /**
@@ -159,7 +160,7 @@ export class BrandingService {
       siteUrl?: string;
       descricao?: string;
       imagemCompartilhamento?: string;
-      cores?: { primaria?: string; secundaria?: string; acao?: string };
+      cores?: { primaria?: string; secundaria?: string; acao?: string; fundo?: string };
     };
     const nome = cfg.nome?.trim() || empresa?.nome?.trim() || BRANDING_PADRAO.nome;
     return {
@@ -180,6 +181,7 @@ export class BrandingService {
         primaria: cfg.cores?.primaria || BRANDING_PADRAO.cores.primaria,
         secundaria: cfg.cores?.secundaria || BRANDING_PADRAO.cores.secundaria,
         acao: cfg.cores?.acao || BRANDING_PADRAO.cores.acao,
+        fundo: cfg.cores?.fundo || null,
       },
     };
   }

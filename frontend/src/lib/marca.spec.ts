@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  luminancia,
   destinoDaRaiz,
   MARCA_PADRAO,
   _resetarMarca,
@@ -237,5 +238,36 @@ describe('raiz do app no domínio próprio', () => {
     expect(destinoDaRaiz({ ...ribelt, vitrineSlug: null }, 'atacado.ribelt.com.br')).toBe('/login');
     expect(destinoDaRaiz(ribelt, 'app.somatecblocking.com.br')).toBe('/login');
     expect(destinoDaRaiz(MARCA_PADRAO, 'app.somatecblocking.com.br')).toBe('/login');
+  });
+});
+
+describe('tela pública clara (fundo bege da marca)', () => {
+  const ribelt = {
+    ...MARCA_PADRAO,
+    nome: 'Ribelt',
+    dominio: 'atacado.ribelt.com.br',
+    cores: { primaria: '#1a2d38', secundaria: '#8a6a55', acao: '#1a2d38', fundo: '#f8f1e0' },
+  };
+
+  it('fundo claro vira tema claro: fundo da marca, texto escuro, botão com texto branco', () => {
+    const p = paletaPublica(ribelt);
+    expect(p.claro).toBe(true);
+    expect(p.navy).toBe('#f8f1e0');
+    expect(p.white).toBe('#1a2d38'); // "white" é a cor do TEXTO
+    expect(p.magenta).toBe('#1a2d38');
+    expect(p.botaoTexto).toBe('#FFFFFF');
+    expect(luminancia(p.campo)).toBeGreaterThan(luminancia(p.navy)); // campo ainda mais claro
+  });
+
+  it('sem fundo (ou fundo escuro): o tema escuro de sempre', () => {
+    expect(paletaPublica(MARCA_PADRAO).claro).toBe(false);
+    expect(paletaPublica({ ...ribelt, cores: { ...ribelt.cores, fundo: '#101820' } }).claro).toBe(false);
+    expect(paletaPublica(MARCA_PADRAO).white).toBe('#F8F7F2');
+  });
+
+  it('luminância: preto 0, branco 1, bege claro', () => {
+    expect(luminancia('#000000')).toBe(0);
+    expect(luminancia('#ffffff')).toBeCloseTo(1);
+    expect(luminancia('#f8f1e0')).toBeGreaterThan(0.8);
   });
 });
