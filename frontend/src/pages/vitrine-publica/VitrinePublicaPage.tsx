@@ -206,7 +206,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
         )}
       </div>
 
-      <div className="vt-feed" ref={feed}>
+      <div className="vt-feed" ref={feed} data-bag={pecas > 0 || undefined}>
         {lista.map((m, i) => {
           const cor = corAtual(m);
           const l = linhaNoModelo(m);
@@ -247,7 +247,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                     ))}
                   </div>
                 )}
-                <BlocoLucro l={l} f={v.faixas} />
+                <PrecoCompacto l={l} f={v.faixas} />
                 <div className="vt-row">
                   <button type="button" className="vt-link" onClick={() => setKit(m)}>
                     Material de divulgação
@@ -490,6 +490,64 @@ function OutrasFaixas({ l, f }: { l: LinhaPub; f: Faixas }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Preço no FEED, enxuto: a foto é o produto, o preço acompanha. Entrada,
+ * revenda e lucro numa linha; as faixas de cima numa linha fina embaixo.
+ * A página do modelo mostra o bloco completo (lucro por faixa etc.).
+ */
+function PrecoCompacto({ l, f }: { l: LinhaPub; f: Faixas }) {
+  const outras = precosPorFaixa(l, f).filter((x) => x.faixa !== 'entrada');
+  const lp = lucroPorPeca(l.precoEntrada, l.precoSugerido);
+  if (l.precoEntrada === null) {
+    return (
+      <div className="vt-preco" data-testid="vt-preco">
+        <div className="vt-preco-l">
+          <div>
+            <small>Atacado</small>
+            <span className="vt-na">preço sob consulta</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="vt-preco" data-testid="vt-preco">
+      <div className="vt-preco-l">
+        <div>
+          <small>{outras.length ? 'Entrada' : 'Atacado'}</small>
+          <b>{formatMoeda(l.precoEntrada)}</b>
+        </div>
+        {l.precoSugerido !== null && (
+          <div>
+            <small>Revenda</small>
+            <b>{formatMoeda(l.precoSugerido)}</b>
+          </div>
+        )}
+        {lp && (
+          <div className="vt-win">
+            <small>
+              Seu lucro <span className="vt-pct">+{lp.pct}%</span>
+            </small>
+            <b>{formatMoeda(lp.lucro)}</b>
+          </div>
+        )}
+      </div>
+      {outras.length > 0 && (
+        <div className="vt-preco-faixas">
+          {outras.map((x) => (
+            <span key={x.faixa}>
+              <em>
+                {NOME_FAIXA[x.faixa]} {formatNumero(x.minimo ?? 0)}+
+              </em>
+              {formatMoeda(x.preco)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -193,6 +193,34 @@
 .vt-hint { bottom: 46px; }
 .vt-lucro > div { align-content: start; }
 
+/* Feed enxuto (07/10): a FOTO manda. Preço compacto, nome menor, topo e botões
+   mais baixos — o que sobra de altura vai pra foto. A página do modelo segue
+   com o bloco completo. */
+.vt-preco { border: 1px solid #e3d8bf; border-radius: 14px; background: var(--branco); overflow: hidden; }
+.vt-preco-l { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.vt-preco-l > div { padding: 6px 10px; display: grid; gap: 0; min-width: 0; }
+.vt-preco-l > div + div { border-left: 1px solid #eee4ce; }
+.vt-preco small { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--oliva); font-weight: 600; white-space: nowrap; }
+.vt-preco b { font-family: var(--f-title); font-weight: 600; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vt-preco .vt-win { background: #f3eedd; }
+.vt-preco .vt-win b, .vt-preco .vt-pct { color: var(--lucro); }
+.vt-preco .vt-pct { letter-spacing: 0; text-transform: none; }
+.vt-preco .vt-na { font-size: 12.5px; font-weight: 500; color: var(--terracota); }
+.vt-preco-faixas { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; padding: 5px 8px 5px 10px; border-top: 1px solid #eee4ce; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--petroleo); }
+.vt-preco-faixas span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-preco-faixas em { font-style: normal; font-size: 9px; letter-spacing: .02em; text-transform: uppercase; color: var(--oliva); margin-right: 4px; }
+.vt-slide .vt-info { gap: 8px; padding: 10px 16px 16px; }
+/* espaço da barra do pedido só quando ela aparece */
+.vt-feed[data-bag] .vt-slide .vt-info { padding-bottom: 84px; }
+.vt-slide .vt-name { font-size: 22px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vt-slide .vt-cta { height: 44px; }
+.vt-top { padding-top: 10px; }
+.vt-brand img { height: 18px; }
+.vt-linhas { margin-top: 10px; }
+.vt-linhas button { height: 30px; }
+.vt-slide .vt-fotos { top: 100px; }
+.vt-counter { top: 112px; }
+
 /* envio do pedido */
 .vt-envio { max-height: 94%; }
 .vt-form { overflow-y: auto; padding: 0 16px 10px; display: grid; gap: 10px; }
