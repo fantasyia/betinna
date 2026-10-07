@@ -21,6 +21,7 @@ import {
   type Modelo,
   type VitrineConfig,
 } from './tipos';
+import { PagamentoOnline } from './PagamentoOnline';
 
 /**
  * Vitrine de atacado — cadastro (Fase 1, Ribelt Distribuidora Têxtil).
@@ -161,7 +162,12 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
         </StateView>
       )}
 
-      {aba === 'config' && <ConfigForm config={config} onSalvou={onConfigMudou} />}
+      {aba === 'config' && (
+        <div className="flex flex-col gap-4">
+          <ConfigForm config={config} onSalvou={onConfigMudou} />
+          {config && <PagamentoOnline />}
+        </div>
+      )}
 
       {editando && (
         <ModeloEditor

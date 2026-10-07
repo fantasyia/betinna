@@ -50,6 +50,7 @@ import { RespostasRapidasModule } from '@modules/respostas-rapidas/respostas-rap
 import { VitrineModule } from '@modules/vitrine/vitrine.module';
 import { ErpModule } from '@modules/erp/erp.module';
 import { FinanceiroModule } from '@modules/financeiro/financeiro.module';
+import { CheckoutModule } from '@modules/checkout/checkout.module';
 import { CatalogoModule } from '@modules/catalogo/catalogo.module';
 import { ClientesModule } from '@modules/clientes/clientes.module';
 import { ContatosModule } from '@modules/contatos/contatos.module';
@@ -241,6 +242,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     VitrineModule,
     ErpModule,
     FinanceiroModule,
+    CheckoutModule,
     PermissionsModule,
     AuthModule,
     UsersModule,

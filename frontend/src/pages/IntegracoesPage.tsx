@@ -31,6 +31,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'meta_app',
   'openai',
   'clicksign',
+  'asaas',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -46,11 +47,12 @@ type ServicoEmpresa =
   | 'facebook'
   | 'meta_app'
   | 'openai'
-  | 'clicksign';
+  | 'clicksign'
+  | 'asaas';
 
 interface ServicoMeta {
   nome: string;
-  tipo: 'erp' | 'mensageria' | 'marketplace' | 'social' | 'ia' | 'email' | 'agenda' | 'assinatura';
+  tipo: 'erp' | 'mensageria' | 'marketplace' | 'social' | 'ia' | 'email' | 'agenda' | 'assinatura' | 'pagamento';
   obrigatorio: boolean;
   color: string;
   icon: string;
@@ -203,6 +205,19 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
       { name: 'signatarioNascimento', label: 'Nascimento de quem assina (AAAA-MM-DD)' },
     ],
   },
+  asaas: {
+    nome: 'Asaas (pagamentos)',
+    tipo: 'pagamento',
+    obrigatorio: false,
+    color: '#0030b9',
+    icon: '💳',
+    description:
+      'Conta Asaas da empresa pro pagamento online da vitrine (Pix e cartão) — o dinheiro cai nela. ' +
+      'Chave de TESTE começa com $aact_hmlg_; a de produção, com $aact_prod_. Depois de salvar, ative ' +
+      'em Vitrine → Configuração → Pagamento online.',
+    connectMode: 'credentials',
+    credentialFields: [{ name: 'apiKey', label: 'Chave da API do Asaas ($aact_...)', type: 'password' }],
+  },
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
@@ -217,6 +232,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'instagram',
   'facebook',
   'clicksign',
+  'asaas',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
@@ -228,6 +244,7 @@ const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
   ia: 'IA',
   email: 'E-mail',
   agenda: 'Agenda',
+  pagamento: 'Pagamento',
 };
 
 // ─── Tipos do backend ────────────────────────────────────────────────
@@ -492,6 +509,7 @@ const GRUPOS_DISPONIVEIS: Array<{ tipo: ServicoMeta['tipo']; rotulo: string }> =
   { tipo: 'marketplace', rotulo: 'Marketplaces' },
   { tipo: 'social', rotulo: 'Redes sociais' },
   { tipo: 'assinatura', rotulo: 'Assinatura' },
+  { tipo: 'pagamento', rotulo: 'Pagamento' },
 ];
 
 /**

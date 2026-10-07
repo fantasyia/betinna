@@ -25,6 +25,9 @@ export const SERVICOS_EMPRESA = [
   // ClickSign é do tenant: o modelo do contrato, o Termo de Assinatura
   // Automática e o signatário da casa vivem todos dentro dela.
   'clicksign',
+  // Pagamento online da vitrine (Pix e cartão). Escopo empresa: a CONTA Asaas é
+  // do tenant — o dinheiro cai na conta dele, com a chave dele.
+  'asaas',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -50,7 +53,8 @@ export type ServicoTipo =
   | 'social'
   | 'ia'
   | 'email'
-  | 'agenda';
+  | 'agenda'
+  | 'pagamento';
 /** 'ambos' indica que o serviço aceita ambos os escopos (ex: WhatsApp empresa OU pessoal). */
 export type ServicoEscopo = 'empresa' | 'usuario' | 'ambos';
 
@@ -164,6 +168,14 @@ export const SERVICO_METADATA: Record<
   clicksign: {
     nome: 'ClickSign (assinatura eletrônica)',
     tipo: 'assinatura',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  // D45: é a conta onde o dinheiro dos clientes cai. Decisão do mandatário.
+  asaas: {
+    nome: 'Asaas (pagamentos)',
+    tipo: 'pagamento',
     escopo: 'empresa',
     obrigatorio: false,
     requerDirector: true,

@@ -4734,3 +4734,22 @@ model FinRecorrencia {
 
   @@index([empresaId, ativo])
 }
+
+/// Aviso de pagamento recebido do Asaas (webhook), por empresa. O Asaas entrega
+/// "pelo menos uma vez": o `id` do evento é a chave — repetido não duplica.
+/// Gravado ANTES de responder 200 (recomendação do Asaas); processado depois.
+model AsaasEvento {
+  /// Id do evento no Asaas (`evt_…`).
+  id           String    @id
+  empresaId    String
+  evento       String
+  /// Id da cobrança (`pay_…`), quando o evento é de cobrança.
+  pagamentoId  String?
+  payload      Json
+  recebidoEm   DateTime  @default(now())
+  processadoEm DateTime?
+  erro         String?
+
+  @@index([empresaId, recebidoEm])
+  @@index([pagamentoId])
+}
