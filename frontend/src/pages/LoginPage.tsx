@@ -464,6 +464,21 @@ export default function LoginPage() {
               abriu por link direto nem tem histórico pra usar o botão voltar).
               O endereço vem da marca do tenant — nada de domínio fixo no código.
               Discreto de propósito: não compete com o botão de entrar. */}
+          {/* Domínio com vitrine (atacado.ribelt.com.br): o lojista que tocou em
+              "Entrar" por engano precisa de volta pro catálogo (Léo, 07/10). */}
+          {marcaAtual.vitrineSlug && (
+            <p className="text-center mt-5">
+              <a
+                href={`/v/${encodeURIComponent(marcaAtual.vitrineSlug)}`}
+                data-testid="voltar-ao-catalogo"
+                className="text-sm font-semibold hover:underline"
+                style={{ color: COLORS.cyan, fontFamily: '"Cabin", sans-serif' }}
+              >
+                ← Voltar ao catálogo
+              </a>
+            </p>
+          )}
+
           {/* Só http(s): a marca é config do tenant, e `javascript:` num href é
               XSS com um clique (auditoria 13/09, G-4). */}
           {marcaAtual.siteUrl && /^https?:\/\//i.test(marcaAtual.siteUrl) && (
