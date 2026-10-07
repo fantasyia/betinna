@@ -354,3 +354,29 @@ describe('FinanceiroService — fluxo de caixa e por contato (entrega C)', () =>
     await expect(svc.porContato(user as never, { tipo: 'PAGAR' })).rejects.toThrow();
   });
 });
+
+describe('FinanceiroService — atalhos (pedido e OP)', () => {
+  it('pedido: filtra pelo pedidoId', async () => {
+    const { svc, prisma } = montar();
+    await svc.listar(user as never, { tipo: 'RECEBER', situacao: 'TODOS', pedidoId: 'ped-1' });
+    expect(prisma.finTitulo.findMany.mock.calls[0][0].where).toMatchObject({
+      empresaId: 'emp-1',
+      tipo: 'RECEBER',
+      pedidoId: 'ped-1',
+    });
+  });
+
+  it('OP: saldo (chave = OP) + entregas DESTA OP, buscadas só na empresa', async () => {
+    const { svc, prisma } = montar();
+    const entregas = vi.fn().mockResolvedValue([{ id: 'e-1' }, { id: 'e-2' }]);
+    (prisma as Record<string, unknown>).ordemProducaoEntrega = { findMany: entregas };
+    await svc.listar(user as never, { tipo: 'PAGAR', situacao: 'TODOS', opId: 'op-1' });
+    expect(entregas).toHaveBeenCalledWith({
+      where: { opId: 'op-1', op: { empresaId: 'emp-1' } },
+      select: { id: true },
+    });
+    expect(prisma.finTitulo.findMany.mock.calls[0][0].where.AND).toEqual([
+      { OR: [{ opSaldoId: 'op-1' }, { opEntregaId: { in: ['e-1', 'e-2'] } }] },
+    ]);
+  });
+});

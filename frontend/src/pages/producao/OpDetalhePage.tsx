@@ -14,6 +14,7 @@ import { lerNumero, paraCampo } from '@/pages/precificacao/calculo';
 import { SIGLA, type Insumo, type Unidade } from '@/pages/insumos/insumo';
 import { GradeEditor, inteiro, totalGrade, type CelulaGrade, type ValoresGrade } from './GradeEditor';
 import { STATUS_OP } from './ProducaoPage';
+import { PagamentosDaFaccao } from '@/pages/financeiro/Atalhos';
 
 /**
  * Uma ordem de produção (ERP próprio · entrega 4): a grade em cada etapa, o
@@ -127,6 +128,8 @@ export default function OpDetalhePage() {
                   )}
                 </div>
               </Card>
+
+              <PagamentosDaFaccao key={`${op.status}:${op.entregas.length}`} opId={op.id} numero={op.numero} />
 
               <Card className="p-4 flex flex-col gap-3">
                 <h2 className="text-base font-semibold">Grade</h2>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -33,9 +34,13 @@ const FORMAS = [
 export default function FinanceiroPage() {
   const role = useRole();
   const gestor = role === 'ADMIN' || role === 'DIRECTOR';
-  const [aba, setAba] = useState<Aba>('RECEBER');
+  // Atalho do pedido/OP: ?aba=RECEBER|PAGAR&busca=… abre a lista já filtrada.
+  const [params] = useSearchParams();
+  const abaUrl = params.get('aba');
+  const [aba, setAba] = useState<Aba>(abaUrl === 'PAGAR' ? 'PAGAR' : 'RECEBER');
   // "Por contato" → abre a lista daquele contato já filtrada.
-  const [buscaInicial, setBuscaInicial] = useState('');
+  const [buscaInicial, setBuscaInicial] = useState(params.get('busca') ?? '');
+  const situacaoUrl = params.get('situacao') === 'TODOS' ? 'TODOS' : undefined;
   return (
     <PageLayout title="Financeiro" description="Contas a receber e a pagar. A nota fiscal sai no faturador externo.">
       {!gestor ? (
@@ -68,7 +73,12 @@ export default function FinanceiroPage() {
               }}
             />
           ) : (
-            <Titulos key={`${aba}:${buscaInicial}`} tipo={aba} buscaInicial={buscaInicial} />
+            <Titulos
+              key={`${aba}:${buscaInicial}`}
+              tipo={aba}
+              buscaInicial={buscaInicial}
+              situacaoInicial={buscaInicial ? situacaoUrl : undefined}
+            />
           )}
         </div>
       )}
@@ -76,8 +86,16 @@ export default function FinanceiroPage() {
   );
 }
 
-function Titulos({ tipo, buscaInicial = '' }: { tipo: 'RECEBER' | 'PAGAR'; buscaInicial?: string }) {
-  const [situacao, setSituacao] = useState('ABERTO');
+function Titulos({
+  tipo,
+  buscaInicial = '',
+  situacaoInicial = 'ABERTO',
+}: {
+  tipo: 'RECEBER' | 'PAGAR';
+  buscaInicial?: string;
+  situacaoInicial?: string;
+}) {
+  const [situacao, setSituacao] = useState(situacaoInicial);
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
   const [categoriaId, setCategoriaId] = useState('');

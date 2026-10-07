@@ -26,6 +26,10 @@ export const listarTitulosSchema = z.object({
   ate: data.optional(),
   categoriaId: id.optional(),
   busca: z.string().trim().max(100).optional(),
+  /** Atalho do pedido: o título a receber dele. */
+  pedidoId: id.optional(),
+  /** Atalho da OP: os pagamentos da facção (por entrega + saldo). */
+  opId: id.optional(),
 });
 export type ListarTitulosDto = z.infer<typeof listarTitulosSchema>;
 

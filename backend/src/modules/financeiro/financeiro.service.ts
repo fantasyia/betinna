@@ -146,9 +146,23 @@ export class FinanceiroService {
   async listar(user: AuthenticatedUser, f: ListarTitulosDto) {
     const empresaId = await this.empresaLigada(user);
     const hoje = hojePuro();
+    // Atalho da OP: o saldo tem a chave da OP; cada entrega, a chave da 1ª
+    // linha dela — então junta as linhas de entrega DESTA OP (da empresa).
+    const daOp: Prisma.FinTituloWhereInput[] = [];
+    if (f.opId) {
+      const entregas = await this.prisma.ordemProducaoEntrega.findMany({
+        where: { opId: f.opId, op: { empresaId } },
+        select: { id: true },
+      });
+      daOp.push({
+        OR: [{ opSaldoId: f.opId }, { opEntregaId: { in: entregas.map((e) => e.id) } }],
+      });
+    }
     const where: Prisma.FinTituloWhereInput = {
       empresaId,
       tipo: f.tipo,
+      ...(f.pedidoId ? { pedidoId: f.pedidoId } : {}),
+      ...(daOp.length ? { AND: daOp } : {}),
       ...(f.categoriaId ? { categoriaId: f.categoriaId } : {}),
       ...(f.de || f.ate
         ? {

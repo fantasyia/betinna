@@ -31,6 +31,7 @@ import { Avatar, Badge, Button, Card, Dialog, Field, Textarea } from '@/componen
 import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 import { ReservaDoPedido } from '@/pages/estoque/ReservaDoPedido';
+import { ContaDoPedido } from '@/pages/financeiro/Atalhos';
 
 /**
  * PedidoDetailPage — versão página cheia do pedido (vs Drawer).
@@ -367,6 +368,10 @@ export default function PedidoDetailPage() {
 
               {/* Estoque próprio: reserva de 20 min do pedido da vitrine */}
               {data.origem === 'VITRINE' && <ReservaDoPedido pedidoId={data.id} onMudou={refetch} />}
+              {/* Financeiro: a conta a receber deste pedido */}
+              {data.origem === 'VITRINE' && (
+                <ContaDoPedido key={data.status} pedidoId={data.id} numero={String(data.numero)} />
+              )}
 
               {/* Header card com total + status */}
               <Card variant="outline" padding="md" className="bg-bg-alt">
