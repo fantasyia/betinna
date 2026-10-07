@@ -68,6 +68,11 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     label: 'Vitrine de atacado — escrita (cadastro de produto, fotos, vídeos e preços)',
     badge: 'Vitrine',
   },
+  {
+    key: 'encaixe',
+    label: 'Agente do encaixe (GPU) — pega risco da fila e entrega o .plt; nada mais do ERP',
+    badge: 'Encaixe',
+  },
 ];
 
 const rotuloEscopo = (key: string) =>

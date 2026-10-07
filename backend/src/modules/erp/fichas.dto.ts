@@ -64,6 +64,18 @@ export type PrecosFaccaoDto = z.infer<typeof precosFaccaoSchema>;
  * por enquanto — por isso não viraram campo. Giro de 90° nunca no corpo.
  */
 export const regrasEncaixeSchema = z.object({
+  /**
+   * Código do molde = a pasta do produto em "Moldes Computadorizados" (ex.:
+   * 100 = bermuda moletinho, 116 = short tactel). É por ele que o agente do
+   * encaixe acha o DXF/RUL do Lectra.
+   */
+  codigoMolde: z
+    .string()
+    .trim()
+    .max(60)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
   /** Tubular: o par sai do tubo (risco leva 1 de cada peça). Aberto: o par vem do "1,1". */
   tecido: z.enum(['TUBULAR', 'ABERTO']),
   /** Largura útil já sem ourela (no 100: 1030 mm). */

@@ -15,6 +15,7 @@ import { SIGLA, type Insumo, type Unidade } from '@/pages/insumos/insumo';
 import { GradeEditor, inteiro, totalGrade, type CelulaGrade, type ValoresGrade } from './GradeEditor';
 import { STATUS_OP } from './ProducaoPage';
 import { PagamentosDaFaccao } from '@/pages/financeiro/Atalhos';
+import { EncaixeDaOp } from './EncaixeDaOp';
 
 /**
  * Uma ordem de produção (ERP próprio · entrega 4): a grade em cada etapa, o
@@ -228,10 +229,7 @@ export default function OpDetalhePage() {
                 )}
               </Card>
 
-              <Card variant="outline" padding="md" className="text-sm text-muted">
-                <b className="text-text">Encaixe</b> — o risco automático (RTX 5090) entra aqui, em cima desta OP, quando o card do
-                encaixe ficar pronto. As regras vêm da ficha técnica do modelo.
-              </Card>
+              <EncaixeDaOp opId={op.id} numero={op.numero} modeloId={op.modelo.id} itens={op.itens} />
             </div>
           )}
         </StateView>

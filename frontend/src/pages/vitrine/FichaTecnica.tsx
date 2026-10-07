@@ -227,6 +227,8 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
 }
 
 interface Regras {
+  /** A pasta do produto em "Moldes Computadorizados" (ex.: 100). */
+  codigoMolde: string | null;
   tecido: 'TUBULAR' | 'ABERTO';
   larguraUtilMm: number;
   espelhar: boolean;
@@ -237,8 +239,9 @@ interface Regras {
   observacoes: string | null;
 }
 
-/** Ponto de partida = o produto 100 (short tactel), o único já encaixado na GPU. */
+/** Ponto de partida = o molde 100 (bermuda moletinho, tubular 1,03 m), o 1º encaixado na GPU. */
 const PADRAO: Regras = {
+  codigoMolde: null,
   tecido: 'TUBULAR',
   larguraUtilMm: 1030,
   espelhar: true,
@@ -279,6 +282,7 @@ function RegrasEncaixe({ modeloId }: { modeloId: string }) {
     try {
       await api.put(`/erp/modelos/${modeloId}/encaixe`, {
         ...r,
+        codigoMolde: r.codigoMolde?.trim() || null,
         larguraUtilMm: larguraN,
         encavalamentoMm: lerNumero(enc) ?? 0,
         espacamentoMm: lerNumero(esp) ?? 0,
@@ -302,6 +306,14 @@ function RegrasEncaixe({ modeloId }: { modeloId: string }) {
         )}
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Código do molde" hint="A pasta do produto em Moldes Computadorizados (ex.: 100)">
+          <Input
+            value={r.codigoMolde ?? ''}
+            onChange={(e) => setR({ ...r, codigoMolde: e.target.value })}
+            maxLength={60}
+            data-testid="regra-codigo-molde"
+          />
+        </Field>
         <Field label="Tecido" hint={r.tecido === 'TUBULAR' ? 'O par sai do tubo: o risco leva 1 de cada peça' : 'O par vem do molde ("1,1")'}>
           <Select value={r.tecido} onChange={(e) => setR({ ...r, tecido: e.target.value as Regras['tecido'] })} data-testid="regra-tecido">
             <option value="TUBULAR">Tubular</option>

@@ -176,6 +176,7 @@ export class AuthGuard implements CanActivate {
       | 'campanhas'
       | 'email'
       | 'vitrine'
+      | 'encaixe'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -231,11 +232,14 @@ export class AuthGuard implements CanActivate {
     // ANCORADO em /vitrine/admin: a vitrine pública (/public/vitrine) é @Public e
     // nem passa por aqui, e nenhuma outra rota /vitrine entra no escopo.
     else if (/^\/(vitrine\/admin|precificacao)(\/|$)/.test(rel)) moduloRequerido = 'vitrine';
+    // /erp/encaixe/agente/* = o agente local do encaixe (GPU). ANCORADO aqui: o
+    // resto de /erp (estoque, OP, financeiro) segue fora do alcance do PAT.
+    else if (/^\/erp\/encaixe\/agente(\/|$)/.test(rel)) moduloRequerido = 'encaixe';
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
           '/conhecimento, /tags, /inbox, /campanhas, /integracoes/email/{status,teste} ' +
-          '/vitrine/admin, /precificacao e /mullerbot/prompts|persona',
+          '/vitrine/admin, /precificacao, /erp/encaixe/agente e /mullerbot/prompts|persona',
       );
     }
 

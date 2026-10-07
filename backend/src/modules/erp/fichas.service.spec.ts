@@ -251,6 +251,7 @@ describe('FichasService', () => {
   it('regras de encaixe do produto 100 (tubular, 103 cm, espelha, corpo 180, forro livre)', async () => {
     const { svc, prisma } = montar();
     const r100 = {
+      codigoMolde: '100',
       tecido: 'TUBULAR' as const,
       larguraUtilMm: 1030,
       espelhar: true,

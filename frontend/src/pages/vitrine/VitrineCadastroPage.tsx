@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, ExternalLink } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
@@ -75,6 +75,17 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
   const [ordemLocal, setOrdemLocal] = useState<string[] | null>(null);
 
   const lista = modelos.data ?? [];
+  // `?modelo=<id>` abre direto o modelo (atalho da OP → ficha técnica/encaixe).
+  const abriuDoLink = useRef(false);
+  useEffect(() => {
+    if (abriuDoLink.current || !modelos.data) return;
+    const id = new URLSearchParams(window.location.search).get('modelo');
+    const m = id ? modelos.data.find((x) => x.id === id) : undefined;
+    if (m) {
+      abriuDoLink.current = true;
+      setEditando(m);
+    }
+  }, [modelos.data]);
   const ordenada = ordemLocal
     ? ordemLocal.map((id) => lista.find((m) => m.id === id)).filter((m): m is Modelo => !!m)
     : lista;

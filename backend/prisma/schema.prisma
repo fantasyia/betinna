@@ -4585,6 +4585,7 @@ model OrdemProducao {
   consumos OrdemProducaoConsumo[]
   entregas OrdemProducaoEntrega[]
   custos   OrdemProducaoCusto[]
+  encaixes EncaixeJob[]
 
   @@unique([empresaId, numero])
   @@index([empresaId, status])
@@ -4660,6 +4661,68 @@ model OrdemProducaoCusto {
 
   @@unique([opId, modeloLinhaId])
   @@index([modeloLinhaId])
+}
+
+// ─── Encaixe automático (risco) da OP ───
+// O Betinna monta o pedido (molde, grade do risco, regras da ficha) e o AGENTE
+// local (PC do Léo, RTX 5090) pega UM por vez, roda o encaixe na GPU e devolve
+// a imagem a cada melhora e, no fim, o .plt (HPGL, 1:1, papel de 185 cm) pro
+// plotter. Arquivos no banco (tabela própria): o Storage do Supabase está no
+// limite e o .plt é dado de produção da empresa.
+
+enum EncaixeStatus {
+  PENDENTE
+  RODANDO
+  CONCLUIDO
+  FALHOU
+  CANCELADO
+}
+
+model EncaixeJob {
+  id            String        @id @default(cuid())
+  empresaId     String
+  opId          String
+  /// A grade (linha do modelo) do risco — Regular, Plus, Infantil.
+  modeloLinhaId String
+  status        EncaixeStatus @default(PENDENTE)
+  /// Tempo que o agente pode gastar procurando um risco melhor.
+  tempoMin      Int
+  /// O que o agente precisa, congelado na criação: molde, composição, regras.
+  entrada       Json
+  /// Melhor encontrado até agora (comprimento, aproveitamento, iterações).
+  progresso     Json?
+  /// Resultado final (comprimento, aproveitamento, detalhes do agente).
+  resultado     Json?
+  erro          String?
+  /// Nome do token do agente que pegou o trabalho.
+  agente        String?
+  usuarioId     String?
+  pegoEm        DateTime?
+  concluidoEm   DateTime?
+  criadoEm      DateTime      @default(now())
+  atualizadoEm  DateTime      @updatedAt
+
+  op       OrdemProducao    @relation(fields: [opId], references: [id], onDelete: Cascade)
+  arquivos EncaixeArquivo[]
+
+  @@index([empresaId, status])
+  @@index([opId])
+}
+
+/// Arquivo do encaixe: PREVIEW (a melhor imagem até agora, sobrescrita), PNG
+/// final, PLT (HPGL pro plotter), DXF (opcional). Um de cada por trabalho.
+model EncaixeArquivo {
+  id       String   @id @default(cuid())
+  jobId    String
+  tipo     String
+  mime     String
+  tamanho  Int
+  conteudo Bytes
+  criadoEm DateTime @default(now())
+
+  job EncaixeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, tipo])
 }
 
 // ─── ERP próprio · Fase 3 · financeiro: contas a pagar e a receber (sem NF-e) ───

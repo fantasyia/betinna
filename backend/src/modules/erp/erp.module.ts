@@ -9,6 +9,8 @@ import { FichasController } from './fichas.controller';
 import { FichasService } from './fichas.service';
 import { OrdensController } from './ordens.controller';
 import { OrdensService } from './ordens.service';
+import { EncaixeAgenteController, EncaixeController } from './encaixe.controller';
+import { EncaixeService } from './encaixe.service';
 
 /**
  * ERP próprio · Fase 2 (Ribelt Distribuidora Têxtil, 07/10/2026).
@@ -19,8 +21,22 @@ import { OrdensService } from './ordens.service';
 @Module({
   // Financeiro (Fase 3) só depende do banco: gera os títulos automáticos daqui.
   imports: [FinanceiroModule],
-  controllers: [EstoqueController, InsumosController, FichasController, OrdensController],
-  providers: [EstoqueService, ReservaExpiracaoJob, InsumosService, FichasService, OrdensService],
+  controllers: [
+    EstoqueController,
+    InsumosController,
+    FichasController,
+    OrdensController,
+    EncaixeController,
+    EncaixeAgenteController,
+  ],
+  providers: [
+    EstoqueService,
+    ReservaExpiracaoJob,
+    InsumosService,
+    FichasService,
+    OrdensService,
+    EncaixeService,
+  ],
   exports: [EstoqueService, FichasService, OrdensService],
 })
 export class ErpModule {}

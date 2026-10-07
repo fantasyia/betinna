@@ -541,3 +541,88 @@ describe('AuthGuard — token de API (bkt_) na vitrine', () => {
     await expect(chamar('GET', '/leads/vitrine/admin')).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+describe('AuthGuard — escopo encaixe (agente local da GPU)', () => {
+  // Reaproveita a montagem do bloco da vitrine: token PAT, só muda o escopo.
+  let guard: AuthGuard;
+  let prisma: {
+    kanbanApiToken: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    usuario: { findUnique: ReturnType<typeof vi.fn> };
+  };
+  const chamar = (method: string, path: string) =>
+    guard.canActivate({
+      getHandler: () => undefined,
+      getClass: () => undefined,
+      switchToHttp: () => ({
+        getRequest: () => ({
+          method,
+          path,
+          url: path,
+          headers: { authorization: 'Bearer bkt_' + 'e'.repeat(40) },
+          ip: '1.1.1.1',
+        }),
+      }),
+    } as never);
+
+  beforeEach(() => {
+    prisma = {
+      kanbanApiToken: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 't-enc',
+          nome: 'Agente encaixe — PC Léo',
+          usuarioId: 'u-1',
+          empresaId: 'emp-1',
+          revogado: false,
+          escopo: ['encaixe'],
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      usuario: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'u-1',
+          email: 'leo@x.com',
+          nome: 'Léo',
+          role: 'DIRECTOR',
+          status: 'ATIVO',
+          empresas: [{ empresaId: 'emp-1' }],
+        }),
+      },
+    };
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setNxEx: vi.fn().mockResolvedValue(true),
+      eval: vi.fn().mockResolvedValue(1),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const reflector = { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector;
+    guard = new AuthGuard(
+      reflector,
+      {} as never,
+      prisma as never,
+      redis as never,
+      { get: () => 300 } as never,
+    );
+  });
+
+  it('as rotas do agente passam', async () => {
+    for (const [m, p] of [
+      ['POST', '/erp/encaixe/agente/proximo'],
+      ['GET', '/api/v1/erp/encaixe/agente/job-1'],
+      ['POST', '/erp/encaixe/agente/job-1/progresso'],
+      ['POST', '/erp/encaixe/agente/job-1/resultado'],
+    ] as const) {
+      await expect(chamar(m, p)).resolves.toBe(true);
+    }
+  });
+
+  it('o escopo não vaza pro resto do ERP (OP, estoque, financeiro, baixar .plt pela tela)', async () => {
+    for (const p of [
+      '/erp/ops',
+      '/erp/estoque/saldos',
+      '/financeiro/titulos',
+      '/erp/encaixes/job-1/arquivos/PLT',
+    ]) {
+      await expect(chamar('GET', p)).rejects.toBeInstanceOf(ForbiddenException);
+    }
+  });
+});

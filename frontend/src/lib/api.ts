@@ -394,10 +394,11 @@ async function safeJson(res: Response): Promise<Record<string, unknown> | null> 
 // ─── API pública ────────────────────────────────────────────────────────
 
 /**
- * Baixa um arquivo (ex: CSV) de um endpoint autenticado e dispara o download.
- * Usa o mesmo token/base do `api`. Pra respostas binárias/texto (não-JSON).
+ * Busca um arquivo (imagem, .plt, CSV) de um endpoint autenticado e devolve o
+ * Blob — pra `<img>` de rota que exige login (o `<img src>` não manda o token).
+ * Mesmo contrato do `api`: Authorization + X-Empresa-Id + refresh 1× em 401.
  */
-export async function downloadFile(path: string, filename: string): Promise<void> {
+export async function buscarArquivo(path: string): Promise<Blob> {
   const url = path.startsWith('http')
     ? path
     : `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
@@ -419,7 +420,15 @@ export async function downloadFile(path: string, filename: string): Promise<void
   if (!res.ok) {
     throw new ApiError(res.status, 'DOWNLOAD_ERROR', `Falha no download (${res.status})`);
   }
-  const blob = await res.blob();
+  return res.blob();
+}
+
+/**
+ * Baixa um arquivo (ex: CSV) de um endpoint autenticado e dispara o download.
+ * Usa o mesmo token/base do `api`. Pra respostas binárias/texto (não-JSON).
+ */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const blob = await buscarArquivo(path);
   const objUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = objUrl;

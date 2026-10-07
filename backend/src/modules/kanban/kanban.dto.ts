@@ -250,6 +250,10 @@ export const API_TOKEN_ESCOPOS = [
   // pasta local. Continua exigindo ADMIN/DIRECTOR no dono do token e a vitrine
   // ligada na empresa (422). Apagar pede `confirmo: true` no MCP.
   'vitrine',
+  // encaixe = o AGENTE LOCAL do encaixe automático (GPU no PC do Léo), e SÓ as
+  // rotas /erp/encaixe/agente/*: pega risco da fila, manda progresso e entrega
+  // o .plt. Não lê nem mexe em mais nada do ERP.
+  'encaixe',
 ] as const;
 
 export const createApiTokenSchema = z.object({
