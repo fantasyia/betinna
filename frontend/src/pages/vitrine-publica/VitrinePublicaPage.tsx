@@ -476,7 +476,8 @@ function Carrossel({ cor, nome, onAbrir }: { cor: CorPub; nome: string; onAbrir?
             key={f.url}
             src={f.url}
             alt={`${nome} · ${cor.nome} · foto ${i + 1}`}
-            loading={i === 0 ? 'eager' : 'lazy'}
+            // A 2ª já vem carregada: o 1º deslize não mostra foto em branco.
+            loading={i <= 1 ? 'eager' : 'lazy'}
             decoding="async"
             onClick={onAbrir}
           />

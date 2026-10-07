@@ -50,10 +50,13 @@
 .vt-feed::-webkit-scrollbar { display: none; }
 .vt-slide { position: relative; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column; }
 .vt-stage { position: relative; flex: 1; min-height: 0; background: radial-gradient(58% 50% at 50% 46%, #fbf6ea 0%, var(--linho) 70%, #e8dcc2 100%); }
-.vt-fotos { position: absolute; inset: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+/* Deslizar UMA foto por vez (Léo, 07/10: "tá rolando como roleta"): snap-stop
+   always segura em cada foto mesmo no gesto rápido; overscroll contido não
+   puxa a página nem dispara o "voltar" do navegador. */
+.vt-fotos { position: absolute; inset: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .vt-fotos::-webkit-scrollbar { display: none; }
 /* Tela baixa corta a foto 3:4: segura perto do TOPO pra não sumir a cabeça (card #02, 07/10). */
-.vt-fotos img { flex: none; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; scroll-snap-align: center; }
+.vt-fotos img { flex: none; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; scroll-snap-align: center; scroll-snap-stop: always; }
 .vt-pontos { position: absolute; left: 0; right: 0; bottom: 32px; display: flex; justify-content: center; gap: 5px; pointer-events: none; }
 .vt-pontos i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 252, 245, .6); box-shadow: 0 0 0 1px rgba(26, 45, 56, .2); }
 .vt-pontos i[data-on='true'] { background: var(--petroleo); }
