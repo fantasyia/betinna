@@ -198,6 +198,21 @@ export class VitrineFotosService implements OnModuleInit {
     return mc;
   }
 
+  /** Marca/desmarca a foto pro rodízio da abertura (cada cliente vê uma das marcadas primeiro). */
+  async marcarRodizio(user: AuthenticatedUser, fotoId: string, rodizio: boolean) {
+    const empresaId = this.requireEmpresa(user);
+    const foto = await this.prisma.catalogoFoto.findFirst({
+      where: { id: fotoId, modeloCor: { modelo: { empresaId } } },
+      select: { id: true },
+    });
+    if (!foto) throw new NotFoundException('Foto', fotoId);
+    return this.prisma.catalogoFoto.update({
+      where: { id: fotoId },
+      data: { rodizio },
+      select: { id: true, rodizio: true },
+    });
+  }
+
   /** Ordem das fotos de UM grupo cor × linha (null = as gerais da cor). */
   async reordenar(
     user: AuthenticatedUser,

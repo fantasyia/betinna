@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Film, GripVertical, ImagePlus, Star, Trash2 } from 'lucide-react';
+import { Film, GripVertical, ImagePlus, Shuffle, Star, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useToast } from '@/components/toast';
@@ -86,6 +86,15 @@ export function FotosDaCor({
     }
   }
 
+  async function alternarRodizio(foto: Foto) {
+    try {
+      await api.put(`/vitrine/admin/fotos/${foto.id}/rodizio`, { rodizio: !foto.rodizio });
+      onMudou();
+    } catch (err) {
+      toast.error('Não foi possível marcar a foto', apiErrorMessage(err));
+    }
+  }
+
   async function excluir(foto: Foto) {
     if (!window.confirm('Excluir esta foto?')) return;
     try {
@@ -161,7 +170,9 @@ export function FotosDaCor({
       {enviando && <p className="text-xs text-muted mb-2">{enviando}</p>}
       {fotos.length > 1 && (
         <p className="text-xs text-muted mb-2">
-          Arraste as fotos pra mudar a ordem. A primeira é a capa.
+          Arraste as fotos pra mudar a ordem. A primeira é a capa. Marque com{' '}
+          <Shuffle size={11} className="inline" aria-label="rodízio" /> as que podem abrir a
+          vitrine: cada cliente vê uma delas primeiro (sempre a mesma pra ele).
         </p>
       )}
       {fotos.length === 0 ? (
@@ -191,6 +202,11 @@ export function FotosDaCor({
                   capa
                 </span>
               )}
+              {f.rodizio && (
+                <span className="absolute right-1 top-1 rounded-[10px] bg-success px-1.5 py-0.5 text-[10px] text-white">
+                  rodízio
+                </span>
+              )}
               <div className="mt-1 flex items-center justify-between">
                 <GripVertical size={14} className="text-muted" aria-hidden />
                 {i > 0 && (
@@ -203,6 +219,17 @@ export function FotosDaCor({
                     <Star size={14} />
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => void alternarRodizio(f)}
+                  aria-label={f.rodizio ? 'Tirar do rodízio da abertura' : 'Pôr no rodízio da abertura'}
+                  aria-pressed={!!f.rodizio}
+                  title="Rodízio: cada cliente vê uma das fotos marcadas primeiro"
+                  className={f.rodizio ? 'text-success' : 'text-muted hover:text-text'}
+                  data-testid={`foto-rodizio-${f.id}`}
+                >
+                  <Shuffle size={14} />
+                </button>
                 <button
                   type="button"
                   onClick={() => void excluir(f)}

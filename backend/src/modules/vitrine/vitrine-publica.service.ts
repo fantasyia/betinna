@@ -95,6 +95,8 @@ export class VitrinePublicaService {
             altura: f.altura,
             // null = foto geral da cor; com id = foto daquela linha (biotipo).
             linhaId: f.linhaId,
+            // Pode abrir a vitrine (rodízio por cliente).
+            rodizio: f.rodizio,
           })),
         })),
         linhas: m.linhas

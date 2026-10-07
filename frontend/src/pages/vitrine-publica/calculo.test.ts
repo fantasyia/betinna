@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  abrirPeloRodizio,
   corDaBolinha,
   corInicial,
   corTemEstoque,
@@ -439,9 +440,45 @@ describe('tabela de medidas no material de divulgação', () => {
       },
     });
     const txt = textoKit(modelo({ linhas: [plus] }));
-    expect(txt).toContain(
-      'Plus Size\nG1: Veste bem até (média) 130 kg · Cintura esticada (cm) 64',
-    );
+    expect(txt).toContain('Plus Size\nG1: Veste bem até (média) 130 kg · Cintura esticada (cm) 64');
     expect(txt).not.toContain('Plus Size (cm)');
+  });
+});
+
+describe('rodízio da foto de abertura (Léo, 07/10)', () => {
+  const fotos = ['a', 'b', 'c', 'd', 'e'].map((id) => ({
+    id,
+    rodizio: id === 'a' || id === 'd' || id === 'e',
+  }));
+  const ids = (xs: Array<{ id: string }>) => xs.map((x) => x.id);
+
+  it('o mesmo cliente vê sempre a mesma foto primeiro', () => {
+    const um = abrirPeloRodizio(fotos, 'cor:linha', 'cliente-1');
+    expect(abrirPeloRodizio(fotos, 'cor:linha', 'cliente-1')).toEqual(um);
+  });
+
+  it('clientes diferentes abrem em fotos diferentes — e só nas MARCADAS', () => {
+    const primeiras = new Set(
+      Array.from({ length: 40 }, (_, i) => abrirPeloRodizio(fotos, 'cor:linha', `c${i}`)[0].id),
+    );
+    expect(primeiras.size).toBeGreaterThan(1);
+    for (const p of primeiras) expect(['a', 'd', 'e']).toContain(p);
+  });
+
+  it('a escolhida vai pra frente; o resto fica na ordem do cadastro', () => {
+    const r = ids(abrirPeloRodizio(fotos, 'k', 'x'));
+    expect(r).toHaveLength(5);
+    expect(r.slice(1)).toEqual(ids(fotos).filter((id) => id !== r[0]));
+  });
+
+  it('nenhuma marcada (ou sem código do aparelho): ordem do cadastro, como antes', () => {
+    const nenhuma = fotos.map((f) => ({ ...f, rodizio: false }));
+    expect(abrirPeloRodizio(nenhuma, 'k', 'x')).toBe(nenhuma);
+    expect(abrirPeloRodizio(fotos, 'k', null)).toBe(fotos);
+  });
+
+  it('uma só marcada: ela abre pra todo mundo', () => {
+    const uma = fotos.map((f) => ({ ...f, rodizio: f.id === 'c' }));
+    expect(abrirPeloRodizio(uma, 'k', 'qualquer')[0].id).toBe('c');
   });
 });

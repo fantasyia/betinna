@@ -587,6 +587,21 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     }),
   );
 
+  server.registerTool(
+    "vitrine_foto_rodizio",
+    {
+      description:
+        "Marca/desmarca a foto pro RODÍZIO da abertura: entre as fotos marcadas de uma cor × linha, cada " +
+        "cliente vê UMA primeiro (sempre a mesma pra ele). Nenhuma marcada = abre na 1ª da ordem. " +
+        "Use nas fotos de corpo inteiro (as focadas no produto ficam pra depois).",
+      inputSchema: { fotoId: z.string(), rodizio: z.boolean() },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    seguro(async ({ fotoId, rodizio }: { fotoId: string; rodizio: boolean }) =>
+      ok(await api.put(`/vitrine/admin/fotos/${seg(fotoId)}/rodizio`, { rodizio })),
+    ),
+  );
+
   // ─── Vídeos do modelo ─────────────────────────────────────────────────
 
   server.registerTool(

@@ -33,6 +33,8 @@ export interface CorPub {
     altura: number | null;
     /** Linha (biotipo) da foto; null/ausente = foto geral da cor. */
     linhaId?: string | null;
+    /** Pode abrir a vitrine: entra no rodízio por cliente. */
+    rodizio?: boolean;
   }>;
   /** Ponto da capa escolhido no cadastro pra bolinha (null = automático). */
   amostra?: { x: number; y: number } | null;
@@ -113,6 +115,34 @@ export function fotosDaLinha(cor: CorPub, linhaId: string | null | undefined): C
   if (daLinha.length) return daLinha;
   const gerais = cor.fotos.filter((f) => !f.linhaId);
   return gerais.length ? gerais : cor.fotos;
+}
+
+/** Hash estável de um texto (FNV-1a 32 bits) — mesma entrada, mesmo número. PURO. */
+export function hashTexto(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Rodízio da abertura (Léo, 07/10): entre as fotos MARCADAS, cada cliente vê
+ * uma primeiro — escolhida pelo código do aparelho dele + a cor × linha, então
+ * volta sempre a mesma pra ele e varia de um cliente pro outro. A foto
+ * escolhida vai pra frente; o resto segue na ordem do cadastro. Nenhuma
+ * marcada (ou sem código): a ordem do cadastro, como antes. PURO.
+ */
+export function abrirPeloRodizio<T extends { rodizio?: boolean }>(
+  fotos: T[],
+  chave: string,
+  visitante: string | null,
+): T[] {
+  const marcadas = fotos.filter((f) => f.rodizio);
+  if (!visitante || marcadas.length === 0) return fotos;
+  const escolhida = marcadas[hashTexto(`${visitante}:${chave}`) % marcadas.length];
+  return [escolhida, ...fotos.filter((f) => f !== escolhida)];
 }
 
 /**

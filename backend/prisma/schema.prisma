@@ -4179,6 +4179,9 @@ model CatalogoFoto {
   /// biotipo certo pra cada linha. null = foto GERAL da cor, vale pra todas.
   /// Linha sem foto própria cai nas gerais. Ordem e capa são por cor × linha.
   linhaId     String?
+  /// Rodízio da abertura (Léo, 07/10): entre as fotos marcadas, cada cliente
+  /// vê UMA primeiro — sempre a mesma pra ele. Nenhuma marcada = abre na 1ª.
+  rodizio     Boolean @default(false)
 
   criadoEm DateTime @default(now())
 

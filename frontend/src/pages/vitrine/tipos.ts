@@ -52,6 +52,8 @@ export interface Foto {
   altura: number | null;
   /** Linha (biotipo) da foto; null = foto geral da cor, vale pra todas as linhas. */
   linhaId?: string | null;
+  /** Entra no rodízio da abertura (cada cliente vê uma das marcadas primeiro). */
+  rodizio?: boolean;
 }
 
 export interface Video {

@@ -112,6 +112,18 @@ export class VitrineMidiaController {
     return this.fotos.definirAmostra(user, modeloCorId, dto.ponto);
   }
 
+  @Put('fotos/:id/rodizio')
+  @ApiOperation({
+    summary: 'Foto no rodízio da abertura (cada cliente vê uma das marcadas primeiro)',
+  })
+  marcarRodizio(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(z.object({ rodizio: z.boolean() }))) dto: { rodizio: boolean },
+  ) {
+    return this.fotos.marcarRodizio(user, id, dto.rodizio);
+  }
+
   @Delete('fotos/:id')
   excluirFoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.fotos.excluir(user, id);

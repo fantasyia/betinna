@@ -10,6 +10,7 @@ import {
   mascararWhatsapp,
   limparCarrinho,
   corDaBolinha,
+  abrirPeloRodizio,
   corInicial,
   coresPorEstoque,
   fotosDaLinha,
@@ -57,6 +58,30 @@ function useFontes() {
 }
 
 const chaveCarrinho = (slug: string) => `vitrine:carrinho:${slug}`;
+
+/**
+ * Código deste aparelho, pro rodízio da foto de abertura: cada cliente vê uma
+ * foto diferente primeiro, e a mesma quando volta. Sem armazenamento (modo
+ * privado), vale só nesta visita.
+ */
+const CHAVE_VISITANTE = 'vitrine:visitante';
+function codigoDoVisitante(): string {
+  const novo = () => Math.random().toString(36).slice(2, 12);
+  try {
+    const salvo = localStorage.getItem(CHAVE_VISITANTE);
+    if (salvo) return salvo;
+    const c = novo();
+    localStorage.setItem(CHAVE_VISITANTE, c);
+    return c;
+  } catch {
+    return novo();
+  }
+}
+
+/** Fotos da cor × linha na ordem que ESTE cliente vê (rodízio da abertura). */
+function fotosDoCliente(cor: CorPub, linhaId: string, visitante: string) {
+  return abrirPeloRodizio(fotosDaLinha(cor, linhaId), `${cor.id}:${linhaId}`, visitante);
+}
 
 function lerCarrinho(slug: string): Carrinho {
   try {
@@ -126,6 +151,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   // Modelo que estava na tela quando o lojista trocou pra uma linha que ele não
   // tem: fica no topo com o aviso, em vez de sumir (Léo, 07/10).
   const [fixado, setFixado] = useState<string | null>(null);
+  const [visitante] = useState(codigoDoVisitante);
   const feed = useRef<HTMLDivElement>(null);
 
   // Carrinho salvo no aparelho: sair e voltar mantém o pedido montado.
@@ -281,7 +307,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                 )}
                 <Carrossel
                   key={`${cor.id}:${l.linhaId}`}
-                  cor={{ ...cor, fotos: fotosDaLinha(cor, l.linhaId) }}
+                  cor={{ ...cor, fotos: fotosDoCliente(cor, l.linhaId, visitante) }}
                   nome={m.nome}
                   onAbrir={() => setPdp(m)}
                 />
@@ -343,6 +369,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           l={linhaNoModelo(pdp)}
           f={v.faixas}
           selo={seloDa(linhaNoModelo(pdp).linhaId)}
+          visitante={visitante}
           onCor={(id) => setCorDe((s) => ({ ...s, [pdp.id]: id }))}
           onFechar={() => setPdp(null)}
           onGrade={() => {
@@ -698,6 +725,7 @@ function PaginaModelo({
   l,
   f,
   selo,
+  visitante,
   onCor,
   onFechar,
   onGrade,
@@ -708,6 +736,7 @@ function PaginaModelo({
   l: LinhaPub;
   f: Faixas;
   selo: string | null;
+  visitante: string;
   onCor: (id: string) => void;
   onFechar: () => void;
   onGrade: () => void;
@@ -722,7 +751,7 @@ function PaginaModelo({
       <div className="vt-stage" style={{ position: 'relative' }}>
         <Carrossel
           key={`${cor.id}:${l.linhaId}`}
-          cor={{ ...cor, fotos: fotosDaLinha(cor, l.linhaId) }}
+          cor={{ ...cor, fotos: fotosDoCliente(cor, l.linhaId, visitante) }}
           nome={m.nome}
         />
         <NomeDaCor cor={cor} />
