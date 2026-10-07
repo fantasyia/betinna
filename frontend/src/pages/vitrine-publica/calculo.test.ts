@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   abrirPeloRodizio,
+  gradeDoCarrinho,
   quantidadesDoSimulador,
   simularPedido,
   corDaBolinha,
@@ -534,5 +535,27 @@ describe('simulador do pedido (Léo, 07/10)', () => {
       simularPedido({ ...reg, precoEntrada: null, precoVolume: null, precoAtacadao: null }, fx, 50)
         .preco,
     ).toBeNull();
+  });
+});
+
+describe('pedido como tabela (Léo, 07/10)', () => {
+  it('uma tabela por linha, só tamanhos e cores com peça, quantidade de cada tamanho', () => {
+    const plus = linha({
+      id: 'ml-plus',
+      linhaId: 'lin-plus',
+      nome: 'Plus',
+      tamanhos: [{ id: 't-g1', nome: 'G1' }],
+    });
+    const m = modelo({ linhas: [linha(), plus] });
+    const g = gradeDoCarrinho(m, {
+      'mod-1': { 'mc-preto': { 't-m': 2 }, 'mc-bege': { 't-p': 1, 't-m': 3 } },
+    });
+    expect(g).toHaveLength(1); // o Plus não tem peça: some
+    expect(g[0].tamanhos.map((t) => t.nome)).toEqual(['P', 'M']);
+    expect(g[0].cores.map((x) => [x.cor.nome, x.qtds, x.total])).toEqual([
+      ['Preto', [0, 2], 2],
+      ['Bege', [1, 3], 4],
+    ]);
+    expect(g[0].total).toBe(6);
   });
 });

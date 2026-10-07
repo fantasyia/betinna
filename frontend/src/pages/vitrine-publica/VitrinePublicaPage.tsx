@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatMoeda, formatNumero } from '@/lib/masks';
@@ -14,6 +22,7 @@ import {
   corInicial,
   coresPorEstoque,
   fotosDaLinha,
+  gradeDoCarrinho,
   lucroNaProximaFaixa,
   progressoFaixa,
   quantidadesDoSimulador,
@@ -1223,34 +1232,54 @@ function SeuPedido({
           </div>
         ) : (
           itens.map((m) => {
-            const linhas: string[] = [];
-            for (const c of m.cores) {
-              for (const l of m.linhas) {
-                const partes = l.tamanhos
-                  .map((t) => ({ t, q: carrinho[m.id]?.[c.id]?.[t.id] ?? 0 }))
-                  .filter((x) => x.q > 0)
-                  .map((x) => `${x.t.nome} ${x.q}`);
-                if (partes.length) linhas.push(`${c.nome} · ${l.nome}: ${partes.join('  ')}`);
-              }
-            }
             const capa = m.cores[0] ? corDaBolinha(m.cores[0]).fotos[0] : undefined;
             return (
-              <div key={m.id} className="vt-line">
-                {capa ? <img src={capa.thumbUrl ?? capa.url} alt="" /> : <span />}
-                <div>
-                  <div className="vt-name">{m.nome}</div>
-                  <div className="vt-g">
-                    {linhas.map((x) => (
-                      <div key={x}>{x}</div>
-                    ))}
+              <div key={m.id} className="vt-line" data-testid={`vt-linha-${m.id}`}>
+                <div className="vt-line-head">
+                  {capa ? <img src={capa.thumbUrl ?? capa.url} alt="" /> : <span />}
+                  <div>
+                    <div className="vt-name">{m.nome}</div>
+                    <small>{formatNumero(pecasDoModelo(carrinho, m.id))} peças</small>
                   </div>
-                  <div className="vt-foot">
-                    <b>{pecasDoModelo(carrinho, m.id)} peças</b>
-                    <button type="button" onClick={() => onEditar(m)}>
-                      editar
-                    </button>
-                  </div>
+                  <button type="button" className="vt-line-edit" onClick={() => onEditar(m)}>
+                    editar
+                  </button>
                 </div>
+                {/* Uma tabelinha por linha: cor × tamanho, só o que tem peça. */}
+                {gradeDoCarrinho(m, carrinho).map((g) => (
+                  <div key={g.linha.id} className="vt-tab">
+                    <div className="vt-tab-titulo">
+                      <span>{g.linha.nome}</span>
+                      <span>{formatNumero(g.total)} pç</span>
+                    </div>
+                    <div
+                      className="vt-tab-grade"
+                      style={{
+                        gridTemplateColumns: `minmax(112px, max-content) repeat(${g.tamanhos.length}, minmax(22px, 1fr))`,
+                      }}
+                    >
+                      <span className="vt-tab-h" />
+                      {g.tamanhos.map((t) => (
+                        <span key={t.id} className="vt-tab-tam vt-tab-h">
+                          {t.nome}
+                        </span>
+                      ))}
+                      {g.cores.map((x) => (
+                        <Fragment key={x.cor.id}>
+                          <span className="vt-tab-cor">
+                            <i style={{ background: x.cor.hex }} />
+                            {x.cor.nome}
+                          </span>
+                          {x.qtds.map((q, i) => (
+                            <span key={i} className={q ? 'vt-tab-q' : 'vt-tab-q vt-tab-zero'}>
+                              {q || '·'}
+                            </span>
+                          ))}
+                        </Fragment>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             );
           })

@@ -197,6 +197,30 @@ export function lucroPorPeca(atacado: number | null, sugerido: number | null) {
   return { lucro, pct: Math.round((lucro / atacado) * 100) };
 }
 
+/**
+ * O que do modelo está no pedido, como TABELA (Léo, 07/10: a lista de números
+ * soltos era ilegível): uma por linha (Infantil, Plus…), colunas = só os
+ * tamanhos que têm peça, uma fileira por cor com a quantidade de cada tamanho.
+ * Linha/cor/tamanho sem peça não aparece. PURO.
+ */
+export function gradeDoCarrinho(m: ModeloPub, c: Carrinho) {
+  const doModelo = c[m.id] ?? {};
+  return m.linhas
+    .map((l) => {
+      const tamanhos = l.tamanhos.filter((t) =>
+        m.cores.some((cor) => (doModelo[cor.id]?.[t.id] ?? 0) > 0),
+      );
+      const cores = m.cores
+        .map((cor) => {
+          const qtds = tamanhos.map((t) => doModelo[cor.id]?.[t.id] ?? 0);
+          return { cor, qtds, total: qtds.reduce((s, q) => s + q, 0) };
+        })
+        .filter((x) => x.total > 0);
+      return { linha: l, tamanhos, cores, total: cores.reduce((s, x) => s + x.total, 0) };
+    })
+    .filter((g) => g.total > 0);
+}
+
 export function pecasDoModelo(c: Carrinho, modeloId: string, linha?: LinhaPub): number {
   const porCor = c[modeloId] ?? {};
   const ids = linha ? new Set(linha.tamanhos.map((t) => t.id)) : null;

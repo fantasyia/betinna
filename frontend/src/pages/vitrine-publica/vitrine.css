@@ -166,13 +166,23 @@
 .vt-cart header h2 { margin: 0; font-family: var(--f-title); font-weight: 500; font-size: 24px; }
 .vt-back { width: 40px; height: 40px; border-radius: 50%; border: 1px solid #e3d8bf !important; background: var(--branco) !important; }
 .vt-list { flex: 1; overflow-y: auto; padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
-.vt-line { display: grid; grid-template-columns: 54px 1fr; gap: 12px; background: var(--branco); border-radius: 16px; padding: 12px; border: 1px solid #e3d8bf; }
-.vt-line img { width: 54px; height: 70px; object-fit: cover; border-radius: 10px; }
+/* Item do pedido (Léo, 07/10): cabeçalho do modelo + uma tabelinha cor × tamanho por linha. */
+.vt-line { display: grid; gap: 10px; background: var(--branco); border-radius: 16px; padding: 12px; border: 1px solid #e3d8bf; }
+.vt-line-head { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; }
+.vt-line-head img { width: 44px; height: 56px; object-fit: cover; border-radius: 10px; }
 .vt-line .vt-name { font-size: 17px; }
-.vt-line .vt-g { font-size: 12px; color: var(--oliva); line-height: 1.65; margin-top: 3px; }
-.vt-line .vt-g em { font-style: normal; color: var(--petroleo); font-weight: 600; }
-.vt-line .vt-foot { display: flex; gap: 8px; margin-top: 6px; align-items: center; font-size: 12px; }
-.vt-line .vt-foot button { margin-left: auto; color: var(--terracota); font-weight: 600; font-size: 12px; }
+.vt-line-head small { font-size: 12px; color: var(--oliva); font-weight: 600; font-variant-numeric: tabular-nums; }
+.vt-line-edit { align-self: start; color: var(--terracota); font-weight: 600; font-size: 12.5px; padding: 4px 2px; }
+.vt-tab { border: 1px solid #eee4ce; border-radius: 12px; overflow: hidden; }
+.vt-tab-titulo { display: flex; justify-content: space-between; padding: 6px 10px; background: var(--linho); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; color: var(--oliva); }
+.vt-tab-grade { display: grid; overflow-x: auto; font-variant-numeric: tabular-nums; }
+.vt-tab-grade > span { padding: 6px 4px; border-top: 1px solid #f1e9d6; text-align: center; font-size: 13px; }
+.vt-tab-grade > span.vt-tab-h { border-top: 0; }
+.vt-tab-tam { font-size: 10.5px !important; font-weight: 700; color: var(--oliva); }
+.vt-tab-cor { display: flex; align-items: center; gap: 6px; justify-content: flex-start; text-align: left !important; padding-left: 10px !important; padding-right: 8px !important; font-size: 12.5px !important; color: var(--petroleo); white-space: nowrap; }
+.vt-tab-cor i { flex: none; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 1px var(--quente); }
+.vt-tab-q { font-weight: 700; color: var(--petroleo); }
+.vt-tab-zero { color: var(--quente); font-weight: 400; }
 .vt-box { background: var(--branco); border: 1px solid #e3d8bf; border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
 .vt-box h3 { margin: 0; font-family: var(--f-title); font-weight: 500; font-size: 18px; }
 .vt-bar { height: 8px; border-radius: 4px; background: var(--linho); overflow: hidden; }
