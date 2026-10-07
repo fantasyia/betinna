@@ -224,10 +224,6 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                   onAbrir={() => setPdp(m)}
                 />
                 <NomeDaCor cor={cor} />
-                <div className="vt-counter">
-                  {String(i + 1).padStart(2, '0')} / {String(lista.length).padStart(2, '0')}
-                  {m.categoria ? ` · ${m.categoria.nome}` : ''}
-                </div>
                 {i === 0 && lista.length > 1 && <div className="vt-hint">deslize pra cima ↑</div>}
               </div>
               <div className="vt-info">
@@ -382,6 +378,13 @@ function Carrossel({ cor, nome, onAbrir }: { cor: CorPub; nome: string; onAbrir?
           />
         ))}
       </div>
+      {/* Contador DA FOTO (desta cor, nesta linha) — antes era a posição do
+          modelo no feed, e parecia contagem de fotos errada. */}
+      {cor.fotos.length > 1 && (
+        <div className="vt-counter" data-testid="vt-contador-fotos">
+          {idx + 1} / {cor.fotos.length}
+        </div>
+      )}
       {cor.fotos.length > 1 && (
         <div className="vt-pontos" aria-hidden>
           {cor.fotos.map((f, i) => (
