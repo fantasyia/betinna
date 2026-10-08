@@ -435,6 +435,54 @@ export class FinanceiroService {
     return { ok: true };
   }
 
+  /** Um lançamento — os mesmos campos da lista, mais as baixas (inclusive estornadas). */
+  async ver(user: AuthenticatedUser, id: string) {
+    const empresaId = await this.empresaLigada(user);
+    const t = await this.prisma.finTitulo.findFirst({
+      where: { id, empresaId },
+      include: {
+        categoria: { select: { id: true, nome: true } },
+        baixas: {
+          orderBy: { data: 'asc' },
+          include: { conta: { select: { nome: true } } },
+        },
+      },
+    });
+    if (!t) throw new NotFoundException('Lançamento', id);
+    const valorC = centavos(Number(t.valor));
+    const pagoC = t.baixas
+      .filter((b) => !b.estornadaEm)
+      .reduce((s, b) => s + centavos(Number(b.valor)), 0);
+    return {
+      id: t.id,
+      tipo: t.tipo,
+      descricao: t.descricao,
+      valor: reais(valorC),
+      pago: reais(pagoC),
+      saldo: reais(Math.max(0, valorC - pagoC)),
+      vencimento: t.vencimento,
+      status: t.status,
+      situacao: situacao(t.status, t.vencimento, hojePuro()),
+      categoria: t.categoria,
+      contatoNome: t.contatoNome,
+      observacoes: t.observacoes,
+      pedidoId: t.pedidoId,
+      parcela: t.parcela,
+      totalParcelas: t.totalParcelas,
+      recorrente: Boolean(t.recorrenciaId),
+      automatico: Boolean(t.pedidoId || t.opEntregaId || t.opSaldoId || t.insumoMovimentoId),
+      baixas: t.baixas.map((b) => ({
+        id: b.id,
+        valor: Number(b.valor),
+        data: b.data,
+        forma: b.forma,
+        observacao: b.observacao,
+        conta: b.conta.nome,
+        estornadaEm: b.estornadaEm,
+      })),
+    };
+  }
+
   async baixasDoTitulo(user: AuthenticatedUser, id: string) {
     const empresaId = await this.empresaLigada(user);
     await this.tituloDaEmpresa(empresaId, id);

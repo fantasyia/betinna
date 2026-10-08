@@ -380,3 +380,66 @@ describe('FinanceiroService — atalhos (pedido e OP)', () => {
     ]);
   });
 });
+
+describe('FinanceiroService.ver (detalhe de um lançamento)', () => {
+  it('traz pago/saldo sem a baixa estornada, situação e as baixas', async () => {
+    const { svc, prisma } = montar();
+    prisma.finTitulo.findFirst.mockResolvedValue({
+      id: 't-1',
+      tipo: 'RECEBER',
+      descricao: 'PED-0002 · parcela 1/2',
+      valor: Dc(332.33),
+      vencimento: new Date('2026-11-09T00:00:00Z'),
+      status: 'PARCIAL',
+      categoria: { id: 'cat-1', nome: 'Vendas' },
+      contatoNome: 'Cliente',
+      observacoes: null,
+      pedidoId: 'ped-2',
+      parcela: 1,
+      totalParcelas: 2,
+      recorrenciaId: null,
+      opEntregaId: null,
+      opSaldoId: null,
+      insumoMovimentoId: null,
+      baixas: [
+        {
+          id: 'b-1',
+          valor: Dc(100),
+          data: new Date(),
+          forma: 'PIX',
+          observacao: null,
+          conta: { nome: 'Asaas' },
+          estornadaEm: null,
+        },
+        {
+          id: 'b-2',
+          valor: Dc(50),
+          data: new Date(),
+          forma: 'PIX',
+          observacao: null,
+          conta: { nome: 'Asaas' },
+          estornadaEm: new Date(),
+        },
+      ],
+    });
+    const r = await svc.ver(user as never, 't-1');
+    expect(prisma.finTitulo.findFirst.mock.calls[0][0].where).toEqual({
+      id: 't-1',
+      empresaId: 'emp-1',
+    });
+    expect(r).toMatchObject({
+      valor: 332.33,
+      pago: 100,
+      saldo: 232.33,
+      automatico: true,
+      recorrente: false,
+    });
+    expect(r.baixas.map((b) => b.id)).toEqual(['b-1', 'b-2']);
+  });
+
+  it('de outra empresa ou inexistente: 404', async () => {
+    const { svc, prisma } = montar();
+    prisma.finTitulo.findFirst.mockResolvedValue(null);
+    await expect(svc.ver(user as never, 'x')).rejects.toThrow();
+  });
+});

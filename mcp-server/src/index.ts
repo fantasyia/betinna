@@ -18,6 +18,7 @@ import { api, ApiError } from "./api.js";
 import { pastasPermitidas, resolverPermitido } from "./arquivos.js";
 import { seg } from "./caminho.js";
 import { registrarVitrine } from "./vitrine.js";
+import { registrarLeituraErp } from "./leitura-erp.js";
 
 const server = new McpServer({ name: "betinna-kanban", version: "1.0.0" });
 
@@ -4410,6 +4411,8 @@ server.registerTool(
 // VITRINE DE ATACADO + PRECIFICAÇÃO (vitrine_*, precificacao_*) — ./vitrine.ts
 // Exige escopo "vitrine" no PAT. Apagar pede `confirmo: true`.
 registrarVitrine(server, { ok, erro, seguro });
+// Pedidos e Financeiro — SOMENTE LEITURA (escopos "pedidos" e "financeiro").
+registrarLeituraErp(server, { ok, erro, seguro });
 
 // ─── Boot ───────────────────────────────────────────────────────────────
 // DEPOIS de todas as tools: as `campanha_*` eram registradas após o connect e

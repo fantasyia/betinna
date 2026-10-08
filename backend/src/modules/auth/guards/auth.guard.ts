@@ -177,6 +177,8 @@ export class AuthGuard implements CanActivate {
       | 'email'
       | 'vitrine'
       | 'encaixe'
+      | 'pedidos'
+      | 'financeiro'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -235,11 +237,17 @@ export class AuthGuard implements CanActivate {
     // /erp/encaixe/agente/* = o agente local do encaixe (GPU). ANCORADO aqui: o
     // resto de /erp (estoque, OP, financeiro) segue fora do alcance do PAT.
     else if (/^\/erp\/encaixe\/agente(\/|$)/.test(rel)) moduloRequerido = 'encaixe';
+    // /pedidos e /financeiro = LEITURA pro agente (card "MCP: ler pedidos e
+    // Financeiro"). SÓ GET (restringido abaixo): pedido mexe com ERP e cliente,
+    // título mexe com dinheiro — escrever é de gente, na tela.
+    else if (/^\/pedidos(\/|$)/.test(rel)) moduloRequerido = 'pedidos';
+    else if (/^\/financeiro(\/|$)/.test(rel)) moduloRequerido = 'financeiro';
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
           '/conhecimento, /tags, /inbox, /campanhas, /integracoes/email/{status,teste} ' +
-          '/vitrine/admin, /precificacao, /erp/encaixe/agente e /mullerbot/prompts|persona',
+          '/vitrine/admin, /precificacao, /erp/encaixe/agente, /pedidos e /financeiro (leitura) ' +
+          'e /mullerbot/prompts|persona',
       );
     }
 
@@ -307,7 +315,10 @@ export class AuthGuard implements CanActivate {
         moduloRequerido === 'usuarios' ||
         // inbox é conversa de CLIENTE: ler pra analisar, nunca responder nem
         // reatribuir. Mandar mensagem não é papel de agente.
-        moduloRequerido === 'inbox') &&
+        moduloRequerido === 'inbox' ||
+        // pedidos e financeiro: o agente LÊ; lançar/baixar/cancelar é de gente.
+        moduloRequerido === 'pedidos' ||
+        moduloRequerido === 'financeiro') &&
       (request.method ?? 'GET').toUpperCase() !== 'GET' &&
       !zerarConversa
     ) {

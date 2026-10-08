@@ -254,6 +254,12 @@ export const API_TOKEN_ESCOPOS = [
   // rotas /erp/encaixe/agente/*: pega risco da fila, manda progresso e entrega
   // o .plt. Não lê nem mexe em mais nada do ERP.
   'encaixe',
+  // pedidos = LEITURA de /pedidos (lista e detalhe; dado de cliente = PII).
+  // SÓ GET — criar, editar, cancelar, aprovar e mandar pro ERP ficam na tela.
+  'pedidos',
+  // financeiro = LEITURA de /financeiro (títulos, baixas, fluxo de caixa,
+  // contas). SÓ GET — lançar, baixar, cancelar e pagar ficam na tela.
+  'financeiro',
 ] as const;
 
 export const createApiTokenSchema = z.object({

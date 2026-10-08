@@ -73,6 +73,16 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     label: 'Agente do encaixe (GPU) — pega risco da fila e entrega o .plt; nada mais do ERP',
     badge: 'Encaixe',
   },
+  {
+    key: 'pedidos',
+    label: 'Pedidos (somente leitura · lista e detalhe, com dados do cliente)',
+    badge: 'Pedidos (leitura)',
+  },
+  {
+    key: 'financeiro',
+    label: 'Financeiro (somente leitura · títulos, baixas, fluxo de caixa e contas)',
+    badge: 'Financeiro (leitura)',
+  },
 ];
 
 const rotuloEscopo = (key: string) =>

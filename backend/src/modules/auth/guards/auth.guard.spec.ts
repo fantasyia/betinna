@@ -626,3 +626,99 @@ describe('AuthGuard — escopo encaixe (agente local da GPU)', () => {
     }
   });
 });
+
+describe('AuthGuard — escopos pedidos e financeiro (SÓ leitura)', () => {
+  let guard: AuthGuard;
+  const chamar = (method: string, path: string) =>
+    guard.canActivate({
+      getHandler: () => undefined,
+      getClass: () => undefined,
+      switchToHttp: () => ({
+        getRequest: () => ({
+          method,
+          path,
+          url: path,
+          headers: { authorization: 'Bearer bkt_' + 'f'.repeat(40) },
+          ip: '1.1.1.1',
+        }),
+      }),
+    } as never);
+
+  beforeEach(() => {
+    const prisma = {
+      kanbanApiToken: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 't-leit',
+          nome: 'Claude — leitura ERP',
+          usuarioId: 'u-1',
+          empresaId: 'emp-1',
+          revogado: false,
+          escopo: ['pedidos', 'financeiro'],
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      usuario: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'u-1',
+          email: 'leo@x.com',
+          nome: 'Léo',
+          role: 'DIRECTOR',
+          status: 'ATIVO',
+          empresas: [{ empresaId: 'emp-1' }],
+        }),
+      },
+    };
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setNxEx: vi.fn().mockResolvedValue(true),
+      eval: vi.fn().mockResolvedValue(1),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const reflector = { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector;
+    guard = new AuthGuard(
+      reflector,
+      {} as never,
+      prisma as never,
+      redis as never,
+      { get: () => 300 } as never,
+    );
+  });
+
+  it('lê pedidos e financeiro', async () => {
+    for (const p of [
+      '/pedidos',
+      '/api/v1/pedidos/ped-1',
+      '/financeiro/titulos',
+      '/financeiro/titulos/t-1',
+      '/financeiro/fluxo',
+      '/financeiro/contas',
+    ]) {
+      await expect(chamar('GET', p)).resolves.toBe(true);
+    }
+  });
+
+  it('NÃO escreve: criar, baixar, cancelar, mandar pro ERP', async () => {
+    for (const [m, p] of [
+      ['POST', '/pedidos'],
+      ['PATCH', '/pedidos/ped-1'],
+      ['POST', '/pedidos/ped-1/cancelar'],
+      ['POST', '/financeiro/titulos'],
+      ['POST', '/financeiro/titulos/t-1/baixas'],
+      ['DELETE', '/financeiro/titulos/t-1'],
+    ] as const) {
+      await expect(chamar(m, p)).rejects.toBeInstanceOf(ForbiddenException);
+    }
+  });
+
+  it('não vaza pro resto (ERP, contatos, prefixo parecido)', async () => {
+    for (const p of [
+      '/erp/ops',
+      '/erp/estoque/saldos',
+      '/contatos',
+      '/pedidos-x',
+      '/financeiros',
+    ]) {
+      await expect(chamar('GET', p)).rejects.toBeInstanceOf(ForbiddenException);
+    }
+  });
+});

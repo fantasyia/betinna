@@ -54,6 +54,12 @@ export class FinanceiroController {
     return this.svc.listar(user, q);
   }
 
+  @Get('titulos/:id')
+  @ApiOperation({ summary: 'Um lançamento com valor, pago, saldo, situação e as baixas' })
+  ver(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.ver(user, id);
+  }
+
   @Post('titulos')
   @ApiOperation({ summary: 'Lançamento manual (pode parcelar em N meses)' })
   criar(
