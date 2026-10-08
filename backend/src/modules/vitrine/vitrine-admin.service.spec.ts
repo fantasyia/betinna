@@ -75,6 +75,7 @@ function makePrisma() {
       findMany: vi.fn().mockResolvedValue([]),
       deleteMany: vi.fn(),
       createMany: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
     },
     catalogoVariacao: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -180,6 +181,34 @@ describe('VitrineAdminService', () => {
         }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
       expect(prisma.catalogoModelo.create).not.toHaveBeenCalled();
+    });
+
+    it('peso por tamanho (frete): grava no tamanho novo e no que já existia', async () => {
+      prisma.catalogoTamanho.count.mockResolvedValue(2);
+      prisma.catalogoModeloTamanho.findMany.mockResolvedValue([{ id: 'mt-p', tamanhoId: 't-p' }]);
+      prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
+      await svc.atualizarModelo(user(), 'mod-1', {
+        linhas: [
+          { linhaId: 'lin-1', tamanhoIds: ['t-p', 't-m'], pesos: { 't-p': 280, 't-m': 300 } },
+        ],
+      });
+      expect(prisma.catalogoModeloTamanho.createMany).toHaveBeenCalledWith({
+        data: [{ modeloLinhaId: 'ml-1', tamanhoId: 't-m', pesoGramas: 300 }],
+      });
+      expect(prisma.catalogoModeloTamanho.update).toHaveBeenCalledWith({
+        where: { modeloLinhaId_tamanhoId: { modeloLinhaId: 'ml-1', tamanhoId: 't-p' } },
+        data: { pesoGramas: 280 },
+      });
+    });
+
+    it('salvar SEM pesos (MCP, tela antiga) não apaga o peso gravado', async () => {
+      prisma.catalogoTamanho.count.mockResolvedValue(1);
+      prisma.catalogoModeloTamanho.findMany.mockResolvedValue([{ id: 'mt-p', tamanhoId: 't-p' }]);
+      prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
+      await svc.atualizarModelo(user(), 'mod-1', {
+        linhas: [{ linhaId: 'lin-1', tamanhoIds: ['t-p'] }],
+      });
+      expect(prisma.catalogoModeloTamanho.update).not.toHaveBeenCalled();
     });
 
     it('editar modelo de outra empresa → 404', async () => {

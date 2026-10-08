@@ -13,6 +13,8 @@ import { VitrineMidiaController } from './vitrine-midia.controller';
 import { VitrinePublicaController } from './vitrine-publica.controller';
 import { VitrinePublicaService } from './vitrine-publica.service';
 import { VitrinePedidoService } from './vitrine-pedido.service';
+import { FreteService } from './frete.service';
+import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 
 /**
  * Vitrine de atacado (Fase 1 — Ribelt Distribuidora Têxtil, 05/10/2026).
@@ -22,7 +24,15 @@ import { VitrinePedidoService } from './vitrine-pedido.service';
 @Module({
   // O pedido da vitrine acende fluxo (PEDIDO_CRIADO) e avisa a equipe.
   // ERP: o pedido enviado reserva as peças por 20 min.
-  imports: [FluxosModule, NotificacoesModule, ErpModule, FinanceiroModule, CheckoutModule],
+  // Frete: o token do Melhor Envio é credencial cifrada de Integrações.
+  imports: [
+    FluxosModule,
+    NotificacoesModule,
+    ErpModule,
+    FinanceiroModule,
+    CheckoutModule,
+    IntegracoesModule,
+  ],
   controllers: [
     VitrineAdminController,
     VitrineMidiaController,
@@ -34,6 +44,7 @@ import { VitrinePedidoService } from './vitrine-pedido.service';
     VitrineFotosService,
     VitrinePublicaService,
     VitrinePedidoService,
+    FreteService,
     PrecificacaoService,
   ],
   exports: [VitrineAdminService, VitrineFotosService],

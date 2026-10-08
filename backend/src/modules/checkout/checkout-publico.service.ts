@@ -126,6 +126,7 @@ export class CheckoutPublicoService {
         clienteId: true,
         cliente: { select: { nome: true, cnpj: true } },
         itens: { select: { precoUnitario: true } },
+        entrega: true,
         empresa: { select: { nome: true, config: true } },
       },
     });
@@ -133,13 +134,20 @@ export class CheckoutPublicoService {
     const cfg = (((p.empresa.config ?? {}) as Record<string, unknown>).checkout ??
       {}) as ConfigCheckout;
     const totalC = c(Number(p.total));
-    const semPreco = p.itens.some((i) => Number(i.precoUnitario) <= 0);
-    return { p, cfg, totalC, semPreco };
+    // Frete a combinar = o total ainda não tem o frete: não cobra online.
+    const freteAConfirmar =
+      (p.entrega as { freteAConfirmar?: boolean } | null)?.freteAConfirmar === true;
+    const semPreco = p.itens.some((i) => Number(i.precoUnitario) <= 0) || freteAConfirmar;
+    return { p, cfg, totalC, semPreco, freteAConfirmar };
   }
 
   /** Opções de pagamento + a cobrança em aberto (se houver). */
   async opcoes(slug: string, pedidoId: string, token: string | undefined) {
-    const { p, cfg, totalC, semPreco } = await this.contexto(slug, pedidoId, token);
+    const { p, cfg, totalC, semPreco, freteAConfirmar } = await this.contexto(
+      slug,
+      pedidoId,
+      token,
+    );
     const ativo = cfg.ativo === true && !!cfg.taxas;
     const atual = await this.pagamentoAtual(p.empresaId, pedidoId);
     return {
@@ -147,13 +155,15 @@ export class CheckoutPublicoService {
       disponivel: ativo && !semPreco && totalC > 0 && p.status === 'RASCUNHO',
       motivo: !ativo
         ? 'Pagamento online desligado'
-        : semPreco
-          ? 'Há item com preço a confirmar — a equipe fecha o valor com você'
-          : p.status !== 'RASCUNHO'
-            ? p.status === 'PAGO'
-              ? 'Pedido já pago'
-              : 'Pedido não está aguardando pagamento'
-            : null,
+        : freteAConfirmar
+          ? 'O frete vai ser combinado com você — a equipe fecha o valor pelo WhatsApp'
+          : semPreco
+            ? 'Há item com preço a confirmar — a equipe fecha o valor com você'
+            : p.status !== 'RASCUNHO'
+              ? p.status === 'PAGO'
+                ? 'Pedido já pago'
+                : 'Pedido não está aguardando pagamento'
+              : null,
       pix: { valor: r(totalC) },
       cartao: cfg.taxas
         ? opcoesCartao(totalC, cfg.taxas as TaxasAsaas).map((o) => ({

@@ -28,6 +28,9 @@ export const SERVICOS_EMPRESA = [
   // Pagamento online da vitrine (Pix e cartão). Escopo empresa: a CONTA Asaas é
   // do tenant — o dinheiro cai na conta dele, com a chave dele.
   'asaas',
+  // Frete da vitrine (cotação). Conta Melhor Envio do tenant: o desconto e a
+  // carteira de etiquetas são dele.
+  'melhorenvio',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -54,7 +57,8 @@ export type ServicoTipo =
   | 'ia'
   | 'email'
   | 'agenda'
-  | 'pagamento';
+  | 'pagamento'
+  | 'logistica';
 /** 'ambos' indica que o serviço aceita ambos os escopos (ex: WhatsApp empresa OU pessoal). */
 export type ServicoEscopo = 'empresa' | 'usuario' | 'ambos';
 
@@ -176,6 +180,14 @@ export const SERVICO_METADATA: Record<
   asaas: {
     nome: 'Asaas (pagamentos)',
     tipo: 'pagamento',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  // A conta tem carteira (etiqueta paga sai dela): mesma régua do Asaas.
+  melhorenvio: {
+    nome: 'Melhor Envio (frete)',
+    tipo: 'logistica',
     escopo: 'empresa',
     obrigatorio: false,
     requerDirector: true,

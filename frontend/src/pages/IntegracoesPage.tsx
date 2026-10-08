@@ -32,6 +32,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'openai',
   'clicksign',
   'asaas',
+  'melhorenvio',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -48,11 +49,22 @@ type ServicoEmpresa =
   | 'meta_app'
   | 'openai'
   | 'clicksign'
-  | 'asaas';
+  | 'asaas'
+  | 'melhorenvio';
 
 interface ServicoMeta {
   nome: string;
-  tipo: 'erp' | 'mensageria' | 'marketplace' | 'social' | 'ia' | 'email' | 'agenda' | 'assinatura' | 'pagamento';
+  tipo:
+    | 'erp'
+    | 'mensageria'
+    | 'marketplace'
+    | 'social'
+    | 'ia'
+    | 'email'
+    | 'agenda'
+    | 'assinatura'
+    | 'pagamento'
+    | 'logistica';
   obrigatorio: boolean;
   color: string;
   icon: string;
@@ -221,6 +233,23 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     credentialFields: [{ name: 'apiKey', label: 'Chave da API do Asaas ($aact_...)', type: 'password' }],
     atalho: { rotulo: 'Ativar na vitrine →', rota: '/vitrine?aba=config' },
   },
+  melhorenvio: {
+    nome: 'Melhor Envio (frete)',
+    tipo: 'logistica',
+    obrigatorio: false,
+    color: '#0a4dad',
+    icon: '📦',
+    description:
+      'Conta Melhor Envio da empresa pra cotar o frete da vitrine (o desconto da conta vale). ' +
+      'Gere o token em Melhor Envio → Gerenciar → Tokens; o de TESTE vem do sandbox. Depois de ' +
+      'salvar, configure caixas e CEP de origem em Vitrine → Configuração → Frete.',
+    connectMode: 'credentials',
+    credentialFields: [
+      { name: 'token', label: 'Token do Melhor Envio', type: 'password' },
+      { name: 'email', label: 'E-mail técnico (a API do Melhor Envio exige)' },
+    ],
+    atalho: { rotulo: 'Configurar o frete →', rota: '/vitrine?aba=config' },
+  },
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
@@ -236,6 +265,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'facebook',
   'clicksign',
   'asaas',
+  'melhorenvio',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
@@ -248,6 +278,7 @@ const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
   email: 'E-mail',
   agenda: 'Agenda',
   pagamento: 'Pagamento',
+  logistica: 'Logística',
 };
 
 // ─── Tipos do backend ────────────────────────────────────────────────
@@ -513,6 +544,7 @@ const GRUPOS_DISPONIVEIS: Array<{ tipo: ServicoMeta['tipo']; rotulo: string }> =
   { tipo: 'social', rotulo: 'Redes sociais' },
   { tipo: 'assinatura', rotulo: 'Assinatura' },
   { tipo: 'pagamento', rotulo: 'Pagamento' },
+  { tipo: 'logistica', rotulo: 'Frete' },
 ];
 
 /**

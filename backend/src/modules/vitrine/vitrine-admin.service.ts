@@ -698,8 +698,23 @@ export class VitrineAdminService {
         const entram = [...new Set(l.tamanhoIds)].filter((t) => !jaTem.has(t));
         if (entram.length) {
           await tx.catalogoModeloTamanho.createMany({
-            data: entram.map((tamanhoId) => ({ modeloLinhaId: ml.id, tamanhoId })),
+            data: entram.map((tamanhoId) => ({
+              modeloLinhaId: ml.id,
+              tamanhoId,
+              pesoGramas: l.pesos?.[tamanhoId] ?? null,
+            })),
           });
+        }
+        // Peso (frete): só mexe no que veio — quem salva sem `pesos` (MCP,
+        // tela antiga) não apaga o peso cadastrado.
+        if (l.pesos) {
+          for (const tamanhoId of l.tamanhoIds) {
+            if (!jaTem.has(tamanhoId) || !(tamanhoId in l.pesos)) continue;
+            await tx.catalogoModeloTamanho.update({
+              where: { modeloLinhaId_tamanhoId: { modeloLinhaId: ml.id, tamanhoId } },
+              data: { pesoGramas: l.pesos[tamanhoId] },
+            });
+          }
         }
       }
     }

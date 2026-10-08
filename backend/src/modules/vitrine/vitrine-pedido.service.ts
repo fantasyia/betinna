@@ -11,6 +11,8 @@ import { pagamentoOnlineLigado } from '@modules/checkout/checkout.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { SequenceService } from '@shared/utils/sequence.service';
+import { configFrete, retiradaLiberada, type ConfigFrete } from './frete';
+import { FreteIndisponivel, FreteService, type Cotacao } from './frete.service';
 import type { PedidoVitrineDto } from './vitrine.dto';
 
 type Faixa = 'entrada' | 'volume' | 'atacadao';
@@ -109,6 +111,8 @@ export class VitrinePedidoService {
     @Optional() private readonly fin?: FinanceiroAutomaticoService,
     // Pagamento online (Asaas): o código que abre a tela de pagar o pedido.
     @Optional() private readonly checkout?: CheckoutPublicoService,
+    // Frete (Melhor Envio): só age com `config.frete.ativo`.
+    @Optional() private readonly frete?: FreteService,
   ) {}
 
   /** Só quem acabou de enviar o pedido recebe o código de pagar. */
@@ -129,7 +133,23 @@ export class VitrinePedidoService {
     reservaExpiraEm: Date | null;
     /** Pagamento online ligado: abre a tela de Pix/cartão. null = combina no WhatsApp. */
     pagamento: { pedidoId: string; token: string } | null;
+    /** Frete cobrado (já dentro de `total`). */
+    frete: number;
+    /** Empresa cobra frete mas a cotação não deu: a equipe combina no WhatsApp. */
+    freteAConfirmar: boolean;
   }> {
+    const vitrine = await this.carregarVitrine(slug);
+    const r = await this.resolverCarrinho(vitrine.empresaId, vitrine, dto.itens);
+    if (vitrine.minimoEntrada && r.totalPecas < vitrine.minimoEntrada) {
+      throw new BusinessRuleException(
+        `O pedido mínimo é de ${vitrine.minimoEntrada} peças.`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    return this.enviarResolvido(slug, dto, vitrine, r);
+  }
+
+  private async carregarVitrine(slug: string) {
     const vitrine = await this.prisma.vitrine.findUnique({
       where: { slug },
       select: {
@@ -143,11 +163,22 @@ export class VitrinePedidoService {
     });
     if (!vitrine || !vitrine.ativa || !vitrine.empresa.ativo)
       throw new NotFoundException('Vitrine');
-    const empresaId = vitrine.empresaId;
+    return vitrine;
+  }
 
+  /**
+   * Carrinho → linhas do pedido com preço DAQUI (faixa pelo total de peças) e o
+   * peso de uma peça (frete). Recusa o carrinho inteiro se algum item saiu da
+   * vitrine. Usado pelo envio e pela cotação de frete.
+   */
+  private async resolverCarrinho(
+    empresaId: string,
+    vitrine: { minimoVolume: number | null; minimoAtacadao: number | null },
+    itensDto: PedidoVitrineDto['itens'],
+  ) {
     // Mesma célula repetida no payload soma (não duplica linha do pedido).
     const porCelula = new Map<string, { corId: string; tamanhoId: string; quantidade: number }>();
-    for (const i of dto.itens) {
+    for (const i of itensDto) {
       const k = `${i.corId}|${i.tamanhoId}`;
       const atual = porCelula.get(k);
       if (atual) atual.quantidade += i.quantidade;
@@ -155,12 +186,6 @@ export class VitrinePedidoService {
     }
     const itens = [...porCelula.values()];
     const totalPecas = itens.reduce((s, i) => s + i.quantidade, 0);
-    if (vitrine.minimoEntrada && totalPecas < vitrine.minimoEntrada) {
-      throw new BusinessRuleException(
-        `O pedido mínimo é de ${vitrine.minimoEntrada} peças.`,
-        ErrorCode.BUSINESS_RULE_VIOLATION,
-      );
-    }
 
     // Só o que a vitrine MOSTRA pode ser pedido: modelo ativo, cor ativa com
     // foto, linha e tamanho ativos — a mesma régua do endpoint de leitura.
@@ -188,7 +213,7 @@ export class VitrinePedidoService {
             linha: { select: { nome: true } },
           },
         },
-        modeloTamanho: { select: { tamanho: { select: { nome: true } } } },
+        modeloTamanho: { select: { pesoGramas: true, tamanho: { select: { nome: true } } } },
       },
     });
     const porChave = new Map(variacoes.map((v) => [`${v.modeloCorId}|${v.modeloTamanhoId}`, v]));
@@ -210,11 +235,149 @@ export class VitrinePedidoService {
         produtoId: v.produtoId,
         quantidade: i.quantidade,
         preco,
+        /** Peso de UMA peça (g). null = não cadastrado → o frete não cota. */
+        pesoG: v.modeloTamanho.pesoGramas,
         descricao: `${v.modelo.nome} · ${v.modeloCor.cor.nome} · ${v.modeloLinha.linha.nome} ${v.modeloTamanho.tamanho.nome}`,
       };
     });
     const total = linhas.reduce((s, l) => s + (l.preco ?? 0) * l.quantidade, 0);
     const semPreco = linhas.filter((l) => l.preco === null);
+    return { linhas, total, totalPecas, semPreco, faixa };
+  }
+
+  /**
+   * Cotação do carrinho na vitrine pública. Não cota = `indisponivel` com o
+   * motivo (200): a tela avisa que o frete é combinado no WhatsApp.
+   */
+  async cotarFrete(slug: string, dto: { cep: string; itens: PedidoVitrineDto['itens'] }) {
+    const vitrine = await this.carregarVitrine(slug);
+    const cfg = configFrete(vitrine.empresa.config);
+    if (!cfg.ativo || !this.frete) return { ativo: false as const };
+    const r = await this.resolverCarrinho(vitrine.empresaId, vitrine, dto.itens);
+    try {
+      const cotacao = await this.frete.cotarPesos(
+        vitrine.empresaId,
+        cfg,
+        dto.cep,
+        pesosDasLinhas(r.linhas),
+        r.total,
+      );
+      return { ativo: true as const, ...cotacao, indisponivel: null };
+    } catch (err) {
+      if (!(err instanceof FreteIndisponivel)) throw err;
+      return {
+        ativo: true as const,
+        indisponivel: err.message,
+        volumes: [],
+        opcoes: [],
+        retirada: retiradaLiberada(cfg, r.totalPecas)
+          ? { endereco: cfg.retirada?.endereco ?? '', horario: cfg.retirada?.horario ?? '' }
+          : null,
+      };
+    }
+  }
+
+  /**
+   * Frete do PEDIDO, refeito aqui (o preço que a tela mostrou não vale). Sem
+   * cotação possível, o pedido segue com "frete a combinar" e sem pagamento
+   * online — melhor que perder a venda ou cobrar sem frete.
+   */
+  private async decidirFrete(
+    empresaId: string,
+    cfg: ConfigFrete,
+    frete: FreteService,
+    dto: PedidoVitrineDto,
+    r: {
+      linhas: Array<{ pesoG: number | null; quantidade: number }>;
+      total: number;
+      totalPecas: number;
+    },
+  ): Promise<{
+    valor: number;
+    aConfirmar: boolean;
+    entrega: Prisma.InputJsonObject;
+    resumo: string;
+  }> {
+    if (dto.frete && 'retirada' in dto.frete) {
+      if (!retiradaLiberada(cfg, r.totalPecas)) {
+        throw new BusinessRuleException(
+          `Retirada em mãos só a partir de ${cfg.retirada?.minimoPecas ?? '?'} peças.`,
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      return {
+        valor: 0,
+        aConfirmar: false,
+        entrega: {
+          retirada: true,
+          enderecoRetirada: cfg.retirada?.endereco ?? '',
+          horario: cfg.retirada?.horario ?? '',
+          ...(dto.entrega ? { cliente: dto.entrega } : {}),
+        },
+        resumo: 'RETIRADA EM MÃOS',
+      };
+    }
+    if (!dto.entrega) {
+      throw new BusinessRuleException(
+        'Informe o endereço de entrega pra calcular o frete.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    let cotacao: Cotacao;
+    try {
+      cotacao = await frete.cotarPesos(
+        empresaId,
+        cfg,
+        dto.entrega.cep,
+        pesosDasLinhas(r.linhas),
+        r.total,
+      );
+    } catch (err) {
+      if (!(err instanceof FreteIndisponivel)) throw err;
+      return {
+        valor: 0,
+        aConfirmar: true,
+        entrega: { ...dto.entrega, freteAConfirmar: true, motivo: err.message },
+        resumo: 'FRETE A COMBINAR',
+      };
+    }
+    const id = dto.frete && 'servicoId' in dto.frete ? dto.frete.servicoId : null;
+    const escolhida = cotacao.opcoes.find((o) => o.id === id);
+    if (!escolhida) {
+      throw new BusinessRuleException(
+        id === null
+          ? 'Escolha a forma de envio.'
+          : 'As opções de frete mudaram. Confira o frete de novo e reenvie.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    const n = cotacao.volumes.length;
+    return {
+      valor: escolhida.preco,
+      aConfirmar: false,
+      entrega: {
+        ...dto.entrega,
+        servico: {
+          id: escolhida.id,
+          nome: escolhida.nome,
+          transportadora: escolhida.transportadora,
+          prazoDias: escolhida.prazoDias,
+        },
+        valor: escolhida.preco,
+        volumes: cotacao.volumes,
+      },
+      resumo: `frete ${escolhida.transportadora} ${escolhida.nome} R$ ${escolhida.preco.toFixed(2)} (${n} ${n === 1 ? 'volume' : 'volumes'})`,
+    };
+  }
+
+  private async enviarResolvido(
+    slug: string,
+    dto: PedidoVitrineDto,
+    vitrine: Awaited<ReturnType<VitrinePedidoService['carregarVitrine']>>,
+    r: Awaited<ReturnType<VitrinePedidoService['resolverCarrinho']>>,
+  ) {
+    const empresaId = vitrine.empresaId;
+    const { linhas, total, totalPecas, semPreco, faixa } = r;
 
     // Pedido mínimo da empresa (R$ e/ou peças; E ou OU). Com item "sob
     // consulta" o VALOR não é conhecido: sai só o critério de valor — o de
@@ -239,6 +402,14 @@ export class VitrinePedidoService {
     }
     const whatsapp = normalizarWhatsapp(dto.whatsapp);
 
+    const cfgFrete = configFrete(vitrine.empresa.config);
+    const frete =
+      cfgFrete.ativo && this.frete
+        ? await this.decidirFrete(empresaId, cfgFrete, this.frete, dto, r)
+        : null;
+    const valorFrete = frete?.valor ?? 0;
+    const totalComFrete = Math.round((total + valorFrete) * 100) / 100;
+
     // Clique duplo, rede que caiu depois de gravar, "enviar" de novo: mesmo
     // telefone, mesmo total e mesmas peças em 10 minutos é o MESMO pedido.
     const recente = await this.prisma.pedido.findFirst({
@@ -246,7 +417,7 @@ export class VitrinePedidoService {
         empresaId,
         origem: 'VITRINE',
         contatoTelefone: whatsapp,
-        total: new Prisma.Decimal(total.toFixed(2)),
+        total: new Prisma.Decimal(totalComFrete.toFixed(2)),
         criadoEm: { gte: new Date(Date.now() - 10 * 60_000) },
       },
       select: {
@@ -260,7 +431,9 @@ export class VitrinePedidoService {
       return {
         numero: recente.numero,
         totalPecas,
-        total,
+        total: totalComFrete,
+        frete: valorFrete,
+        freteAConfirmar: frete?.aConfirmar ?? false,
         duplicado: true,
         reservaExpiraEm: recente.estoqueReservas[0]?.expiraEm ?? null,
         pagamento: this.pagamento(vitrine.empresa.config, recente.id),
@@ -285,9 +458,11 @@ export class VitrinePedidoService {
     }
 
     const cliente = await this.acharOuCriarCliente(empresaId, dto, whatsapp);
+    const cidade = dto.cidade ?? dto.entrega?.cidade;
+    const uf = dto.uf ?? dto.entrega?.uf;
     const seq = await this.sequence.next(empresaId, 'pedido');
     const numero = `PED-${seq.toString().padStart(4, '0')}`;
-    const local = [dto.cidade, dto.uf].filter(Boolean).join('/');
+    const local = [cidade, uf].filter(Boolean).join('/');
 
     const dadosPedido = {
       empresaId,
@@ -300,11 +475,16 @@ export class VitrinePedidoService {
       origem: 'VITRINE',
       status: 'RASCUNHO',
       subtotal: new Prisma.Decimal(total.toFixed(2)),
-      total: new Prisma.Decimal(total.toFixed(2)),
+      // Frete fica DENTRO do total (é o que o cliente paga) e separado em
+      // `frete` (não é venda: fora de comissão e de faturamento de produto).
+      frete: new Prisma.Decimal(valorFrete.toFixed(2)),
+      total: new Prisma.Decimal(totalComFrete.toFixed(2)),
+      ...(frete ? { entrega: frete.entrega } : {}),
       comissao: new Prisma.Decimal(0),
       observacoes: [
         `Pedido da vitrine — ${totalPecas} peças, faixa ${ROTULO_FAIXA[faixa]}`,
         local ? `cliente em ${local}` : '',
+        frete?.resumo ?? '',
         semPreco.length
           ? `PREÇO A CONFIRMAR (sob consulta): ${semPreco.map((l) => l.descricao).join('; ')}`
           : '',
@@ -365,7 +545,7 @@ export class VitrinePedidoService {
         roles: ['ADMIN', 'DIRECTOR', 'GERENTE'],
         tipo: 'GENERICO',
         titulo: `Novo pedido da vitrine: ${pedido.numero}`,
-        mensagem: `${dto.nome}${local ? ` (${local})` : ''} — ${totalPecas} peças, R$ ${total.toFixed(2)}${semPreco.length ? ' + itens sob consulta' : ''}.`,
+        mensagem: `${dto.nome}${local ? ` (${local})` : ''} — ${totalPecas} peças, R$ ${totalComFrete.toFixed(2)}${valorFrete ? ' com frete' : ''}${frete?.aConfirmar ? ' + frete a combinar' : ''}${semPreco.length ? ' + itens sob consulta' : ''}.`,
         prioridade: 'ALTA',
         link: `/pedidos/${pedido.id}`,
         metadata: { pedidoId: pedido.id, origem: 'VITRINE' },
@@ -374,7 +554,14 @@ export class VitrinePedidoService {
 
     void this.bus.disparar(empresaId, 'PEDIDO_CRIADO', {
       pedidoId: pedido.id,
-      pedido: { id: pedido.id, numero: pedido.numero, total, totalPecas, faixa },
+      pedido: {
+        id: pedido.id,
+        numero: pedido.numero,
+        total: totalComFrete,
+        frete: valorFrete,
+        totalPecas,
+        faixa,
+      },
       origem: 'VITRINE',
       clienteId: cliente.id,
       cliente: { id: cliente.id, nome: dto.nome },
@@ -388,7 +575,9 @@ export class VitrinePedidoService {
     return {
       numero: pedido.numero,
       totalPecas,
-      total,
+      total: totalComFrete,
+      frete: valorFrete,
+      freteAConfirmar: frete?.aConfirmar ?? false,
       duplicado: false,
       reservaExpiraEm,
       pagamento: this.pagamento(vitrine.empresa.config, pedido.id),
@@ -405,6 +594,7 @@ export class VitrinePedidoService {
     dto: PedidoVitrineDto,
     whatsapp: string,
   ): Promise<{ id: string }> {
+    const e = dto.entrega;
     const doc = (dto.cpfCnpj ?? '').replace(/\D/g, '');
     let achado: { id: string } | undefined;
     if (doc) {
@@ -430,13 +620,18 @@ export class VitrinePedidoService {
     if (achado) {
       const atual = await this.prisma.cliente.findUnique({
         where: { id: achado.id },
-        select: { cnpj: true, telefone: true, cidade: true, uf: true },
+        select: { cnpj: true, telefone: true, cidade: true, uf: true, cep: true },
       });
       const data: Prisma.ClienteUpdateInput = {};
       if (!atual?.cnpj && dto.cpfCnpj) data.cnpj = dto.cpfCnpj;
       if (!atual?.telefone) data.telefone = whatsapp;
-      if (!atual?.cidade && dto.cidade) data.cidade = dto.cidade;
-      if (!atual?.uf && dto.uf) data.uf = dto.uf;
+      const cidade = dto.cidade ?? e?.cidade;
+      const uf = dto.uf ?? e?.uf;
+      if (!atual?.cidade && cidade) data.cidade = cidade;
+      if (!atual?.uf && uf) data.uf = uf;
+      // Endereço vai inteiro (só se o cadastro não tinha): rua de um com o CEP
+      // de outro é pior que nenhum.
+      if (!atual?.cep && e) Object.assign(data, enderecoDoCliente(e));
       if (Object.keys(data).length) {
         await this.prisma.cliente.update({ where: { id: achado.id }, data });
       }
@@ -449,11 +644,29 @@ export class VitrinePedidoService {
         nome: dto.nome,
         cnpj: dto.cpfCnpj ?? null,
         telefone: whatsapp,
-        cidade: dto.cidade ?? null,
-        uf: dto.uf ?? null,
+        cidade: dto.cidade ?? e?.cidade ?? null,
+        uf: dto.uf ?? e?.uf ?? null,
+        ...(e ? enderecoDoCliente(e) : {}),
         segmento: 'Atacado (vitrine)',
       },
       select: { id: true },
     });
   }
+}
+
+/** Uma entrada por peça (o frete monta volumes peça a peça). Sem peso = 0 → não cota. */
+function pesosDasLinhas(linhas: Array<{ pesoG: number | null; quantidade: number }>): number[] {
+  const out: number[] = [];
+  for (const l of linhas) for (let i = 0; i < l.quantidade; i++) out.push(l.pesoG ?? 0);
+  return out;
+}
+
+function enderecoDoCliente(e: NonNullable<PedidoVitrineDto['entrega']>) {
+  return {
+    cep: e.cep,
+    endereco: e.endereco,
+    numero: e.numero,
+    complemento: e.complemento ?? null,
+    bairro: e.bairro ?? null,
+  };
 }

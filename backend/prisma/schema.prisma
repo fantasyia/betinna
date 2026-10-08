@@ -984,6 +984,9 @@ model Pedido {
   /// Frete que o CLIENTE pagou — está dentro de `total`, mas não é venda: fica
   /// fora da base de comissão (rep e site). Vem do checkout do site ou do ERP.
   frete             Decimal @default(0) @db.Decimal(14, 2)
+  /// Entrega do pedido da vitrine: endereço do cliente, serviço escolhido
+  /// (Melhor Envio), volumes — ou retirada em mãos, ou "frete a combinar".
+  entrega           Json?
   /// Contas a receber lançadas no ERP quando a NF autorizou:
   /// [{ id, parcela, valor, vencimento }]. Presença = já lançado (idempotência).
   contasReceberErp  Json?
@@ -4247,6 +4250,9 @@ model CatalogoModeloTamanho {
   id            String @id @default(cuid())
   modeloLinhaId String
   tamanhoId     String
+  /// Peso de UMA peça desse modelo/linha/tamanho, em gramas — monta os volumes
+  /// do frete da vitrine. Null = não cadastrado (o frete fica "a combinar").
+  pesoGramas    Int?
 
   modeloLinha CatalogoModeloLinha @relation(fields: [modeloLinhaId], references: [id], onDelete: Cascade)
   tamanho     CatalogoTamanho     @relation(fields: [tamanhoId], references: [id], onDelete: Restrict)

@@ -247,6 +247,23 @@
 .vt-form input { box-sizing: border-box; width: 100%; min-width: 0; height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid #e3d8bf; background: var(--branco); color: var(--petroleo); font: 500 16px var(--f-text); }
 .vt-form input:focus { outline: 2px solid var(--petroleo); outline-offset: 0; }
 .vt-dupla { display: grid; grid-template-columns: 1fr 72px; gap: 10px; }
+/* Entrega (Checkout, itens 4–5): endereço pelo CEP, frete do Melhor Envio, retirada. */
+.vt-entrega { display: grid; gap: 10px; padding-top: 4px; border-top: 1px solid #eee4ce; }
+.vt-entrega .vt-dupla { grid-template-columns: 1fr 1fr; }
+.vt-entrega .vt-dupla-cep { grid-template-columns: 1fr 96px; }
+.vt-entrega .vt-dupla-uf { grid-template-columns: 1fr 72px; }
+.vt-modo { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--linho); border-radius: 14px; padding: 4px; }
+.vt-modo button { height: 40px; border-radius: 11px; font: 600 13px var(--f-text); color: var(--oliva); }
+.vt-modo button.on { background: var(--branco); color: var(--petroleo); box-shadow: 0 1px 3px rgba(26, 45, 56, .12); }
+.vt-retirada { margin: 0; font-size: 14px; color: var(--petroleo); line-height: 1.5; }
+.vt-retirada small { display: block; font-size: 12px; color: var(--oliva); }
+.vt-frete { display: grid; gap: 6px; }
+.vt-frete-titulo { display: flex; justify-content: space-between; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; color: var(--oliva); }
+.vt-frete-opcoes { display: grid; gap: 6px; }
+.vt-frete-opcoes button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 8px 12px; border-radius: 12px; border: 1px solid #e3d8bf; background: var(--branco); text-align: left; color: var(--petroleo); font: 500 13.5px var(--f-text); }
+.vt-frete-opcoes button.on { border-color: var(--petroleo); box-shadow: inset 0 0 0 1px var(--petroleo); }
+.vt-frete-opcoes button small { display: block; font-size: 11.5px; color: var(--oliva); }
+.vt-frete-opcoes button strong { font-family: var(--f-title); font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .vt-isca { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 .vt-ok { z-index: 70; }
 .vt-ok-corpo { flex: 1; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; }

@@ -56,6 +56,8 @@ export interface RascunhoLinha {
   colunas: string[];
   /** tamanho (nome) → um valor por coluna. */
   medidas: Record<string, string[]>;
+  /** tamanhoId → peso de uma peça em gramas (texto do campo). Ausente = não mexe. */
+  pesos?: Record<string, string>;
 }
 
 export interface Rascunho {
@@ -85,6 +87,9 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
       precoSugerido: precoParaTexto(ml?.precoSugerido ?? null),
       colunas: tabela?.colunas ?? [],
       medidas: Object.fromEntries((tabela?.linhas ?? []).map((r) => [r.tamanho, r.valores])),
+      pesos: Object.fromEntries(
+        (ml?.tamanhos ?? []).map((t) => [t.tamanhoId, t.pesoGramas ? String(t.pesoGramas) : '']),
+      ),
     };
   }
   return {
@@ -143,7 +148,27 @@ export function montarCorpo(
         }));
       tabelaMedidas = { colunas, linhas: linhasTabela };
     }
-    linhasCorpo.push({ linhaId: l.id, tamanhoIds: rl.tamanhoIds, ...precos, tabelaMedidas });
+    // Peso por peça (frete): só dos tamanhos marcados; vazio = apaga (null).
+    let pesos: Record<string, number | null> | undefined;
+    if (rl.pesos) {
+      pesos = {};
+      for (const t of rl.tamanhoIds) {
+        const txt = (rl.pesos[t] ?? '').trim();
+        const g = txt ? Number(txt.replace(/\D/g, '')) : null;
+        if (g !== null && (!Number.isInteger(g) || g < 1 || g > 30_000 || /[^\d\s]/.test(txt))) {
+          const nome = l.tamanhos.find((x) => x.id === t)?.nome ?? t;
+          return { ok: false, erro: `Peso inválido no tamanho ${nome} (${l.nome}): use gramas` };
+        }
+        pesos[t] = g;
+      }
+    }
+    linhasCorpo.push({
+      linhaId: l.id,
+      tamanhoIds: rl.tamanhoIds,
+      ...precos,
+      tabelaMedidas,
+      ...(pesos ? { pesos } : {}),
+    });
   }
   return {
     ok: true,
@@ -570,6 +595,41 @@ export function ModeloEditor({
                         todos
                       </button>
                     </div>
+                    {rl.tamanhoIds.length > 0 && (
+                      <div>
+                        <p className="mb-1 text-xs text-muted">
+                          Peso de uma peça, em gramas — é o que monta as caixas do frete. Sem
+                          peso, o frete do pedido fica "a combinar".
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {l.tamanhos
+                            .filter((t) => rl.tamanhoIds.includes(t.id))
+                            .map((t) => (
+                              <label
+                                key={t.id}
+                                className="flex items-center gap-1.5 text-xs font-semibold"
+                              >
+                                {t.nome}
+                                <Input
+                                  value={rl.pesos?.[t.id] ?? ''}
+                                  inputMode="numeric"
+                                  onChange={(e) =>
+                                    setLinha(l.id, {
+                                      pesos: {
+                                        ...(rl.pesos ?? {}),
+                                        [t.id]: e.target.value.replace(/[^\d]/g, '').slice(0, 5),
+                                      },
+                                    })
+                                  }
+                                  placeholder="g"
+                                  className="h-8 w-20"
+                                  data-testid={`peso-${l.id}-${t.id}`}
+                                />
+                              </label>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="grid gap-2 sm:grid-cols-4">
                       <Field label="Atacado · Entrada (R$)">
                         <Input

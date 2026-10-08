@@ -56,7 +56,7 @@ import IntegracoesPage from './IntegracoesPage';
 
 const SERVICOS = [
   'tiny', 'whatsapp', 'openai', 'mercadolivre', 'shopee', 'amazon',
-  'tiktok', 'meta_app', 'instagram', 'facebook', 'clicksign', 'asaas',
+  'tiktok', 'meta_app', 'instagram', 'facebook', 'clicksign', 'asaas', 'melhorenvio',
 ];
 
 const conexao = (servico: string) => ({

@@ -69,6 +69,12 @@ export interface VitrinePub {
   empresa: { nome: string; logoUrl: string | null };
   faixas: Faixas;
   pedidoMinimo?: MinimoPub | null;
+  /** Frete cobrado no pedido (Melhor Envio). null/ausente = combina no WhatsApp. */
+  frete?: {
+    retiradaMinimoPecas: number | null;
+    retiradaEndereco?: string | null;
+    retiradaHorario?: string | null;
+  } | null;
   /** `selo`: aviso da linha (Plus Size de verdade…); null = sem selo. */
   linhas: Array<{ id: string; nome: string; selo?: string | null }>;
   modelos: ModeloPub[];

@@ -42,6 +42,14 @@ import {
   type VitrinePub,
 } from './calculo';
 import { baixarKit, copiarTexto } from './kit';
+import {
+  Entrega,
+  freteParaEnvio,
+  freteResolvido,
+  type Endereco,
+  type EscolhaFrete,
+  type FretePub,
+} from './Entrega';
 import { Pagamento, type AcessoPagamento } from './Pagamento';
 import './vitrine.css';
 
@@ -1370,6 +1378,7 @@ function SeuPedido({
           empresa={v.empresa.nome}
           carrinho={carrinho}
           resumo={r}
+          frete={v.frete ?? null}
           onFechar={() => setEnvio(false)}
           onEnviado={onEnviado}
         />
@@ -1404,17 +1413,27 @@ interface Enviado {
   cpfCnpj: string;
 }
 
-interface Contato {
+interface Contato extends Endereco {
   nome: string;
   whatsapp: string;
-  cidade: string;
-  uf: string;
   cpfCnpj: string;
 }
 
 // Quem compra de novo não digita tudo outra vez (fica só neste aparelho).
 const CHAVE_CONTATO = 'vitrine:contato';
-const CONTATO_VAZIO: Contato = { nome: '', whatsapp: '', cidade: '', uf: '', cpfCnpj: '' };
+const CONTATO_VAZIO: Contato = {
+  nome: '',
+  whatsapp: '',
+  cidade: '',
+  uf: '',
+  cpfCnpj: '',
+  // Endereço de entrega (frete): lembrado neste aparelho pra próxima compra.
+  cep: '',
+  endereco: '',
+  numero: '',
+  complemento: '',
+  bairro: '',
+};
 
 function lerContato(): Contato {
   try {
@@ -1430,6 +1449,7 @@ function FolhaEnvio({
   empresa,
   carrinho,
   resumo,
+  frete,
   onFechar,
   onEnviado,
 }: {
@@ -1437,6 +1457,8 @@ function FolhaEnvio({
   empresa: string;
   carrinho: Carrinho;
   resumo: ReturnType<typeof resumoPedido>;
+  /** Empresa cobra frete: pede o endereço e cota. null = combina no WhatsApp. */
+  frete: FretePub | null;
   onFechar: () => void;
   onEnviado: (e: Enviado) => void;
 }) {
@@ -1444,8 +1466,18 @@ function FolhaEnvio({
   const [isca, setIsca] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [escolha, setEscolha] = useState<EscolhaFrete>(null);
   const mudar = (k: keyof Contato, valor: string) => setF((x) => ({ ...x, [k]: valor }));
-  const pronto = f.nome.trim().length >= 2 && f.whatsapp.replace(/\D/g, '').length >= 10;
+  const mudarEndereco = useCallback(
+    (patch: Partial<Endereco>) => setF((x) => ({ ...x, ...patch })),
+    [],
+  );
+  const itens = useMemo(() => itensParaEnvio(carrinho), [carrinho]);
+  const pronto =
+    f.nome.trim().length >= 2 &&
+    f.whatsapp.replace(/\D/g, '').length >= 10 &&
+    (!frete || freteResolvido(f, escolha));
+  const valorFrete = escolha?.tipo === 'servico' ? escolha.preco : 0;
 
   async function enviar(ev: React.FormEvent) {
     ev.preventDefault();
@@ -1468,7 +1500,8 @@ function FolhaEnvio({
           uf: f.uf.trim(),
           cpfCnpj: f.cpfCnpj.trim(),
           site: isca,
-          itens: itensParaEnvio(carrinho),
+          itens,
+          ...(frete ? freteParaEnvio(f, escolha) : {}),
         },
         { skipAuth: true },
       );
@@ -1536,35 +1569,38 @@ function FolhaEnvio({
               data-testid="vt-f-whatsapp"
             />
           </label>
-          <div className="vt-dupla">
-            <label>
-              Cidade
-              <input
-                value={f.cidade}
-                onChange={(e) => mudar('cidade', e.target.value)}
-                autoComplete="address-level2"
-                maxLength={80}
-                data-testid="vt-f-cidade"
-              />
-            </label>
-            <label>
-              UF
-              <input
-                value={f.uf}
-                onChange={(e) =>
-                  mudar(
-                    'uf',
-                    e.target.value
-                      .replace(/[^a-z]/gi, '')
-                      .slice(0, 2)
-                      .toUpperCase(),
-                  )
-                }
-                autoComplete="address-level1"
-                data-testid="vt-f-uf"
-              />
-            </label>
-          </div>
+          {/* Com frete, cidade e UF vêm no endereço de entrega (o CEP preenche). */}
+          {!frete && (
+            <div className="vt-dupla">
+              <label>
+                Cidade
+                <input
+                  value={f.cidade}
+                  onChange={(e) => mudar('cidade', e.target.value)}
+                  autoComplete="address-level2"
+                  maxLength={80}
+                  data-testid="vt-f-cidade"
+                />
+              </label>
+              <label>
+                UF
+                <input
+                  value={f.uf}
+                  onChange={(e) =>
+                    mudar(
+                      'uf',
+                      e.target.value
+                        .replace(/[^a-z]/gi, '')
+                        .slice(0, 2)
+                        .toUpperCase(),
+                    )
+                  }
+                  autoComplete="address-level1"
+                  data-testid="vt-f-uf"
+                />
+              </label>
+            </div>
+          )}
           <label>
             <span>
               CPF ou CNPJ <small>(opcional)</small>
@@ -1577,6 +1613,19 @@ function FolhaEnvio({
               data-testid="vt-f-doc"
             />
           </label>
+          {frete && (
+            <Entrega
+              slug={slug}
+              empresa={empresa}
+              frete={frete}
+              pecas={resumo.pecas}
+              itens={itens}
+              endereco={f}
+              onEndereco={mudarEndereco}
+              escolha={escolha}
+              onEscolha={setEscolha}
+            />
+          )}
           {/* Isca pra robô: fora da tela e fora do Tab. */}
           <input
             className="vt-isca"
@@ -1595,8 +1644,18 @@ function FolhaEnvio({
         <div className="vt-sh-foot">
           <div>
             <strong>{resumo.pecas} peças</strong>
-            <small>
-              {resumo.aConfirmar ? 'total confirmado depois' : formatMoeda(resumo.investe)}
+            <small data-testid="vt-f-total">
+              {resumo.aConfirmar
+                ? escolha?.tipo === 'servico'
+                  ? `frete ${formatMoeda(valorFrete)} · total confirmado depois`
+                  : 'total confirmado depois'
+                : escolha?.tipo === 'servico'
+                  ? `${formatMoeda(resumo.investe + valorFrete)} com frete`
+                  : escolha?.tipo === 'retirada'
+                    ? `${formatMoeda(resumo.investe)} · retirada`
+                    : frete
+                      ? `${formatMoeda(resumo.investe)} + frete`
+                      : formatMoeda(resumo.investe)}
             </small>
           </div>
           <button

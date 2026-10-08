@@ -9,6 +9,7 @@ import {
   precoNaFaixa,
 } from './vitrine-pedido.service';
 import { pedidoVitrineSchema } from './vitrine.dto';
+import { FreteIndisponivel } from './frete.service';
 
 const D = (n: number) => new Prisma.Decimal(n);
 
@@ -25,7 +26,7 @@ const variacao = (corId: string, tamanhoId: string, produtoId: string, precos = 
     linha: { nome: 'Regular' },
     ...precos,
   },
-  modeloTamanho: { tamanho: { nome: tamanhoId.toUpperCase() } },
+  modeloTamanho: { pesoGramas: 300, tamanho: { nome: tamanhoId.toUpperCase() } },
 });
 
 const vitrineOk = {
@@ -45,6 +46,7 @@ function montar(
     clientes?: unknown[];
     reservaAte?: Date;
     checkout?: unknown;
+    frete?: unknown;
   } = {},
 ) {
   const prisma = {
@@ -85,6 +87,7 @@ function montar(
     estoque as never,
     undefined,
     opts.checkout as never,
+    opts.frete as never,
   );
   return { svc, prisma, bus, notif, estoque };
 }
@@ -139,6 +142,8 @@ describe('VitrinePedidoService.enviar', () => {
       duplicado: false,
       reservaExpiraEm: null,
       pagamento: null,
+      frete: 0,
+      freteAConfirmar: false,
     });
     const data = prisma.pedido.create.mock.calls[0][0].data;
     expect(data.origem).toBe('VITRINE');
@@ -476,5 +481,151 @@ describe('vitrine que respeita estoque (entrega 5)', () => {
     );
     await expect(svc.enviar('atacado-ribelt', dto())).rejects.toThrow(/Acabou o estoque/);
     expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('VitrinePedidoService — frete (Melhor Envio)', () => {
+  const cfgFrete = {
+    ativo: true,
+    cepOrigem: '89200000',
+    pesoMaxVolumeKg: 25,
+    caixas: [
+      {
+        nome: 'Caixa',
+        comprimentoCm: 50,
+        larguraCm: 50,
+        alturaCm: 38,
+        pesoVazioG: 800,
+        capacidadePecas: 80,
+      },
+    ],
+    retirada: { ativo: true, minimoPecas: 1000, endereco: 'Rua da Fábrica, 10', horario: '8h–17h' },
+  };
+  const vitrineComFrete = { ...vitrineOk, empresa: { ativo: true, config: { frete: cfgFrete } } };
+  const cotacao = {
+    volumes: [{ embalagem: 'Caixa', pecas: 6, pesoKg: 2.6 }],
+    opcoes: [
+      { id: 1, nome: 'PAC', transportadora: 'Correios', preco: 32.5, prazoDias: 6 },
+      { id: 2, nome: 'SEDEX', transportadora: 'Correios', preco: 58.9, prazoDias: 2 },
+    ],
+    retirada: null,
+  };
+  const entrega = {
+    cep: '88350-000',
+    endereco: 'Rua Azambuja',
+    numero: '100',
+    bairro: 'Centro',
+    cidade: 'Brusque',
+    uf: 'SC',
+  };
+  const freteMock = (r: unknown = cotacao) => ({
+    cotarPesos: vi.fn(r instanceof Error ? () => Promise.reject(r) : () => Promise.resolve(r)),
+  });
+
+  it('cobra o frete escolhido: total = peças + frete, e grava a entrega', async () => {
+    const frete = freteMock();
+    const { svc, prisma } = montar({ vitrine: vitrineComFrete, frete });
+    const r = await svc.enviar('atacado-ribelt', dto({ entrega, frete: { servicoId: 1 } }));
+    expect(r).toMatchObject({ total: 302.5, frete: 32.5, freteAConfirmar: false });
+    // Cotação refeita no servidor, peça a peça, com o peso do cadastro.
+    const [, , cep, pesos, valor] = frete.cotarPesos.mock.calls[0];
+    expect(cep).toBe('88350000');
+    expect(pesos).toEqual([300, 300, 300, 300, 300, 300]);
+    expect(valor).toBe(270);
+    const data = prisma.pedido.create.mock.calls[0][0].data;
+    expect(Number(data.subtotal)).toBe(270);
+    expect(Number(data.frete)).toBe(32.5);
+    expect(Number(data.total)).toBe(302.5);
+    expect(data.entrega).toMatchObject({
+      cep: '88350000',
+      numero: '100',
+      servico: { id: 1, nome: 'PAC' },
+      valor: 32.5,
+    });
+    expect(data.observacoes).toContain('frete Correios PAC R$ 32.50 (1 volume)');
+    // Cliente novo nasce com o endereço.
+    expect(prisma.cliente.create.mock.calls[0][0].data).toMatchObject({
+      cep: '88350000',
+      endereco: 'Rua Azambuja',
+      numero: '100',
+    });
+  });
+
+  it('serviço que não está na cotação de agora: recusa (preço da tela não vale)', async () => {
+    const { svc, prisma } = montar({ vitrine: vitrineComFrete, frete: freteMock() });
+    await expect(
+      svc.enviar('atacado-ribelt', dto({ entrega, frete: { servicoId: 99 } })),
+    ).rejects.toThrow(/mudaram/);
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+  });
+
+  it('sem endereço: recusa', async () => {
+    const { svc } = montar({ vitrine: vitrineComFrete, frete: freteMock() });
+    await expect(svc.enviar('atacado-ribelt', dto({ frete: { servicoId: 1 } }))).rejects.toThrow(
+      /endereço/,
+    );
+  });
+
+  it('cotação não deu: pedido segue com FRETE A COMBINAR (sem frete no total)', async () => {
+    const frete = freteMock(new FreteIndisponivel('Melhor Envio fora'));
+    const { svc, prisma } = montar({ vitrine: vitrineComFrete, frete });
+    const r = await svc.enviar('atacado-ribelt', dto({ entrega, frete: { servicoId: 1 } }));
+    expect(r).toMatchObject({ total: 270, frete: 0, freteAConfirmar: true });
+    const data = prisma.pedido.create.mock.calls[0][0].data;
+    expect(data.entrega).toMatchObject({ freteAConfirmar: true, motivo: 'Melhor Envio fora' });
+    expect(data.observacoes).toContain('FRETE A COMBINAR');
+  });
+
+  it('retirada em mãos abaixo do mínimo: recusa; acima: frete R$ 0', async () => {
+    const { svc } = montar({ vitrine: vitrineComFrete, frete: freteMock() });
+    await expect(svc.enviar('atacado-ribelt', dto({ frete: { retirada: true } }))).rejects.toThrow(
+      /a partir de 1000/,
+    );
+
+    const m = montar({
+      vitrine: vitrineComFrete,
+      frete: freteMock(),
+      variacoes: [variacao('c1', 'p', 'prod-p')],
+    });
+    const r = await m.svc.enviar(
+      'atacado-ribelt',
+      dto({
+        itens: [{ corId: 'c1', tamanhoId: 'p', quantidade: 1000 }],
+        frete: { retirada: true },
+      }),
+    );
+    expect(r).toMatchObject({ frete: 0, freteAConfirmar: false });
+    expect(m.prisma.pedido.create.mock.calls[0][0].data.entrega).toMatchObject({
+      retirada: true,
+      enderecoRetirada: 'Rua da Fábrica, 10',
+    });
+  });
+
+  it('frete desligado na empresa: nada muda (sem cotação, sem entrega)', async () => {
+    const frete = freteMock();
+    const { svc, prisma } = montar({ frete });
+    await svc.enviar('atacado-ribelt', dto({ entrega, frete: { servicoId: 1 } }));
+    expect(frete.cotarPesos).not.toHaveBeenCalled();
+    expect(prisma.pedido.create.mock.calls[0][0].data.entrega).toBeUndefined();
+  });
+
+  it('cotação pública: devolve opções; indisponível vira motivo (200)', async () => {
+    const ok = montar({ vitrine: vitrineComFrete, frete: freteMock() });
+    expect(
+      await ok.svc.cotarFrete('atacado-ribelt', { cep: '88350000', itens: dto().itens }),
+    ).toMatchObject({ ativo: true, indisponivel: null, opcoes: cotacao.opcoes });
+
+    const fora = montar({
+      vitrine: vitrineComFrete,
+      frete: freteMock(new FreteIndisponivel('Nenhuma transportadora atende esse CEP')),
+    });
+    expect(
+      await fora.svc.cotarFrete('atacado-ribelt', { cep: '88350000', itens: dto().itens }),
+    ).toMatchObject({ ativo: true, indisponivel: 'Nenhuma transportadora atende esse CEP' });
+
+    const desligado = montar({ frete: freteMock() });
+    expect(
+      await desligado.svc.cotarFrete('atacado-ribelt', { cep: '88350000', itens: dto().itens }),
+    ).toEqual({ ativo: false });
   });
 });

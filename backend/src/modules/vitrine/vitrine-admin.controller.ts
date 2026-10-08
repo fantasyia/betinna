@@ -15,7 +15,10 @@ import {
   type TamanhoDto,
   type VariacaoPatchDto,
   type VitrineConfigDto,
+  type FreteConfigDto,
   corSchema,
+  freteConfigSchema,
+  simularFreteSchema,
   linhaSchema,
   modeloSchema,
   tamanhoSchema,
@@ -23,6 +26,7 @@ import {
   vitrineConfigSchema,
 } from './vitrine.dto';
 import { VitrineAdminService } from './vitrine-admin.service';
+import { FreteService } from './frete.service';
 
 /**
  * Vitrine de atacado — cadastro do lado da empresa (Fase 1).
@@ -36,7 +40,36 @@ import { VitrineAdminService } from './vitrine-admin.service';
 @Roles('ADMIN', 'DIRECTOR')
 @Controller('vitrine/admin')
 export class VitrineAdminController {
-  constructor(private readonly svc: VitrineAdminService) {}
+  constructor(
+    private readonly svc: VitrineAdminService,
+    private readonly frete: FreteService,
+  ) {}
+
+  // ─── Frete (Melhor Envio) ───────────────────────────────────────────────
+  @Get('frete')
+  @ApiOperation({ summary: 'Frete da vitrine: config, Melhor Envio conectado e o que falta' })
+  freteStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.frete.status(user);
+  }
+
+  @Put('frete')
+  @ApiOperation({ summary: 'Salva CEP de origem, caixas, teto por volume e retirada' })
+  freteSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(freteConfigSchema)) dto: FreteConfigDto,
+  ) {
+    return this.frete.salvar(user, dto);
+  }
+
+  @Post('frete/simular')
+  @ApiOperation({ summary: 'Cota N peças de X gramas pra um CEP (confere antes de ligar)' })
+  freteSimular(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(simularFreteSchema))
+    dto: { cep: string; pecas: number; pesoG: number; valor: number },
+  ) {
+    return this.frete.simular(user, dto);
+  }
 
   @Get('config')
   @ApiOperation({ summary: 'Configuração da vitrine da empresa ativa (null = desligada)' })

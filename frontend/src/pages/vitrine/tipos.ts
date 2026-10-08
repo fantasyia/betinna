@@ -81,7 +81,13 @@ export interface ModeloLinha {
   precoSugerido: Dinheiro;
   tabelaMedidas: TabelaMedidas | null;
   linha: Linha;
-  tamanhos: Array<{ id: string; tamanhoId: string; tamanho: Tamanho }>;
+  tamanhos: Array<{
+    id: string;
+    tamanhoId: string;
+    /** Peso de UMA peça (g) — monta os volumes do frete. null = não cadastrado. */
+    pesoGramas?: number | null;
+    tamanho: Tamanho;
+  }>;
 }
 
 export interface ModeloCor {

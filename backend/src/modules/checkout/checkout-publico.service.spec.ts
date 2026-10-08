@@ -210,6 +210,15 @@ describe('CheckoutPublicoService.opcoes', () => {
     expect(r.motivo).toMatch(/preço a confirmar/);
   });
 
+  it('frete a combinar: não oferece pagar online (o total não tem o frete)', async () => {
+    const { svc } = montar({
+      pedido: { ...pedidoBase, entrega: { cep: '88350000', freteAConfirmar: true } },
+    });
+    const r = await svc.opcoes('atacado-ribelt', 'ped-1', svc.tokenDoPedido('ped-1'));
+    expect(r.disponivel).toBe(false);
+    expect(r.motivo).toMatch(/frete vai ser combinado/);
+  });
+
   it('pedido cancelado (reserva expirou): não oferece', async () => {
     const { svc } = montar({ pedido: { ...pedidoBase, status: 'CANCELADO' } });
     const r = await svc.opcoes('atacado-ribelt', 'ped-1', svc.tokenDoPedido('ped-1'));

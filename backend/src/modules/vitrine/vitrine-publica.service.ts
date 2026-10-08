@@ -6,6 +6,21 @@ import { NotFoundException } from '@shared/errors/app-exception';
 import { EstoqueService } from '@modules/erp/estoque.service';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import { minimoDaVitrine } from './vitrine-pedido.service';
+import { configFrete } from './frete';
+
+/** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
+function freteDaVitrine(config: unknown) {
+  const f = configFrete(config);
+  if (!f.ativo) return null;
+  const r = f.retirada;
+  const retira = !!(r?.ativo && r.endereco?.trim() && r.minimoPecas);
+  // O endereço de retirada é da EMPRESA (o cliente vai buscar lá): público.
+  return {
+    retiradaMinimoPecas: retira ? (r?.minimoPecas ?? null) : null,
+    retiradaEndereco: retira ? (r?.endereco ?? null) : null,
+    retiradaHorario: retira ? (r?.horario ?? null) : null,
+  };
+}
 
 const num = (v: Prisma.Decimal | null): number | null => (v === null ? null : Number(v));
 
@@ -186,6 +201,8 @@ export class VitrinePublicaService {
       pedidoMinimo: minimoDaVitrine(vitrine.empresa.config),
       // Aceita Pix/cartão pela vitrine (Asaas): o cliente sabe antes de enviar.
       pagamentoOnline: pagamentoOnlineLigado(vitrine.empresa.config),
+      // Frete cobrado no pedido (Melhor Envio): a tela pede CEP e cota.
+      frete: freteDaVitrine(vitrine.empresa.config),
       linhas,
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({

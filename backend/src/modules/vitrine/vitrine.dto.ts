@@ -109,6 +109,11 @@ const modeloLinhaSchema = z.object({
   precoAtacadao: precoSchema,
   precoSugerido: precoSchema,
   tabelaMedidas: tabelaMedidasSchema.nullable().optional(),
+  /**
+   * Peso de UMA peça por tamanho (gramas), chave = tamanhoId — é o que monta os
+   * volumes do frete. Ausente = mantém o que está gravado; null = apaga.
+   */
+  pesos: z.record(z.string().min(1), z.number().int().min(1).max(30_000).nullable()).optional(),
 });
 
 export const modeloSchema = z
@@ -155,6 +160,79 @@ const opcional = (max: number) =>
     .optional()
     .transform((v) => (v ? v : undefined));
 
+const cepSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/\D/g, ''))
+  .refine((v) => v.length === 8, 'CEP com 8 números');
+
+export const enderecoEntregaSchema = z.object({
+  cep: cepSchema,
+  endereco: z.string().trim().min(2, 'Informe a rua').max(160),
+  numero: z.string().trim().min(1, 'Informe o número').max(20),
+  complemento: opcional(80),
+  bairro: opcional(80),
+  cidade: z.string().trim().min(2, 'Informe a cidade').max(80),
+  uf: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{2}$/, 'UF com 2 letras'),
+});
+export type EnderecoEntrega = z.infer<typeof enderecoEntregaSchema>;
+
+const itemCarrinhoSchema = z.object({
+  corId: z.string().min(1).max(40),
+  tamanhoId: z.string().min(1).max(40),
+  quantidade: z.number().int().min(1).max(99_999),
+});
+
+/** Cotação de frete na vitrine pública (o carrinho + o CEP). */
+export const cotarFreteSchema = z.object({
+  cep: cepSchema,
+  itens: z.array(itemCarrinhoSchema).min(1).max(2000),
+});
+
+const embalagemSchema = z.object({
+  nome: z.string().trim().min(1).max(60),
+  comprimentoCm: z.number().positive().max(300),
+  larguraCm: z.number().positive().max(300),
+  alturaCm: z.number().positive().max(300),
+  pesoVazioG: z.number().int().min(0).max(30_000),
+  capacidadePecas: z.number().int().min(1).max(10_000),
+});
+
+/** Configuração do frete (Vitrine → Configuração → Frete). */
+export const freteConfigSchema = z.object({
+  ativo: z.boolean(),
+  ambiente: z.enum(['sandbox', 'producao']),
+  cepOrigem: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/\D/g, ''))
+    .refine((v) => v === '' || v.length === 8, 'CEP com 8 números'),
+  pesoMaxVolumeKg: z.number().positive().max(1000),
+  /** Declarar o valor das peças no seguro do envio. */
+  declararValor: z.boolean().default(true),
+  embalagemIndividual: embalagemSchema.nullable(),
+  caixas: z.array(embalagemSchema).max(10),
+  retirada: z.object({
+    ativo: z.boolean(),
+    minimoPecas: z.number().int().min(1).max(10_000_000),
+    endereco: z.string().trim().max(240),
+    horario: z.string().trim().max(160),
+  }),
+});
+export type FreteConfigDto = z.infer<typeof freteConfigSchema>;
+
+/** "Simular frete" da tela de configuração: N peças de X gramas pra um CEP. */
+export const simularFreteSchema = z.object({
+  cep: cepSchema,
+  pecas: z.number().int().min(1).max(100_000),
+  pesoG: z.number().int().min(1).max(30_000),
+  valor: z.number().min(0).max(100_000_000).default(0),
+});
+
 /**
  * Pedido enviado na vitrine PÚBLICA. Só diz o QUÊ e QUANTO — preço e faixa
  * são recalculados no servidor (ver `VitrinePedidoService`).
@@ -182,17 +260,17 @@ export const pedidoVitrineSchema = z.object({
     return d.length === 11 || d.length === 14;
   }, 'CPF ou CNPJ incompleto'),
   observacoes: opcional(500),
+  /** Endereço de entrega — obrigatório quando a empresa cobra frete (exceto retirada). */
+  entrega: enderecoEntregaSchema.optional(),
+  /** Serviço escolhido na cotação (id do Melhor Envio) ou retirada em mãos. */
+  frete: z
+    .union([
+      z.object({ servicoId: z.number().int().positive() }),
+      z.object({ retirada: z.literal(true) }),
+    ])
+    .optional(),
   /** Isca pra robô: campo invisível na tela. Gente nunca preenche. */
   site: z.string().max(0).optional(),
-  itens: z
-    .array(
-      z.object({
-        corId: z.string().min(1).max(40),
-        tamanhoId: z.string().min(1).max(40),
-        quantidade: z.number().int().min(1).max(99_999),
-      }),
-    )
-    .min(1, 'Seu pedido está vazio')
-    .max(2000),
+  itens: z.array(itemCarrinhoSchema).min(1, 'Seu pedido está vazio').max(2000),
 });
 export type PedidoVitrineDto = z.infer<typeof pedidoVitrineSchema>;

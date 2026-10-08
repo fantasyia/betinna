@@ -85,6 +85,27 @@ describe('montarCorpo', () => {
     });
   });
 
+  it('peso por tamanho vai em gramas, só dos marcados; vazio apaga (null)', () => {
+    const b = base();
+    b.linhas['lin-reg'].pesos = { 't-p': '280', 't-m': '', 't-fora': '999' };
+    const r = montarCorpo(b, linhas);
+    expect(r.ok && (r.corpo.linhas as Array<{ pesos?: unknown }>)[0].pesos).toEqual({
+      't-p': 280,
+      't-m': null,
+    });
+    // Linha sem o campo (rascunho antigo): não manda `pesos` — o servidor mantém o que tem.
+    expect(r.ok && 'pesos' in (r.corpo.linhas as object[])[1]).toBe(false);
+  });
+
+  it('peso com letra ou zero → erro, não envia', () => {
+    const b = base();
+    b.linhas['lin-reg'].pesos = { 't-p': '0' };
+    expect(montarCorpo(b, linhas)).toEqual({
+      ok: false,
+      erro: 'Peso inválido no tamanho P (Regular): use gramas',
+    });
+  });
+
   it('sem categoria escolhida → null (não string vazia)', () => {
     const b = base();
     b.categoriaId = '';
