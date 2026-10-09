@@ -63,7 +63,9 @@ export class VitrinePublicaService {
     }
     const empresaId = vitrine.empresaId;
     const branding = (
-      (vitrine.empresa.config ?? {}) as { branding?: { nome?: string; logoUrl?: string } }
+      (vitrine.empresa.config ?? {}) as {
+        branding?: { nome?: string; logoUrl?: string; iconeUrl?: string };
+      }
     ).branding;
 
     const modelos = await this.prisma.catalogoModelo.findMany({
@@ -199,6 +201,8 @@ export class VitrinePublicaService {
       empresa: {
         nome: branding?.nome || vitrine.empresa.nome,
         logoUrl: branding?.logoUrl ?? null,
+        // Símbolo da marca (o passarinho da Ribelt) ao lado do logo, no topo.
+        simboloUrl: branding?.iconeUrl?.trim() || null,
       },
       faixas: {
         minimoEntrada: vitrine.minimoEntrada,

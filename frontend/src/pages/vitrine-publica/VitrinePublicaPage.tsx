@@ -180,6 +180,18 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   // Peças do modelo quando a grade abriu — o que passar disso é AddToCart.
   const pecasAoAbrirGrade = useRef(0);
 
+  /** Toque no logo: fecha o que estiver aberto e volta pro primeiro produto. */
+  function irProInicio() {
+    setPdp(null);
+    setGrade(null);
+    setKit(null);
+    setVerPedido(false);
+    setFixado(null);
+    setCat('todos');
+    setLinhaId(v.linhas[0]?.id ?? '');
+    feed.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   /**
    * "Monte o conjunto" (Léo, 09/10): abre a grade do par JÁ com a mesma grade
    * do modelo de origem (mesma cor, linha e tamanhos). Sem desconto.
@@ -307,7 +319,19 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
     <>
       <div className="vt-top">
         <div className="vt-brand">
-          <Marca nome={v.empresa.nome} logoUrl={v.empresa.logoUrl} />
+          {/* Logo = "início": volta pro começo dos produtos (Léo, 09/10). */}
+          <button
+            type="button"
+            className="vt-inicio"
+            onClick={irProInicio}
+            aria-label={`${v.empresa.nome} — início da vitrine`}
+            data-testid="vt-inicio"
+          >
+            {v.empresa.simboloUrl && (
+              <img className="vt-simbolo" src={v.empresa.simboloUrl} alt="" aria-hidden="true" />
+            )}
+            <Marca nome={v.empresa.nome} logoUrl={v.empresa.logoUrl} />
+          </button>
           {/* Pra quem tem acesso à plataforma (equipe, representante). */}
           <Link to="/login" className="vt-entrar" data-testid="vt-entrar">
             Entrar

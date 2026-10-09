@@ -72,7 +72,7 @@ export interface MinimoPub {
   modo: 'E' | 'OU';
 }
 export interface VitrinePub {
-  empresa: { nome: string; logoUrl: string | null };
+  empresa: { nome: string; logoUrl: string | null; simboloUrl?: string | null };
   faixas: Faixas;
   pedidoMinimo?: MinimoPub | null;
   /** Frete cobrado no pedido (Melhor Envio). null/ausente = combina no WhatsApp. */

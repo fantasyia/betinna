@@ -112,7 +112,12 @@ describe('VitrinePublicaService', () => {
     // Sem "respeita estoque": nenhum número de estoque sai.
     expect(r.respeitaEstoque).toBe(false);
     expect(r.modelos.every((m) => m.estoque === null)).toBe(true);
-    expect(r.empresa).toEqual({ nome: 'Ribelt Distribuidora', logoUrl: 'https://x/logo.png' });
+    // Só marca pública (nome, logo e símbolo) — nada da config da empresa.
+    expect(r.empresa).toEqual({
+      nome: 'Ribelt Distribuidora',
+      logoUrl: 'https://x/logo.png',
+      simboloUrl: null,
+    });
   });
 
   it('🔒 CUSTO nunca sai na vitrine pública (calculadora de precificação)', async () => {
