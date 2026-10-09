@@ -41,6 +41,30 @@ export class SupressaoService {
   static readonly TAG_WHATSAPP_INVALIDO = 'WhatsApp inválido ⛔';
 
   /**
+   * Números de SISTEMA da Meta (código de confirmação do Facebook/Instagram…).
+   * Nada automático responde a eles — fluxo, IA, MullerBot, campanha. A mensagem
+   * ENTRA normal (conversa, lead, caixa de entrada); só a resposta automática não
+   * sai. Decisão do Léo (09/10): não ignorar a mensagem, não responder sozinho.
+   *
+   * Por quê: em 08/10 21:36 o WhatsApp da Ribelt Têxtil foi DESLOGADO pelo
+   * servidor (stream errored out, 401) três segundos depois de o bot responder
+   * ao código de confirmação do Facebook — automação conversando com a conta
+   * oficial da Meta. Voltar exigiu QR novo.
+   *
+   * Comparação EXATA (só dígitos), nunca por sufixo: o sufixo de 8 (D18) calaria
+   * o cliente cujo número termina igual. Número novo da Meta entra aqui.
+   */
+  static readonly NUMEROS_SISTEMA_META: ReadonlySet<string> = new Set([
+    '447710173736', // código de confirmação do Facebook (visto em 08/10/2026)
+  ]);
+
+  /** O telefone é de um número de sistema da Meta? (exato, com ou sem máscara/JID) */
+  static numeroSistemaMeta(telefone: string | null | undefined): boolean {
+    const d = (telefone ?? '').split('@')[0].replace(/\D/g, '');
+    return d.length > 0 && SupressaoService.NUMEROS_SISTEMA_META.has(d);
+  }
+
+  /**
    * ⚠️ O barramento vem por `ModuleRef`, não por injeção normal — e isso é
    * deliberado.
    *
@@ -122,6 +146,14 @@ export class SupressaoService {
       email?: string | null;
     },
   ): Promise<boolean> {
+    // ANTES da tag LGPD: empresa sem a tag deixa a supressão inerte (return false
+    // logo abaixo) — e foi justamente numa assim que o 401 aconteceu.
+    if (SupressaoService.numeroSistemaMeta(alvo.telefone)) {
+      this.logger.log(
+        `[supressao] ${alvo.telefone} é número de sistema da Meta — sem envio automático (empresa ${empresaId})`,
+      );
+      return true;
+    }
     try {
       const tag = await this.acharTagLgpd(empresaId);
       if (!tag) {

@@ -53,6 +53,23 @@ describe('SupressaoService', () => {
     ).resolves.toBe(true);
   });
 
+  it('número de sistema da Meta (código do Facebook): suprime MESMO sem a tag LGPD na empresa', async () => {
+    // A Ribelt Têxtil não tinha a tag — a supressão estava inerte quando o 401 veio.
+    prisma.tag.findMany.mockResolvedValue([]);
+    for (const tel of ['447710173736', '+44 7710 173736', '447710173736@s.whatsapp.net']) {
+      await expect(svc.suprimido('emp-1', { leadId: 'l1', telefone: tel })).resolves.toBe(true);
+    }
+    expect(prisma.tag.findMany).not.toHaveBeenCalled();
+  });
+
+  it('número da Meta casa EXATO — cliente com o mesmo final segue recebendo', () => {
+    expect(SupressaoService.numeroSistemaMeta('447710173736')).toBe(true);
+    // Mesmos 8 últimos dígitos (o sufixo D18 casaria): NÃO é a Meta.
+    expect(SupressaoService.numeroSistemaMeta('5511910173736')).toBe(false);
+    expect(SupressaoService.numeroSistemaMeta(null)).toBe(false);
+    expect(SupressaoService.numeroSistemaMeta('')).toBe(false);
+  });
+
   it('sem match em nada → false (envio liberado)', async () => {
     prisma.tag.findMany.mockResolvedValue([{ id: 't1', nome: 'Não Reabordar - LGPD ⛔' }]);
     await expect(

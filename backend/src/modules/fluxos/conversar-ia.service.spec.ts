@@ -398,6 +398,25 @@ describe('ConversarIaService', () => {
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
     });
 
+    // 08/10: a IA respondeu ao código de confirmação do Facebook e, 3 s depois, o
+    // WhatsApp da Ribelt Têxtil foi DESLOGADO (401). Número de sistema da Meta:
+    // a conversa fica na caixa de entrada, mas nada automático sai — nem o
+    // "digitando…".
+    it('número de sistema da Meta → nó pulado, IA não chamada, nada enviado', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '447710173736' });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', conversationId: 'conv-1' },
+        'emp-1',
+      );
+
+      expect(r).toMatchObject({ pulado: true, motivo: expect.stringMatching(/sistema da Meta/) });
+      expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    });
+
     // Incidente de 05/09: SIGTERM no worker no meio do nó → passo FALHOU depois
     // de enviar → BullMQ re-executou o nó no worker novo → resposta re-gerada →
     // cliente leu a despedida duas vezes. Estes dois testes prendem o conserto.

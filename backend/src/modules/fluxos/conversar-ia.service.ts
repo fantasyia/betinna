@@ -1169,6 +1169,18 @@ export class ConversarIaService implements OnModuleDestroy {
       where: { id: leadId, empresaId },
       select: { contatoTelefone: true },
     });
+    // Número de sistema da Meta (código do Facebook…): a conversa fica na caixa de
+    // entrada, a IA não responde. Motivo PRÓPRIO na execução — não é LGPD.
+    if (SupressaoService.numeroSistemaMeta(leadTel?.contatoTelefone)) {
+      this.logger.log(
+        `CONVERSAR_IA: lead ${leadId} é número de sistema da Meta — sem resposta automática (exec ${execucaoId})`,
+      );
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo: 'número de sistema da Meta (código de confirmação) — sem resposta automática',
+      };
+    }
     if (await this.supressao.suprimido(empresaId, { leadId, telefone: leadTel?.contatoTelefone })) {
       this.logger.log(
         `CONVERSAR_IA: lead ${leadId} suprimido (LGPD) — pulado (exec ${execucaoId})`,
