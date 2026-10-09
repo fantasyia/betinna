@@ -1,11 +1,18 @@
-# syntax=docker/dockerfile:1.6
 # ─────────────────────────────────────────────────────────────────────────
 # Dockerfile do backend Betinna.ai (Sprint 3 FIX 8)
 # Multi-stage build com Node 24 alpine — imagem final ~150MB
 # ─────────────────────────────────────────────────────────────────────────
 
+# Imagem base do ESPELHO da Amazon (public.ecr.aws/docker/library = as
+# imagens OFICIAIS do Docker Hub, idênticas). Em 09/10 o Docker Hub recusou
+# o download anônimo do builder da Railway (429 Too Many Requests: limite
+# por IP, e o IP do builder é compartilhado) e dois deploys seguidos da api
+# e do worker falharam sem nada errado no código. Pelo mesmo motivo saiu a
+# linha `# syntax=docker/dockerfile:1.6` (também vinha do Docker Hub e nada
+# aqui usa recurso dela — o BuildKit já traz o frontend embutido).
+
 # Stage 1: install deps + build
-FROM node:24-alpine AS builder
+FROM public.ecr.aws/docker/library/node:24-alpine AS builder
 
 # Healthcheck precisa de curl no runtime; mas no builder também precisamos
 # de openssl pra Prisma generate em alpine
@@ -32,7 +39,7 @@ RUN npm run build && \
 # ─────────────────────────────────────────────────────────────────────────
 # Stage 2: runtime image — mínima, apenas dist + node_modules de produção
 # ─────────────────────────────────────────────────────────────────────────
-FROM node:24-alpine AS runtime
+FROM public.ecr.aws/docker/library/node:24-alpine AS runtime
 
 # postgresql-client para os scripts de backup (chamados externamente, não pelo
 # app, mas é útil ter no container caso queira rodar via `docker exec`)
