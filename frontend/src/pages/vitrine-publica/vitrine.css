@@ -229,7 +229,12 @@
 .vt-preco-faixas em { font-style: normal; font-size: 9px; letter-spacing: .02em; text-transform: uppercase; color: var(--oliva); margin-right: 4px; }
 .vt-slide .vt-info { gap: 8px; padding: 10px 16px 16px; }
 /* espaço da barra do pedido só quando ela aparece */
-.vt-feed[data-bag] .vt-slide .vt-info { padding-bottom: 84px; }
+/* Barra "Ver pedido" (fixa embaixo): o card reserva a altura DELA + a área
+   segura. Antes eram 84px fixos sem a área segura — no simulador cabia, no
+   iPhone (Léo, 09/10) a barra subia ~34px e tampava "Ficha técnica" e "Montar
+   grade". Conta: 12 (base) + ~68 (altura medida da .vt-bag) + 12 de folga. */
+.vt-app { --vt-bag-reserva: calc(92px + env(safe-area-inset-bottom, 0px)); }
+.vt-feed[data-bag] .vt-slide .vt-info { padding-bottom: var(--vt-bag-reserva); }
 .vt-slide .vt-name { font-size: 22px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .vt-slide .vt-cta { height: 44px; }
 .vt-top { padding-top: 10px; }
