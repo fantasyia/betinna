@@ -467,12 +467,32 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           slug={slug}
           e={enviado}
           empresa={v.empresa.nome}
+          privacidade={Boolean(v.privacidade)}
           onFechar={() => setEnviado(null)}
         />
       )}
 
       {toast && <div className="vt-toast">{toast}</div>}
     </>
+  );
+}
+
+/**
+ * Link da Política de Privacidade. Página PRONTA do servidor (o robô do Meta
+ * lê sem rodar o app) — por isso `<a>` e não rota do app; outra aba pra não
+ * perder o que a pessoa digitou no pedido.
+ */
+function LinkPrivacidade({ slug }: { slug: string }) {
+  return (
+    <a
+      className="vt-priv"
+      href={`/v/${encodeURIComponent(slug)}/privacidade`}
+      target="_blank"
+      rel="noopener"
+      data-testid="vt-privacidade"
+    >
+      Política de privacidade
+    </a>
   );
 }
 
@@ -1369,6 +1389,12 @@ function SeuPedido({
           Enviar pedido · {r.pecas} {r.pecas === 1 ? 'peça' : 'peças'}
         </button>
         <span className="vt-byline">
+          {v.privacidade && (
+            <>
+              <LinkPrivacidade slug={slug} />
+              {' · '}
+            </>
+          )}
           feito com <b>Betinna.ai</b>
         </span>
       </footer>
@@ -1379,6 +1405,7 @@ function SeuPedido({
           carrinho={carrinho}
           resumo={r}
           frete={v.frete ?? null}
+          privacidade={Boolean(v.privacidade)}
           onFechar={() => setEnvio(false)}
           onEnviado={onEnviado}
         />
@@ -1450,6 +1477,7 @@ function FolhaEnvio({
   carrinho,
   resumo,
   frete,
+  privacidade,
   onFechar,
   onEnviado,
 }: {
@@ -1459,6 +1487,8 @@ function FolhaEnvio({
   resumo: ReturnType<typeof resumoPedido>;
   /** Empresa cobra frete: pede o endereço e cota. null = combina no WhatsApp. */
   frete: FretePub | null;
+  /** Política de Privacidade publicada: link junto do formulário. */
+  privacidade: boolean;
   onFechar: () => void;
   onEnviado: (e: Enviado) => void;
 }) {
@@ -1543,6 +1573,11 @@ function FolhaEnvio({
             <span className="vt-muted">
               A {empresa} confirma tudo com você pelo WhatsApp antes de separar.
             </span>
+            {privacidade && (
+              <span className="vt-muted vt-priv-linha">
+                Seus dados servem só pra atender este pedido. <LinkPrivacidade slug={slug} />
+              </span>
+            )}
           </div>
         </div>
         <div className="vt-form">
@@ -1679,11 +1714,13 @@ function PedidoEnviado({
   slug,
   e,
   empresa,
+  privacidade,
   onFechar,
 }: {
   slug: string;
   e: Enviado;
   empresa: string;
+  privacidade: boolean;
   onFechar: () => void;
 }) {
   const [reservaAte, setReservaAte] = useState(e.reservaExpiraEm);
@@ -1741,6 +1778,12 @@ function PedidoEnviado({
           Voltar à vitrine
         </button>
         <span className="vt-byline">
+          {privacidade && (
+            <>
+              <LinkPrivacidade slug={slug} />
+              {' · '}
+            </>
+          )}
           feito com <b>Betinna.ai</b>
         </span>
       </footer>

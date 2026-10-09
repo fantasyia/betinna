@@ -90,6 +90,9 @@ export default defineConfig({
         ],
         // Limite generoso porque incluímos chunks pesados (xlsx, docx, jspdf)
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Política de Privacidade sai PRONTA do servidor (server.mjs) — o SW não
+        // pode responder com o index.html do app no lugar dela.
+        navigateFallbackDenylist: [/^\/privacidade\/?$/, /^\/v\/[^/]+\/privacidade\/?$/],
         // Skip waiting + clientsClaim: o SW novo ativa na hora e assume as abas
         // abertas → com o reload do controllerchange, o deploy chega sem banner.
         skipWaiting: true,

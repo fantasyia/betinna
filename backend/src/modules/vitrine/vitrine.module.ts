@@ -14,6 +14,7 @@ import { VitrinePublicaController } from './vitrine-publica.controller';
 import { VitrinePublicaService } from './vitrine-publica.service';
 import { VitrinePedidoService } from './vitrine-pedido.service';
 import { FreteService } from './frete.service';
+import { PrivacidadeService } from './privacidade.service';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 
 /**
@@ -45,6 +46,7 @@ import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
     VitrinePublicaService,
     VitrinePedidoService,
     FreteService,
+    PrivacidadeService,
     PrecificacaoService,
   ],
   exports: [VitrineAdminService, VitrineFotosService],

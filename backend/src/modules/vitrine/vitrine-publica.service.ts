@@ -7,6 +7,7 @@ import { EstoqueService } from '@modules/erp/estoque.service';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import { minimoDaVitrine } from './vitrine-pedido.service';
 import { configFrete } from './frete';
+import { privacidadePublicada } from './privacidade.service';
 
 /** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
 function freteDaVitrine(config: unknown) {
@@ -203,6 +204,8 @@ export class VitrinePublicaService {
       pagamentoOnline: pagamentoOnlineLigado(vitrine.empresa.config),
       // Frete cobrado no pedido (Melhor Envio): a tela pede CEP e cota.
       frete: freteDaVitrine(vitrine.empresa.config),
+      // Link "Política de privacidade" na vitrine (só quando publicada).
+      privacidade: privacidadePublicada(vitrine.empresa.config),
       linhas,
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({

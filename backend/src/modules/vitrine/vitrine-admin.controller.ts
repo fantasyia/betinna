@@ -16,7 +16,9 @@ import {
   type VariacaoPatchDto,
   type VitrineConfigDto,
   type FreteConfigDto,
+  type PrivacidadeConfigDto,
   corSchema,
+  privacidadeConfigSchema,
   freteConfigSchema,
   simularFreteSchema,
   linhaSchema,
@@ -27,6 +29,7 @@ import {
 } from './vitrine.dto';
 import { VitrineAdminService } from './vitrine-admin.service';
 import { FreteService } from './frete.service';
+import { PrivacidadeService } from './privacidade.service';
 
 /**
  * Vitrine de atacado — cadastro do lado da empresa (Fase 1).
@@ -43,7 +46,26 @@ export class VitrineAdminController {
   constructor(
     private readonly svc: VitrineAdminService,
     private readonly frete: FreteService,
+    private readonly privacidade: PrivacidadeService,
   ) {}
+
+  // ─── Política de Privacidade ────────────────────────────────────────────
+  @Get('privacidade')
+  @ApiOperation({ summary: 'Razão social e e-mail da política de privacidade (publicada?)' })
+  privacidadeStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.privacidade.status(user);
+  }
+
+  @Put('privacidade')
+  @ApiOperation({
+    summary: 'Salva quem responde pelos dados e o e-mail de contato (publica a página)',
+  })
+  privacidadeSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(privacidadeConfigSchema)) dto: PrivacidadeConfigDto,
+  ) {
+    return this.privacidade.salvar(user, dto);
+  }
 
   // ─── Frete (Melhor Envio) ───────────────────────────────────────────────
   @Get('frete')

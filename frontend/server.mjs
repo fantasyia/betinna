@@ -14,7 +14,10 @@
  *    index.html com título, descrição e imagem da marca DO DOMÍNIO, lidos de
  *    `GET /public/branding?host=` (cache de 5 min; API fora = HTML padrão);
  *  - domínio próprio com vitrine ativa: a raiz `/` vai pra `/v/<slug>` — o
- *    link que vai pro lojista é só o domínio.
+ *    link que vai pro lojista é só o domínio;
+ *  - Política de Privacidade (`/privacidade` no domínio da vitrine, ou
+ *    `/v/<slug>/privacidade`) em HTML PRONTO: o Meta confere a URL com robô,
+ *    que não roda o app (09/10 — sem ela, nada de formulário de anúncio).
  *
  * Sem dependência nenhuma (node:http/fs). Exporta `criarServidor` pros testes.
  */
@@ -118,6 +121,58 @@ export function aplicarMarca(html, marca, { host, caminho }) {
   return out;
 }
 
+/** Qual vitrine a URL pede a política. null = não é a página de privacidade. */
+export function slugDaPrivacidade(caminho, marca, doTenant) {
+  const m = /^\/v\/([a-z0-9-]{3,40})\/privacidade\/?$/.exec(caminho);
+  if (m) return m[1];
+  if (/^\/privacidade\/?$/.test(caminho) && doTenant && marca?.vitrineSlug) return marca.vitrineSlug;
+  return null;
+}
+
+const ESTILO_PAGINA = `
+  :root{color-scheme:light}
+  body{margin:0;background:#fbfaf7;color:#1f2a30;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  main{max-width:720px;margin:0 auto;padding:28px 18px 48px}
+  a{color:inherit}
+  .voltar{display:inline-block;margin-bottom:18px;font-size:14px}
+  h1{font-size:26px;line-height:1.25;margin:0 0 6px}
+  .data{margin:0 0 24px;color:#5f6b70;font-size:14px}
+  h2{font-size:18px;margin:28px 0 8px}
+  p{margin:0 0 10px}
+  ul{margin:0 0 10px;padding-left:20px}
+  li{margin:0 0 6px}`;
+
+/** Página HTML completa e sem JavaScript — o que o robô do Meta lê. */
+export function paginaPrivacidade(p, { voltar }) {
+  const secoes = (p.secoes ?? [])
+    .map((s) => {
+      const par = (s.paragrafos ?? []).map((x) => `<p>${escapar(x)}</p>`).join('');
+      const itens = s.itens?.length ? `<ul>${s.itens.map((x) => `<li>${escapar(x)}</li>`).join('')}</ul>` : '';
+      return `<section><h2>${escapar(s.titulo)}</h2>${par}${itens}</section>`;
+    })
+    .join('\n');
+  const data = String(p.atualizadaEm ?? '').slice(0, 10).split('-').reverse().join('/');
+  return `<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${escapar(p.titulo)}</title>
+<meta name="description" content="${escapar(`Como ${p.marca} trata os seus dados pessoais.`)}" />
+<meta name="robots" content="index,follow" />
+<style>${ESTILO_PAGINA}</style>
+</head><body><main>
+<a class="voltar" href="${escapar(voltar)}">← Voltar à vitrine</a>
+<h1>${escapar(p.titulo)}</h1>
+${data ? `<p class="data">Última atualização: ${escapar(data)}</p>` : ''}
+${secoes}
+</main></body></html>`;
+}
+
+const PAGINA_AVISO = (titulo, texto) => `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${escapar(titulo)}</title><meta name="robots" content="noindex" /><style>${ESTILO_PAGINA}</style></head>
+<body><main><h1>${escapar(titulo)}</h1><p>${escapar(texto)}</p></main></body></html>`;
+
 export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_000 }) {
   const raiz = resolve(dist);
   const cacheMarca = new Map();
@@ -195,6 +250,38 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       // Rota da SPA: index.html com a marca do domínio.
       const marca = await marcaDo(host);
       const doTenant = marca?.dominio && normalizarHost(marca.dominio) === normalizarHost(host);
+
+      const slugPriv = slugDaPrivacidade(caminho, marca, doTenant);
+      if (slugPriv) {
+        let status = 503;
+        let html = PAGINA_AVISO('Política de Privacidade', 'Página indisponível agora. Tente de novo em instantes.');
+        try {
+          const r = await fetchFn(
+            `${apiUrl.replace(/\/+$/, '')}/api/v1/public/vitrine/${encodeURIComponent(slugPriv)}/privacidade`,
+            { signal: AbortSignal.timeout(3000) },
+          );
+          if (r.ok) {
+            const politica = (await r.json())?.data;
+            if (politica?.secoes) {
+              status = 200;
+              html = paginaPrivacidade(politica, { voltar: doTenant ? '/' : `/v/${encodeURIComponent(slugPriv)}` });
+            }
+          } else if (r.status === 404) {
+            status = 404;
+            html = PAGINA_AVISO('Política de Privacidade', 'Esta página ainda não foi publicada.');
+          }
+        } catch {
+          // API fora: 503 com aviso (nunca o app vazio no lugar da política).
+        }
+        const corpo = Buffer.from(html, 'utf8');
+        res.writeHead(status, {
+          'Content-Type': MIME['.html'],
+          'Content-Length': corpo.length,
+          'Cache-Control': status === 200 ? 'public, max-age=300' : SEM_CACHE,
+          ...SEGURANCA,
+        });
+        return res.end(req.method === 'HEAD' ? undefined : corpo);
+      }
       if (caminho === '/' && doTenant && marca.vitrineSlug) {
         res.writeHead(302, {
           Location: `/v/${encodeURIComponent(marca.vitrineSlug)}${url.search}`,

@@ -7,6 +7,7 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import { VitrinePublicaService } from './vitrine-publica.service';
 import { VitrinePedidoService } from './vitrine-pedido.service';
 import { FreteService } from './frete.service';
+import { PrivacidadeService } from './privacidade.service';
 import { type PedidoVitrineDto, cotarFreteSchema, pedidoVitrineSchema } from './vitrine.dto';
 
 const slugSchema = z
@@ -23,7 +24,19 @@ export class VitrinePublicaController {
     private readonly svc: VitrinePublicaService,
     private readonly pedidos: VitrinePedidoService,
     private readonly frete: FreteService,
+    private readonly privacidade: PrivacidadeService,
   ) {}
+
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: seconds(60) } })
+  @Header('Cache-Control', 'public, max-age=300')
+  @Get(':slug/privacidade')
+  @ApiOperation({
+    summary: 'Política de Privacidade da vitrine (texto conforme o que a empresa usa)',
+  })
+  politica(@Param('slug', new ZodValidationPipe(slugSchema)) slug: string) {
+    return this.privacidade.publica(slug);
+  }
 
   @Public()
   // Endereço do CEP (ViaCEP pelo servidor: a tela não fala com terceiros).

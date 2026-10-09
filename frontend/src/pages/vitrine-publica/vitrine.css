@@ -196,6 +196,8 @@
 .vt-empty { color: var(--oliva); text-align: center; padding: 40px 10px; font-size: 14px; }
 .vt-byline { font-size: 11px; color: var(--oliva); text-align: center; }
 .vt-byline b { font-weight: 600; color: var(--petroleo); }
+.vt-priv { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.vt-priv-linha { display: block; margin-top: 4px; }
 .vt-aviso { font-size: 12.5px; color: var(--terracota); font-weight: 600; }
 .vt-toast { position: absolute; left: 50%; top: 132px; z-index: 80; transform: translateX(-50%); background: var(--petroleo); color: var(--creme); padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap; pointer-events: none; }
 .vt-centro { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; }

@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { aplicarMarca, cacheDe, criarServidor } from '../server.mjs';
+import {
+  aplicarMarca,
+  cacheDe,
+  criarServidor,
+  paginaPrivacidade,
+  slugDaPrivacidade,
+} from '../server.mjs';
 
 /**
  * Servidor do front (server.mjs), que substituiu o `serve dist -s`.
@@ -40,7 +46,22 @@ const RIBELT = {
 let dir: string;
 let server: Server;
 let base: string;
+const POLITICA = {
+  titulo: 'Política de Privacidade · Ribelt Têxtil',
+  marca: 'Ribelt Têxtil',
+  atualizadaEm: '2026-10-09',
+  secoes: [
+    { titulo: 'Quem somos', paragrafos: ['Controlador: <Ribelt> & cia'] },
+    { titulo: 'Seus direitos', paragrafos: ['Você pode pedir:'], itens: ['acesso', 'correção'] },
+  ],
+};
 const fetchFn = vi.fn(async (url: string) => {
+  const priv = /\/public\/vitrine\/([^/]+)\/privacidade$/.exec(new URL(url).pathname);
+  if (priv) {
+    if (priv[1] === 'api-fora') throw new Error('timeout');
+    if (priv[1] !== 'atacado-ribelt') return new Response('{}', { status: 404 });
+    return new Response(JSON.stringify({ success: true, data: POLITICA }), { status: 200 });
+  }
   const host = new URL(url).searchParams.get('host');
   if (host === 'api-fora.com') throw new Error('timeout');
   const data = host === 'atacado.ribelt.com.br' ? RIBELT : { nome: 'Betinna.ai', dominio: null };
@@ -148,5 +169,50 @@ describe('servidor do front — preview do link com a marca do domínio', () => 
     await get('/v/a', 'atacado.ribelt.com.br');
     await get('/v/b', 'atacado.ribelt.com.br');
     expect(fetchFn).toHaveBeenCalledTimes(0); // já estava em cache dos testes acima
+  });
+});
+
+describe('Política de Privacidade (o Meta confere a URL com robô, sem rodar o app)', () => {
+  it('/privacidade no domínio da vitrine: HTML PRONTO, com o texto e escapado', async () => {
+    const r = await get('/privacidade', 'atacado.ribelt.com.br');
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('<h1>Política de Privacidade · Ribelt Têxtil</h1>');
+    expect(html).toContain('<li>acesso</li>');
+    expect(html).toContain('Última atualização: 09/10/2026');
+    expect(html).toContain('&lt;Ribelt&gt; &amp; cia');
+    expect(html).not.toContain('<div id="root">'); // não é o app
+    expect(html).toContain('href="/"'); // voltar = raiz do domínio (vai pra vitrine)
+  });
+
+  it('/v/<slug>/privacidade funciona em qualquer domínio', async () => {
+    const r = await get('/v/atacado-ribelt/privacidade', 'app.somatecblocking.com.br');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('href="/v/atacado-ribelt"');
+  });
+
+  it('/privacidade fora do domínio de uma vitrine segue pro app (não é página da Ribelt)', async () => {
+    const r = await get('/privacidade', 'app.somatecblocking.com.br');
+    expect(await r.text()).toContain('<div id="root">');
+  });
+
+  it('política não publicada: 404 com aviso; API fora: 503 com aviso (nunca o app vazio)', async () => {
+    const naoPub = await get('/v/outra-vitrine/privacidade', 'app.somatecblocking.com.br');
+    expect(naoPub.status).toBe(404);
+    expect(await naoPub.text()).toContain('ainda não foi publicada');
+    const fora = await get('/v/api-fora/privacidade', 'app.somatecblocking.com.br');
+    expect(fora.status).toBe(503);
+  });
+
+  it('slugDaPrivacidade: só o formato esperado', () => {
+    expect(slugDaPrivacidade('/v/atacado-ribelt/privacidade', null, false)).toBe('atacado-ribelt');
+    expect(slugDaPrivacidade('/v/../privacidade', null, false)).toBeNull();
+    expect(slugDaPrivacidade('/privacidade', RIBELT, false)).toBeNull();
+    expect(slugDaPrivacidade('/privacidade', RIBELT, true)).toBe('atacado-ribelt');
+    expect(slugDaPrivacidade('/v/atacado-ribelt', RIBELT, true)).toBeNull();
+  });
+
+  it('paginaPrivacidade não roda script nenhum', () => {
+    expect(paginaPrivacidade(POLITICA, { voltar: '/' })).not.toMatch(/<script/i);
   });
 });

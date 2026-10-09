@@ -225,6 +225,13 @@ export const freteConfigSchema = z.object({
 });
 export type FreteConfigDto = z.infer<typeof freteConfigSchema>;
 
+/** Política de Privacidade da vitrine: quem responde pelos dados e o canal de contato. */
+export const privacidadeConfigSchema = z.object({
+  razaoSocial: z.string().trim().min(2, 'Informe a razão social').max(160),
+  email: z.string().trim().toLowerCase().email('E-mail inválido').max(160),
+});
+export type PrivacidadeConfigDto = z.infer<typeof privacidadeConfigSchema>;
+
 /** "Simular frete" da tela de configuração: N peças de X gramas pra um CEP. */
 export const simularFreteSchema = z.object({
   cep: cepSchema,

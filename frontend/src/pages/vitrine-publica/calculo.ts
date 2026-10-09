@@ -75,6 +75,8 @@ export interface VitrinePub {
     retiradaEndereco?: string | null;
     retiradaHorario?: string | null;
   } | null;
+  /** Política de Privacidade publicada (link no pedido). */
+  privacidade?: boolean;
   /** `selo`: aviso da linha (Plus Size de verdade…); null = sem selo. */
   linhas: Array<{ id: string; nome: string; selo?: string | null }>;
   modelos: ModeloPub[];

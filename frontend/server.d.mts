@@ -18,6 +18,18 @@ export function aplicarMarca(
   marca: MarcaPreview | null,
   ctx: { host: string; caminho: string },
 ): string;
+export interface PoliticaPrivacidade {
+  titulo: string;
+  marca: string;
+  atualizadaEm: string;
+  secoes: Array<{ titulo: string; paragrafos: string[]; itens?: string[] }>;
+}
+export function slugDaPrivacidade(
+  caminho: string,
+  marca: MarcaPreview | null,
+  doTenant: boolean,
+): string | null;
+export function paginaPrivacidade(p: PoliticaPrivacidade, opts: { voltar: string }): string;
 export function criarServidor(opts: {
   dist: string;
   apiUrl: string;
