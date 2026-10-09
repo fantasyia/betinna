@@ -528,7 +528,7 @@ describe('VitrinePedidoService — frete (Melhor Envio)', () => {
     const r = await svc.enviar('atacado-ribelt', dto({ entrega, frete: { servicoId: 1 } }));
     expect(r).toMatchObject({ total: 302.5, frete: 32.5, freteAConfirmar: false });
     // Cotação refeita no servidor, peça a peça, com o peso do cadastro.
-    const [, , cep, pesos, valor] = frete.cotarPesos.mock.calls[0];
+    const [, , cep, pesos, valor] = frete.cotarPesos.mock.calls[0] as unknown[];
     expect(cep).toBe('88350000');
     expect(pesos).toEqual([300, 300, 300, 300, 300, 300]);
     expect(valor).toBe(270);

@@ -188,6 +188,7 @@ describe('VitrineAdminService', () => {
       prisma.catalogoModeloTamanho.findMany.mockResolvedValue([{ id: 'mt-p', tamanhoId: 't-p' }]);
       prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
       await svc.atualizarModelo(user(), 'mod-1', {
+        nome: 'Moletom',
         linhas: [
           { linhaId: 'lin-1', tamanhoIds: ['t-p', 't-m'], pesos: { 't-p': 280, 't-m': 300 } },
         ],
@@ -206,6 +207,7 @@ describe('VitrineAdminService', () => {
       prisma.catalogoModeloTamanho.findMany.mockResolvedValue([{ id: 'mt-p', tamanhoId: 't-p' }]);
       prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
       await svc.atualizarModelo(user(), 'mod-1', {
+        nome: 'Moletom',
         linhas: [{ linhaId: 'lin-1', tamanhoIds: ['t-p'] }],
       });
       expect(prisma.catalogoModeloTamanho.update).not.toHaveBeenCalled();
