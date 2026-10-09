@@ -16,13 +16,14 @@ import { Badge, Button, Card, Field, Input, Select, Switch } from '@/components/
  * peça avulsa e retirada em mãos. O peso de cada peça é por tamanho, no
  * cadastro do modelo (aba Grade). "Simular" cota antes de ligar.
  */
+/** Como a API guarda: medidas podem estar vazias (null) enquanto o frete está desligado. */
 interface Embalagem {
   nome: string;
-  comprimentoCm: number;
-  larguraCm: number;
-  alturaCm: number;
-  pesoVazioG: number;
-  capacidadePecas: number;
+  comprimentoCm: number | null;
+  larguraCm: number | null;
+  alturaCm: number | null;
+  pesoVazioG: number | null;
+  capacidadePecas: number | null;
 }
 
 export interface ConfigFreteApi {
@@ -120,43 +121,62 @@ const num = (v: string) => {
   return t === '' ? NaN : Number(t);
 };
 
-function embalagemDoForm(e: EmbalagemForm, rotulo: string): Embalagem | string {
-  const out = {
-    nome: e.nome.trim(),
-    comprimentoCm: num(e.comprimentoCm),
-    larguraCm: num(e.larguraCm),
-    alturaCm: num(e.alturaCm),
-    pesoVazioG: num(e.pesoVazioG),
-    capacidadePecas: num(e.capacidadePecas),
+/**
+ * Campo vazio → null (a caixa pode ficar pela metade enquanto o frete está
+ * desligado — o Léo ainda não tinha peso e capacidade, 09/10). Digitado errado
+ * → erro. `completa` diz se a caixa já serve pra montar volume.
+ */
+function embalagemDoForm(
+  e: EmbalagemForm,
+  rotulo: string,
+): { emb: Embalagem; completa: boolean } | string {
+  const ler = (v: string, inteiro: boolean, min: number): number | null | 'erro' => {
+    if (!v.trim()) return null;
+    const n = num(v);
+    if (!Number.isFinite(n) || n < min || (inteiro && !Number.isInteger(n))) return 'erro';
+    return n;
   };
-  if (!out.nome) return `${rotulo}: dê um nome`;
-  if (![out.comprimentoCm, out.larguraCm, out.alturaCm].every((x) => x > 0)) {
-    return `${rotulo}: preencha as medidas em cm`;
+  const campos = {
+    comprimentoCm: ler(e.comprimentoCm, false, 0.1),
+    larguraCm: ler(e.larguraCm, false, 0.1),
+    alturaCm: ler(e.alturaCm, false, 0.1),
+    pesoVazioG: ler(e.pesoVazioG, true, 0),
+    capacidadePecas: ler(e.capacidadePecas, true, 1),
+  };
+  if ([campos.comprimentoCm, campos.larguraCm, campos.alturaCm].includes('erro')) {
+    return `${rotulo}: medida em cm inválida`;
   }
-  if (!Number.isInteger(out.pesoVazioG) || out.pesoVazioG < 0) {
-    return `${rotulo}: peso vazio em gramas`;
-  }
-  if (!Number.isInteger(out.capacidadePecas) || out.capacidadePecas < 1) {
-    return `${rotulo}: quantas peças cabem`;
-  }
-  return out;
+  if (campos.pesoVazioG === 'erro') return `${rotulo}: peso vazio em gramas (número inteiro)`;
+  if (campos.capacidadePecas === 'erro') return `${rotulo}: peças que cabem (número inteiro)`;
+  const emb = { nome: e.nome.trim() || rotulo, ...campos } as Embalagem;
+  const completa = Object.values(campos).every((v) => v !== null);
+  return { emb, completa };
 }
 
 /** Formulário → corpo do PUT. Erro de digitação vira mensagem, não envio. */
 export function corpoDoForm(f: FreteForm): { ok: true; corpo: Record<string, unknown> } | { ok: false; erro: string } {
   const caixas: Embalagem[] = [];
+  let algumaCompleta = false;
   for (const [i, c] of f.caixas.entries()) {
     // Linha inteira em branco: ignora (sobra de "adicionar caixa").
     if (Object.values(c).every((v) => !v.trim())) continue;
-    const e = embalagemDoForm(c, c.nome.trim() || `Caixa ${i + 1}`);
-    if (typeof e === 'string') return { ok: false, erro: e };
-    caixas.push(e);
+    const r = embalagemDoForm(c, c.nome.trim() || `Caixa ${i + 1}`);
+    if (typeof r === 'string') return { ok: false, erro: r };
+    caixas.push(r.emb);
+    algumaCompleta ||= r.completa;
   }
   let individual: Embalagem | null = null;
   if (f.usarIndividual) {
-    const e = embalagemDoForm(f.individual, 'Embalagem individual');
-    if (typeof e === 'string') return { ok: false, erro: e };
-    individual = e;
+    const r = embalagemDoForm(f.individual, 'Embalagem individual');
+    if (typeof r === 'string') return { ok: false, erro: r };
+    individual = r.emb;
+  }
+  // Ligar o frete exige caixa completa; desligado, salva o que tiver.
+  if (f.ativo && !algumaCompleta) {
+    return {
+      ok: false,
+      erro: 'Pra cobrar frete, complete ao menos uma caixa (medidas, peso vazio e peças que cabem)',
+    };
   }
   const cep = f.cepOrigem.replace(/\D/g, '');
   if (cep && cep.length !== 8) return { ok: false, erro: 'CEP de origem com 8 números' };
@@ -233,6 +253,7 @@ export function FreteConfig() {
   const toast = useToast();
   const [f, setF] = useState<FreteForm | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [erroForm, setErroForm] = useState<string | null>(null);
   const [sim, setSim] = useState({ cep: '', pecas: '100', pesoG: '300', valor: '' });
   const [simulando, setSimulando] = useState(false);
   const [cotacao, setCotacao] = useState<Cotacao | null>(null);
@@ -249,9 +270,10 @@ export function FreteConfig() {
     if (!f) return;
     const r = corpoDoForm(f);
     if (!r.ok) {
-      toast.error('Confira o frete', r.erro);
+      setErroForm(r.erro);
       return;
     }
+    setErroForm(null);
     setSalvando(true);
     try {
       const novo = await api.put<StatusFrete>('/vitrine/admin/frete', r.corpo);
@@ -259,7 +281,7 @@ export function FreteConfig() {
       q.refetch();
       toast.success(f.ativo ? 'Frete salvo e ligado na vitrine' : 'Frete salvo');
     } catch (err) {
-      toast.error('Não foi possível salvar', apiErrorMessage(err));
+      setErroForm(apiErrorMessage(err));
     } finally {
       setSalvando(false);
     }
@@ -439,6 +461,11 @@ export function FreteConfig() {
           {salvando ? 'Salvando…' : 'Salvar frete'}
         </Button>
       </div>
+      {erroForm && (
+        <p className="text-sm font-medium text-danger" role="alert" data-testid="frete-erro">
+          Não salvou: {erroForm}
+        </p>
+      )}
 
       <div className="flex flex-col gap-2 rounded-[10px] border border-border p-3">
         <h3 className="text-sm font-semibold">Simular</h3>

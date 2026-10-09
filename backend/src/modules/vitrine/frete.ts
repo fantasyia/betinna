@@ -28,6 +28,11 @@ export interface Embalagem {
   capacidadePecas: number;
 }
 
+/** Embalagem como fica salva: pode estar incompleta enquanto o frete está desligado. */
+export type EmbalagemSalva = {
+  [K in keyof Embalagem]: K extends 'nome' ? string : Embalagem[K] | null;
+};
+
 /** O que fica em `Empresa.config.frete` (o token do Melhor Envio NÃO: ele é credencial cifrada). */
 export interface ConfigFrete {
   ativo?: boolean;
@@ -38,8 +43,8 @@ export interface ConfigFrete {
   /** Teto por volume, em kg. */
   pesoMaxVolumeKg?: number;
   /** Embalagem da peça avulsa (ou de poucas peças). */
-  embalagemIndividual?: Embalagem | null;
-  caixas?: Embalagem[];
+  embalagemIndividual?: EmbalagemSalva | null;
+  caixas?: EmbalagemSalva[];
   retirada?: {
     ativo?: boolean;
     minimoPecas?: number;
@@ -75,15 +80,17 @@ export function faltandoNoFrete(cfg: ConfigFrete): string[] {
   return falta;
 }
 
-export function embalagemValida(e: Embalagem | null | undefined): e is Embalagem {
+/** Completa (todas as medidas, peso vazio e capacidade)? Só as completas montam volume. */
+export function embalagemValida(e: EmbalagemSalva | null | undefined): e is Embalagem {
   return (
     !!e &&
-    e.comprimentoCm > 0 &&
-    e.larguraCm > 0 &&
-    e.alturaCm > 0 &&
+    (e.comprimentoCm ?? 0) > 0 &&
+    (e.larguraCm ?? 0) > 0 &&
+    (e.alturaCm ?? 0) > 0 &&
+    e.pesoVazioG !== null &&
     e.pesoVazioG >= 0 &&
     Number.isInteger(e.capacidadePecas) &&
-    e.capacidadePecas > 0
+    (e.capacidadePecas ?? 0) > 0
   );
 }
 

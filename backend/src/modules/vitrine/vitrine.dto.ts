@@ -193,13 +193,17 @@ export const cotarFreteSchema = z.object({
   itens: z.array(itemCarrinhoSchema).min(1).max(2000),
 });
 
+// Caixa pode ficar INCOMPLETA (null) enquanto o frete está desligado — o Léo
+// ainda não tinha o peso vazio nem a capacidade, e a caixa pela metade travava
+// o "Salvar" da config inteira (09/10). Ligar exige ao menos uma completa
+// (FreteService.salvar → faltandoNoFrete).
 const embalagemSchema = z.object({
   nome: z.string().trim().min(1).max(60),
-  comprimentoCm: z.number().positive().max(300),
-  larguraCm: z.number().positive().max(300),
-  alturaCm: z.number().positive().max(300),
-  pesoVazioG: z.number().int().min(0).max(30_000),
-  capacidadePecas: z.number().int().min(1).max(10_000),
+  comprimentoCm: z.number().positive().max(300).nullable(),
+  larguraCm: z.number().positive().max(300).nullable(),
+  alturaCm: z.number().positive().max(300).nullable(),
+  pesoVazioG: z.number().int().min(0).max(30_000).nullable(),
+  capacidadePecas: z.number().int().min(1).max(10_000).nullable(),
 });
 
 /** Configuração do frete (Vitrine → Configuração → Frete). */

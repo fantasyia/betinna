@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MelhorEnvioClient } from '@integrations/melhorenvio/melhorenvio.client';
 import { FreteIndisponivel, FreteService } from './frete.service';
-import type { ConfigFrete } from './frete';
+import { montarVolumes, type ConfigFrete } from './frete';
+import { freteConfigSchema } from './vitrine.dto';
 
 const user = { id: 'u-1', role: 'DIRECTOR', empresaIdAtiva: 'emp-1', empresaIds: ['emp-1'] };
 
@@ -227,5 +228,46 @@ describe('MelhorEnvioClient.cotar', () => {
       .catch((e: Error) => e);
     expect(String(err)).toMatch(/recusou o token/);
     expect(String(err)).not.toContain('segredo-123');
+  });
+});
+
+describe('09/10: caixa pela metade não trava o "Salvar" do frete desligado', () => {
+  const corpo = (ativo: boolean) => ({
+    ativo,
+    ambiente: 'sandbox',
+    cepOrigem: '01310-100',
+    pesoMaxVolumeKg: 25,
+    declararValor: true,
+    embalagemIndividual: null,
+    caixas: [
+      {
+        nome: 'Caixa grande',
+        comprimentoCm: 50,
+        larguraCm: 50,
+        alturaCm: 38,
+        pesoVazioG: null,
+        capacidadePecas: null,
+      },
+    ],
+    retirada: { ativo: false, minimoPecas: 1000, endereco: '', horario: '' },
+  });
+
+  it('o schema aceita a caixa sem peso vazio e capacidade', () => {
+    expect(freteConfigSchema.safeParse(corpo(false)).success).toBe(true);
+  });
+
+  it('desligado: salva; pra ligar: recusa até a caixa estar completa', async () => {
+    const { svc, prisma } = montar();
+    await svc.salvar(user as never, freteConfigSchema.parse(corpo(false)));
+    expect(prisma.$executeRaw).toHaveBeenCalled();
+    await expect(svc.salvar(user as never, freteConfigSchema.parse(corpo(true)))).rejects.toThrow(
+      /caixa completa/,
+    );
+  });
+
+  it('caixa incompleta salva não monta volume (nem quebra a cotação)', () => {
+    expect(() => montarVolumes([300], { ...cfg, caixas: [{ ...corpo(false).caixas[0] }] })).toThrow(
+      /sem caixa/,
+    );
   });
 });

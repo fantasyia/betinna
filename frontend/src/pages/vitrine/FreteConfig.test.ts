@@ -81,10 +81,43 @@ describe('corpoDoForm', () => {
     });
   });
 
-  it('caixa sem capacidade: erro com o nome da caixa', () => {
+  it('09/10: frete DESLIGADO salva com a caixa pela metade (sem peso e capacidade)', () => {
+    const f = formDoStatus({ conectado: false, config: {}, sugestao, falta: [] });
+    f.cepOrigem = '01310-100';
+    const r = corpoDoForm(f);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.corpo.caixas).toEqual([
+      {
+        nome: 'Caixa grande',
+        comprimentoCm: 50,
+        larguraCm: 50,
+        alturaCm: 38,
+        pesoVazioG: null,
+        capacidadePecas: null,
+      },
+    ]);
+  });
+
+  it('pra LIGAR o frete, precisa de uma caixa completa', () => {
+    const f = formDoStatus({ conectado: true, config: {}, sugestao, falta: [] });
+    f.ativo = true;
+    expect(corpoDoForm(f)).toEqual({
+      ok: false,
+      erro: 'Pra cobrar frete, complete ao menos uma caixa (medidas, peso vazio e peças que cabem)',
+    });
+    f.caixas[0].pesoVazioG = '800';
+    f.caixas[0].capacidadePecas = '80';
+    expect(corpoDoForm(f).ok).toBe(true);
+  });
+
+  it('digitado errado continua sendo erro (mesmo desligado)', () => {
     const f = base();
-    f.caixas[0].capacidadePecas = '';
-    expect(corpoDoForm(f)).toEqual({ ok: false, erro: 'Caixa grande: quantas peças cabem' });
+    f.caixas[0].capacidadePecas = '2,5';
+    expect(corpoDoForm(f)).toEqual({
+      ok: false,
+      erro: 'Caixa grande: peças que cabem (número inteiro)',
+    });
   });
 
   it('linha de caixa em branco é ignorada', () => {
