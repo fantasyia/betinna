@@ -51,7 +51,8 @@ export function rotuloParcela(o: OpcaoCartao): { linha: string; detalhe: string 
     return { linha: `À vista ${formatMoeda(o.total)}`, detalhe: 'sem acréscimo' };
   return {
     linha: `${o.parcelas}x de ${formatMoeda(o.parcela)}`,
-    detalhe: `total ${formatMoeda(o.total)}`,
+    // Parcelado leva juros (1% a.m., Léo 09/10) + a taxa do cartão: dito na tela.
+    detalhe: `total ${formatMoeda(o.total)} com juros`,
   };
 }
 

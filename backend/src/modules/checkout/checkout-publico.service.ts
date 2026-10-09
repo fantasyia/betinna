@@ -166,7 +166,7 @@ export class CheckoutPublicoService {
               : null,
       pix: { valor: r(totalC) },
       cartao: cfg.taxas
-        ? opcoesCartao(totalC, cfg.taxas as TaxasAsaas).map((o) => ({
+        ? opcoesCartao(totalC, cfg.taxas as TaxasAsaas, 12, cfg.jurosMesPct ?? 0).map((o) => ({
             parcelas: o.parcelas,
             total: r(o.totalC),
             parcela: r(o.parcelaC),
@@ -295,7 +295,7 @@ export class CheckoutPublicoService {
         .catch(() => undefined);
     }
 
-    const opcao = opcoesCartao(totalC, cfg.taxas as TaxasAsaas).find(
+    const opcao = opcoesCartao(totalC, cfg.taxas as TaxasAsaas, 12, cfg.jurosMesPct ?? 0).find(
       (o) => o.parcelas === parcelas,
     );
     const cobradoC = dto.metodo === 'PIX' ? totalC : (opcao?.totalC ?? totalC);
@@ -434,6 +434,10 @@ export class CheckoutPublicoService {
         ? 'cartão (Asaas)'
         : 'cartão à vista (Asaas)';
     const comFinanceiro = this.fin ? await this.fin.preparar(pg.empresaId) : false;
+    // Parcelado com juros: o total a receber (lido ANTES da transação; falha = sem juros).
+    const totalJuros = comFinanceiro
+      ? await this.totalComJuros(pg).catch(() => undefined)
+      : undefined;
     const pedido = await this.prisma.$transaction(async (tx) => {
       // CAS: aviso repetido processando junto (ACK + job) — só um passa daqui.
       const cas = await tx.pedidoPagamento.updateMany({
@@ -463,7 +467,14 @@ export class CheckoutPublicoService {
         data: { status: 'PAGO', pagoEm: new Date() },
       });
       if (comFinanceiro && this.fin) {
-        await this.fin.parcelarPedidoNaTx(tx, pg.pedidoId, pg.parcelas, primeiroCredito, rotulo);
+        await this.fin.parcelarPedidoNaTx(
+          tx,
+          pg.pedidoId,
+          pg.parcelas,
+          primeiroCredito,
+          rotulo,
+          totalJuros,
+        );
       }
       return { numero: p.numero, status: 'PAGO', confirmadoAgora: true };
     });
@@ -523,6 +534,34 @@ export class CheckoutPublicoService {
           ? 'Pix recebido pelo Asaas'
           : `Cartão ${pg.parcelas > 1 ? `parcela ${parcela}/${pg.parcelas}` : 'à vista'} recebido pelo Asaas`,
       }),
+    );
+  }
+
+  /**
+   * Parcelado no cartão com juros: o total que a empresa recebe (preço do
+   * pedido na hora da cobrança × (1 + juros a.m. × parcelas)). Pix, 1x ou sem
+   * juros: undefined (o título fica no valor do pedido).
+   */
+  private async totalComJuros(pg: {
+    id: string;
+    empresaId: string;
+    metodo: string;
+    parcelas: number;
+  }): Promise<number | undefined> {
+    if (pg.metodo === 'PIX' || pg.parcelas <= 1) return undefined;
+    const [e, pagamento] = await Promise.all([
+      this.prisma.empresa.findUnique({ where: { id: pg.empresaId }, select: { config: true } }),
+      this.prisma.pedidoPagamento.findUnique({
+        where: { id: pg.id },
+        select: { valorPedido: true },
+      }),
+    ]);
+    const juros = (
+      (((e?.config ?? {}) as Record<string, unknown>).checkout ?? {}) as ConfigCheckout
+    ).jurosMesPct;
+    if (!juros || juros <= 0 || !pagamento) return undefined;
+    return (
+      Math.round(Number(pagamento.valorPedido) * (1 + (juros / 100) * pg.parcelas) * 100) / 100
     );
   }
 

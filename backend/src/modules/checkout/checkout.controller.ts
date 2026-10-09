@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
+import { z } from 'zod';
+import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -30,6 +42,18 @@ export class CheckoutController {
   })
   ativar(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.ativar(user);
+  }
+
+  @Put('juros')
+  @ApiOperation({
+    summary: 'Juros do parcelado no cartão (% ao mês, simples), além da taxa do Asaas',
+  })
+  juros(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(z.object({ jurosMesPct: z.number().min(0).max(10) })))
+    dto: { jurosMesPct: number },
+  ) {
+    return this.svc.salvarJuros(user, dto.jurosMesPct);
   }
 
   @Post('desativar')

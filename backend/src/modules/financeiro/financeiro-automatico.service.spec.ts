@@ -252,6 +252,16 @@ describe('FinanceiroAutomaticoService', () => {
       expect(novos[0]).toMatchObject({ pedidoId: 'ped-1', totalParcelas: 3, tipo: 'RECEBER' });
     });
 
+    it('09/10: cartão 3x com juros — as parcelas somam preço + juros (o que cai no Asaas)', async () => {
+      const { svc, tx } = montar();
+      tx.pedido.findUnique.mockResolvedValue(pedidoVitrine({ total: D(1000) }));
+      tx.finTitulo.findUnique.mockResolvedValue(tituloP1());
+      await svc.parcelarPedidoNaTx(tx as never, 'ped-1', 3, primeiro, 'cartão (Asaas)', 1030);
+      expect(Number(tx.finTitulo.update.mock.calls[0][0].data.valor)).toBe(343.34);
+      const novos = tx.finTitulo.upsert.mock.calls.map((c) => Number(c[0].create.valor));
+      expect(novos).toEqual([343.33, 343.33]);
+    });
+
     it('à vista: o mesmo título, vencendo no crédito previsto; repetir não empilha rótulo', async () => {
       const { svc, tx } = montar();
       tx.pedido.findUnique.mockResolvedValue(pedidoVitrine({ total: D(1000) }));

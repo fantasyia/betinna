@@ -270,17 +270,27 @@ export interface OpcaoCartao {
 }
 
 /**
- * Opções de cartão (1x a 12x) pela regra do Léo (07/10): à vista = preço da
- * vitrine (a empresa cobre a taxa); parcelado = o cliente paga a taxa do Asaas
- * da faixa, pra empresa receber o valor cheio: cobrado = (total + tarifa fixa)
- * ÷ (1 − %), arredondado pra CIMA no centavo. PURO (testado).
+ * Opções de cartão (1x a 12x) pela regra do Léo:
+ *  - à vista = preço da vitrine (a empresa cobre a taxa) — 07/10;
+ *  - parcelado = preço + JUROS SIMPLES de `jurosMesPct` por parcela (1% ao mês
+ *    × parcelas, Léo 09/10: ele antecipa os recebíveis) e, por cima, a taxa do
+ *    Asaas da faixa — a empresa recebe preço + juros cheios:
+ *    cobrado = (total × (1 + juros × n) + tarifa fixa) ÷ (1 − %), pra CIMA no
+ *    centavo. PURO (testado).
  */
-export function opcoesCartao(totalC: number, taxas: TaxasAsaas, max = 12): OpcaoCartao[] {
+export function opcoesCartao(
+  totalC: number,
+  taxas: TaxasAsaas,
+  max = 12,
+  jurosMesPct = 0,
+): OpcaoCartao[] {
   const out: OpcaoCartao[] = [{ parcelas: 1, totalC, parcelaC: totalC }];
   const fixaC = Math.round(taxas.cartao.fixa * 100);
+  const juros = Math.max(0, jurosMesPct) / 100;
   for (let n = 2; n <= max; n++) {
     const pct = (n <= 6 ? taxas.cartao.ateSeis : taxas.cartao.ateDoze) / 100;
-    const cobradoC = Math.ceil((totalC + fixaC) / (1 - pct));
+    const comJurosC = Math.round(totalC * (1 + juros * n));
+    const cobradoC = Math.ceil((comJurosC + fixaC) / (1 - pct));
     out.push({ parcelas: n, totalC: cobradoC, parcelaC: Math.ceil(cobradoC / n) });
   }
   return out;

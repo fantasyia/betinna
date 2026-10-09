@@ -25,6 +25,8 @@ export interface StatusCheckout {
     pix: { percentual: number | null; fixa: number | null; minima: number | null; maxima: number | null };
   } | null;
   taxasLidasEm: string | null;
+  /** Juros do parcelado, % ao mês (simples: × parcelas), além da taxa do Asaas. */
+  jurosMesPct?: number;
 }
 
 const ROTULO_AMBIENTE = { sandbox: 'Teste (sandbox)', producao: 'Produção' } as const;
@@ -35,6 +37,8 @@ export function PagamentoOnline() {
   const q = useApiQuery<StatusCheckout>(gestor ? '/checkout/status' : null);
   const toast = useToast();
   const [acao, setAcao] = useState<'ativar' | 'desativar' | null>(null);
+  const [juros, setJuros] = useState<string | null>(null);
+  const [salvandoJuros, setSalvandoJuros] = useState(false);
   const s = q.data;
   if (!gestor || !s) return null;
 
@@ -52,6 +56,26 @@ export function PagamentoOnline() {
   }
 
   const t = s.taxas?.cartao;
+  const jurosTxt = juros ?? String(s.jurosMesPct ?? 0).replace('.', ',');
+
+  async function salvarJuros() {
+    const n = Number(jurosTxt.replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > 10) {
+      toast.error('Juros inválido', 'Use um número de 0 a 10 (% ao mês)');
+      return;
+    }
+    setSalvandoJuros(true);
+    try {
+      await api.put('/checkout/juros', { jurosMesPct: n });
+      toast.success(`Juros do parcelado: ${formatPercent(n, 1)} ao mês`);
+      setJuros(null);
+      q.refetch();
+    } catch (err) {
+      toast.error('Não foi possível salvar', apiErrorMessage(err));
+    } finally {
+      setSalvandoJuros(false);
+    }
+  }
   return (
     <Card className="p-4 max-w-xl flex flex-col gap-3" data-testid="pagamento-online">
       <div className="flex flex-wrap items-center gap-2">
@@ -73,8 +97,29 @@ export function PagamentoOnline() {
         <>
           <p className="text-sm text-muted">
             Pix: preço da vitrine. Cartão à vista: preço da vitrine (a empresa cobre a taxa). Parcelado: o cliente
-            paga a taxa do Asaas da faixa de parcelas.
+            paga os juros abaixo (por parcela) e, por cima, a taxa do Asaas da faixa — a empresa recebe o preço
+            mais os juros.
           </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs text-muted">Juros do parcelado (% ao mês × parcelas)</span>
+              <input
+                className="h-9 w-24 rounded-[10px] border border-border bg-surface px-2"
+                inputMode="decimal"
+                value={jurosTxt}
+                onChange={(e) => setJuros(e.target.value)}
+                data-testid="pagamento-juros"
+              />
+            </label>
+            <Button
+              variant="secondary"
+              onClick={() => void salvarJuros()}
+              loading={salvandoJuros}
+              data-testid="pagamento-juros-salvar"
+            >
+              Salvar juros
+            </Button>
+          </div>
           {t && (
             <div className="grid grid-cols-3 gap-2 text-sm tabular-nums" data-testid="pagamento-taxas">
               <div className="rounded-[10px] border border-border p-2">

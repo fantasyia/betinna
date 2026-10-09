@@ -218,6 +218,11 @@ export class FinanceiroAutomaticoService {
     parcelas: number,
     primeiroCredito: Date,
     rotulo: string,
+    /**
+     * Total que a empresa RECEBE no parcelado com juros (preço × (1 + juros ×
+     * parcelas), Léo 09/10). Ausente = o valor do pedido (sem juros).
+     */
+    totalAReceber?: number,
   ) {
     const t = await this.tituloDoPedidoNaTx(tx, pedidoId);
     if (!t || t.status === 'CANCELADO') return;
@@ -225,7 +230,13 @@ export class FinanceiroAutomaticoService {
     if (recebeu > 0) return;
     const n = Math.max(1, Math.trunc(parcelas));
     if ((t.totalParcelas ?? 1) === n && n > 1) return; // já dividido
-    const valores = dividirEmParcelas(Number(t.valor), n);
+    // Com juros, as parcelas somam preço + juros: é o que cai na conta Asaas
+    // depois da taxa — senão a baixa de cada parcela registraria menos do que
+    // entrou.
+    const valores = dividirEmParcelas(
+      n > 1 && totalAReceber && totalAReceber > Number(t.valor) ? totalAReceber : Number(t.valor),
+      n,
+    );
     // "Pedido PED-0007 (vitrine)" + " · 1/3 cartão" — sem empilhar rótulo ao repetir.
     const base = t.descricao.replace(/ · .*$/, '');
     await tx.finTitulo.update({

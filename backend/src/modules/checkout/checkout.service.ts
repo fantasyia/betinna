@@ -21,6 +21,8 @@ export interface ConfigCheckout {
   taxas?: TaxasAsaas;
   taxasLidasEm?: string;
   ativadoEm?: string;
+  /** Juros do parcelado, % ao MÊS (simples: × parcelas), além da taxa do Asaas. */
+  jurosMesPct?: number;
 }
 
 /** A vitrine oferece pagar online? (ativado no painel e com as taxas lidas). */
@@ -121,6 +123,7 @@ export class CheckoutService {
       taxas: cfg.taxas ?? null,
       taxasLidasEm: cfg.taxasLidasEm ?? null,
       ativadoEm: cfg.ativadoEm ?? null,
+      jurosMesPct: cfg.jurosMesPct ?? 0,
     };
   }
 
@@ -173,6 +176,14 @@ export class CheckoutService {
   }
 
   /** Desliga o pagamento online na vitrine (a conta e o aviso continuam). */
+  /** Juros do parcelado (% ao mês). 0 = só a taxa do Asaas. */
+  async salvarJuros(user: AuthenticatedUser, jurosMesPct: number) {
+    const empresaId = this.empresaDo(user);
+    await this.gravarConfig(empresaId, { jurosMesPct });
+    this.logger.log(`[asaas] juros do parcelado = ${jurosMesPct}% a.m. na empresa ${empresaId}`);
+    return this.status(user);
+  }
+
   async desativar(user: AuthenticatedUser) {
     const empresaId = this.empresaDo(user);
     await this.gravarConfig(empresaId, { ativo: false });

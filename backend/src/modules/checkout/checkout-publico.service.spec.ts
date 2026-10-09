@@ -28,6 +28,7 @@ const pedidoBase = {
 function montar(
   opts: {
     pedido?: unknown;
+    configEmpresa?: unknown;
     pagamentos?: unknown[];
     evento?: unknown;
     pedidoNaTx?: { numero: string; status: string } | null;
@@ -67,7 +68,10 @@ function montar(
         cliente: { id: 'cli-1', nome: 'Loja da Ana' },
       }),
     },
+    // Juros do parcelado: config da empresa e o preço do pedido na cobrança.
+    empresa: { findUnique: vi.fn().mockResolvedValue({ config: opts.configEmpresa ?? {} }) },
     pedidoPagamento: {
+      findUnique: vi.fn().mockResolvedValue({ valorPedido: D(1000) }),
       // Ordem das leituras no iniciar: cobrança aberta → pagamentoAtual.
       findFirst: vi.fn(async () => pagamentos.shift() ?? null),
       create: vi.fn().mockResolvedValue({}),
@@ -162,6 +166,21 @@ describe('opcoesCartao — regra do Léo (07/10)', () => {
     // 2x–6x mesma faixa; 7x em diante mais caro
     expect(ops[1].totalC).toBe(ops[5].totalC);
     expect(ops[6].totalC).toBeGreaterThan(ops[5].totalC);
+  });
+
+  it('09/10: 1% ao mês × parcelas (simples) + a taxa do Asaas por cima; 1x continua sem acréscimo', () => {
+    const ops = opcoesCartao(100000, TAXAS, 12, 1);
+    expect(ops[0].totalC).toBe(100000);
+    for (const o of ops.slice(1)) {
+      const pct = (o.parcelas <= 6 ? 3.49 : 3.99) / 100;
+      const liquido = o.totalC * (1 - pct) - 49;
+      // Depois da taxa do Asaas, sobra o preço + 1% por parcela.
+      const alvo = 100000 * (1 + 0.01 * o.parcelas);
+      expect(liquido).toBeGreaterThanOrEqual(alvo);
+      expect(liquido).toBeLessThan(alvo + 1);
+    }
+    // R$ 1.000 em 6x: R$ 1.060 líquidos → (106000 + 49) ÷ 0,9651, pra cima.
+    expect(ops[5].totalC).toBe(Math.ceil((106000 + 49) / (1 - 0.0349)));
   });
 });
 
@@ -397,6 +416,7 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
       1,
       expect.any(Date),
       'Pix (Asaas)',
+      undefined, // Pix: sem juros
     );
     expect(fin.pagamentoRecebidoNaTx).not.toHaveBeenCalled();
     expect(fin.parcelaAsaasNaTx).toHaveBeenCalledWith(
@@ -487,12 +507,35 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
       3,
       new Date('2026-11-09T12:00:00.000Z'),
       'cartão (Asaas)',
+      undefined, // empresa sem juros configurado
     );
     expect(bus.disparar.mock.calls[0][2].pagamento).toEqual({
       forma: 'CARTAO',
       parcelas: 3,
       online: true,
     });
+  });
+
+  it('09/10: cartão 3x com 1% a.m. — as parcelas a receber somam preço + juros', async () => {
+    const { svc, tx, fin } = montar({
+      evento: evento('PAYMENT_CONFIRMED', {
+        id: 'pay_1',
+        installment: 'ins_1',
+        installmentNumber: 1,
+        estimatedCreditDate: '2026-11-09',
+      }),
+      pagamentos: [{ ...pagPix, metodo: 'CARTAO', parcelas: 3, asaasParcelamentoId: 'ins_1' }],
+      configEmpresa: { checkout: { ativo: true, jurosMesPct: 1 } },
+    });
+    await svc.processar('evt_1');
+    expect(fin.parcelarPedidoNaTx).toHaveBeenCalledWith(
+      tx,
+      'ped-1',
+      3,
+      expect.any(Date),
+      'cartão (Asaas)',
+      1030, // R$ 1.000 × (1 + 1% × 3)
+    );
   });
 
   it('PAYMENT_RECEIVED da parcela 3: baixa DELA (recebido = true)', async () => {
@@ -572,5 +615,36 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
     });
     await svc.processar('evt_1');
     expect(prisma.pedidoPagamento.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('CheckoutPublicoService — juros do parcelado (09/10)', () => {
+  const comJuros = {
+    ...pedidoBase,
+    empresa: {
+      nome: 'Ribelt',
+      config: { checkout: { ativo: true, taxas: TAXAS, jurosMesPct: 1 } },
+    },
+  };
+
+  it('as opções da tela e a cobrança no Asaas usam o MESMO valor com juros', async () => {
+    const { svc, asaas } = montar({ pedido: comJuros });
+    const r = await svc.opcoes('atacado-ribelt', 'ped-1', svc.tokenDoPedido('ped-1'));
+    const tres = opcoesCartao(100000, TAXAS, 12, 1)[2].totalC / 100;
+    expect(r.cartao[2]).toMatchObject({ parcelas: 3, total: tres });
+    await svc.iniciar('atacado-ribelt', 'ped-1', {
+      token: svc.tokenDoPedido('ped-1'),
+      metodo: 'CARTAO',
+      parcelas: 3,
+      cpfCnpj: '12345678909',
+    });
+    expect(asaas.criarCobranca.mock.calls[0][0]).toMatchObject({ totalValue: tres });
+    expect(tres).toBeGreaterThan(opcoesCartao(100000, TAXAS)[2].totalC / 100);
+  });
+
+  it('Pix não leva juros', async () => {
+    const { svc } = montar({ pedido: comJuros });
+    const r = await svc.opcoes('atacado-ribelt', 'ped-1', svc.tokenDoPedido('ped-1'));
+    expect(r.pix.valor).toBe(1000);
   });
 });
