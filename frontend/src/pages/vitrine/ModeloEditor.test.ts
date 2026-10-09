@@ -55,6 +55,7 @@ const base = (): Rascunho => ({
   descricaoMarketplace: '',
   composicao: '',
   corIds: ['cor-1'],
+  combinaCom: [],
   linhas: {
     'lin-reg': {
       ...vazioLinha,

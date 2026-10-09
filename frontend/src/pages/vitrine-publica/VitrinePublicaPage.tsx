@@ -23,6 +23,9 @@ import {
   coresPorEstoque,
   fotosDaLinha,
   gradeDoCarrinho,
+  paresDe,
+  preencherConjunto,
+  sugestoesAntesDePagar,
   lucroNaProximaFaixa,
   progressoFaixa,
   quantidadesDoSimulador,
@@ -176,6 +179,34 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   const feed = useRef<HTMLDivElement>(null);
   // Peças do modelo quando a grade abriu — o que passar disso é AddToCart.
   const pecasAoAbrirGrade = useRef(0);
+
+  /**
+   * "Monte o conjunto" (Léo, 09/10): abre a grade do par JÁ com a mesma grade
+   * do modelo de origem (mesma cor, linha e tamanhos). Sem desconto.
+   */
+  function montarConjunto(origem: ModeloPub, par: ModeloPub) {
+    // A grade da origem fecha aqui sem passar pelo "Pronto": registra o que entrou.
+    if (grade?.id === origem.id) {
+      const n = pecasDoModelo(carrinho, origem.id);
+      if (n > pecasAoAbrirGrade.current) {
+        evento('AddToCart', {
+          content_ids: [origem.id],
+          content_name: origem.nome,
+          content_type: 'product_group',
+          num_items: n - pecasAoAbrirGrade.current,
+        });
+      }
+    }
+    const r = preencherConjunto(origem, par, carrinho);
+    if (r.pecas > 0) setCarrinho(r.carrinho);
+    setPdp(null);
+    setGrade(par);
+    avisar(
+      r.pecas > 0
+        ? `${r.pecas} peças de ${par.nome} com a mesma grade — confira`
+        : `Monte a grade de ${par.nome}`,
+    );
+  }
 
   // Pixel: produto visto (ficha técnica ou grade aberta).
   useEffect(() => {
@@ -424,6 +455,9 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
             setPdp(null);
           }}
           onKit={() => setKit(pdp)}
+          pares={paresDe(pdp, v)}
+          temPecas={pecasDoModelo(carrinho, pdp.id) > 0}
+          onConjunto={(par) => montarConjunto(pdp, par)}
         />
       )}
 
@@ -455,6 +489,8 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           linhaInicial={linhaNoModelo(grade)}
           carrinho={carrinho}
           onMudar={setCarrinho}
+          pares={paresDe(grade, v)}
+          onConjunto={(par) => montarConjunto(grade, par)}
           onFechar={() => {
             const n = pecasDoModelo(carrinho, grade.id);
             if (n > pecasAoAbrirGrade.current) {
@@ -504,6 +540,108 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
       )}
 
       {toast && <div className="vt-toast">{toast}</div>}
+    </>
+  );
+}
+
+const capaDe = (m: ModeloPub): string | undefined => {
+  const f = m.cores[0] ? corDaBolinha(m.cores[0]).fotos[0] : undefined;
+  return f?.thumbUrl ?? f?.url;
+};
+
+/** "Monte o conjunto": o par do modelo, com a mesma grade quando já tem peça. */
+function MonteConjunto({
+  pares,
+  temPecas,
+  onEscolher,
+}: {
+  pares: ModeloPub[];
+  temPecas: boolean;
+  onEscolher: (par: ModeloPub) => void;
+}) {
+  if (pares.length === 0) return null;
+  return (
+    <div className="vt-conjunto" data-testid="vt-conjunto">
+      <div className="vt-conjunto-titulo">Monte o conjunto</div>
+      {pares.slice(0, 2).map((p) => {
+        const capa = capaDe(p);
+        return (
+          <button
+            key={p.id}
+            type="button"
+            className="vt-conjunto-item"
+            onClick={() => onEscolher(p)}
+            data-testid={`vt-conjunto-${p.id}`}
+          >
+            {capa ? <img src={capa} alt="" /> : <span />}
+            <span>
+              <b>{p.nome}</b>
+              <small>{temPecas ? 'mesma cor, linha e grade' : 'na mesma cor e linha'}</small>
+            </span>
+            <i>{temPecas ? 'Montar igual →' : 'Montar grade →'}</i>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Antes de pagar: o que combina com o pedido e o resto da vitrine. Nunca trava a compra. */
+function FolhaSugestoes({
+  modelos,
+  pagamentoOnline,
+  onEscolher,
+  onSeguir,
+}: {
+  modelos: ModeloPub[];
+  pagamentoOnline: boolean;
+  onEscolher: (m: ModeloPub) => void;
+  onSeguir: () => void;
+}) {
+  return (
+    <>
+      <div className="vt-scrim" onClick={onSeguir} />
+      <section className="vt-sheet" role="dialog" aria-label="Sugestões" data-testid="vt-sugestoes">
+        <div className="vt-grab" />
+        <div className="vt-sh-head">
+          <div>
+            <div className="vt-name">Vale levar também?</div>
+            <span className="vt-muted">Peças que combinam com o seu pedido.</span>
+          </div>
+        </div>
+        <div className="vt-sug-lista">
+          {modelos.map((m) => {
+            const capa = capaDe(m);
+            const preco = m.linhas.map((l) => l.precoEntrada).find((x) => x !== null) ?? null;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                className="vt-conjunto-item"
+                onClick={() => onEscolher(m)}
+                data-testid={`vt-sugestao-${m.id}`}
+              >
+                {capa ? <img src={capa} alt="" /> : <span />}
+                <span>
+                  <b>{m.nome}</b>
+                  {preco !== null && <small>a partir de {formatMoeda(preco)}/peça</small>}
+                </span>
+                <i>Montar grade →</i>
+              </button>
+            );
+          })}
+        </div>
+        <div className="vt-sh-foot">
+          <button
+            type="button"
+            className="vt-cta vt-cta-sec"
+            onClick={onSeguir}
+            data-testid="vt-sugestoes-seguir"
+          >
+            {pagamentoOnline ? 'Não, obrigado, ir pro pagamento' : 'Não, obrigado, enviar o pedido'}
+          </button>
+        </div>
+      </section>
     </>
   );
 }
@@ -756,6 +894,9 @@ function PaginaModelo({
   onFechar,
   onGrade,
   onKit,
+  pares,
+  temPecas,
+  onConjunto,
 }: {
   m: ModeloPub;
   cor: CorPub;
@@ -768,6 +909,11 @@ function PaginaModelo({
   onFechar: () => void;
   onGrade: () => void;
   onKit: () => void;
+  /** Modelos que combinam (conjunto). */
+  pares: ModeloPub[];
+  /** Já tem peça deste modelo no pedido (o par vem com a mesma grade). */
+  temPecas: boolean;
+  onConjunto: (par: ModeloPub) => void;
 }) {
   const [guia, setGuia] = useState(false);
   return (
@@ -843,6 +989,7 @@ function PaginaModelo({
           </div>
           <i>Baixar →</i>
         </button>
+        <MonteConjunto pares={pares} temPecas={temPecas} onEscolher={onConjunto} />
         <button type="button" className="vt-cta" onClick={onGrade}>
           Montar grade
         </button>
@@ -994,12 +1141,17 @@ function FolhaGrade({
   carrinho,
   onMudar,
   onFechar,
+  pares = [],
+  onConjunto,
 }: {
   m: ModeloPub;
   linhaInicial: LinhaPub;
   carrinho: Carrinho;
   onMudar: (c: Carrinho) => void;
   onFechar: () => void;
+  /** Modelos que combinam: "Monte o conjunto" embaixo da grade. */
+  pares?: ModeloPub[];
+  onConjunto?: (par: ModeloPub) => void;
 }) {
   const [linha, setLinha] = useState<LinhaPub>(linhaInicial);
   const [guia, setGuia] = useState(false);
@@ -1118,6 +1270,13 @@ function FolhaGrade({
               </div>
             </div>
           ))}
+          {onConjunto && (
+            <MonteConjunto
+              pares={pares}
+              temPecas={pecasDoModelo(carrinho, m.id) > 0}
+              onEscolher={onConjunto}
+            />
+          )}
         </div>
         <div className="vt-sh-foot">
           <div>
@@ -1262,7 +1421,22 @@ function SeuPedido({
   onEsvaziar: () => void;
 }) {
   const [envio, setEnvio] = useState(false);
+  const [sugerindo, setSugerindo] = useState(false);
+  const sugestoes = sugestoesAntesDePagar(v, carrinho);
   const r = resumoPedido(carrinho, v);
+  /** Antes de pagar, uma vez por visita: 2–3 sugestões, e "Não, obrigado" segue direto. */
+  function irParaEnvio() {
+    const chave = `vitrine:sugeriu:${slug}`;
+    let ja = false;
+    try {
+      ja = sessionStorage.getItem(chave) === '1';
+      sessionStorage.setItem(chave, '1');
+    } catch {
+      /* sem armazenamento: sugere de novo, sem problema */
+    }
+    if (sugestoes.length > 0 && !ja) setSugerindo(true);
+    else setEnvio(true);
+  }
   const prox = proximaFaixa(r.pecas, v.faixas);
   const itens = v.modelos.filter((m) => pecasDoModelo(carrinho, m.id) > 0);
   const barra = progressoFaixa(r.pecas, v.faixas);
@@ -1428,7 +1602,7 @@ function SeuPedido({
           className="vt-cta"
           data-testid="vt-enviar"
           disabled={itens.length === 0 || r.faltamMinimo > 0 || r.faltaValor > 0}
-          onClick={() => setEnvio(true)}
+          onClick={irParaEnvio}
         >
           Enviar pedido · {r.pecas} {r.pecas === 1 ? 'peça' : 'peças'}
         </button>
@@ -1442,6 +1616,20 @@ function SeuPedido({
           feito com <b>Betinna.ai</b>
         </span>
       </footer>
+      {sugerindo && (
+        <FolhaSugestoes
+          modelos={sugestoes}
+          pagamentoOnline={Boolean(v.pagamentoOnline)}
+          onEscolher={(m) => {
+            setSugerindo(false);
+            onEditar(m);
+          }}
+          onSeguir={() => {
+            setSugerindo(false);
+            setEnvio(true);
+          }}
+        />
+      )}
       {envio && (
         <FolhaEnvio
           slug={slug}

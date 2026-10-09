@@ -58,6 +58,7 @@ function makePrisma() {
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue({ id: 'mod-1', cores: [], videos: [] }),
       findUniqueOrThrow: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockResolvedValue({ id: 'mod-1' }),
       update: vi.fn().mockResolvedValue({ id: 'mod-1' }),
     },
@@ -211,6 +212,23 @@ describe('VitrineAdminService', () => {
         linhas: [{ linhaId: 'lin-1', tamanhoIds: ['t-p'] }],
       });
       expect(prisma.catalogoModeloTamanho.update).not.toHaveBeenCalled();
+    });
+
+    it('"combina com" só aceita modelo da própria empresa', async () => {
+      prisma.catalogoModelo.count.mockResolvedValue(0);
+      await expect(
+        svc.atualizarModelo(user(), 'mod-1', { nome: 'Moletom', combinaCom: ['mod-alheio'] }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+
+    it('"combina com" sem ele mesmo e sem repetido', async () => {
+      prisma.catalogoModelo.count.mockResolvedValue(2);
+      prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
+      await svc.atualizarModelo(user(), 'mod-1', {
+        nome: 'Moletom',
+        combinaCom: ['mod-2', 'mod-1', 'mod-2'],
+      });
+      expect(prisma.catalogoModelo.update.mock.calls[0][0].data.combinaCom).toEqual(['mod-2']);
     });
 
     it('editar modelo de outra empresa → 404', async () => {

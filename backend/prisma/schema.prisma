@@ -4115,6 +4115,9 @@ model CatalogoModelo {
   descricao   String?  @db.Text
   /// Chips do cartão (ex.: "Gramatura 280", "Capuz").
   etiquetas   String[] @default([])
+  /// Modelos que combinam com este (conjunto: blusa ↔ calça). Vale nos DOIS
+  /// sentidos na vitrine — basta ligar de um lado. Upsell, sem desconto.
+  combinaCom  String[] @default([])
   ordem       Int      @default(0)
   ativo       Boolean  @default(true)
 

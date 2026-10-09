@@ -95,11 +95,15 @@ export class VitrinePublicaService {
           m.categoria && m.categoria.ativo ? { id: m.categoria.id, nome: m.categoria.nome } : null,
         descricao: m.descricao,
         etiquetas: m.etiquetas,
+        // Pares do conjunto (os dois sentidos) — ver `paresDoConjunto` abaixo.
+        combinaCom: m.combinaCom,
         tituloMarketplace: m.tituloMarketplace,
         descricaoMarketplace: m.descricaoMarketplace,
         composicao: m.composicao,
         cores: m.cores.map((c) => ({
           id: c.id,
+          // Cor da LISTA da empresa: é ela que diz "mesma cor" entre modelos.
+          corId: c.corId,
           nome: c.cor.nome,
           hex: c.cor.hex,
           // Ponto da capa escolhido no cadastro pra bolinha (null = automático).
@@ -128,7 +132,8 @@ export class VitrinePublicaService {
                 (a, b) =>
                   a.tamanho.ordem - b.tamanho.ordem || a.tamanho.nome.localeCompare(b.tamanho.nome),
               )
-              .map((t) => ({ id: t.id, nome: t.tamanho.nome })),
+              // tamanhoId: o tamanho da LISTA da linha — "mesmo tamanho" entre modelos.
+              .map((t) => ({ id: t.id, tamanhoId: t.tamanhoId, nome: t.tamanho.nome })),
             precoEntrada: num(l.precoEntrada),
             precoVolume: num(l.precoVolume),
             precoAtacadao: num(l.precoAtacadao),
@@ -189,6 +194,7 @@ export class VitrinePublicaService {
       (a, b) => (ordemLinha.get(a.id) ?? 0) - (ordemLinha.get(b.id) ?? 0),
     );
 
+    const pares = paresDoConjunto(publicos);
     return {
       empresa: {
         nome: branding?.nome || vitrine.empresa.nome,
@@ -213,9 +219,29 @@ export class VitrinePublicaService {
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({
         ...m,
+        combinaCom: pares.get(m.id) ?? [],
         /** cor → tamanho → disponível. null = vitrine não controla estoque. */
         estoque: respeita ? (estoquePorModelo.get(m.id) ?? {}) : null,
       })),
     };
   }
+}
+
+/**
+ * "Combina com" nos DOIS sentidos e só entre modelos que estão na vitrine:
+ * ligar a blusa à calça já faz a calça sugerir a blusa. PURO.
+ */
+export function paresDoConjunto<T extends { id: string; combinaCom?: string[] | null }>(
+  modelos: T[],
+): Map<string, string[]> {
+  const ids = new Set(modelos.map((m) => m.id));
+  const pares = new Map<string, Set<string>>(modelos.map((m) => [m.id, new Set<string>()]));
+  for (const m of modelos) {
+    for (const outro of m.combinaCom ?? []) {
+      if (outro === m.id || !ids.has(outro)) continue;
+      pares.get(m.id)!.add(outro);
+      pares.get(outro)!.add(m.id);
+    }
+  }
+  return new Map([...pares].map(([k, v]) => [k, [...v]]));
 }

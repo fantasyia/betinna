@@ -5,6 +5,8 @@
 
 export interface TamanhoPub {
   id: string; // id do tamanho NO MODELO (modeloTamanho)
+  /** Tamanho da LISTA da linha — "mesmo tamanho" entre modelos (conjunto). */
+  tamanhoId?: string;
   nome: string;
 }
 export interface TabelaMedidasPub {
@@ -24,6 +26,8 @@ export interface LinhaPub {
 }
 export interface CorPub {
   id: string; // cor NO MODELO
+  /** Cor da LISTA da empresa — "mesma cor" entre modelos (conjunto). */
+  corId?: string;
   nome: string;
   hex: string;
   fotos: Array<{
@@ -53,6 +57,8 @@ export interface ModeloPub {
   videos: Array<{ url: string; nomeArquivo: string | null; tamanhoBytes: number | null }>;
   /** cor → tamanho → disponível. null/ausente = a vitrine não controla estoque. */
   estoque?: Record<string, Record<string, number>> | null;
+  /** Modelos que combinam (conjunto), já nos dois sentidos. */
+  combinaCom?: string[];
 }
 export interface Faixas {
   minimoEntrada: number | null;
@@ -75,6 +81,8 @@ export interface VitrinePub {
     retiradaEndereco?: string | null;
     retiradaHorario?: string | null;
   } | null;
+  /** Aceita Pix/cartão pela vitrine (Asaas). */
+  pagamentoOnline?: boolean;
   /** Política de Privacidade publicada (link no pedido). */
   privacidade?: boolean;
   /** ID do Pixel do Meta (ligado na config da vitrine). null = sem pixel. */
@@ -524,4 +532,71 @@ export function mascararWhatsapp(bruto: string): string {
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+// ─── Upsell (Léo, 09/10): conjunto + sugestões antes de pagar, sem desconto ──
+
+/** Os modelos que combinam com `m` e estão na vitrine. */
+export function paresDe(m: ModeloPub, v: Pick<VitrinePub, 'modelos'>): ModeloPub[] {
+  const ids = new Set(m.combinaCom ?? []);
+  return v.modelos.filter((x) => x.id !== m.id && ids.has(x.id));
+}
+
+/**
+ * "Monte o conjunto": copia a grade do modelo de origem pro par — mesma cor da
+ * lista, mesma linha, mesmo tamanho. Só preenche célula VAZIA (nunca apaga o
+ * que o lojista já pôs) e respeita o estoque do par. PURO.
+ */
+export function preencherConjunto(
+  origem: ModeloPub,
+  destino: ModeloPub,
+  c: Carrinho,
+): { carrinho: Carrinho; pecas: number } {
+  const daOrigem = c[origem.id] ?? {};
+  const novo: Record<string, Record<string, number>> = Object.fromEntries(
+    Object.entries(c[destino.id] ?? {}).map(([cor, t]) => [cor, { ...t }]),
+  );
+  let pecas = 0;
+  for (const corO of origem.cores) {
+    const qO = daOrigem[corO.id];
+    if (!qO || !corO.corId) continue;
+    const corD = destino.cores.find((x) => x.corId === corO.corId);
+    if (!corD) continue;
+    for (const lO of origem.linhas) {
+      const lD = destino.linhas.find((x) => x.linhaId === lO.linhaId);
+      if (!lD) continue;
+      for (const tO of lO.tamanhos) {
+        const q = qO[tO.id] ?? 0;
+        if (q <= 0 || !tO.tamanhoId) continue;
+        const tD = lD.tamanhos.find((x) => x.tamanhoId === tO.tamanhoId);
+        if (!tD || (novo[corD.id]?.[tD.id] ?? 0) > 0) continue;
+        const teto = destino.estoque?.[corD.id]?.[tD.id];
+        const pode = teto === undefined || teto === null ? q : Math.min(q, Math.max(0, teto));
+        if (pode <= 0) continue;
+        novo[corD.id] = { ...(novo[corD.id] ?? {}), [tD.id]: pode };
+        pecas += pode;
+      }
+    }
+  }
+  return pecas > 0 ? { carrinho: { ...c, [destino.id]: novo }, pecas } : { carrinho: c, pecas: 0 };
+}
+
+/**
+ * Antes de pagar: até `n` modelos que NÃO estão no pedido — primeiro o que
+ * combina com o que já está nele, depois o resto da vitrine (na ordem dela). PURO.
+ */
+export function sugestoesAntesDePagar(
+  v: Pick<VitrinePub, 'modelos'>,
+  c: Carrinho,
+  n = 3,
+): ModeloPub[] {
+  const noPedido = new Set(v.modelos.filter((m) => pecasDoModelo(c, m.id) > 0).map((m) => m.id));
+  if (noPedido.size === 0) return [];
+  const fora = v.modelos.filter((m) => !noPedido.has(m.id) && m.cores.length > 0);
+  const complemento = new Set(
+    v.modelos.filter((m) => noPedido.has(m.id)).flatMap((m) => m.combinaCom ?? []),
+  );
+  const primeiro = fora.filter((m) => complemento.has(m.id));
+  const resto = fora.filter((m) => !complemento.has(m.id));
+  return [...primeiro, ...resto].slice(0, n);
 }

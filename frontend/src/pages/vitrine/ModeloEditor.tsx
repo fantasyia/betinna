@@ -70,6 +70,8 @@ export interface Rascunho {
   descricaoMarketplace: string;
   composicao: string;
   corIds: string[];
+  /** Modelos que combinam (conjunto): blusa ↔ calça. */
+  combinaCom: string[];
   linhas: Record<string, RascunhoLinha>;
 }
 
@@ -102,6 +104,7 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
     descricaoMarketplace: m?.descricaoMarketplace ?? '',
     composicao: m?.composicao ?? '',
     corIds: m?.cores.map((c) => c.corId) ?? [],
+    combinaCom: m?.combinaCom ?? [],
     linhas: porLinha,
   };
 }
@@ -182,6 +185,7 @@ export function montarCorpo(
       descricaoMarketplace: r.descricaoMarketplace.trim() || null,
       composicao: r.composicao.trim() || null,
       corIds: r.corIds,
+      combinaCom: r.combinaCom,
       linhas: linhasCorpo,
     },
   };
@@ -206,6 +210,7 @@ export function ModeloEditor({
   cores,
   linhas,
   categorias,
+  modelos = [],
   onClose,
   onSalvou,
   onExcluiu,
@@ -216,6 +221,8 @@ export function ModeloEditor({
   cores: Cor[];
   linhas: Linha[];
   categorias: Categoria[];
+  /** Os outros modelos da vitrine (pro "Combina com"). */
+  modelos?: Modelo[];
   onClose: () => void;
   onSalvou: (m: Modelo) => void;
   onExcluiu: () => void;
@@ -443,6 +450,37 @@ export function ModeloEditor({
           >
             <Input value={r.etiquetas} onChange={(e) => set('etiquetas', e.target.value)} />
           </Field>
+          {modelos.some((x) => x.id !== atual?.id) && (
+            <Field
+              label="Combina com (conjunto)"
+              hint="Na vitrine, a grade e a ficha técnica sugerem estes modelos na mesma cor e linha, já com a mesma grade. Vale nos dois sentidos."
+              className="sm:col-span-2"
+            >
+              <div className="flex flex-wrap gap-1.5" data-testid="combina-com">
+                {modelos
+                  .filter((x) => x.id !== atual?.id)
+                  .map((x) => {
+                    const on = r.combinaCom.includes(x.id);
+                    return (
+                      <button
+                        key={x.id}
+                        type="button"
+                        onClick={() =>
+                          set(
+                            'combinaCom',
+                            on ? r.combinaCom.filter((id) => id !== x.id) : [...r.combinaCom, x.id],
+                          )
+                        }
+                        className={`rounded-[10px] border px-2.5 py-1 text-sm ${on ? 'border-primary bg-primary text-white' : 'border-border'}`}
+                        data-testid={`combina-${x.id}`}
+                      >
+                        {x.nome}
+                      </button>
+                    );
+                  })}
+              </div>
+            </Field>
+          )}
           <Field label="Descrição curta (vitrine)" className="sm:col-span-2">
             <Textarea
               value={r.descricao}
@@ -598,8 +636,8 @@ export function ModeloEditor({
                     {rl.tamanhoIds.length > 0 && (
                       <div>
                         <p className="mb-1 text-xs text-muted">
-                          Peso de uma peça, em gramas — é o que monta as caixas do frete. Sem
-                          peso, o frete do pedido fica "a combinar".
+                          Peso de uma peça, em gramas — é o que monta as caixas do frete. Sem peso,
+                          o frete do pedido fica "a combinar".
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {l.tamanhos

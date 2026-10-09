@@ -468,6 +468,7 @@ export class VitrineAdminService {
             categoriaId: dto.categoriaId ?? null,
             descricao: dto.descricao ?? null,
             etiquetas: dto.etiquetas ?? [],
+            combinaCom: [...new Set(dto.combinaCom ?? [])],
             ordem: dto.ordem ?? 0,
             ativo: dto.ativo ?? true,
             tituloMarketplace: dto.tituloMarketplace ?? null,
@@ -498,6 +499,9 @@ export class VitrineAdminService {
             ...(dto.categoriaId !== undefined ? { categoriaId: dto.categoriaId } : {}),
             descricao: dto.descricao ?? null,
             ...(dto.etiquetas !== undefined ? { etiquetas: dto.etiquetas } : {}),
+            ...(dto.combinaCom !== undefined
+              ? { combinaCom: [...new Set(dto.combinaCom.filter((x) => x !== id))] }
+              : {}),
             ...(dto.ordem !== undefined ? { ordem: dto.ordem } : {}),
             ...(dto.ativo !== undefined ? { ativo: dto.ativo } : {}),
             ...(dto.tituloMarketplace !== undefined
@@ -604,6 +608,14 @@ export class VitrineAdminService {
    * entraria pela grade.
    */
   private async validarReferencias(empresaId: string, dto: ModeloDto): Promise<void> {
+    // "Combina com": só modelo DESTA empresa (id de fora seria vazamento no feed).
+    const pares = [...new Set(dto.combinaCom ?? [])];
+    if (pares.length) {
+      const n = await this.prisma.catalogoModelo.count({ where: { id: { in: pares }, empresaId } });
+      if (n !== pares.length) {
+        throw new BusinessRuleException('Modelo do conjunto inválido para esta empresa');
+      }
+    }
     if (dto.categoriaId) {
       const cat = await this.prisma.catalogoCategoria.findFirst({
         where: { id: dto.categoriaId, empresaId },

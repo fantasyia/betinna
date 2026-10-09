@@ -113,6 +113,8 @@ export interface Modelo {
   tituloMarketplace: string | null;
   descricaoMarketplace: string | null;
   composicao: string | null;
+  /** Modelos que combinam (conjunto) — ligados a partir DESTE modelo. */
+  combinaCom?: string[];
   cores: ModeloCor[];
   linhas: ModeloLinha[];
   videos: Video[];

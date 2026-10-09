@@ -195,6 +195,7 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
           cores={cores.data ?? []}
           linhas={linhas.data ?? []}
           categorias={categorias.data ?? []}
+          modelos={modelos.data ?? []}
           onClose={() => setEditando(null)}
           onSalvou={() => modelos.refetch()}
           onExcluiu={() => modelos.refetch()}

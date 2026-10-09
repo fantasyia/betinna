@@ -132,6 +132,8 @@ export const modeloSchema = z
     /** Cores marcadas, na ordem em que aparecem na vitrine. */
     corIds: z.array(z.string().min(1)).max(40).optional(),
     linhas: z.array(modeloLinhaSchema).max(10).optional(),
+    /** Modelos que combinam (conjunto) — vale nos dois sentidos na vitrine. */
+    combinaCom: z.array(z.string().min(1)).max(10).optional(),
   })
   .superRefine((m, ctx) => {
     const cores = m.corIds ?? [];

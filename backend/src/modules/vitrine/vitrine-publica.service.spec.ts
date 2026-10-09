@@ -170,3 +170,17 @@ describe('vitrine que respeita estoque (entrega 5)', () => {
     expect(JSON.stringify(r)).not.toMatch(/prod-x|produtoId/);
   });
 });
+
+describe('paresDoConjunto (upsell: blusa ↔ calça)', () => {
+  it('ligar de um lado vale nos dois; par fora da vitrine e ele mesmo saem', async () => {
+    const { paresDoConjunto } = await import('./vitrine-publica.service');
+    const p = paresDoConjunto([
+      { id: 'blusa', combinaCom: ['calca', 'inativo', 'blusa'] },
+      { id: 'calca', combinaCom: [] },
+      { id: 'bermuda', combinaCom: [] },
+    ]);
+    expect(p.get('blusa')).toEqual(['calca']);
+    expect(p.get('calca')).toEqual(['blusa']);
+    expect(p.get('bermuda')).toEqual([]);
+  });
+});
