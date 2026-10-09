@@ -33,6 +33,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'clicksign',
   'asaas',
   'melhorenvio',
+  'meta_pixel',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -50,7 +51,8 @@ type ServicoEmpresa =
   | 'openai'
   | 'clicksign'
   | 'asaas'
-  | 'melhorenvio';
+  | 'melhorenvio'
+  | 'meta_pixel';
 
 interface ServicoMeta {
   nome: string;
@@ -64,7 +66,8 @@ interface ServicoMeta {
     | 'agenda'
     | 'assinatura'
     | 'pagamento'
-    | 'logistica';
+    | 'logistica'
+    | 'anuncios';
   obrigatorio: boolean;
   color: string;
   icon: string;
@@ -250,6 +253,20 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     ],
     atalho: { rotulo: 'Configurar o frete →', rota: '/vitrine?aba=config' },
   },
+  meta_pixel: {
+    nome: 'Pixel do Meta (API de Conversões)',
+    tipo: 'anuncios',
+    obrigatorio: false,
+    color: '#0866ff',
+    icon: '🎯',
+    description:
+      'Token da API de Conversões do pixel da vitrine: manda a COMPRA pro Meta quando o pedido é pago, ' +
+      'com os dados do cliente cifrados. Gere no Gerenciador de Eventos → conjunto de dados → ' +
+      'Configurações → API de Conversões. O ID do pixel vai em Vitrine → Configuração → Pixel do Meta.',
+    connectMode: 'credentials',
+    credentialFields: [{ name: 'accessToken', label: 'Token da API de Conversões', type: 'password' }],
+    atalho: { rotulo: 'Configurar o pixel →', rota: '/vitrine?aba=config' },
+  },
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
@@ -266,6 +283,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'clicksign',
   'asaas',
   'melhorenvio',
+  'meta_pixel',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
@@ -279,6 +297,7 @@ const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
   agenda: 'Agenda',
   pagamento: 'Pagamento',
   logistica: 'Logística',
+  anuncios: 'Anúncios',
 };
 
 // ─── Tipos do backend ────────────────────────────────────────────────
@@ -545,6 +564,7 @@ const GRUPOS_DISPONIVEIS: Array<{ tipo: ServicoMeta['tipo']; rotulo: string }> =
   { tipo: 'assinatura', rotulo: 'Assinatura' },
   { tipo: 'pagamento', rotulo: 'Pagamento' },
   { tipo: 'logistica', rotulo: 'Frete' },
+  { tipo: 'anuncios', rotulo: 'Anúncios' },
 ];
 
 /**

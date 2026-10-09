@@ -8,6 +8,7 @@ import { VitrineFotosService } from './vitrine-fotos.service';
 import { minimoDaVitrine } from './vitrine-pedido.service';
 import { configFrete } from './frete';
 import { privacidadePublicada } from './privacidade.service';
+import { pixelLigado } from './meta-pixel.service';
 
 /** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
 function freteDaVitrine(config: unknown) {
@@ -206,6 +207,8 @@ export class VitrinePublicaService {
       frete: freteDaVitrine(vitrine.empresa.config),
       // Link "Política de privacidade" na vitrine (só quando publicada).
       privacidade: privacidadePublicada(vitrine.empresa.config),
+      // Pixel do Meta (ID é público; o token da CAPI nunca sai do servidor).
+      pixel: pixelLigado(vitrine.empresa.config),
       linhas,
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({

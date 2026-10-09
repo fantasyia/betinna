@@ -15,6 +15,7 @@ import { VitrinePublicaService } from './vitrine-publica.service';
 import { VitrinePedidoService } from './vitrine-pedido.service';
 import { FreteService } from './frete.service';
 import { PrivacidadeService } from './privacidade.service';
+import { MetaPixelService } from './meta-pixel.service';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 
 /**
@@ -47,6 +48,7 @@ import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
     VitrinePedidoService,
     FreteService,
     PrivacidadeService,
+    MetaPixelService,
     PrecificacaoService,
   ],
   exports: [VitrineAdminService, VitrineFotosService],

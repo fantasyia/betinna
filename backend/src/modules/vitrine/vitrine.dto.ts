@@ -225,6 +225,38 @@ export const freteConfigSchema = z.object({
 });
 export type FreteConfigDto = z.infer<typeof freteConfigSchema>;
 
+/** Pixel do Meta da vitrine (o token da API de Conversões fica em Integrações). */
+export const pixelConfigSchema = z.object({
+  ativo: z.boolean(),
+  pixelId: z
+    .string()
+    .trim()
+    .regex(/^\d{8,20}$/, 'ID do pixel: só números'),
+  testEventCode: z
+    .string()
+    .trim()
+    .max(40)
+    .regex(/^[A-Za-z0-9]*$/, 'Código de teste inválido')
+    .optional()
+    .nullable(),
+});
+export type PixelConfigDto = z.infer<typeof pixelConfigSchema>;
+
+const blocoAtribuicao = z
+  .object({
+    utmSource: z.string().max(2048),
+    utmMedium: z.string().max(2048),
+    utmCampaign: z.string().max(2048),
+    utmContent: z.string().max(2048),
+    utmTerm: z.string().max(2048),
+    gclid: z.string().max(2048),
+    fbclid: z.string().max(2048),
+    landingPage: z.string().max(2048),
+    referrer: z.string().max(2048),
+    capturadoEm: z.string().max(40),
+  })
+  .partial();
+
 /** Política de Privacidade da vitrine: quem responde pelos dados e o canal de contato. */
 export const privacidadeConfigSchema = z.object({
   razaoSocial: z.string().trim().min(2, 'Informe a razão social').max(160),
@@ -275,6 +307,15 @@ export const pedidoVitrineSchema = z.object({
       z.object({ servicoId: z.number().int().positive() }),
       z.object({ retirada: z.literal(true) }),
     ])
+    .optional(),
+  /** De onde o cliente veio (campanha) e os cookies do Meta (fbc/fbp). */
+  atribuicao: z
+    .object({
+      primeiro: blocoAtribuicao.optional(),
+      ultimo: blocoAtribuicao.optional(),
+      fbc: z.string().max(500).optional(),
+      fbp: z.string().max(500).optional(),
+    })
     .optional(),
   /** Isca pra robô: campo invisível na tela. Gente nunca preenche. */
   site: z.string().max(0).optional(),

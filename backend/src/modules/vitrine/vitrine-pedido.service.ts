@@ -14,6 +14,7 @@ import { SequenceService } from '@shared/utils/sequence.service';
 import { configFrete, retiradaLiberada, type ConfigFrete } from './frete';
 import { FreteIndisponivel, FreteService, type Cotacao } from './frete.service';
 import type { PedidoVitrineDto } from './vitrine.dto';
+import { normalizarAtribuicao } from '@modules/leads/atribuicao.util';
 
 type Faixa = 'entrada' | 'volume' | 'atacadao';
 type Precos = {
@@ -124,6 +125,7 @@ export class VitrinePedidoService {
   async enviar(
     slug: string,
     dto: PedidoVitrineDto,
+    req: { ip?: string; userAgent?: string } = {},
   ): Promise<{
     numero: string;
     totalPecas: number;
@@ -146,7 +148,7 @@ export class VitrinePedidoService {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
-    return this.enviarResolvido(slug, dto, vitrine, r);
+    return this.enviarResolvido(slug, dto, vitrine, r, req);
   }
 
   private async carregarVitrine(slug: string) {
@@ -375,6 +377,7 @@ export class VitrinePedidoService {
     dto: PedidoVitrineDto,
     vitrine: Awaited<ReturnType<VitrinePedidoService['carregarVitrine']>>,
     r: Awaited<ReturnType<VitrinePedidoService['resolverCarrinho']>>,
+    req: { ip?: string; userAgent?: string } = {},
   ) {
     const empresaId = vitrine.empresaId;
     const { linhas, total, totalPecas, semPreco, faixa } = r;
@@ -480,6 +483,7 @@ export class VitrinePedidoService {
       frete: new Prisma.Decimal(valorFrete.toFixed(2)),
       total: new Prisma.Decimal(totalComFrete.toFixed(2)),
       ...(frete ? { entrega: frete.entrega } : {}),
+      atribuicao: atribuicaoDoPedido(dto.atribuicao, req),
       comissao: new Prisma.Decimal(0),
       observacoes: [
         `Pedido da vitrine — ${totalPecas} peças, faixa ${ROTULO_FAIXA[faixa]}`,
@@ -669,4 +673,34 @@ function enderecoDoCliente(e: NonNullable<PedidoVitrineDto['entrega']>) {
     complemento: e.complemento ?? null,
     bairro: e.bairro ?? null,
   };
+}
+
+/** Cookie do Meta no formato oficial (fb.1.<tempo>.<valor>); o resto é descartado. */
+const COOKIE_META = /^fb\.\d\.\d{10,13}\.[\w.-]{1,400}$/;
+
+/**
+ * Atribuição do pedido: campanha limpa (mesma régua dos leads), cookies do
+ * Meta só no formato certo, IP e navegador cortados. `meta` só existe com o
+ * navegador — sem ele a compra não vai pra API de Conversões.
+ */
+export function atribuicaoDoPedido(
+  a: PedidoVitrineDto['atribuicao'],
+  req: { ip?: string; userAgent?: string },
+): Prisma.InputJsonObject | undefined {
+  const campanha = normalizarAtribuicao(a) ?? {};
+  const meta: Record<string, string> = {};
+  if (a?.fbc && COOKIE_META.test(a.fbc)) meta.fbc = a.fbc;
+  if (a?.fbp && COOKIE_META.test(a.fbp)) meta.fbp = a.fbp;
+  const ua = req.userAgent
+    ?.replace(/[\x00-\x1F\x7F]/g, '')
+    .trim()
+    .slice(0, 512);
+  if (ua) meta.userAgent = ua;
+  const ip = req.ip
+    ?.replace(/^::ffff:/, '')
+    .trim()
+    .slice(0, 64);
+  if (ip && ua) meta.ip = ip;
+  const out = { ...campanha, ...(Object.keys(meta).length ? { meta } : {}) };
+  return Object.keys(out).length ? (out as Prisma.InputJsonObject) : undefined;
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, HttpCode, Ip, Param, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { z } from 'zod';
@@ -81,7 +81,10 @@ export class VitrinePublicaController {
   enviarPedido(
     @Param('slug', new ZodValidationPipe(slugSchema)) slug: string,
     @Body(new ZodValidationPipe(pedidoVitrineSchema)) dto: PedidoVitrineDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string | undefined,
   ) {
-    return this.pedidos.enviar(slug, dto);
+    // IP e navegador: a API de Conversões do Meta exige pra evento de site.
+    return this.pedidos.enviar(slug, dto, { ip, userAgent });
   }
 }

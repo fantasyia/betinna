@@ -31,6 +31,9 @@ export const SERVICOS_EMPRESA = [
   // Frete da vitrine (cotação). Conta Melhor Envio do tenant: o desconto e a
   // carteira de etiquetas são dele.
   'melhorenvio',
+  // Pixel do Meta da vitrine: o TOKEN da API de Conversões (o ID do pixel é
+  // público e fica na config da vitrine).
+  'meta_pixel',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -58,7 +61,8 @@ export type ServicoTipo =
   | 'email'
   | 'agenda'
   | 'pagamento'
-  | 'logistica';
+  | 'logistica'
+  | 'anuncios';
 /** 'ambos' indica que o serviço aceita ambos os escopos (ex: WhatsApp empresa OU pessoal). */
 export type ServicoEscopo = 'empresa' | 'usuario' | 'ambos';
 
@@ -188,6 +192,14 @@ export const SERVICO_METADATA: Record<
   melhorenvio: {
     nome: 'Melhor Envio (frete)',
     tipo: 'logistica',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  // Token que manda a compra pro Meta com dados do cliente (hash): diretoria.
+  meta_pixel: {
+    nome: 'Pixel do Meta (API de Conversões)',
+    tipo: 'anuncios',
     escopo: 'empresa',
     obrigatorio: false,
     requerDirector: true,

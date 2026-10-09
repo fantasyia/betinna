@@ -17,7 +17,9 @@ import {
   type VitrineConfigDto,
   type FreteConfigDto,
   type PrivacidadeConfigDto,
+  type PixelConfigDto,
   corSchema,
+  pixelConfigSchema,
   privacidadeConfigSchema,
   freteConfigSchema,
   simularFreteSchema,
@@ -30,6 +32,7 @@ import {
 import { VitrineAdminService } from './vitrine-admin.service';
 import { FreteService } from './frete.service';
 import { PrivacidadeService } from './privacidade.service';
+import { MetaPixelService } from './meta-pixel.service';
 
 /**
  * Vitrine de atacado — cadastro do lado da empresa (Fase 1).
@@ -47,7 +50,24 @@ export class VitrineAdminController {
     private readonly svc: VitrineAdminService,
     private readonly frete: FreteService,
     private readonly privacidade: PrivacidadeService,
+    private readonly pixel: MetaPixelService,
   ) {}
+
+  // ─── Pixel do Meta ───────────────────────────────────────────────────────
+  @Get('pixel')
+  @ApiOperation({ summary: 'Pixel do Meta: ID, ligado e se o token (CAPI) está conectado' })
+  pixelStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.pixel.status(user);
+  }
+
+  @Put('pixel')
+  @ApiOperation({ summary: 'Salva o ID do pixel e liga/desliga (exige o token em Integrações)' })
+  pixelSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(pixelConfigSchema)) dto: PixelConfigDto,
+  ) {
+    return this.pixel.salvar(user, dto);
+  }
 
   // ─── Política de Privacidade ────────────────────────────────────────────
   @Get('privacidade')

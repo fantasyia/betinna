@@ -24,6 +24,7 @@ import {
 import { PagamentoOnline } from './PagamentoOnline';
 import { FreteConfig } from './FreteConfig';
 import { PrivacidadeConfig } from './PrivacidadeConfig';
+import { PixelConfig } from './PixelConfig';
 
 /**
  * Vitrine de atacado — cadastro (Fase 1, Ribelt Distribuidora Têxtil).
@@ -184,6 +185,7 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
           {config && <PagamentoOnline />}
           {config && <FreteConfig />}
           {config && <PrivacidadeConfig slug={config.slug} />}
+          {config && <PixelConfig />}
         </div>
       )}
 

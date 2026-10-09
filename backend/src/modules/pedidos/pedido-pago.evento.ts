@@ -10,6 +10,24 @@ export interface PagamentoDoEvento {
   online: boolean;
 }
 
+/** Quem mais quer saber que o pedido virou PAGO (ex.: compra pro Meta, CAPI). */
+export type OuvintePedidoPago = (pedidoId: string, pagamento: PagamentoDoEvento) => Promise<void>;
+
+const ouvintes = new Set<OuvintePedidoPago>();
+
+/**
+ * Registra um ouvinte do pedido pago. Devolve o "desregistrar".
+ *
+ * Por que registro e não injeção: PEDIDO_PAGO nasce em TRÊS módulos (checkout
+ * online, Pix confirmado no estoque, "pagamento recebido" no pedido) e todos
+ * chamam esta função. Um serviço que precisa do evento se registra no boot
+ * (onModuleInit) — sem costurar dependência nova nos três.
+ */
+export function ouvirPedidoPago(fn: OuvintePedidoPago): () => void {
+  ouvintes.add(fn);
+  return () => ouvintes.delete(fn);
+}
+
 /**
  * Dispara o gatilho PEDIDO_PAGO (Léo, 07/10). Chamado DEPOIS de a transação
  * gravar o pedido como PAGO, por quem venceu a virada (CAS) — então dispara uma
@@ -25,6 +43,9 @@ export async function dispararPedidoPago(
   pedidoId: string,
   pagamento: PagamentoDoEvento,
 ): Promise<void> {
+  // Ouvintes ANTES do `bus`: a compra pro Meta não depende do motor de fluxo.
+  // Melhor esforço e sem esperar — cada ouvinte cuida (e loga) a própria falha.
+  for (const fn of ouvintes) void fn(pedidoId, pagamento).catch(() => undefined);
   if (!bus) return;
   try {
     const p = await prisma.pedido.findUnique({

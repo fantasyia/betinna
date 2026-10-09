@@ -629,3 +629,23 @@ describe('VitrinePedidoService — frete (Melhor Envio)', () => {
     ).toEqual({ ativo: false });
   });
 });
+
+describe('VitrinePedidoService — atribuição do pedido (pixel do Meta)', () => {
+  it('grava campanha, cookies do Meta, IP e navegador da requisição no pedido', async () => {
+    const { svc, prisma } = montar();
+    await svc.enviar(
+      'atacado-ribelt',
+      dto({
+        atribuicao: {
+          primeiro: { utmSource: 'facebook', landingPage: 'https://atacado.ribelt.com.br/v/a' },
+          fbp: 'fb.1.1791500000000.987',
+        },
+      }),
+      { ip: '200.1.2.3', userAgent: 'Mozilla/5.0' },
+    );
+    expect(prisma.pedido.create.mock.calls[0][0].data.atribuicao).toEqual({
+      primeiro: { utmSource: 'facebook', landingPage: 'https://atacado.ribelt.com.br/v/a' },
+      meta: { fbp: 'fb.1.1791500000000.987', userAgent: 'Mozilla/5.0', ip: '200.1.2.3' },
+    });
+  });
+});

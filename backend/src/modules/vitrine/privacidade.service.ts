@@ -5,6 +5,7 @@ import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exc
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { configFrete } from './frete';
+import { pixelLigado } from './meta-pixel.service';
 import { politicaDePrivacidade, type Politica } from './privacidade';
 import type { PrivacidadeConfigDto } from './vitrine.dto';
 
@@ -113,6 +114,7 @@ export class PrivacidadeService {
         pagamentoOnline: pagamentoOnlineLigado(e.config),
         frete: configFrete(e.config).ativo === true,
         assistenteIa: e.botWhatsappAtivo,
+        pixel: !!pixelLigado(e.config),
       },
     });
   }

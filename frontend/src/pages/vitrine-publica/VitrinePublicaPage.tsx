@@ -51,6 +51,7 @@ import {
   type FretePub,
 } from './Entrega';
 import { Pagamento, type AcessoPagamento } from './Pagamento';
+import { atribuicaoParaEnvio, capturarAtribuicao, evento, iniciarPixel } from './pixel';
 import './vitrine.css';
 
 /**
@@ -122,6 +123,9 @@ export default function VitrinePublicaPage() {
       .then((v) => {
         setDados(v);
         document.title = `${v.empresa.nome} · Atacado`;
+        // De onde o cliente veio (utm/fbclid) — guardado no aparelho pro pedido.
+        capturarAtribuicao(window.location.href, document.referrer);
+        if (v.pixel) iniciarPixel(v.pixel);
       })
       .catch((e) =>
         setErro(
@@ -170,6 +174,25 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   const [fixado, setFixado] = useState<string | null>(null);
   const [visitante] = useState(codigoDoVisitante);
   const feed = useRef<HTMLDivElement>(null);
+  // Peças do modelo quando a grade abriu — o que passar disso é AddToCart.
+  const pecasAoAbrirGrade = useRef(0);
+
+  // Pixel: produto visto (ficha técnica ou grade aberta).
+  useEffect(() => {
+    const m = pdp ?? grade;
+    if (m) {
+      evento('ViewContent', {
+        content_ids: [m.id],
+        content_name: m.nome,
+        content_type: 'product_group',
+      });
+    }
+  }, [pdp, grade]);
+  useEffect(() => {
+    if (grade) pecasAoAbrirGrade.current = pecasDoModelo(carrinho, grade.id);
+    // Só na abertura: o carrinho muda a cada toque na grade.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grade]);
 
   // Carrinho salvo no aparelho: sair e voltar mantém o pedido montado.
   useEffect(() => {
@@ -434,6 +457,14 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           onMudar={setCarrinho}
           onFechar={() => {
             const n = pecasDoModelo(carrinho, grade.id);
+            if (n > pecasAoAbrirGrade.current) {
+              evento('AddToCart', {
+                content_ids: [grade.id],
+                content_name: grade.nome,
+                content_type: 'product_group',
+                num_items: n - pecasAoAbrirGrade.current,
+              });
+            }
             setGrade(null);
             if (!verPedido && n) avisar(`${totalPecas(carrinho)} peças no pedido`);
           }}
@@ -1237,6 +1268,19 @@ function SeuPedido({
   const barra = progressoFaixa(r.pecas, v.faixas);
   const ganho = lucroNaProximaFaixa(carrinho, v);
 
+  // Pixel: abriu o "Enviar pedido" = começou o checkout.
+  useEffect(() => {
+    if (envio) {
+      evento('InitiateCheckout', {
+        currency: 'BRL',
+        value: r.aConfirmar ? undefined : r.investe,
+        num_items: r.pecas,
+      });
+    }
+    // Só quando abre.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [envio]);
+
   return (
     <section className="vt-cart" aria-label="Seu pedido">
       <header>
@@ -1531,6 +1575,7 @@ function FolhaEnvio({
           cpfCnpj: f.cpfCnpj.trim(),
           site: isca,
           itens,
+          atribuicao: atribuicaoParaEnvio(window.location.href),
           ...(frete ? freteParaEnvio(f, escolha) : {}),
         },
         { skipAuth: true },
@@ -1728,13 +1773,24 @@ function PedidoEnviado({
   const agora = useAgora(Boolean(reservaAte) && !pago);
   const relogio = pago ? null : restante(reservaAte, agora);
   const online = Boolean(e.pagamento) && !e.aConfirmar;
-  const aoPagar = useCallback(() => setPago(true), []);
+  const aoPagar = useCallback(() => {
+    setPago(true);
+    // Mesmo eventID da API de Conversões: o Meta conta UMA compra.
+    if (e.pagamento) {
+      evento(
+        'Purchase',
+        { value: e.total, currency: 'BRL', num_items: e.pecas },
+        `pedido-${e.pagamento.pedidoId}`,
+      );
+    }
+  }, [e]);
   const aoComecar = useCallback(() => {
+    evento('AddPaymentInfo', { value: e.total, currency: 'BRL' });
     // Mesma conta do servidor: quem está pagando não perde a peça pelo relógio.
     setReservaAte((r) =>
       r ? new Date(Date.now() + RESERVA_PAGANDO_MIN * 60_000).toISOString() : r,
     );
-  }, []);
+  }, [e.total]);
   return (
     <section className="vt-cart vt-ok" aria-label="Pedido enviado" data-testid="vt-enviado">
       <div className="vt-ok-corpo">

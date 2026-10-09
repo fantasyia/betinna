@@ -31,6 +31,8 @@ export interface DadosPolitica {
     frete: boolean;
     /** Respostas automáticas (fluxos/IA) no WhatsApp. */
     assistenteIa: boolean;
+    /** Pixel do Meta + API de Conversões ligados na vitrine. */
+    pixel?: boolean;
   };
 }
 
@@ -82,6 +84,11 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
     'No seu aparelho: a vitrine guarda no navegador o pedido em montagem e os seus dados de contato e entrega, para você não precisar digitar de novo. Isso fica só no seu aparelho e você pode apagar limpando os dados do navegador.',
     'Dados técnicos: registros de erro e de acesso (como endereço IP, navegador e horário), usados para manter o site funcionando e seguro.',
   );
+  if (x.usa.pixel) {
+    coleta.push(
+      'Navegação e anúncios (Pixel da Meta): páginas e produtos vistos, itens colocados no pedido, início do pagamento e compras, junto com identificadores de cookie e do navegador, endereço IP e a campanha de onde você veio (parâmetros do link).',
+    );
+  }
 
   const finalidades: string[] = [
     'Receber, conferir e atender o seu pedido, inclusive confirmar itens, preços e prazos com você (execução de contrato e procedimentos preliminares).',
@@ -96,6 +103,11 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
     'Cumprir obrigações legais e fiscais e exercer direitos em processos (cumprimento de obrigação legal e exercício regular de direitos).',
     'Manter a segurança do site e evitar fraudes (legítimo interesse).',
   );
+  if (x.usa.pixel) {
+    finalidades.push(
+      'Medir o resultado dos nossos anúncios no Facebook e no Instagram e mostrar anúncios mais relevantes (legítimo interesse).',
+    );
+  }
 
   const compartilha: string[] = [
     'Meta (Facebook, Instagram e WhatsApp): quando você fala conosco pelo WhatsApp ou preenche um formulário de anúncio, a Meta trata esses dados conforme a política dela.',
@@ -113,6 +125,11 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
   if (x.usa.frete) {
     compartilha.push(
       'Melhor Envio e transportadoras: recebem CEP, endereço e dados de contato para cotar e entregar o pedido.',
+    );
+  }
+  if (x.usa.pixel) {
+    compartilha.push(
+      'Meta (Pixel e API de Conversões): recebe os eventos de navegação e de compra. Na compra, telefone, e-mail, nome, cidade, UF e CEP vão em formato cifrado (hash), só para a Meta associar a compra ao anúncio.',
     );
   }
   compartilha.push(

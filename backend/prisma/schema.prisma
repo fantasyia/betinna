@@ -987,6 +987,10 @@ model Pedido {
   /// Entrega do pedido da vitrine: endereço do cliente, serviço escolhido
   /// (Melhor Envio), volumes — ou retirada em mãos, ou "frete a combinar".
   entrega           Json?
+  /// De onde veio o pedido da vitrine: campanha (primeiro/último contato),
+  /// identificadores do Meta (fbc/fbp), IP e navegador — e o envio da compra
+  /// pra API de Conversões (`capi.purchase`).
+  atribuicao        Json?
   /// Contas a receber lançadas no ERP quando a NF autorizou:
   /// [{ id, parcela, valor, vencimento }]. Presença = já lançado (idempotência).
   contasReceberErp  Json?

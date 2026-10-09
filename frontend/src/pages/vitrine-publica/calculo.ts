@@ -77,6 +77,8 @@ export interface VitrinePub {
   } | null;
   /** Política de Privacidade publicada (link no pedido). */
   privacidade?: boolean;
+  /** ID do Pixel do Meta (ligado na config da vitrine). null = sem pixel. */
+  pixel?: string | null;
   /** `selo`: aviso da linha (Plus Size de verdade…); null = sem selo. */
   linhas: Array<{ id: string; nome: string; selo?: string | null }>;
   modelos: ModeloPub[];
