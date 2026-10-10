@@ -39,9 +39,10 @@
 .vt-brand .vt-nome { font-family: var(--f-title); font-weight: 600; font-size: 18px; }
 /* "Entrar" discreto no canto direito do topo: acesso à plataforma */
 /* Carrinho no topo, ao lado do Entrar (Léo, 10/10). */
-.vt-brand .vt-carrinho { margin-left: auto; position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--petroleo); color: var(--creme); border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+/* Sem fundo, só o traço (Léo, 10/10: "de forma sutil"); a área de toque segue 36px. */
+.vt-brand .vt-carrinho { margin-left: auto; position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: transparent; color: var(--petroleo); border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .vt-brand .vt-carrinho:active { transform: scale(.94); }
-.vt-carrinho-n { position: absolute; top: -5px; right: -6px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; background: var(--terracota); color: var(--branco); font: 700 11px/19px var(--f-text); text-align: center; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--creme); animation: vt-pop .28s ease-out; }
+.vt-carrinho-n { position: absolute; top: -1px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--terracota); color: var(--branco); font: 700 10.5px/18px var(--f-text); text-align: center; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--creme); animation: vt-pop .28s ease-out; }
 @keyframes vt-pop { 0% { transform: scale(.6); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
 .vt-brand .vt-carrinho + .vt-entrar { margin-left: 0; }
 .vt-brand .vt-entrar { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--petroleo); border: 1px solid #d9cdb0; border-radius: 999px; padding: 4px 12px; text-decoration: none; line-height: 1.2; }
