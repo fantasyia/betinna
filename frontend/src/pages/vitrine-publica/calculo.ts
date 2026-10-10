@@ -600,3 +600,13 @@ export function sugestoesAntesDePagar(
   const resto = fora.filter((m) => !complemento.has(m.id));
   return [...primeiro, ...resto].slice(0, n);
 }
+
+/**
+ * Aviso ao fechar a grade (Léo, 10/10): o que mudou NAQUELE modelo —
+ * "+12 peças · Bermuda Moletom Summer" ou "−3 peças · …". Zero = null. PURO.
+ */
+export function avisoDaGrade(nome: string, delta: number): string | null {
+  if (!delta) return null;
+  const n = Math.abs(delta);
+  return `${delta > 0 ? '+' : '−'}${n} ${n === 1 ? 'peça' : 'peças'} · ${nome}`;
+}

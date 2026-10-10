@@ -23,6 +23,7 @@ import {
   coresPorEstoque,
   fotosDaLinha,
   gradeDoCarrinho,
+  avisoDaGrade,
   paresDe,
   preencherConjunto,
   sugestoesAntesDePagar,
@@ -536,7 +537,12 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
               });
             }
             setGrade(null);
-            if (!verPedido && n) avisar(`${totalPecas(carrinho)} peças no pedido`);
+            // Confirma O QUE mudou neste modelo (Léo, 10/10): "+12 peças · Bermuda…".
+            // Nada mudou = sem aviso (o número do carrinho no topo já está certo).
+            if (!verPedido) {
+              const msg = avisoDaGrade(grade.nome, n - pecasAoAbrirGrade.current);
+              if (msg) avisar(msg);
+            }
           }}
         />
       )}

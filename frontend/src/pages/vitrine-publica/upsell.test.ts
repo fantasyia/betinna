@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { paresDe, preencherConjunto, sugestoesAntesDePagar, type ModeloPub } from './calculo';
+import {
+  avisoDaGrade,
+  paresDe,
+  preencherConjunto,
+  sugestoesAntesDePagar,
+  type ModeloPub,
+} from './calculo';
 
 /** Upsell da vitrine (Léo, 09/10): conjunto + sugestões antes de pagar, sem desconto. */
 
@@ -100,5 +106,14 @@ describe('sugestoesAntesDePagar', () => {
   it('paresDe: só modelos que estão na vitrine', () => {
     expect(paresDe(blusa, { modelos: [blusa] })).toEqual([]);
     expect(paresDe(blusa, v).map((m) => m.id)).toEqual(['calca']);
+  });
+});
+
+describe('avisoDaGrade (10/10)', () => {
+  it('diz o que mudou naquele modelo; nada mudou = sem aviso', () => {
+    expect(avisoDaGrade('Bermuda Moletom Summer', 12)).toBe('+12 peças · Bermuda Moletom Summer');
+    expect(avisoDaGrade('Calça Moletom', 1)).toBe('+1 peça · Calça Moletom');
+    expect(avisoDaGrade('Calça Moletom', -3)).toBe('−3 peças · Calça Moletom');
+    expect(avisoDaGrade('Calça Moletom', 0)).toBeNull();
   });
 });
