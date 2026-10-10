@@ -234,6 +234,11 @@ export const API_TOKEN_ESCOPOS = [
   // É PII: serve pra analisar o histórico de um lead e ajustar prompt, não pra
   // responder nem reatribuir — isso é de quem atende.
   'inbox',
+  // inbox-status = a ÚNICA escrita no inbox por token (Ribelt, 10/10): FECHAR
+  // conversa — status RESOLVIDA ou ARQUIVADA, uma (`PATCH /inbox/:id/status`) ou
+  // em lote (`POST /inbox/bulk/status`). Exige também o escopo `inbox`.
+  // Responder, atribuir, notas e reabrir seguem barrados no guard.
+  'inbox-status',
   // campanhas = conteúdo de e-mail marketing (/campanhas): template e rascunho.
   // ESCRITA liberada — é o e-mail que o agente escreve e sobe pro app. Disparar,
   // agendar e reenviar seguem barrados no guard: fazem e-mail sair pra base real

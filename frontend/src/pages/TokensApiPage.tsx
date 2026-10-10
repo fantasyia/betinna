@@ -54,6 +54,11 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     badge: 'Inbox (leitura)',
   },
   {
+    key: 'inbox-status',
+    label: 'Inbox — FECHAR conversa (só RESOLVIDA/ARQUIVADA; não responde nem atribui · junto com Inbox)',
+    badge: 'Inbox (fechar)',
+  },
+  {
     key: 'campanhas',
     label: 'Campanhas — escrita de conteúdo (template e rascunho; NÃO dispara)',
     badge: 'Campanhas',

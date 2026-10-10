@@ -7,8 +7,13 @@ import { AuthGuard } from './auth.guard';
 /** Contexto NestJS mínimo pra um request HTTP — MESMA instância de request em
  *  toda chamada a getRequest() (senão mutar .method depois não tem efeito, já
  *  que o guard chama getRequest() de novo internamente). */
-const fakeContext = (opts: { method: string; path: string; headers: Record<string, string> }) => {
-  const request = { method: opts.method, path: opts.path, headers: opts.headers };
+const fakeContext = (opts: {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: unknown;
+}) => {
+  const request = { method: opts.method, path: opts.path, headers: opts.headers, body: opts.body };
   return {
     getHandler: () => undefined,
     getClass: () => undefined,
@@ -148,6 +153,65 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     });
 
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  describe('FECHAR conversa por token (escopo inbox-status, Ribelt 10/10)', () => {
+    const comEscopos = (escopo: string[]) =>
+      prisma.kanbanApiToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        empresaId: 'emp-1',
+        usuarioId: 'u1',
+        escopo,
+        revogado: false,
+      });
+    const pedir = (method: string, path: string, body: unknown) =>
+      guard.canActivate(
+        fakeContext({ method, path, headers: { authorization: 'Bearer bkt_abc' }, body }),
+      );
+
+    it('PATCH /inbox/:id/status RESOLVIDA PASSA com inbox + inbox-status', async () => {
+      comEscopos(['inbox', 'inbox-status']);
+      await expect(pedir('PATCH', '/inbox/conv-1/status', { status: 'RESOLVIDA' })).resolves.toBe(
+        true,
+      );
+    });
+
+    it('POST /inbox/bulk/status ARQUIVADA PASSA com inbox + inbox-status', async () => {
+      comEscopos(['inbox', 'inbox-status']);
+      await expect(
+        pedir('POST', '/inbox/bulk/status', { ids: ['c1', 'c2'], status: 'ARQUIVADA' }),
+      ).resolves.toBe(true);
+    });
+
+    it('só com "inbox" (leitura) é RECUSADO — o escopo de fechar é à parte', async () => {
+      comEscopos(['inbox']);
+      await expect(pedir('PATCH', '/inbox/conv-1/status', { status: 'RESOLVIDA' })).rejects.toThrow(
+        /inbox-status/,
+      );
+    });
+
+    it('REABRIR (ABERTA/PENDENTE) por token é recusado mesmo com o escopo', async () => {
+      comEscopos(['inbox', 'inbox-status']);
+      await expect(pedir('PATCH', '/inbox/conv-1/status', { status: 'ABERTA' })).rejects.toThrow(
+        /só FECHA/,
+      );
+      await expect(
+        pedir('POST', '/inbox/bulk/status', { ids: ['c1'], status: 'PENDENTE' }),
+      ).rejects.toThrow(/só FECHA/);
+    });
+
+    it('responder e atribuir CONTINUAM bloqueados mesmo com inbox-status', async () => {
+      comEscopos(['inbox', 'inbox-status']);
+      await expect(pedir('POST', '/inbox/conv-1/responder', { texto: 'oi' })).rejects.toThrow(
+        /só faz leitura/,
+      );
+      await expect(pedir('PATCH', '/inbox/conv-1/atribuir', { atribuidoId: null })).rejects.toThrow(
+        /só faz leitura/,
+      );
+      await expect(pedir('POST', '/inbox/bulk/atribuir', { ids: ['c1'] })).rejects.toThrow(
+        /só faz leitura/,
+      );
+    });
   });
 
   it('POST em /inbox/:id/responder CONTINUA bloqueado — mandar mensagem não é papel de agente', async () => {

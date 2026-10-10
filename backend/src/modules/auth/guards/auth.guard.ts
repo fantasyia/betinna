@@ -271,6 +271,26 @@ export class AuthGuard implements CanActivate {
       (request.method ?? 'GET').toUpperCase() === 'DELETE' &&
       /^\/inbox\/[^/]+\/mensagens\/?$/.test(rel);
 
+    // FECHAR conversa (Ribelt, 10/10): `PATCH /inbox/:id/status` e
+    // `POST /inbox/bulk/status`, SÓ pra RESOLVIDA/ARQUIVADA e SÓ com o escopo
+    // próprio `inbox-status` (conferido abaixo, junto do escopo). Tirar da fila
+    // o lead que foi pra Perdido/Nutrição não fala com o cliente nem troca o
+    // dono — e se ele escrever de novo, a conversa reabre sozinha. Reabrir
+    // (ABERTA/PENDENTE) por token continua barrado: é decisão de quem atende.
+    const metodo = (request.method ?? 'GET').toUpperCase();
+    const fecharConversa =
+      moduloRequerido === 'inbox' &&
+      ((metodo === 'PATCH' && /^\/inbox\/(?!bulk\/)[^/]+\/status\/?$/.test(rel)) ||
+        (metodo === 'POST' && /^\/inbox\/bulk\/status\/?$/.test(rel)));
+    if (fecharConversa) {
+      const status = (request.body as { status?: unknown } | undefined)?.status;
+      if (status !== 'RESOLVIDA' && status !== 'ARQUIVADA') {
+        throw new ForbiddenException(
+          'Token de API só FECHA conversa (status RESOLVIDA ou ARQUIVADA) — reabrir é pela tela.',
+        );
+      }
+    }
+
     // DISPARO de campanha nunca por token. Escrever e revisar o e-mail é
     // trabalho de agente; apertar o botão que manda pra base real é decisão de
     // gente — sai mensagem pra cliente e não existe desfazer. Bloqueio por ROTA
@@ -320,7 +340,8 @@ export class AuthGuard implements CanActivate {
         moduloRequerido === 'pedidos' ||
         moduloRequerido === 'financeiro') &&
       (request.method ?? 'GET').toUpperCase() !== 'GET' &&
-      !zerarConversa
+      !zerarConversa &&
+      !fecharConversa
     ) {
       throw new ForbiddenException(`Token de API só faz leitura (GET) em /${moduloRequerido}`);
     }
@@ -336,6 +357,12 @@ export class AuthGuard implements CanActivate {
     if (!row.escopo.includes(moduloRequerido)) {
       throw new ForbiddenException(
         `Token sem escopo "${moduloRequerido}". Gere um token com esse escopo no app (Quadros → Tokens de API).`,
+      );
+    }
+    // Fechar conversa pede o escopo PRÓPRIO, além do `inbox` (leitura).
+    if (fecharConversa && !row.escopo.includes('inbox-status')) {
+      throw new ForbiddenException(
+        'Token sem escopo "inbox-status" (fechar conversa). Ajuste o escopo em Quadros → Tokens de API.',
       );
     }
 

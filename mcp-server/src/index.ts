@@ -4057,6 +4057,37 @@ server.registerTool(
 );
 
 server.registerTool(
+  "inbox_conversas_encerrar",
+  {
+    description:
+      "FECHA conversas no atendimento: status RESOLVIDA (padrão) ou ARQUIVADA, de 1 a 200 de " +
+      "uma vez. Uso: tirar da fila o lead que foi pra Perdido/Nutrição. Não responde, não " +
+      "atribui, não apaga nada — e se o lead escrever de novo, a conversa reabre sozinha. " +
+      'Reabrir por aqui NÃO existe (é pela tela). Escopos "inbox" + "inbox-status".',
+    inputSchema: {
+      conversationIds: z.array(z.string().min(1)).min(1).max(200),
+      status: z.enum(["RESOLVIDA", "ARQUIVADA"]).default("RESOLVIDA"),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  },
+  seguro(
+    async ({
+      conversationIds,
+      status,
+    }: {
+      conversationIds: string[];
+      status: "RESOLVIDA" | "ARQUIVADA";
+    }) => {
+      const r = await api.post<unknown>("/inbox/bulk/status", {
+        ids: conversationIds,
+        status,
+      });
+      return ok(r);
+    },
+  ),
+);
+
+server.registerTool(
   "inbox_conversa_zerar",
   {
     description:
