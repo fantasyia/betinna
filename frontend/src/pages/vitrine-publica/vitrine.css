@@ -42,6 +42,9 @@
 /* Sem fundo, só o traço (Léo, 10/10: "de forma sutil"); a área de toque segue 36px. */
 .vt-brand .vt-carrinho { margin-left: auto; position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: transparent; color: var(--petroleo); border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .vt-brand .vt-carrinho:active { transform: scale(.94); }
+/* Topo mais baixo (Léo, 10/10): a caixa tem 24px pra não empurrar a foto; o toque segue 36px. */
+.vt-brand .vt-carrinho { height: 24px; }
+.vt-brand .vt-carrinho::after { content: ''; position: absolute; inset: -6px 0; }
 .vt-carrinho-n { position: absolute; top: -1px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--terracota); color: var(--branco); font: 700 10.5px/18px var(--f-text); text-align: center; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--creme); animation: vt-pop .28s ease-out; }
 @keyframes vt-pop { 0% { transform: scale(.6); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
 .vt-brand .vt-carrinho + .vt-entrar { margin-left: 0; }
@@ -253,12 +256,17 @@
 .vt-slide .vt-name { font-size: 22px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* Botão do card mais baixo em todo celular (Léo, 10/10). */
 .vt-slide .vt-cta { height: 40px; font-size: 14px; }
-.vt-top { padding-top: 10px; }
-.vt-brand img { height: 18px; }
-.vt-linhas { margin-top: 8px; }
+/* Logo e símbolo menores (Léo, 10/10: "diminui na altura e na largura"); o
+   Entrar fica do tamanho que está. A foto começa logo abaixo do seletor. */
+.vt-top { padding-top: 8px; }
+.vt-brand { min-height: 24px; }
+.vt-brand img { height: 15px; }
+.vt-brand img.vt-simbolo { height: 20px; }
+.vt-inicio { gap: 6px; padding: 0; }
+.vt-linhas { margin-top: 6px; }
 .vt-linhas button { height: 26px; }
-.vt-slide .vt-fotos { top: 88px; }
-.vt-counter { top: 98px; }
+.vt-slide .vt-fotos { top: 70px; }
+.vt-counter { top: 80px; }
 
 /* envio do pedido */
 .vt-envio { max-height: 94%; }
@@ -407,10 +415,10 @@
   .vt-slide .vt-cta { height: 38px; }
   /* Topo mais baixo: a foto começa mais cedo. */
   .vt-top { padding-top: 6px; }
-  .vt-linhas { margin-top: 6px; }
+  .vt-linhas { margin-top: 5px; }
   .vt-linhas button { height: 24px; }
-  .vt-slide .vt-fotos { top: 76px; }
-  .vt-counter { top: 84px; }
+  .vt-slide .vt-fotos { top: 65px; }
+  .vt-counter { top: 73px; }
   /* Investe | Lucro no pedido fica só na Ficha técnica; o preço e o "Se você
      levar" continuam. O aviso "deslize" também sai. */
   .vt-slide .vt-sim-r { display: none; }
