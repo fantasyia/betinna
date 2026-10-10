@@ -174,15 +174,15 @@ export function corDaBolinha(cor: CorPub): CorPub {
 
 /** Lucro por peça e % sobre o custo. null quando falta preço ou sugerido. */
 /**
- * Quantidades do simulador "Se você levar" (Léo, 07/10): o pedido mínimo (ou o
- * mínimo da faixa de entrada), o dobro dele quando ainda não chega no Volume,
- * e o começo de cada faixa (Volume, Atacadão). Ribelt: 50 · 100 · 200 · 1.000.
- * Sem nada configurado, 10. PURO.
+ * Quantidades do simulador "Se você levar": o pedido mínimo (ou o mínimo da
+ * faixa de entrada) e o começo de cada faixa (Volume, Atacadão). Ribelt:
+ * 50 · 200 · 1.000 (Léo, 10/10 — o "dobro do mínimo" saiu). Empresa SEM faixa
+ * acima ganha o dobro, pra não ficar um botão só. Sem nada configurado, 10. PURO.
  */
 export function quantidadesDoSimulador(f: Faixas, minimo?: MinimoPub | null): number[] {
   const base = minimo?.quantidadeMin || f.minimoEntrada || 10;
   const xs = [base];
-  if (!f.minimoVolume || base * 2 < f.minimoVolume) xs.push(base * 2);
+  if (!f.minimoVolume && !f.minimoAtacadao) xs.push(base * 2);
   if (f.minimoVolume) xs.push(f.minimoVolume);
   if (f.minimoAtacadao) xs.push(f.minimoAtacadao);
   return [...new Set(xs.filter((x) => x > 0))].sort((a, b) => a - b);

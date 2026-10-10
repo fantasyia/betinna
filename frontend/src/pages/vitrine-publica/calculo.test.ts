@@ -497,10 +497,10 @@ describe('simulador do pedido (Léo, 07/10)', () => {
   const fx = { minimoEntrada: null, minimoVolume: 200, minimoAtacadao: 1000 };
   const minimo = { valorMin: 600, quantidadeMin: 50, modo: 'OU' as const };
 
-  it('botões: o mínimo, o dobro, e o começo de cada faixa (Ribelt: 50 · 100 · 200 · 1.000)', () => {
-    expect(quantidadesDoSimulador(fx, minimo)).toEqual([50, 100, 200, 1000]);
-    // mínimo perto do Volume: o dobro passaria dele — não entra
+  it('botões: o mínimo e o começo de cada faixa (Ribelt: 50 · 200 · 1.000, Léo 10/10)', () => {
+    expect(quantidadesDoSimulador(fx, minimo)).toEqual([50, 200, 1000]);
     expect(quantidadesDoSimulador(fx, { ...minimo, quantidadeMin: 150 })).toEqual([150, 200, 1000]);
+    // Sem faixa acima do mínimo: o dobro entra, pra não ficar um botão só.
     expect(
       quantidadesDoSimulador({ minimoEntrada: null, minimoVolume: null, minimoAtacadao: null }),
     ).toEqual([10, 20]);
