@@ -158,10 +158,10 @@
 .vt-muted { font-size: 12px; color: var(--oliva); line-height: 1.5; margin: 0; }
 
 /* barra do pedido */
-.vt-bag { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 35; display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 16px; border-radius: 18px; background: var(--petroleo); color: var(--creme); box-shadow: 0 12px 30px rgba(26, 45, 56, .3); }
-.vt-bag .vt-q { font-family: var(--f-title); font-weight: 600; font-size: 19px; font-variant-numeric: tabular-nums; }
-.vt-bag .vt-s { font-size: 12px; color: var(--quente); }
-.vt-bag button { margin-left: auto; background: var(--creme) !important; color: var(--petroleo); height: 42px; padding: 0 14px; border-radius: 12px; font-weight: 600; font-size: 14px; }
+.vt-bag { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 35; display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 16px; background: var(--petroleo); color: var(--creme); box-shadow: 0 12px 30px rgba(26, 45, 56, .3); }
+.vt-bag .vt-q { font-family: var(--f-title); font-weight: 600; font-size: 17px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.vt-bag .vt-s { font-size: 11px; line-height: 1.2; color: var(--quente); }
+.vt-bag button { margin-left: auto; background: var(--creme) !important; color: var(--petroleo); height: 36px; padding: 0 14px; border-radius: 11px; font-weight: 600; font-size: 13.5px; }
 
 /* pedido */
 .vt-cart { position: absolute; inset: 0; z-index: 60; background: var(--creme); display: flex; flex-direction: column; }
@@ -248,10 +248,12 @@
    segura. Antes eram 84px fixos sem a área segura — no simulador cabia, no
    iPhone (Léo, 09/10) a barra subia ~34px e tampava "Ficha técnica" e "Montar
    grade". Conta: 12 (base) + ~68 (altura medida da .vt-bag) + 12 de folga. */
-.vt-app { --vt-bag-reserva: calc(92px + env(safe-area-inset-bottom, 0px)); }
+/* Barra mais baixa (Léo, 10/10): 12 (base) + ~50 (altura) + 12 de folga. */
+.vt-app { --vt-bag-reserva: calc(76px + env(safe-area-inset-bottom, 0px)); }
 .vt-feed[data-bag] .vt-slide .vt-info { padding-bottom: var(--vt-bag-reserva); }
 .vt-slide .vt-name { font-size: 22px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.vt-slide .vt-cta { height: 44px; }
+/* Botão do card mais baixo em todo celular (Léo, 10/10). */
+.vt-slide .vt-cta { height: 40px; font-size: 14px; }
 .vt-top { padding-top: 10px; }
 .vt-brand img { height: 18px; }
 .vt-linhas { margin-top: 10px; }
@@ -404,7 +406,7 @@
   .vt-slide .vt-sim-unit b { font-size: 25px; }
   .vt-slide .vt-sim-q { padding: 4px 10px; }
   .vt-slide .vt-sim-r > div { padding: 4px 12px 5px; }
-  .vt-slide .vt-cta { height: 40px; }
+  .vt-slide .vt-cta { height: 38px; }
   /* Topo mais baixo: a foto começa mais cedo. */
   .vt-top { padding-top: 6px; }
   .vt-linhas { margin-top: 6px; }
