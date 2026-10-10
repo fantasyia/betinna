@@ -215,7 +215,10 @@ describe('FluxoExecutorService', () => {
     criarParaRole: ReturnType<typeof vi.fn>;
   };
   /** Gravação da saída na conversa (não depende mais do eco do WhatsApp). */
-  let inbox: { processarMensagemEntrante: ReturnType<typeof vi.fn> };
+  let inbox: {
+    processarMensagemEntrante: ReturnType<typeof vi.fn>;
+    encerrarPorFluxo: ReturnType<typeof vi.fn>;
+  };
   let supressao: {
     suprimido: ReturnType<typeof vi.fn>;
     emailSuprimido: ReturnType<typeof vi.fn>;
@@ -236,7 +239,10 @@ describe('FluxoExecutorService', () => {
       criarParaUsuario: vi.fn().mockResolvedValue(null),
       criarParaRole: vi.fn().mockResolvedValue(0),
     };
-    inbox = { processarMensagemEntrante: vi.fn().mockResolvedValue({}) };
+    inbox = {
+      processarMensagemEntrante: vi.fn().mockResolvedValue({}),
+      encerrarPorFluxo: vi.fn().mockResolvedValue(1),
+    };
     supressao = {
       suprimido: vi.fn(async () => false),
       // Supressão por CANAL (bounce/reclamação): endereço vivo por padrão.
@@ -271,6 +277,42 @@ describe('FluxoExecutorService', () => {
           .mockResolvedValue({ delayTextoFixoSegundos: 0, mostrarDigitando: false }),
       } as never,
     );
+  });
+
+  describe('ENCERRAR_CONVERSA (Ribelt, 10/10 — lead em Perdido/Nutrição)', () => {
+    const prepararNo = (contexto: Record<string, unknown>) => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ tipo: 'ACAO', acaoTipo: 'ENCERRAR_CONVERSA', config: {} }),
+      );
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+    };
+
+    it('com conversa no contexto: encerra ELA (e só ela)', async () => {
+      prepararNo({ leadId: 'lead-1', conversationId: 'conv-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'conv-1', empresaId: 'emp-1' } }),
+      );
+      expect(inbox.encerrarPorFluxo).toHaveBeenCalledWith('emp-1', ['conv-1']);
+    });
+
+    it('não mexe no bot nem cancela execução (só fecha a conversa)', async () => {
+      prepararNo({ leadId: 'lead-1', conversationId: 'conv-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      const executeRaw = vi.fn().mockResolvedValue(0);
+      (prisma as unknown as { $executeRaw: unknown }).$executeRaw = executeRaw;
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.conversation.updateMany).not.toHaveBeenCalled();
+      expect(executeRaw).not.toHaveBeenCalled();
+    });
   });
 
   describe('TRANSFERIR_ATENDIMENTO (handoff do bot pro humano)', () => {
@@ -425,6 +467,15 @@ describe('FluxoExecutorService', () => {
       expect(prisma.conversation.updateMany).not.toHaveBeenCalled();
       expect(executeRaw).not.toHaveBeenCalled();
       expect(simulado().botLigado).toBe(false);
+    });
+
+    it('ENCERRAR_CONVERSA: teste seco não fecha conversa nenhuma', async () => {
+      prepararNo('ENCERRAR_CONVERSA', {}, ctxSeco({ leadId: 'lead-1', conversationId: 'conv-1' }));
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(inbox.encerrarPorFluxo).not.toHaveBeenCalled();
+      expect(simulado().simulado).toBe(true);
     });
 
     it('LIBERAR_LOTE: valida a etapa destino mas NÃO move lead nem dispara evento', async () => {
@@ -1756,6 +1807,17 @@ describe('FluxoExecutorService', () => {
           // O externalId do provider é o que deixa o eco deduplicar depois.
           externalId: 'wa-msg-1',
         }),
+      );
+    });
+
+    it('modo lead: a conversa gravada já vai LIGADA ao lead (Ribelt, 10/10)', async () => {
+      // O F2 mandava pro lead novo e a conversa nascia sem lead até ele responder.
+      setupWhatsappPasso({ clienteId: 'cli-1', leadId: 'lead-1', cliente: { nome: 'Carlos' } });
+
+      await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+      expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
+        expect.objectContaining({ direction: 'OUTBOUND', leadId: 'lead-1' }),
       );
     });
 

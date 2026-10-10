@@ -1431,3 +1431,126 @@ describe('InboxService.findById — lead do contato pra etapa do funil (10/10)',
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 });
+
+describe('InboxService — conversa do envio de fluxo nasce ligada ao lead (Ribelt, 10/10)', () => {
+  let prisma: ReturnType<typeof makePrismaMock> & { lead: { findFirst: ReturnType<typeof vi.fn> } };
+  let svc: InboxService;
+  const envio = (extra: Record<string, unknown> = {}) => ({
+    empresaId: 'emp-1',
+    canal: 'WHATSAPP' as const,
+    peerId: '5513981167815@s.whatsapp.net',
+    tipo: 'TEXT' as const,
+    conteudo: 'Oi Antonio!',
+    direction: 'OUTBOUND' as const,
+    enviadaPorBot: true,
+    externalId: 'wa-1',
+    ...extra,
+  });
+
+  beforeEach(() => {
+    prisma = { ...makePrismaMock(), lead: { findFirst: vi.fn() } };
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar: () => Promise.resolve() } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
+    );
+    prisma.message.findFirst.mockResolvedValue(null);
+    prisma.message.create.mockResolvedValue({ id: 'msg-1', criadoEm: new Date() });
+    prisma.conversation.update.mockResolvedValue({});
+  });
+
+  it('conversa NOVA criada pelo envio já nasce com o leadId', async () => {
+    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-1' });
+    prisma.conversation.findFirst.mockResolvedValue(null);
+    prisma.conversation.create.mockResolvedValueOnce({ id: 'conv-1', empresaId: 'emp-1' });
+
+    await svc.processarMensagemEntrante(envio({ leadId: 'lead-1' }));
+
+    expect(prisma.lead.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'lead-1', empresaId: 'emp-1' } }),
+    );
+    expect(prisma.conversation.create.mock.calls[0][0].data.leadId).toBe('lead-1');
+  });
+
+  it('conversa EXISTENTE sem lead: liga; com lead: NUNCA troca', async () => {
+    prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      leadId: null,
+      metadata: null,
+    });
+    prisma.conversation.update.mockResolvedValueOnce({ id: 'conv-1', empresaId: 'emp-1' });
+    await svc.processarMensagemEntrante(envio({ leadId: 'lead-1' }));
+    expect(prisma.conversation.update.mock.calls[0][0].data.leadId).toBe('lead-1');
+
+    prisma.conversation.update.mockClear();
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      leadId: 'lead-antigo',
+      metadata: null,
+    });
+    prisma.conversation.update.mockResolvedValueOnce({ id: 'conv-1', empresaId: 'emp-1' });
+    await svc.processarMensagemEntrante(envio({ leadId: 'lead-1', externalId: 'wa-2' }));
+    expect(prisma.conversation.update.mock.calls[0][0].data.leadId).toBeUndefined();
+  });
+
+  it('lead de OUTRA empresa não é ligado (anti cross-tenant)', async () => {
+    prisma.lead.findFirst.mockResolvedValueOnce(null);
+    prisma.conversation.findFirst.mockResolvedValue(null);
+    prisma.conversation.create.mockResolvedValueOnce({ id: 'conv-1', empresaId: 'emp-1' });
+
+    await svc.processarMensagemEntrante(envio({ leadId: 'lead-de-fora' }));
+
+    expect(prisma.conversation.create.mock.calls[0][0].data.leadId).toBeUndefined();
+  });
+
+  it('sem leadId (mensagem que entra, aviso pra grupo): nem consulta lead', async () => {
+    prisma.conversation.findFirst.mockResolvedValue(null);
+    prisma.conversation.create.mockResolvedValueOnce({ id: 'conv-1', empresaId: 'emp-1' });
+
+    await svc.processarMensagemEntrante(envio());
+
+    expect(prisma.lead.findFirst).not.toHaveBeenCalled();
+    expect(prisma.conversation.create.mock.calls[0][0].data.leadId).toBeUndefined();
+  });
+
+  it('encerrarPorFluxo: só as ABERTAS/PENDENTES viram RESOLVIDA, na empresa', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([{ id: 'conv-1' }]);
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const n = await svc.encerrarPorFluxo('emp-1', ['conv-1', 'conv-arquivada']);
+
+    expect(n).toBe(1);
+    expect(prisma.conversation.findMany.mock.calls[0][0].where).toEqual({
+      id: { in: ['conv-1', 'conv-arquivada'] },
+      empresaId: 'emp-1',
+      status: { in: ['ABERTA', 'PENDENTE'] },
+    });
+    expect(prisma.conversation.updateMany.mock.calls[0][0]).toEqual({
+      where: { id: { in: ['conv-1'] }, empresaId: 'emp-1', status: { in: ['ABERTA', 'PENDENTE'] } },
+      data: { status: 'RESOLVIDA' },
+    });
+  });
+
+  it('mensagem do lead numa conversa RESOLVIDA reabre (vira PENDENTE)', async () => {
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      status: 'RESOLVIDA',
+      leadId: 'lead-1',
+      metadata: null,
+    });
+    prisma.conversation.update.mockResolvedValueOnce({ id: 'conv-1', empresaId: 'emp-1' });
+
+    await svc.processarMensagemEntrante(
+      envio({ direction: 'INBOUND', enviadaPorBot: false, conteudo: 'voltei' }),
+    );
+
+    const ultimo = prisma.conversation.update.mock.calls.at(-1)?.[0];
+    expect(ultimo.data.status).toBe('PENDENTE');
+  });
+});

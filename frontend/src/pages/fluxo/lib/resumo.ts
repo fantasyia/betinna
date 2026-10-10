@@ -69,6 +69,8 @@ export function resumoNo(data: NodePayload): string | null {
       return c.atendenteId ? 'transfere pro atendente escolhido' : 'joga na fila de atendimento';
     case 'CRIAR_LEAD':
       return c.funilEtapaId ? 'cria lead na etapa escolhida' : 'cria lead da conversa';
+    case 'ENCERRAR_CONVERSA':
+      return 'fecha a conversa do lead (reabre se ele escrever)';
     case 'EXTRAIR_VARIAVEIS': {
       const vars = Array.isArray(c.variaveis) ? (c.variaveis as string[]) : [];
       if (vars.length === 0) return '⚠️ nenhuma variável declarada — o nó vai falhar';
@@ -97,6 +99,7 @@ export const BLOCO_DESC: Partial<Record<AcaoTipo, string>> & Record<string, stri
   'a-religa-ia': 'Religa a IA naquela conversa (bot volta a responder)',
   TRANSFERIR_ATENDIMENTO: 'Passa a conversa pro humano (pausa o bot + notifica)',
   EXTRAIR_VARIAVEIS: 'Lê o que o lead escreveu e preenche as variáveis (sem falar, sem IA)',
+  ENCERRAR_CONVERSA: 'Fecha a conversa do lead no atendimento (reabre se ele escrever)',
   CONDICAO: 'Bifurca o fluxo por uma condição',
   DELAY: 'Espera um tempo antes do próximo passo',
   TRIGGER: 'Quando o fluxo começa',

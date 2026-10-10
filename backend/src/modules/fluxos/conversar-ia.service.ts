@@ -4205,6 +4205,10 @@ export class ConversarIaService implements OnModuleDestroy {
                     enviadaPorBot: true,
                     externalId: r.externalId ?? undefined,
                     proprietarioId: proprietarioId ?? undefined,
+                    // A abertura da IA pro lead novo também nasce ligada a ele.
+                    ...(typeof ctxDaExecucao?.leadId === 'string'
+                      ? { leadId: ctxDaExecucao.leadId }
+                      : {}),
                   })
                   .catch((err: unknown) =>
                     this.logger.warn(

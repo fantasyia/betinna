@@ -1554,6 +1554,7 @@ export class FluxosService {
     'CRIAR_LEAD',
     'TRANSFERIR_ATENDIMENTO',
     'PAUSAR_IA',
+    'ENCERRAR_CONVERSA',
   ]);
 
   /**

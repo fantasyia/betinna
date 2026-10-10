@@ -44,7 +44,8 @@ export type AcaoTipo =
   | 'PAUSAR_IA'
   | 'CRIAR_LEAD'
   | 'TRANSFERIR_ATENDIMENTO'
-  | 'EXTRAIR_VARIAVEIS';
+  | 'EXTRAIR_VARIAVEIS'
+  | 'ENCERRAR_CONVERSA';
 
 export interface FluxoNoApi {
   id?: string;

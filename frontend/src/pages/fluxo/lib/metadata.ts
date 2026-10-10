@@ -17,6 +17,7 @@ import {
   UserPlus,
   Headset,
   ScanText,
+  MessageSquareOff,
 } from 'lucide-react';
 import type { AcaoTipo, FluxoNoTipo, NodePayload, PaletteItem, TriggerTipo } from './types';
 
@@ -64,6 +65,7 @@ export const ACAO_LABEL: Record<AcaoTipo, string> = {
   CRIAR_LEAD: 'Criar lead da conversa',
   TRANSFERIR_ATENDIMENTO: 'Transferir pro atendimento',
   EXTRAIR_VARIAVEIS: 'Extrair variáveis do que o lead escreveu',
+  ENCERRAR_CONVERSA: 'Encerrar conversa',
 };
 
 /**
@@ -105,6 +107,7 @@ export const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
   CRIAR_LEAD: UserPlus,
   TRANSFERIR_ATENDIMENTO: Headset,
   EXTRAIR_VARIAVEIS: ScanText,
+  ENCERRAR_CONVERSA: MessageSquareOff,
 };
 
 export const TIPO_LABEL: Record<FluxoNoTipo, string> = {
@@ -213,6 +216,8 @@ export const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> 
         tipo: 'ACAO',
         acaoTipo: 'EXTRAIR_VARIAVEIS',
       },
+      // Ribelt, 10/10: depois do "→ Perdido"/"→ Nutrição", a conversa sai da fila.
+      { id: 'a-encerra', label: 'Encerrar conversa', tipo: 'ACAO', acaoTipo: 'ENCERRAR_CONVERSA' },
     ],
   },
   {

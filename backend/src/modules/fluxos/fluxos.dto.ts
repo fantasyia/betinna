@@ -45,6 +45,7 @@ export const fluxoAcaoTipoValues = [
   'CRIAR_LEAD',
   'TRANSFERIR_ATENDIMENTO',
   'EXTRAIR_VARIAVEIS',
+  'ENCERRAR_CONVERSA',
 ] as const;
 
 // ─── Nó (FluxoNo) ────────────────────────────────────────────────────

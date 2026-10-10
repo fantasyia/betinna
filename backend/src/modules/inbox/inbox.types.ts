@@ -120,4 +120,11 @@ export interface MensagemEntranteParams {
    * saiu do app = alguém digitou no celular — auditoria 13/09, A-6).
    */
   meta?: Record<string, unknown>;
+  /**
+   * Lead a quem esta conversa pertence — só o ENVIO DE FLUXO informa (ele sabe
+   * pra quem está mandando). Liga a conversa ao lead quando ela ainda não tem
+   * lead: a conversa que nascia do envio do F2 ficava com `leadId` null até o
+   * lead responder (Ribelt, 10/10). Nunca troca um lead já ligado.
+   */
+  leadId?: string;
 }

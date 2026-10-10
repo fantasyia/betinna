@@ -1781,6 +1781,9 @@ export class FluxoExecutorService {
       case 'EXTRAIR_VARIAVEIS':
         return this.extrairVariaveis.executar(cfg as ExtrairVariaveisConfig, ctx, empresaId);
 
+      case 'ENCERRAR_CONVERSA':
+        return this.acaoEncerrarConversa(ctx, empresaId);
+
       default:
         throw new Error(`Tipo de ação desconhecido: ${acaoTipo}`);
     }
@@ -2057,6 +2060,13 @@ export class FluxoExecutorService {
     // `WhatsappIndisponivelError` (e não Error solto) de propósito: cai no
     // caminho de reagendamento — 3 tentativas curtas e depois espera crescente
     // até a porta abrir, em vez de queimar o passo.
+    // Conversa que nasce deste envio já nasce LIGADA ao lead (Ribelt, 10/10: o
+    // F2 mandava pro lead novo e a conversa ficava sem lead até ele responder).
+    // Só no modo 'lead' — aviso pra grupo/número fixo não é a conversa do lead.
+    const leadDaConversa =
+      modo === 'lead' && typeof ctx['leadId'] === 'string'
+        ? { leadId: ctx['leadId'] as string }
+        : {};
     const enviar = async (peerId: string): Promise<Record<string, unknown>> => {
       // Ponto ÚNICO de envio (lead, contato, número fixo, grupo): a trava do
       // teste por token fica aqui pra cobrir todos os modos de destino.
@@ -2212,6 +2222,7 @@ export class FluxoExecutorService {
               mediaUrl: cfg.midia.storagePath,
               mediaMime: cfg.midia.mimetype,
               proprietarioId: ctxEnvio.proprietarioId ?? undefined,
+              ...leadDaConversa,
             })
             .catch((err: unknown) =>
               this.logger.warn(
@@ -2245,6 +2256,7 @@ export class FluxoExecutorService {
             enviadaPorBot: true,
             externalId: r.externalId ?? undefined,
             proprietarioId: ctxEnvio.proprietarioId ?? undefined,
+            ...leadDaConversa,
           })
           .catch((err: unknown) =>
             this.logger.warn(
@@ -3615,51 +3627,14 @@ export class FluxoExecutorService {
     //   1. tem `conversationId` no contexto → é ELA, e só ela;
     //   2. não tem → casa por telefone dentro da MESMA caixa do fluxo
     //      (`proprietarioId` do contexto, null = canal da empresa).
-    const conversationId =
-      typeof ctx['conversationId'] === 'string' ? (ctx['conversationId'] as string) : undefined;
-    const dono =
-      typeof ctx['proprietarioId'] === 'string' ? (ctx['proprietarioId'] as string) : null;
     // Religar devolve o controle ao bot de fato: além de botLigado, limpa o
     // botPausadoAte (handoff/anti-spam) e o precisaHumano — senão o gate do bot
     // continuaria mudo apesar de "ligado" (mesmo caminho do inbox.setBotLigado).
-    // CAÇADA-BUG #39: casa a conversa pelo SUFIXO EXATO do telefone (D18), NÃO por `contains` — que
-    // casava o sufixo de 8 dígitos no MEIO de outro número (ex.: lead …8765-4321 pausava também o peer
-    // 55 87 6543-2199 de Pernambuco, DDD 87) → pausava/religava o bot na conversa ERRADA. Padrão
-    // canônico do repo (fix 707c3bc): RIGHT(REGEXP_REPLACE(...),8) = sufixo via $queryRaw, restrito a
-    // @s.whatsapp.net (peer pessoal — nunca grupo/@lid).
-    let sufixo: string | undefined;
-    let conversas: Array<{ id: string }>;
-    if (conversationId) {
-      const c = await this.prisma.conversation.findFirst({
-        where: { id: conversationId, empresaId },
-        select: { id: true },
-      });
-      conversas = c ? [c] : [];
-    } else {
-      const telefone = await this.resolverTelefoneLeadOuCliente(ctx, empresaId);
-      if (!telefone) {
-        throw new Error(
-          'PAUSAR_IA: contexto sem telefone — nem lead, nem pedido, nem cliente resolveram',
-        );
-      }
-      sufixo = telefone.replace(/\D/g, '').slice(-8);
-      if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
-      // `IS NOT DISTINCT FROM` porque `= NULL` não casa nada em SQL — e o caso
-      // mais comum aqui é justamente o dono nulo (canal da empresa).
-      // Conversa @lid não tem o telefone no peerId — ele fica em metadata.telefone
-      // (é o que o inbox usa). Sem o segundo ramo, o "religar IA" do rastreio pra
-      // um contato LID achava 0 linhas e o passo fechava VERDE com o bot ainda
-      // pausado (auditoria 13/09, D-8).
-      conversas = await this.prisma.$queryRaw<Array<{ id: string }>>`
-        SELECT "id" FROM "Conversation"
-        WHERE "empresaId" = ${empresaId} AND "canal" = 'WHATSAPP'
-          AND "proprietarioId" IS NOT DISTINCT FROM ${dono}::text
-          AND (
-            ("peerId" LIKE '%@s.whatsapp.net'
-              AND RIGHT(REGEXP_REPLACE(split_part("peerId", '@', 1), '[^0-9]', '', 'g'), 8) = ${sufixo})
-            OR RIGHT(REGEXP_REPLACE(COALESCE("metadata"->>'telefone', ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
-          )`;
-    }
+    const { conversationId, dono, sufixo, conversas } = await this.conversasDoFluxo(
+      ctx,
+      empresaId,
+      'PAUSAR_IA',
+    );
     if (conversas.length === 0) {
       return {
         leadId,
@@ -3700,6 +3675,109 @@ export class FluxoExecutorService {
       botLigado: religar,
       conversasAtualizadas: count,
       canceladas,
+    };
+  }
+
+  /**
+   * As conversas que uma ação de fluxo pode tocar — regra ÚNICA do PAUSAR_IA e
+   * do ENCERRAR_CONVERSA.
+   *
+   * A ação vale no escopo do FLUXO, nunca fora dele:
+   *   1. tem `conversationId` no contexto → é ELA, e só ela;
+   *   2. não tem → casa por telefone dentro da MESMA caixa do fluxo
+   *      (`proprietarioId` do contexto, null = canal da empresa).
+   */
+  private async conversasDoFluxo(
+    ctx: ExecucaoContexto,
+    empresaId: string,
+    acao: string,
+  ): Promise<{
+    conversationId: string | undefined;
+    dono: string | null;
+    sufixo: string | undefined;
+    conversas: Array<{ id: string }>;
+  }> {
+    const conversationId =
+      typeof ctx['conversationId'] === 'string' ? (ctx['conversationId'] as string) : undefined;
+    const dono =
+      typeof ctx['proprietarioId'] === 'string' ? (ctx['proprietarioId'] as string) : null;
+    // CAÇADA-BUG #39: casa a conversa pelo SUFIXO EXATO do telefone (D18), NÃO por `contains` — que
+    // casava o sufixo de 8 dígitos no MEIO de outro número (ex.: lead …8765-4321 pausava também o peer
+    // 55 87 6543-2199 de Pernambuco, DDD 87) → pausava/religava o bot na conversa ERRADA. Padrão
+    // canônico do repo (fix 707c3bc): RIGHT(REGEXP_REPLACE(...),8) = sufixo via $queryRaw, restrito a
+    // @s.whatsapp.net (peer pessoal — nunca grupo/@lid).
+    let sufixo: string | undefined;
+    let conversas: Array<{ id: string }>;
+    if (conversationId) {
+      const c = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, empresaId },
+        select: { id: true },
+      });
+      conversas = c ? [c] : [];
+    } else {
+      const telefone = await this.resolverTelefoneLeadOuCliente(ctx, empresaId);
+      if (!telefone) {
+        throw new Error(
+          `${acao}: contexto sem telefone — nem lead, nem pedido, nem cliente resolveram`,
+        );
+      }
+      sufixo = telefone.replace(/\D/g, '').slice(-8);
+      if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
+      // `IS NOT DISTINCT FROM` porque `= NULL` não casa nada em SQL — e o caso
+      // mais comum aqui é justamente o dono nulo (canal da empresa).
+      // Conversa @lid não tem o telefone no peerId — ele fica em metadata.telefone
+      // (é o que o inbox usa). Sem o segundo ramo, o "religar IA" do rastreio pra
+      // um contato LID achava 0 linhas e o passo fechava VERDE com o bot ainda
+      // pausado (auditoria 13/09, D-8).
+      conversas = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Conversation"
+        WHERE "empresaId" = ${empresaId} AND "canal" = 'WHATSAPP'
+          AND "proprietarioId" IS NOT DISTINCT FROM ${dono}::text
+          AND (
+            ("peerId" LIKE '%@s.whatsapp.net'
+              AND RIGHT(REGEXP_REPLACE(split_part("peerId", '@', 1), '[^0-9]', '', 'g'), 8) = ${sufixo})
+            OR RIGHT(REGEXP_REPLACE(COALESCE("metadata"->>'telefone', ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
+          )`;
+    }
+    return { conversationId, dono, sufixo, conversas };
+  }
+
+  /**
+   * ENCERRAR_CONVERSA — fecha (RESOLVIDA) a conversa do lead (Ribelt, 10/10:
+   * lead que vai pra Perdido/Nutrição não fica acumulando conversa aberta no
+   * atendimento). Mesma busca do PAUSAR_IA (`conversasDoFluxo`). Se o lead
+   * escrever de novo, a entrada de mensagem tira de RESOLVIDA (vira PENDENTE) —
+   * a conversa reabre sozinha. Não mexe em bot nem em execução.
+   */
+  private async acaoEncerrarConversa(
+    ctx: ExecucaoContexto,
+    empresaId: string,
+  ): Promise<Record<string, unknown>> {
+    this.assertEmpresaId(empresaId, 'ENCERRAR_CONVERSA');
+    const leadId = ctx['leadId'] as string | undefined;
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo: 'Execução de TESTE — conversa não encerrada (marque "enviar de verdade" pra valer)',
+        leadId,
+      };
+    }
+    const { conversationId, dono, sufixo, conversas } = await this.conversasDoFluxo(
+      ctx,
+      empresaId,
+      'ENCERRAR_CONVERSA',
+    );
+    const encerradas = await this.inbox.encerrarPorFluxo(
+      empresaId,
+      conversas.map((c) => c.id),
+    );
+    return {
+      leadId,
+      sufixo,
+      escopo: dono ?? 'empresa',
+      alvo: conversationId ? 'conversa do contexto' : 'telefone',
+      conversasAchadas: conversas.length,
+      conversasEncerradas: encerradas,
     };
   }
 

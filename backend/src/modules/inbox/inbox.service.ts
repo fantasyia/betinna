@@ -912,6 +912,29 @@ export class InboxService {
     });
   }
 
+  /**
+   * Encerra (RESOLVIDA) conversas a pedido de um FLUXO — nó ENCERRAR_CONVERSA
+   * (Ribelt, 10/10: lead que vai pra Perdido/Nutrição não fica acumulando
+   * conversa aberta no atendimento). Só mexe nas que estão abertas; ARQUIVADA
+   * fica como está. Se o lead escrever de novo, a entrada de mensagem volta a
+   * conversa pra PENDENTE (ver `processarMensagemEntrante`) — ela reabre sozinha.
+   */
+  async encerrarPorFluxo(empresaId: string, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const abertas = await this.prisma.conversation.findMany({
+      where: { id: { in: ids }, empresaId, status: { in: ['ABERTA', 'PENDENTE'] } },
+      select: { id: true },
+    });
+    if (abertas.length === 0) return 0;
+    const alvo = abertas.map((c) => c.id);
+    const { count } = await this.prisma.conversation.updateMany({
+      where: { id: { in: alvo }, empresaId, status: { in: ['ABERTA', 'PENDENTE'] } },
+      data: { status: 'RESOLVIDA' },
+    });
+    await this.emitirEventoIds(alvo, 'status');
+    return count;
+  }
+
   // ─── Bulk operations ─────────────────────────────────────────────────
 
   /**
@@ -1798,6 +1821,15 @@ export class InboxService {
     clienteId: string | null,
   ): Promise<Conversation> {
     const propId = p.proprietarioId ?? null;
+    // Lead informado pelo envio do fluxo: só vale se for DESTA empresa.
+    const leadDoEnvio = p.leadId
+      ? ((
+          await this.prisma.lead.findFirst({
+            where: { id: p.leadId, empresaId: p.empresaId },
+            select: { id: true },
+          })
+        )?.id ?? null)
+      : null;
 
     // Campos canal-específicos que guardamos na metadata (JSON, sem coluna própria):
     //  - telefone: telefone REAL do contato (útil quando o peerId é um LID/número
@@ -1931,6 +1963,8 @@ export class InboxService {
           ...(categoriaMeta && existente.categoria === 'GERAL' ? { categoria: categoriaMeta } : {}),
           ...(gravarAtrib && campanha ? { utmCampaign: campanha } : {}),
           ...(nextMetadata ? { metadata: nextMetadata as Prisma.InputJsonValue } : {}),
+          // Liga ao lead do envio só se ainda não tem — nunca troca o lead.
+          ...(leadDoEnvio && !existente.leadId ? { leadId: leadDoEnvio } : {}),
         },
       });
     }
@@ -1949,6 +1983,7 @@ export class InboxService {
           peerNome: p.peerNome ?? null,
           proprietarioId: propId,
           clienteId,
+          ...(leadDoEnvio ? { leadId: leadDoEnvio } : {}),
           status: 'PENDENTE',
           naoLidas: 0,
           ...(categoriaMeta ? { categoria: categoriaMeta } : {}),

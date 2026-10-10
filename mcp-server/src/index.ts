@@ -1589,6 +1589,11 @@ const FLUXO_ACAO_TIPO = z.enum([
   "PAUSAR_IA",
   "CRIAR_LEAD", // promove a conversa a Lead (triagem CTWA), herdando a atribuição
   "TRANSFERIR_ATENDIMENTO", // handoff pro humano: atribui + pausa o bot + notifica
+  // ENCERRAR_CONVERSA fecha (RESOLVIDA) a conversa do lead — config vazia {}.
+  // Mesma busca do PAUSAR_IA: a conversa do contexto, ou por telefone na caixa
+  // do fluxo. Se o lead escrever de novo, a conversa reabre sozinha (PENDENTE).
+  // Uso típico: logo depois de um MOVER_LEAD_ETAPA pra Perdido/Nutrição.
+  "ENCERRAR_CONVERSA",
   // EXTRAIR_VARIAVEIS lê o que o LEAD escreveu e preenche variáveis do fluxo —
   // sem falar e sem chamar modelo (rede determinística: "220V" é 220V).
   //   { variaveis: ["tensao_rede: 127V | 220V | 380V", "corrente_quadro"], mensagens: 3 }
