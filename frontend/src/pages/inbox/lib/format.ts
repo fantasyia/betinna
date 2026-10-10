@@ -44,6 +44,35 @@ export function fmtTime(d: string) {
   }
 }
 
+/** Dia LOCAL de uma data (YYYY-MM-DD) — chave pra separar a thread por dia. */
+export function chaveDoDia(d: string): string {
+  const x = new Date(d);
+  if (Number.isNaN(x.getTime())) return '';
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const dia = String(x.getDate()).padStart(2, '0');
+  return `${x.getFullYear()}-${m}-${dia}`;
+}
+
+/**
+ * Rótulo do separador de dia da conversa, igual ao WhatsApp (Léo, 10/10:
+ * conversa que levou dias não tinha separação): "Hoje", "Ontem", o dia da
+ * semana nos últimos 7 dias ("Segunda-feira") e a data completa antes disso
+ * ("03/10/2026"). Conta por DIA DE CALENDÁRIO local, não por 24h.
+ */
+export function rotuloDoDia(d: string, agora: Date = new Date()): string {
+  const x = new Date(d);
+  if (Number.isNaN(x.getTime())) return '';
+  const meiaNoite = (t: Date) => new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+  const dias = Math.round((meiaNoite(agora) - meiaNoite(x)) / 86_400_000);
+  if (dias === 0) return 'Hoje';
+  if (dias === 1) return 'Ontem';
+  if (dias > 1 && dias < 7) {
+    const s = x.toLocaleDateString('pt-BR', { weekday: 'long' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  return x.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 export function fmtHHMM(d: string) {
   try {
     return new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

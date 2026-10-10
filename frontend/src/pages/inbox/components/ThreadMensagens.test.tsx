@@ -49,6 +49,28 @@ function fakeMensagem(id: string, overrides: Partial<Mensagem> = {}): Mensagem {
   };
 }
 
+describe('ThreadMensagens — separador de dia (Léo, 10/10)', () => {
+  it('um rótulo antes da 1ª mensagem e outro só quando o dia muda', () => {
+    // Backend manda 'desc' (novas primeiro).
+    const dia = (d: number, h: number) => new Date(2026, 9, d, h, 0, 0).toISOString();
+    montarBase({
+      messages: [
+        fakeMensagem('m4', { criadoEm: dia(9, 18) }),
+        fakeMensagem('m3', { criadoEm: dia(9, 9) }),
+        fakeMensagem('m2', { criadoEm: dia(7, 22) }),
+        fakeMensagem('m1', { criadoEm: dia(7, 8) }),
+      ],
+    });
+    const seps = screen.getAllByTestId('thread-dia');
+    expect(seps).toHaveLength(2);
+    // Ordem no DOM: separador do dia 7, m1, m2, separador do dia 9, m3, m4.
+    const ordem = [
+      ...document.querySelectorAll('[data-testid="thread-dia"], [data-testid="msg-bubble"]'),
+    ].map((el) => el.getAttribute('data-msg-id') ?? 'dia');
+    expect(ordem).toEqual(['dia', 'm1', 'm2', 'dia', 'm3', 'm4']);
+  });
+});
+
 describe('ThreadMensagens', () => {
   it('mostra estado vazio quando não há mensagens e não está carregando', () => {
     montarBase({ messages: [], loading: false, error: null });
@@ -93,9 +115,7 @@ describe('ThreadMensagens', () => {
   it('preserva todas as mensagens no DOM (sem filtro)', () => {
     const msgs = [fakeMensagem('a'), fakeMensagem('b')];
     montarBase({ messages: msgs });
-    const ids = screen
-      .getAllByTestId('msg-bubble')
-      .map((el) => el.getAttribute('data-msg-id'));
+    const ids = screen.getAllByTestId('msg-bubble').map((el) => el.getAttribute('data-msg-id'));
     expect(ids).toHaveLength(2);
     // Ambos ids presentes (em qualquer ordem — o componente inverte a lista)
     expect(ids).toContain('a');

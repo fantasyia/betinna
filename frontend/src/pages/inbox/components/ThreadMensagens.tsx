@@ -1,6 +1,8 @@
+import { Fragment } from 'react';
 import { StateView } from '@/components/StateView';
 import { useNomeBot } from '@/hooks/useNomeBot';
 import type { Canal, Mensagem } from '../lib/types';
+import { chaveDoDia, rotuloDoDia } from '../lib/format';
 import { MessageBubble } from './MessageBubble';
 
 /**
@@ -53,17 +55,29 @@ export function ThreadMensagens({
           // Quote: resolve a msg citada pelo id local guardado em meta.respondendoA.
           const refId = typeof m.meta?.respondendoA === 'string' ? m.meta.respondendoA : null;
           const citada = refId ? (messages.find((x) => x.id === refId) ?? null) : null;
+          // Separador de DIA, igual ao WhatsApp (Léo, 10/10): antes da 1ª
+          // mensagem e sempre que o dia muda.
+          const novoDia = !prev || chaveDoDia(prev.criadoEm) !== chaveDoDia(m.criadoEm);
           return (
-            <MessageBubble
-              key={m.id}
-              msg={m}
-              showAuthor={!!showAuthor}
-              podeReagir={podeReagir}
-              onReagir={(emoji) => onReagir(m.id, emoji)}
-              onResponder={podeReagir ? () => onResponder(m) : undefined}
-              citada={citada}
-              nomeBot={nomeBot}
-            />
+            <Fragment key={m.id}>
+              {novoDia && (
+                <div
+                  data-testid="thread-dia"
+                  className="sticky top-0 z-10 self-center my-1 rounded-full border border-border bg-surface px-3 py-0.5 text-[11px] font-medium text-muted shadow-sm"
+                >
+                  {rotuloDoDia(m.criadoEm)}
+                </div>
+              )}
+              <MessageBubble
+                msg={m}
+                showAuthor={!!showAuthor}
+                podeReagir={podeReagir}
+                onReagir={(emoji) => onReagir(m.id, emoji)}
+                onResponder={podeReagir ? () => onResponder(m) : undefined}
+                citada={citada}
+                nomeBot={nomeBot}
+              />
+            </Fragment>
           );
         })}
         <div ref={endRef} />

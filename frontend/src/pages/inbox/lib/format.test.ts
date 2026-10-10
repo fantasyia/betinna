@@ -1,5 +1,39 @@
 import { describe, it, expect } from 'vitest';
-import { fmtPeer, formatTempoResposta, slaBadge, fmtRelative } from './format';
+import {
+  fmtPeer,
+  formatTempoResposta,
+  slaBadge,
+  fmtRelative,
+  rotuloDoDia,
+  chaveDoDia,
+} from './format';
+
+describe('rotuloDoDia (separador de dia da conversa, Léo 10/10)', () => {
+  // Sábado, 10/10/2026, 15h local.
+  const agora = new Date(2026, 9, 10, 15, 0, 0);
+  const em = (dia: number, h = 12) => new Date(2026, 9, dia, h, 0, 0).toISOString();
+
+  it('Hoje e Ontem por DIA DE CALENDÁRIO (não 24h)', () => {
+    expect(rotuloDoDia(em(10, 0), agora)).toBe('Hoje');
+    // 23h de ontem: menos de 24h atrás, mas é Ontem.
+    expect(rotuloDoDia(em(9, 23), agora)).toBe('Ontem');
+  });
+
+  it('últimos 7 dias: o dia da semana, com maiúscula', () => {
+    expect(rotuloDoDia(em(6), agora)).toBe('Terça-feira');
+    expect(rotuloDoDia(em(4), agora)).toBe('Domingo');
+  });
+
+  it('mais antigo: a data completa', () => {
+    expect(rotuloDoDia(em(3), agora)).toBe('03/10/2026');
+    expect(rotuloDoDia(new Date(2025, 11, 25, 9).toISOString(), agora)).toBe('25/12/2025');
+  });
+
+  it('data inválida não quebra', () => {
+    expect(rotuloDoDia('xx', agora)).toBe('');
+    expect(chaveDoDia('xx')).toBe('');
+  });
+});
 
 describe('fmtPeer (peer → telefone exibível)', () => {
   it('WhatsApp BR 13 dígitos (com 9) → +55 (DD) 9XXXX-XXXX', () => {
