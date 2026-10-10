@@ -1081,7 +1081,7 @@ function Selo({ texto }: { texto: string | null }) {
   return (
     <p className="vt-selo" data-testid="vt-selo">
       <i aria-hidden="true">✓</i>
-      {texto}
+      <span title={texto}>{texto}</span>
     </p>
   );
 }

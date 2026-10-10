@@ -366,6 +366,11 @@
 /* Selo da linha (Léo, 07/10: Plus Size de verdade) e guia de tamanhos. */
 .vt-selo { margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: 12.5px; line-height: 1.4; color: var(--lucro); font-weight: 600; }
 .vt-selo i { font-style: normal; flex: none; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; background: var(--lucro); color: var(--creme); font-size: 10px; margin-top: 1px; }
+/* Selo numa linha só (Léo, 10/10): a fonte acompanha a largura da tela e, se
+   ainda assim não couber, corta com "…" em vez de quebrar. */
+.vt-selo { align-items: center; white-space: nowrap; min-width: 0; font-size: clamp(10.5px, 3.2vw, 12.5px); }
+.vt-selo i { margin-top: 0; }
+.vt-selo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .vt-guia-scrim { z-index: 90; }
 .vt-guia { z-index: 91; }
 .vt-guia-tab { overflow: auto; padding: 4px 16px 12px; display: grid; gap: 8px; }
