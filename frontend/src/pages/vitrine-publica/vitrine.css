@@ -30,7 +30,7 @@
 .vt-tela { position: relative; height: 100%; max-width: 440px; margin: 0 auto; background: var(--creme); overflow: hidden; }
 
 /* topo */
-.vt-top { position: absolute; inset: 0 0 auto 0; z-index: 30; padding: 12px 16px 0; background: linear-gradient(var(--creme) 78%, rgba(248, 241, 224, 0)); }
+.vt-top { position: absolute; inset: 0 0 auto 0; z-index: 30; padding: 12px 16px 0; background: linear-gradient(rgba(248, 241, 224, .94) 60%, rgba(248, 241, 224, 0)); }
 .vt-brand { display: flex; align-items: center; gap: 10px; min-height: 22px; }
 .vt-brand img { height: 20px; width: auto; display: block; }
 /* Logo = botão "início" (Léo, 09/10), com o símbolo da marca ao lado. */
@@ -47,9 +47,10 @@
 .vt-brand .vt-carrinho + .vt-entrar { margin-left: 0; }
 .vt-brand .vt-entrar { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--petroleo); border: 1px solid #d9cdb0; border-radius: 999px; padding: 4px 12px; text-decoration: none; line-height: 1.2; }
 .vt-brand .vt-entrar:active { background: var(--linho); }
-.vt-linhas { margin-top: 12px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--linho); border-radius: 12px; padding: 3px; }
-.vt-linhas button { height: 34px; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--oliva); }
-.vt-linhas button[aria-pressed='true'] { background: var(--petroleo); color: var(--creme); }
+/* Seletor de linha mais leve (Léo, 10/10): menor, claro, a marcada em branco. */
+.vt-linhas { margin-top: 12px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: rgba(239, 229, 207, .7); border-radius: 10px; padding: 2px; }
+.vt-linhas button { height: 34px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--oliva); }
+.vt-linhas button[aria-pressed='true'] { background: var(--branco); color: var(--petroleo); box-shadow: 0 1px 3px rgba(26, 45, 56, .12); }
 .vt-cats { display: flex; gap: 18px; overflow-x: auto; padding: 10px 2px; scrollbar-width: none; }
 .vt-cats::-webkit-scrollbar { display: none; }
 .vt-cats button { flex: none; font-size: 13.5px; color: var(--oliva); padding: 4px 0; border-bottom: 2px solid transparent; }
@@ -66,7 +67,9 @@
 .vt-fotos { position: absolute; inset: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .vt-fotos::-webkit-scrollbar { display: none; }
 /* Tela baixa corta a foto 3:4: segura perto do TOPO pra não sumir a cabeça (card #02, 07/10). */
-.vt-fotos img { flex: none; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; scroll-snap-align: center; scroll-snap-stop: always; }
+/* Ancorada no TOPO (Léo, 10/10): a cabeça do modelo nunca é cortada — se
+   faltar altura, o corte é nos pés. */
+.vt-fotos img { flex: none; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0%; scroll-snap-align: center; scroll-snap-stop: always; }
 .vt-pontos { position: absolute; left: 0; right: 0; bottom: 32px; display: flex; justify-content: center; gap: 5px; pointer-events: none; }
 .vt-pontos i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 252, 245, .6); box-shadow: 0 0 0 1px rgba(26, 45, 56, .2); }
 .vt-pontos i[data-on='true'] { background: var(--petroleo); }
@@ -252,10 +255,10 @@
 .vt-slide .vt-cta { height: 40px; font-size: 14px; }
 .vt-top { padding-top: 10px; }
 .vt-brand img { height: 18px; }
-.vt-linhas { margin-top: 10px; }
-.vt-linhas button { height: 30px; }
-.vt-slide .vt-fotos { top: 100px; }
-.vt-counter { top: 112px; }
+.vt-linhas { margin-top: 8px; }
+.vt-linhas button { height: 26px; }
+.vt-slide .vt-fotos { top: 88px; }
+.vt-counter { top: 98px; }
 
 /* envio do pedido */
 .vt-envio { max-height: 94%; }
@@ -395,7 +398,6 @@
    feio). O bloco de baixo fica mais justo pra a foto ganhar altura, e o corte
    segura um pouco mais pro alto: cabeça e produto. */
 @media (max-height: 760px) {
-  .vt-slide .vt-fotos img { object-position: 50% 35%; }
   .vt-slide .vt-info { gap: 6px; padding-top: 8px; }
   .vt-slide .vt-tags { display: none; }
   .vt-slide .vt-sim-topo { padding: 6px 12px 4px; }
@@ -406,9 +408,9 @@
   /* Topo mais baixo: a foto começa mais cedo. */
   .vt-top { padding-top: 6px; }
   .vt-linhas { margin-top: 6px; }
-  .vt-linhas button { height: 28px; }
-  .vt-slide .vt-fotos { top: 70px; }
-  .vt-counter { top: 80px; }
+  .vt-linhas button { height: 24px; }
+  .vt-slide .vt-fotos { top: 76px; }
+  .vt-counter { top: 84px; }
   /* Investe | Lucro no pedido fica só na Ficha técnica; o preço e o "Se você
      levar" continuam. O aviso "deslize" também sai. */
   .vt-slide .vt-sim-r { display: none; }
