@@ -66,6 +66,10 @@ export interface Conversation {
   ultimaMsgEm?: string | null;
   naoLidas?: number;
   cliente?: { id: string; nome: string } | null;
+  /** Lead ligado à conversa (triagem → CRIAR_LEAD). Dá a etapa do funil no cabeçalho. */
+  leadId?: string | null;
+  /** Lead do contato pra mostrar a etapa: o `leadId` ou, sem ele, o achado pelo telefone (D18). */
+  leadVinculadoId?: string | null;
   atribuido?: { id: string; nome: string } | null;
   // Fase 2 — estado do bot Muller nesta conversa
   botPausadoAte?: string | null;

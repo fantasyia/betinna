@@ -16,6 +16,7 @@ import { useIsMobile } from '@/components/PageLayout';
 import type { Conversation, ConversationStatus } from '../lib/types';
 import { CANAL_LABEL, STATUS_LABEL } from '../lib/canais';
 import { fmtPeer } from '../lib/format';
+import { EtapaDoLead } from './EtapaDoLead';
 
 /**
  * Header de ações da thread aberta — extraído do ConversationThread (refactor
@@ -169,6 +170,10 @@ export function ThreadHeader({
             >
               {confirmZerar ? 'Confirmar?' : 'Zerar'}
             </Button>
+          )}
+          {/* Etapa do funil do lead, sem sair da conversa (Léo, 10/10). */}
+          {(c.leadVinculadoId ?? c.leadId) && (
+            <EtapaDoLead leadId={(c.leadVinculadoId ?? c.leadId) as string} />
           )}
           {/* Status — dropdown inline: troca direto pra Aberta/Pendente/Resolvida/
               Arquivada (Resolvida sai da lista ativa → "vai pra outra aba"). */}

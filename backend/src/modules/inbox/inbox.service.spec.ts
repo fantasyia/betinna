@@ -1372,3 +1372,62 @@ describe('InboxService — campanha do Click-to-WhatsApp', () => {
     expect(upd.data.utmCampaign).toBeUndefined(); // coluna = 1º toque, não muda
   });
 });
+
+describe('InboxService.findById — lead do contato pra etapa do funil (10/10)', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: InboxService;
+  const diretor = {
+    id: 'u-1',
+    role: 'DIRECTOR',
+    empresaIdAtiva: 'emp-1',
+    empresaIds: ['emp-1'],
+  } as unknown as AuthenticatedUser;
+  const conv = (extra: Record<string, unknown> = {}) => ({
+    id: 'conv-1',
+    empresaId: 'emp-1',
+    canal: 'WHATSAPP',
+    peerId: '5511977641126@s.whatsapp.net',
+    metadata: null,
+    leadId: null,
+    ...extra,
+  });
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar: () => Promise.resolve() } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
+    );
+  });
+
+  it('conversa com leadId: usa ele (sem procurar pelo telefone)', async () => {
+    prisma.conversation.findFirst.mockResolvedValueOnce(conv({ leadId: 'lead-ligado' }));
+    const r = await svc.findById(diretor, 'conv-1');
+    expect(r.leadVinculadoId).toBe('lead-ligado');
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('sem leadId: acha pelo SUFIXO de 8 do telefone (D18), mesma empresa', async () => {
+    prisma.conversation.findFirst.mockResolvedValueOnce(conv());
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-pelo-telefone' }]);
+    const r = await svc.findById(diretor, 'conv-1');
+    expect(r.leadVinculadoId).toBe('lead-pelo-telefone');
+    const valores = prisma.$queryRaw.mock.calls[0].slice(1);
+    expect(valores).toEqual(['emp-1', '77641126']);
+  });
+
+  it('canal que não é WhatsApp: não procura por telefone', async () => {
+    prisma.conversation.findFirst.mockResolvedValueOnce(
+      conv({ canal: 'INSTAGRAM', peerId: '1784…' }),
+    );
+    const r = await svc.findById(diretor, 'conv-1');
+    expect(r.leadVinculadoId).toBeNull();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+});

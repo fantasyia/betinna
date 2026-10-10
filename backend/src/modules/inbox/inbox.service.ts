@@ -696,13 +696,43 @@ export class InboxService {
     return { ...rest, aguardandoDesde: ultimaInbound && aberta ? conv.ultimaMsgEm : null };
   }
 
-  async findById(user: AuthenticatedUser, id: string): Promise<ConversationWithRel> {
+  async findById(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<ConversationWithRel & { leadVinculadoId: string | null }> {
     const conv = await this.prisma.conversation.findFirst({
       where: { id, ...this.baseWhere(user) },
       include: conversationInclude,
     });
     if (!conv) throw new NotFoundException('Conversation', id);
-    return conv;
+    return { ...conv, leadVinculadoId: conv.leadId ?? (await this.leadPeloTelefone(conv)) };
+  }
+
+  /**
+   * Lead do contato quando a conversa não tem `leadId` (só a triagem liga):
+   * no WhatsApp, pelos 8 últimos dígitos do telefone (D18 — nunca "contém"),
+   * o mais recente da empresa. Só LEITURA: alimenta a etapa do funil no
+   * cabeçalho do atendimento (Léo, 10/10); não grava vínculo nenhum.
+   */
+  private async leadPeloTelefone(conv: {
+    empresaId: string;
+    canal: string;
+    peerId: string;
+    metadata: Prisma.JsonValue;
+  }): Promise<string | null> {
+    if (conv.canal !== 'WHATSAPP') return null;
+    const tel = ((conv.metadata as { telefone?: string } | null)?.telefone || conv.peerId || '')
+      .split('@')[0]
+      .replace(/\D/g, '');
+    if (tel.length < 8) return null;
+    const suf = tel.slice(-8);
+    const r = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "Lead"
+      WHERE "empresaId" = ${conv.empresaId}
+        AND RIGHT(REGEXP_REPLACE(COALESCE("contatoTelefone", ''), '[^0-9]', '', 'g'), 8) = ${suf}
+      ORDER BY "atualizadoEm" DESC
+      LIMIT 1`;
+    return r[0]?.id ?? null;
   }
 
   /**
