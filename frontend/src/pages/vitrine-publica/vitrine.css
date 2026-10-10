@@ -86,6 +86,8 @@
 .vt-name { font-family: var(--f-title); font-weight: 500; line-height: 1.05; letter-spacing: -.01em; text-wrap: balance; margin: 0; font-size: 26px; }
 .vt-over { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--oliva); font-weight: 600; }
 .vt-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* Card do feed: só as bolinhas na linha, à direita (sem o rótulo da linha, 10/10). */
+.vt-row-cores { justify-content: flex-end; }
 .vt-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .vt-tag { font-size: 11.5px; padding: 4px 9px; border-radius: 999px; background: var(--branco); border: 1px solid #e3d8bf; }
 .vt-dots { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }

@@ -442,10 +442,9 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
                 {i === 0 && slides.length > 1 && <div className="vt-hint">deslize pra cima ↑</div>}
               </div>
               <div className="vt-info">
-                <div className="vt-row">
-                  <span className="vt-over">
-                    {[m.categoria?.nome, l.nome].filter(Boolean).join(' · ')}
-                  </span>
+                {/* Sem "INFANTIL · …" aqui (Léo, 10/10): a linha já está no seletor do
+                    topo, e esse espaço fica pros diferenciais do produto. */}
+                <div className="vt-row vt-row-cores">
                   <Bolinhas
                     m={m}
                     cor={cor}
