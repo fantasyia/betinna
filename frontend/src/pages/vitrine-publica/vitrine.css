@@ -294,6 +294,8 @@
 .vt-frete-opcoes button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 8px 12px; border-radius: 12px; border: 1px solid #e3d8bf; background: var(--branco); text-align: left; color: var(--petroleo); font: 500 13.5px var(--f-text); }
 .vt-frete-opcoes button.on { border-color: var(--petroleo); box-shadow: inset 0 0 0 1px var(--petroleo); }
 .vt-frete-opcoes button small { display: block; font-size: 11.5px; color: var(--oliva); }
+/* Etiqueta "Mais barato" / "Mais rápido" (Léo, 10/10). */
+.vt-frete-destaque { display: block; font-style: normal; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--lucro); margin-bottom: 1px; }
 .vt-frete-opcoes button strong { font-family: var(--f-title); font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .vt-isca { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 .vt-ok { z-index: 70; }

@@ -10,6 +10,7 @@ import {
   SUGESTAO_FRETE,
   configFrete,
   faltandoNoFrete,
+  maisBaratoEMaisRapido,
   montarVolumes,
   retiradaLiberada,
   somarCotacoes,
@@ -17,7 +18,6 @@ import {
   type AmbienteFrete,
   type ConfigFrete,
   type OpcaoCotada,
-  type OpcaoFrete,
   type Volume,
 } from './frete';
 import type { FreteConfigDto } from './vitrine.dto';
@@ -38,6 +38,8 @@ export interface Cotacao {
     transportadora: string;
     preco: number;
     prazoDias: number | null;
+    /** "Mais barato", "Mais rápido" ou "Mais barato e mais rápido". */
+    destaque: string;
   }>;
   /** Retirada em mãos (R$ 0) — só a partir do mínimo de peças. */
   retirada: { endereco: string; horario: string } | null;
@@ -212,7 +214,8 @@ export class FreteService {
       memo.set(chave, opcoes);
       porVolume.push(opcoes);
     }
-    const opcoes: OpcaoFrete[] = somarCotacoes(porVolume);
+    // Só a mais barata e a mais rápida (Léo, 10/10).
+    const opcoes = maisBaratoEMaisRapido(somarCotacoes(porVolume));
     const retirada = retiradaLiberada(cfg, totalPecas)
       ? { endereco: cfg.retirada?.endereco ?? '', horario: cfg.retirada?.horario ?? '' }
       : null;
@@ -231,6 +234,7 @@ export class FreteService {
         transportadora: o.transportadora,
         preco: o.precoC / 100,
         prazoDias: o.prazoDias,
+        destaque: o.destaque,
       })),
       retirada,
     };

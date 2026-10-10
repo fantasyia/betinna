@@ -71,7 +71,10 @@ describe('FreteService.cotarPesos', () => {
       transportadora: 'Correios',
       preco: 40,
       prazoDias: 6,
+      destaque: 'Mais barato',
     });
+    // Só a mais barata e a mais rápida chegam ao cliente (Léo, 10/10).
+    expect(r.opcoes.map((o) => o.destaque)).toEqual(['Mais barato', 'Mais rápido']);
   });
 
   it('cota de novo em 10 min: vem do cache (a tela cota, o pedido cota de novo)', async () => {

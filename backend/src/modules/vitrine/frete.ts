@@ -216,6 +216,30 @@ export function somarCotacoes(porVolume: OpcaoCotada[][]): OpcaoFrete[] {
   return out.sort((a, b) => a.precoC - b.precoC || (a.prazoDias ?? 99) - (b.prazoDias ?? 99));
 }
 
+/**
+ * O cliente vê SÓ duas opções (Léo, 10/10: "a mais barata e a mais rápida,
+ * isso já é suficiente"): a de menor preço e a de menor prazo, cada uma com a
+ * etiqueta. Se a mais barata também é a mais rápida, fica UMA só. Prazo
+ * desconhecido nunca é "o mais rápido". Empate: o outro critério desempata.
+ * O pedido valida a escolha contra ESTA lista — esconder aqui e aceitar
+ * qualquer serviço no fechamento abriria a porta pra um id que não foi oferecido.
+ */
+export function maisBaratoEMaisRapido(
+  opcoes: OpcaoFrete[],
+): Array<OpcaoFrete & { destaque: string }> {
+  if (opcoes.length === 0) return [];
+  const prazo = (o: OpcaoFrete) => o.prazoDias ?? Number.POSITIVE_INFINITY;
+  const barato = [...opcoes].sort((a, b) => a.precoC - b.precoC || prazo(a) - prazo(b))[0];
+  const rapido = [...opcoes].sort((a, b) => prazo(a) - prazo(b) || a.precoC - b.precoC)[0];
+  if (rapido.id === barato.id || prazo(rapido) >= prazo(barato)) {
+    return [{ ...barato, destaque: 'Mais barato e mais rápido' }];
+  }
+  return [
+    { ...barato, destaque: 'Mais barato' },
+    { ...rapido, destaque: 'Mais rápido' },
+  ];
+}
+
 /** Retirada em mãos liberada pra esse tamanho de pedido? */
 export function retiradaLiberada(cfg: ConfigFrete, totalPecas: number): boolean {
   const r = cfg.retirada;

@@ -5,6 +5,7 @@ import {
   montarVolumes,
   retiradaLiberada,
   somarCotacoes,
+  maisBaratoEMaisRapido,
   type ConfigFrete,
 } from './frete';
 
@@ -136,6 +137,49 @@ describe('somarCotacoes', () => {
 
   it('nenhum volume: nenhuma opção', () => {
     expect(somarCotacoes([])).toEqual([]);
+  });
+});
+
+describe('maisBaratoEMaisRapido (Léo, 10/10)', () => {
+  const op = (id: number, precoC: number, prazoDias: number | null) => ({
+    id,
+    nome: `s${id}`,
+    transportadora: 'X',
+    precoC,
+    prazoDias,
+    volumes: 1,
+  });
+
+  it('cliente vê só a mais barata e a mais rápida, cada uma com a etiqueta', () => {
+    // Os 4 do sandbox (50 peças → Rio): .Com 99,46/3d · .Package 120,62/4d · PAC 129,68/7d · SEDEX 229,37/3d
+    const r = maisBaratoEMaisRapido([
+      op(1, 9946, 3),
+      op(2, 12062, 4),
+      op(3, 12968, 7),
+      op(4, 22937, 3),
+    ]);
+    // .Com é a mais barata E empata no prazo com o SEDEX: o preço desempata → uma só.
+    expect(r).toEqual([{ ...op(1, 9946, 3), destaque: 'Mais barato e mais rápido' }]);
+  });
+
+  it('barata e rápida diferentes: duas opções, barata primeiro', () => {
+    const r = maisBaratoEMaisRapido([op(1, 20503, 21), op(2, 27679, 17), op(4, 51547, 4)]);
+    expect(r.map((o) => [o.id, o.destaque])).toEqual([
+      [1, 'Mais barato'],
+      [4, 'Mais rápido'],
+    ]);
+  });
+
+  it('prazo desconhecido nunca vira "mais rápido"', () => {
+    const r = maisBaratoEMaisRapido([op(1, 1000, 5), op(2, 900, null)]);
+    expect(r.map((o) => [o.id, o.destaque])).toEqual([
+      [2, 'Mais barato'],
+      [1, 'Mais rápido'],
+    ]);
+  });
+
+  it('sem opção: lista vazia', () => {
+    expect(maisBaratoEMaisRapido([])).toEqual([]);
   });
 });
 

@@ -38,7 +38,8 @@ interface CotacaoPub {
   ativo: boolean;
   indisponivel?: string | null;
   volumes?: Array<{ embalagem: string; pecas: number; pesoKg: number }>;
-  opcoes?: Array<{ id: number; nome: string; transportadora: string; preco: number; prazoDias: number | null }>;
+  /** `destaque`: "Mais barato" / "Mais rápido" (Léo, 10/10: só essas duas aparecem). */
+  opcoes?: Array<{ id: number; nome: string; transportadora: string; preco: number; prazoDias: number | null; destaque?: string }>;
 }
 
 type Item = { corId: string; tamanhoId: string; quantidade: number };
@@ -337,6 +338,7 @@ export function Entrega({
                         data-testid={`vt-frete-${o.id}`}
                       >
                         <span>
+                          {o.destaque && <em className="vt-frete-destaque">{o.destaque}</em>}
                           <b>{o.transportadora}</b> {o.nome}
                           {o.prazoDias !== null && <small>{o.prazoDias} dias úteis</small>}
                         </span>
