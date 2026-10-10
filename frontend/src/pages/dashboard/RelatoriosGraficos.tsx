@@ -24,6 +24,8 @@ interface GraficosResp {
   funilSelecionado: { id: string; nome: string } | null;
   leadsPorDia: Array<{ dia: string; total: number }>;
   utm: Array<{ campanha: string; total: number }>;
+  /** Por anúncio do 1º toque (Léo, 10/10). Opcional: API antiga não manda. */
+  criativos?: Array<{ criativo: string; campanha: string | null; total: number }>;
   conversaoFunil: Array<{
     id: string;
     nome: string;
@@ -131,6 +133,29 @@ export function RelatoriosGraficos({ ehGestao }: { ehGestao: boolean }) {
         </ChartCard>
 
         <ChartCard
+          titulo="Origem por criativo (anúncio)"
+          subtitulo="Leads por anúncio que trouxe o contato, no período"
+          filename="origem-criativo"
+          vazio={(data.criativos ?? []).length === 0}
+          tabela={{
+            colunas: [
+              {
+                header: 'Criativo',
+                value: (r: NonNullable<GraficosResp['criativos']>[number]) => r.criativo,
+              },
+              { header: 'Campanha', value: (r) => r.campanha ?? '' },
+              { header: 'Leads', value: (r) => r.total },
+            ],
+            rows: data.criativos ?? [],
+          }}
+        >
+          <GraficoBarrasH
+            dados={(data.criativos ?? []).map((c) => ({ label: c.criativo, valor: c.total }))}
+            sufixoTooltip="leads"
+          />
+        </ChartCard>
+
+        <ChartCard
           titulo={`Conversão do funil${data.funilSelecionado ? ` — ${data.funilSelecionado.nome}` : ''}`}
           subtitulo="Entradas por etapa no período + % que avança"
           filename="conversao-funil"
@@ -141,7 +166,8 @@ export function RelatoriosGraficos({ ehGestao }: { ehGestao: boolean }) {
               { header: 'Entradas', value: (r) => r.entradas },
               {
                 header: '% avança',
-                value: (r) => (r.taxaAvanco == null ? '—' : `${String(r.taxaAvanco).replace('.', ',')}%`),
+                value: (r) =>
+                  r.taxaAvanco == null ? '—' : `${String(r.taxaAvanco).replace('.', ',')}%`,
               },
             ],
             rows: data.conversaoFunil,

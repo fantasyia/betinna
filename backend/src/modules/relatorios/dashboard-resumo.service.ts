@@ -866,7 +866,7 @@ export class DashboardResumoService {
     // Funil dos gráficos de etapa: o pedido, se pertence à empresa; senão o 1º.
     const funilSel = funis.find((f) => f.id === params.funilId) ?? funis[0] ?? null;
 
-    const [leadsDia, utmGrp, etapas, entradas, tempos, saudeDia] = await Promise.all([
+    const [leadsDia, utmGrp, etapas, entradas, tempos, saudeDia, criativosGrp] = await Promise.all([
       this.prisma.$queryRaw<Array<{ dia: Date; total: bigint }>>`
         SELECT date_trunc('day', l."criadoEm") AS dia, COUNT(*) AS total
         FROM "Lead" l
@@ -935,6 +935,19 @@ export class DashboardResumoService {
             GROUP BY 1
           `
         : Promise.resolve([]),
+      // CRIATIVO (Léo, 10/10: "ver o que tá dando mais contato"): o anúncio do
+      // 1º toque — `utm_content`, que no Lead Ads é o NOME do anúncio. Mora no
+      // JSON da atribuição (não tem coluna), mesmos filtros do gráfico de campanha.
+      this.prisma.$queryRaw<Array<{ criativo: string; campanha: string | null; total: bigint }>>`
+        SELECT l."variaveis"->'atribuicao'->'primeiro'->>'utmContent' AS criativo,
+               MIN(l."utmCampaign") AS campanha, COUNT(*) AS total
+        FROM "Lead" l
+        WHERE l."empresaId" = ${empresaId} AND l."criadoEm" >= ${de}
+          AND COALESCE(l."variaveis"->'atribuicao'->'primeiro'->>'utmContent', '') <> ''
+          ${scopeSql} ${triagemSql}
+        GROUP BY 1
+        ORDER BY 3 DESC, 1
+      `,
     ]);
 
     // Buckets diários zero-fill (de … hoje) — a linha e a empilhada não podem
@@ -969,6 +982,17 @@ export class DashboardResumoService {
     const utm = utmTodos.slice(0, 8);
     const resto = utmTodos.slice(8).reduce((s, u) => s + u.total, 0);
     if (resto > 0) utm.push({ campanha: 'Outros', total: resto });
+
+    // Criativo: mesma regra — top 8 e o resto em "Outros".
+    const criativosTodos = criativosGrp.map((g) => ({
+      criativo: g.criativo,
+      campanha: g.campanha,
+      total: Number(g.total),
+    }));
+    const criativos = criativosTodos.slice(0, 8);
+    const restoCriativos = criativosTodos.slice(8).reduce((s, c) => s + c.total, 0);
+    if (restoCriativos > 0)
+      criativos.push({ criativo: 'Outros', campanha: null, total: restoCriativos });
 
     const leadsPorEtapa = new Map<string, Set<string>>();
     for (const e of entradas) {
@@ -1010,6 +1034,7 @@ export class DashboardResumoService {
       funilSelecionado: funilSel ? { id: funilSel.id, nome: funilSel.nome } : null,
       leadsPorDia,
       utm,
+      criativos,
       conversaoFunil,
       tempoPorEtapa: tempoEtapas,
       saudeFluxos,

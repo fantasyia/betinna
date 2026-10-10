@@ -314,7 +314,16 @@ const makePrismaGraficos = () => {
         ...Array.from({ length: 4 }, (_, i) => ({ leadId: `l${i}`, etapa: 'et-2' })),
       ])
       .mockResolvedValueOnce([{ etapa: 'et-1', dias: 2.34 }])
-      .mockResolvedValueOnce([{ dia: hoje, ok: 5n, erro: 1n }]),
+      .mockResolvedValueOnce([{ dia: hoje, ok: 5n, erro: 1n }])
+      // 5ª = criativos (já ordenados pelo banco)
+      .mockResolvedValueOnce([
+        ...Array.from({ length: 9 }, (_, i) => ({
+          criativo: `anuncio-${i + 1}`,
+          campanha: 'camp-1',
+          total: BigInt(30 - i),
+        })),
+        { criativo: 'anuncio-10', campanha: 'camp-2', total: 2n },
+      ]),
   };
 };
 
@@ -346,6 +355,23 @@ describe('DashboardResumoService.graficos (M8)', () => {
     expect(r.utm).toHaveLength(9); // top 8 + Outros
     expect(r.utm[0]).toEqual({ campanha: 'camp-1', total: 20 });
     expect(r.utm[8]).toEqual({ campanha: 'Outros', total: 12 + 1 }); // camp-9 (12) + camp-10 (1)
+  });
+
+  it('CRIATIVO (Léo, 10/10): top 8 por anúncio, com a campanha, e o resto em "Outros"', async () => {
+    const prisma = makePrismaGraficos();
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.graficos(user(), { dias: 30 });
+
+    expect(r.criativos).toHaveLength(9);
+    expect(r.criativos[0]).toEqual({ criativo: 'anuncio-1', campanha: 'camp-1', total: 30 });
+    expect(r.criativos[8]).toEqual({ criativo: 'Outros', campanha: null, total: 22 + 2 });
+    // Lê o anúncio do 1º toque e respeita a mesma empresa.
+    const sql = prisma.$queryRaw.mock.calls.at(-1) as unknown as [
+      TemplateStringsArray,
+      ...unknown[],
+    ];
+    expect(sql[0].join('?')).toContain(`'atribuicao'->'primeiro'->>'utmContent'`);
+    expect(sql.slice(1)).toContain('emp-1');
   });
 
   it('conversão: só etapas ATIVAS, com taxa de avanço entre consecutivas e tempo médio', async () => {
@@ -380,7 +406,8 @@ describe('DashboardResumoService.graficos (M8)', () => {
         { leadId: 'direto-2', etapa: 'et-2' },
       ])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]); // criativos
     const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
     const r = await svc.graficos(user(), { dias: 30 });
 

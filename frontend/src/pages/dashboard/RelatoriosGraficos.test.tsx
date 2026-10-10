@@ -39,6 +39,10 @@ const RESP = {
     { campanha: 'mb-lancamento', total: 12 },
     { campanha: 'Outros', total: 3 },
   ],
+  criativos: [
+    { criativo: 'C · Você fabrica · formulário', campanha: 'ribelt · cosméticos', total: 42 },
+    { criativo: 'D · Vaga única · formulário', campanha: 'ribelt · cosméticos', total: 2 },
+  ],
   conversaoFunil: [
     { id: 'et-1', nome: 'Novo', cor: '#111111', entradas: 10, taxaAvanco: 40 },
     { id: 'et-2', nome: 'Qualificando', cor: '#222222', entradas: 4, taxaAvanco: null },
@@ -74,6 +78,7 @@ describe('RelatoriosGraficos (M8)', () => {
     render(<RelatoriosGraficos ehGestao />);
     expect(screen.getByText('Leads ao longo do tempo')).toBeDefined();
     expect(screen.getByText('Origem por campanha (UTM)')).toBeDefined();
+    expect(screen.getByText('Origem por criativo (anúncio)')).toBeDefined();
     expect(screen.getByText('Conversão do funil — Clientes')).toBeDefined();
     expect(screen.getByText('Saúde dos fluxos (execuções por dia)')).toBeDefined();
     expect(screen.getByText('Tempo médio por etapa — Clientes')).toBeDefined();
@@ -83,10 +88,12 @@ describe('RelatoriosGraficos (M8)', () => {
   });
 
   it('contagem ÍMPAR: o último cartão ocupa a linha toda — nada de célula vazia no rodapé', () => {
-    // Gestão vê 5 relatórios numa grade de 2 colunas: o 5º ficava sozinho e
-    // sobrava um buraco do lado dele. A regra é de CSS (`:last-child` que também
-    // é `:nth-child(odd)`), então relatório novo não precisa de ajuste na mão.
-    render(<RelatoriosGraficos ehGestao />);
+    // REP vê 5 relatórios numa grade de 2 colunas (sem "Saúde dos fluxos"): o
+    // 5º ficava sozinho e sobrava um buraco do lado dele. A regra é de CSS
+    // (`:last-child` que também é `:nth-child(odd)`), então relatório novo não
+    // precisa de ajuste na mão — o "por criativo" (10/10) trocou a paridade e
+    // nada no componente mudou.
+    render(<RelatoriosGraficos ehGestao={false} />);
 
     const grade = screen.getByTestId('dash-graficos').querySelector('.grid')!;
     expect(grade.className).toContain('[&>*:last-child:nth-child(odd)]:col-span-2');
@@ -94,9 +101,8 @@ describe('RelatoriosGraficos (M8)', () => {
   });
 
   it('contagem PAR: ninguém estica — a grade já fecha sozinha', () => {
-    // REP vê 4 (sem "Saúde dos fluxos"): as duas fileiras fecham e a regra do
-    // ímpar simplesmente não casa.
-    render(<RelatoriosGraficos ehGestao={false} />);
+    // Gestão vê 6: as fileiras fecham e a regra do ímpar simplesmente não casa.
+    render(<RelatoriosGraficos ehGestao />);
 
     const grade = screen.getByTestId('dash-graficos').querySelector('.grid')!;
     expect(grade.children.length % 2).toBe(0);
