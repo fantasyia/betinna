@@ -38,6 +38,12 @@
 .vt-brand img.vt-simbolo { height: 26px; }
 .vt-brand .vt-nome { font-family: var(--f-title); font-weight: 600; font-size: 18px; }
 /* "Entrar" discreto no canto direito do topo: acesso à plataforma */
+/* Carrinho no topo, ao lado do Entrar (Léo, 10/10). */
+.vt-brand .vt-carrinho { margin-left: auto; position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--petroleo); color: var(--creme); border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.vt-brand .vt-carrinho:active { transform: scale(.94); }
+.vt-carrinho-n { position: absolute; top: -5px; right: -6px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; background: var(--terracota); color: var(--branco); font: 700 11px/19px var(--f-text); text-align: center; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--creme); animation: vt-pop .28s ease-out; }
+@keyframes vt-pop { 0% { transform: scale(.6); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+.vt-brand .vt-carrinho + .vt-entrar { margin-left: 0; }
 .vt-brand .vt-entrar { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--petroleo); border: 1px solid #d9cdb0; border-radius: 999px; padding: 4px 12px; text-decoration: none; line-height: 1.2; }
 .vt-brand .vt-entrar:active { background: var(--linho); }
 .vt-linhas { margin-top: 12px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--linho); border-radius: 12px; padding: 3px; }
@@ -158,10 +164,6 @@
 .vt-muted { font-size: 12px; color: var(--oliva); line-height: 1.5; margin: 0; }
 
 /* barra do pedido */
-.vt-bag { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 35; display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 16px; background: var(--petroleo); color: var(--creme); box-shadow: 0 12px 30px rgba(26, 45, 56, .3); }
-.vt-bag .vt-q { font-family: var(--f-title); font-weight: 600; font-size: 17px; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.vt-bag .vt-s { font-size: 11px; line-height: 1.2; color: var(--quente); }
-.vt-bag button { margin-left: auto; background: var(--creme) !important; color: var(--petroleo); height: 36px; padding: 0 14px; border-radius: 11px; font-weight: 600; font-size: 13.5px; }
 
 /* pedido */
 .vt-cart { position: absolute; inset: 0; z-index: 60; background: var(--creme); display: flex; flex-direction: column; }
@@ -242,15 +244,8 @@
 .vt-preco-faixas { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; padding: 5px 8px 5px 10px; border-top: 1px solid #eee4ce; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--petroleo); }
 .vt-preco-faixas span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vt-preco-faixas em { font-style: normal; font-size: 9px; letter-spacing: .02em; text-transform: uppercase; color: var(--oliva); margin-right: 4px; }
-.vt-slide .vt-info { gap: 8px; padding: 10px 16px 16px; }
-/* espaço da barra do pedido só quando ela aparece */
-/* Barra "Ver pedido" (fixa embaixo): o card reserva a altura DELA + a área
-   segura. Antes eram 84px fixos sem a área segura — no simulador cabia, no
-   iPhone (Léo, 09/10) a barra subia ~34px e tampava "Ficha técnica" e "Montar
-   grade". Conta: 12 (base) + ~68 (altura medida da .vt-bag) + 12 de folga. */
-/* Barra mais baixa (Léo, 10/10): 12 (base) + ~50 (altura) + 12 de folga. */
-.vt-app { --vt-bag-reserva: calc(76px + env(safe-area-inset-bottom, 0px)); }
-.vt-feed[data-bag] .vt-slide .vt-info { padding-bottom: var(--vt-bag-reserva); }
+/* Sem barra embaixo (o carrinho foi pro topo, 10/10): só a faixa do iPhone. */
+.vt-slide .vt-info { gap: 8px; padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
 .vt-slide .vt-name { font-size: 22px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* Botão do card mais baixo em todo celular (Léo, 10/10). */
 .vt-slide .vt-cta { height: 40px; font-size: 14px; }

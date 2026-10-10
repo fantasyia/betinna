@@ -300,7 +300,6 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   const corAtual = (m: ModeloPub): CorPub =>
     m.cores.find((c) => c.id === corDe[m.id]) ?? corInicial(m, linhaNoModelo(m));
   const pecas = totalPecas(carrinho);
-  const modelosNoPedido = Object.keys(carrinho).length;
   // Selo da linha (Léo, 07/10: "Plus Size de verdade · veste até 150 kg…").
   const seloDa = (id: string) => v.linhas.find((x) => x.id === id)?.selo ?? null;
 
@@ -332,6 +331,39 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
             )}
             <Marca nome={v.empresa.nome} logoUrl={v.empresa.logoUrl} />
           </button>
+          {/* Carrinho no topo (Léo, 10/10): no lugar da barra fixa de baixo. */}
+          {pecas > 0 && (
+            <button
+              type="button"
+              className="vt-carrinho"
+              onClick={() => {
+                setToast(null);
+                setVerPedido(true);
+              }}
+              aria-label={`Ver pedido: ${pecas} ${pecas === 1 ? 'peça' : 'peças'}`}
+              data-testid="vt-carrinho"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="19"
+                height="19"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="9.5" cy="19.5" r="1.4" />
+                <circle cx="17.5" cy="19.5" r="1.4" />
+                <path d="M2.5 3.5h2.6l2.3 10.7a1.6 1.6 0 0 0 1.6 1.3h8.2a1.6 1.6 0 0 0 1.6-1.2L20.5 7H6" />
+              </svg>
+              {/* key: o número "pula" quando muda. */}
+              <span key={pecas} className="vt-carrinho-n">
+                {pecas > 999 ? '999+' : pecas}
+              </span>
+            </button>
+          )}
           {/* Pra quem tem acesso à plataforma (equipe, representante). */}
           <Link to="/login" className="vt-entrar" data-testid="vt-entrar">
             Entrar
@@ -365,7 +397,7 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
         )}
       </div>
 
-      <div className="vt-feed" ref={feed} data-bag={pecas > 0 || undefined}>
+      <div className="vt-feed" ref={feed}>
         {slides.map((m, i) => {
           const cor = corAtual(m);
           const l = linhaNoModelo(m);
@@ -483,28 +515,6 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
           temPecas={pecasDoModelo(carrinho, pdp.id) > 0}
           onConjunto={(par) => montarConjunto(pdp, par)}
         />
-      )}
-
-      {pecas > 0 && !verPedido && (
-        <div className="vt-bag" data-testid="vt-bag">
-          <div>
-            <div className="vt-q">
-              {pecas} {pecas === 1 ? 'peça' : 'peças'}
-            </div>
-            <div className="vt-s">
-              {modelosNoPedido} {modelosNoPedido === 1 ? 'modelo' : 'modelos'}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setToast(null);
-              setVerPedido(true);
-            }}
-          >
-            Ver pedido →
-          </button>
-        </div>
       )}
 
       {grade && (
