@@ -283,9 +283,20 @@ export function coresPorEstoque(m: ModeloPub, linha: LinhaPub | undefined): CorP
   return [...com, ...m.cores.filter((c) => !com.includes(c))];
 }
 
-/** A cor que abre: a 1ª com estoque nesta linha (ou a 1ª do cadastro). */
-export const corInicial = (m: ModeloPub, linha: LinhaPub | undefined): CorPub =>
-  coresPorEstoque(m, linha)[0];
+/**
+ * A cor que abre. Sem `sorteio`: a 1ª com estoque nesta linha (ou a 1ª do
+ * cadastro). Com `sorteio` (Léo, 10/10: "rola o app e só vê preto"): uma das
+ * cores COM estoque, escolhida pelo sorteio da visita + modelo + linha — cada
+ * produto abre numa cor, muda de uma visita pra outra e fica parada enquanto
+ * o cliente navega. Esgotada continua nunca abrindo. PURO.
+ */
+export function corInicial(m: ModeloPub, linha: LinhaPub | undefined, sorteio?: string): CorPub {
+  const ordem = coresPorEstoque(m, linha);
+  if (!sorteio) return ordem[0];
+  const com = ordem.filter((c) => corTemEstoque(m, c.id, linha));
+  const pool = com.length ? com : ordem;
+  return pool[hashTexto(`${sorteio}:${m.id}:${linha?.linhaId ?? ''}`) % pool.length];
+}
 
 /** O modelo existe nesta linha da empresa (filtro do topo)? */
 export const temLinha = (m: ModeloPub, linhaId: string): boolean =>

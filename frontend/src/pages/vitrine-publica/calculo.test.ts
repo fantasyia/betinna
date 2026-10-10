@@ -425,6 +425,16 @@ describe('1ª opção com estoque e linha sem o modelo (Léo, 07/10)', () => {
     expect(corInicial(m, plus).nome).toBe('Bege');
   });
 
+  it('com sorteio: abre numa cor COM estoque, e varia de visita pra visita (Léo, 10/10)', () => {
+    const m = modelo({ estoque: null });
+    const nomes = new Set(Array.from({ length: 40 }, (_, i) => corInicial(m, linha(), `v${i}`).nome));
+    expect(nomes).toEqual(new Set(['Preto', 'Bege']));
+    // mesma visita, mesma cor (não troca sozinha enquanto navega)
+    expect(corInicial(m, linha(), 'abc').id).toBe(corInicial(m, linha(), 'abc').id);
+    // esgotada nunca abre, nem no sorteio
+    for (let i = 0; i < 40; i++) expect(corInicial(comEstoque, linha(), `v${i}`).nome).toBe('Bege');
+  });
+
   it('temLinha: só as linhas que o modelo tem', () => {
     expect(temLinha(modelo(), 'lin-reg')).toBe(true);
     expect(temLinha(modelo(), 'lin-plus')).toBe(false);

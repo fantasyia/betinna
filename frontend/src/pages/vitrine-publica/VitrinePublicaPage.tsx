@@ -177,6 +177,8 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   // tem: fica no topo com o aviso, em vez de sumir (Léo, 07/10).
   const [fixado, setFixado] = useState<string | null>(null);
   const [visitante] = useState(codigoDoVisitante);
+  // Sorteio da cor que abre cada produto: novo a cada visita (Léo, 10/10).
+  const [sorteioCor] = useState(() => Math.random().toString(36).slice(2));
   const feed = useRef<HTMLDivElement>(null);
   // Peças do modelo quando a grade abriu — o que passar disso é AddToCart.
   const pecasAoAbrirGrade = useRef(0);
@@ -297,9 +299,10 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
 
   const linhaNoModelo = (m: ModeloPub): LinhaPub =>
     m.linhas.find((l) => l.linhaId === linhaId) ?? m.linhas[0];
-  // Cor que abre: a escolhida, ou a 1ª com estoque nesta linha (esgotada nunca abre).
+  // Cor que abre: a escolhida, ou uma sorteada entre as com estoque nesta linha
+  // (esgotada nunca abre) — pra o feed não ser todo da mesma cor.
   const corAtual = (m: ModeloPub): CorPub =>
-    m.cores.find((c) => c.id === corDe[m.id]) ?? corInicial(m, linhaNoModelo(m));
+    m.cores.find((c) => c.id === corDe[m.id]) ?? corInicial(m, linhaNoModelo(m), sorteioCor);
   const pecas = totalPecas(carrinho);
   // Selo da linha (Léo, 07/10: "Plus Size de verdade · veste até 150 kg…").
   const seloDa = (id: string) => v.linhas.find((x) => x.id === id)?.selo ?? null;
