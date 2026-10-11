@@ -103,6 +103,54 @@ describe('VitrinePublicaService', () => {
     expect(r.modelos.map((m) => m.id)).toEqual(['ok']);
   });
 
+  describe('frete ligado: produto sem peso não aparece (Léo, 10/10)', () => {
+    const comFrete = {
+      ...vitrineNoAr,
+      empresa: { ...vitrineNoAr.empresa, config: { frete: { ativo: true } } },
+    };
+    const linha = (id: string, pesos: Array<number | null>) => ({
+      id: `ml-${id}`,
+      linhaId: `lin-${id}`,
+      linha: { nome: id, ordem: 0, ativo: true },
+      precoEntrada: new Prisma.Decimal(45),
+      precoVolume: null,
+      precoAtacadao: null,
+      precoSugerido: null,
+      tabelaMedidas: null,
+      tamanhos: pesos.map((p, i) => ({
+        id: `mt-${id}-${i}`,
+        tamanhoId: `t-${i}`,
+        pesoGramas: p,
+        tamanho: { nome: `T${i}`, ordem: i },
+      })),
+    });
+
+    it('tamanho sem peso sai; linha sem nenhum peso sai; modelo sem linha sai', async () => {
+      const prisma = makePrisma(comFrete, [
+        modelo({ id: 'parcial', linhas: [linha('reg', [300, null]), linha('inf', [null, null])] }),
+        modelo({ id: 'sem-peso', linhas: [linha('reg', [null, 0])] }),
+      ]);
+      const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);
+      const r = await svc.carregar('atacado-ribelt');
+
+      expect(r.modelos.map((m) => m.id)).toEqual(['parcial']);
+      expect(r.modelos[0].linhas.map((l) => l.nome)).toEqual(['reg']);
+      expect(r.modelos[0].linhas[0].tamanhos.map((t) => t.nome)).toEqual(['T0']);
+      // o peso em si não vai pro público
+      expect(JSON.stringify(r)).not.toContain('pesoGramas');
+    });
+
+    it('frete DESLIGADO: peso não importa, tudo aparece como antes', async () => {
+      const prisma = makePrisma(vitrineNoAr, [
+        modelo({ id: 'sem-peso', linhas: [linha('reg', [null, null])] }),
+      ]);
+      const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);
+      const r = await svc.carregar('atacado-ribelt');
+      expect(r.modelos.map((m) => m.id)).toEqual(['sem-peso']);
+      expect(r.modelos[0].linhas[0].tamanhos).toHaveLength(2);
+    });
+  });
+
   it('não vaza dado interno: sem produtoId, SKU, estoque ou config da empresa', async () => {
     const prisma = makePrisma(vitrineNoAr, [modelo()]);
     const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);

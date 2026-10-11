@@ -89,6 +89,13 @@ export class VitrinePublicaService {
       },
     });
 
+    // Frete LIGADO: tamanho sem peso não é oferecido — sem peso o frete não cota
+    // e o pedido perderia o pagamento online. Linha sem tamanho com peso some, e
+    // modelo sem linha some (Léo, 10/10: "esconder o produto"). Volta sozinho
+    // quando o peso é cadastrado. Frete desligado: o peso não faz falta.
+    const freteLigado = configFrete(vitrine.empresa.config).ativo === true;
+    const vendavel = (t: { pesoGramas: number | null }) => !freteLigado || (t.pesoGramas ?? 0) > 0;
+
     const publicos = modelos
       .map((m) => ({
         id: m.id,
@@ -123,13 +130,14 @@ export class VitrinePublicaService {
           })),
         })),
         linhas: m.linhas
-          .filter((l) => l.tamanhos.length > 0)
+          .filter((l) => l.tamanhos.some(vendavel))
           .sort((a, b) => a.linha.ordem - b.linha.ordem || a.linha.nome.localeCompare(b.linha.nome))
           .map((l) => ({
             id: l.id,
             linhaId: l.linhaId,
             nome: l.linha.nome,
             tamanhos: l.tamanhos
+              .filter(vendavel)
               .sort(
                 (a, b) =>
                   a.tamanho.ordem - b.tamanho.ordem || a.tamanho.nome.localeCompare(b.tamanho.nome),
