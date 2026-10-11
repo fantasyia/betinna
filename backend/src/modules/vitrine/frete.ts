@@ -51,6 +51,40 @@ export interface ConfigFrete {
     endereco?: string;
     horario?: string;
   } | null;
+  /** Quem envia — vai na etiqueta do Melhor Envio (Léo, 11/10). */
+  remetente?: Remetente | null;
+}
+
+/** Dados do remetente (empresa) que o Melhor Envio exige na etiqueta. */
+export interface Remetente {
+  nome?: string;
+  cnpj?: string;
+  telefone?: string;
+  email?: string;
+  cep?: string;
+  endereco?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+}
+
+/** O que falta no remetente pra emitir etiqueta (vazio = completo). */
+export function faltandoNoRemetente(r: Remetente | null | undefined): string[] {
+  const x = r ?? {};
+  const falta: string[] = [];
+  if (!x.nome?.trim()) falta.push('razão social');
+  if (soDigitos(x.cnpj).length !== 14) falta.push('CNPJ');
+  if (soDigitos(x.telefone).length < 10) falta.push('telefone');
+  if (!x.email?.includes('@')) falta.push('e-mail');
+  if (soDigitos(x.cep).length !== 8) falta.push('CEP');
+  if (!x.endereco?.trim()) falta.push('rua');
+  if (!x.numero?.trim()) falta.push('número');
+  if (!x.bairro?.trim()) falta.push('bairro');
+  if (!x.cidade?.trim()) falta.push('cidade');
+  if (!/^[A-Za-z]{2}$/.test(x.uf ?? '')) falta.push('UF');
+  return falta;
 }
 
 /** Sugestão da tela no primeiro uso (decisões do Léo, 07/10). Não é regra: é o que vem preenchido. */
@@ -247,3 +281,54 @@ export function retiradaLiberada(cfg: ConfigFrete, totalPecas: number): boolean 
 }
 
 export const soDigitos = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '');
+
+/**
+ * Transportadoras que NÃO aceitam várias caixas no mesmo envio (doc do Melhor
+ * Envio): pra elas, cada caixa vira um envio (uma etiqueta) no carrinho.
+ */
+export function umaCaixaPorEnvio(transportadora: string): boolean {
+  return /correios|j\s*&\s*t|jet|loggi/i.test(transportadora);
+}
+
+export interface ItemDeclarado {
+  nome: string;
+  quantidade: number;
+  /** Valor unitário em centavos. */
+  unitarioC: number;
+}
+
+export interface CaixaDoPedido {
+  comprimentoCm: number;
+  larguraCm: number;
+  alturaCm: number;
+  pesoKg: number;
+  pecas: number;
+}
+
+/**
+ * Divide as peças declaradas entre as caixas, na ordem dos itens: a caixa com
+ * N peças leva as próximas N. Assim a declaração de conteúdo de CADA etiqueta
+ * bate com o que vai dentro dela (DC-e). Sobra (arredondamento) vai na última.
+ */
+export function pecasPorCaixa(
+  itens: ItemDeclarado[],
+  caixas: Array<{ pecas: number }>,
+): ItemDeclarado[][] {
+  const fila: Array<{ nome: string; unitarioC: number }> = [];
+  for (const it of itens) for (let i = 0; i < it.quantidade; i++) fila.push(it);
+  const out: ItemDeclarado[][] = [];
+  let pos = 0;
+  caixas.forEach((c, idx) => {
+    const fim = idx === caixas.length - 1 ? fila.length : Math.min(fila.length, pos + c.pecas);
+    const mapa = new Map<string, ItemDeclarado>();
+    for (const p of fila.slice(pos, fim)) {
+      const k = `${p.nome}|${p.unitarioC}`;
+      const a = mapa.get(k) ?? { nome: p.nome, unitarioC: p.unitarioC, quantidade: 0 };
+      a.quantidade++;
+      mapa.set(k, a);
+    }
+    out.push([...mapa.values()]);
+    pos = fim;
+  });
+  return out;
+}

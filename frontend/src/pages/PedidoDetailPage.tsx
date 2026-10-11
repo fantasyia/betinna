@@ -104,6 +104,27 @@ interface PedidoDetail {
   separacaoEm?: string | null;
   canceladoEm?: string | null;
   cancelMotivo?: string | null;
+  /** Entrega do pedido da vitrine (frete do Melhor Envio) + estado da etiqueta. */
+  entrega?: {
+    retirada?: boolean;
+    freteAConfirmar?: boolean;
+    servico?: { id: number; nome: string; transportadora: string };
+    valor?: number;
+    volumes?: Array<{ embalagem: string; pecas: number; pesoKg: number }>;
+    etiqueta?: { compradaEm?: string; impressaEm?: string; totalC?: number | null };
+  } | null;
+}
+
+/** Pedido que pode ter etiqueta do Melhor Envio impressa pelo app (Léo, 11/10). */
+export function podeImprimirEtiqueta(p: PedidoDetail | null | undefined): boolean {
+  const e = p?.entrega;
+  return (
+    !!e?.servico?.id &&
+    !e.retirada &&
+    !e.freteAConfirmar &&
+    !!p &&
+    ['PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(p.status)
+  );
 }
 
 const STATUS_LABEL: Record<PedidoStatus, string> = {
@@ -178,6 +199,7 @@ export default function PedidoDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const [etiquetaOpen, setEtiquetaOpen] = useState(false);
 
   async function callAction(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -208,6 +230,29 @@ export default function PedidoDetailPage() {
             motivo: cancelMotivo.trim(),
           }),
     );
+  /**
+   * Etiqueta do Melhor Envio (Léo, 11/10): compra com o saldo da carteira (uma
+   * vez só — o backend lembra) e abre o PDF. A aba é aberta NO CLIQUE (antes da
+   * espera), senão o navegador bloqueia como pop-up.
+   */
+  async function imprimirEtiqueta() {
+    const aba = window.open('about:blank', '_blank');
+    setBusy('etiqueta');
+    setActionError(null);
+    try {
+      const r = await api.post<{ url: string }>(`/vitrine/admin/pedidos/${id}/etiqueta`);
+      if (aba) aba.location.href = r.url;
+      else window.location.href = r.url;
+      refetch();
+    } catch (err) {
+      aba?.close();
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao emitir a etiqueta');
+    } finally {
+      setBusy(null);
+    }
+  }
+  const etiquetaComprada = !!data?.entrega?.etiqueta?.compradaEm;
+
   /**
    * Duplicar usa o endpoint dedicado do backend (POST /pedidos/:id/duplicar)
    * que recalcula preços e seta pedidoOrigemId pra rastreabilidade.
@@ -305,6 +350,18 @@ export default function PedidoDetailPage() {
               data-testid="pedido-editar"
             >
               Editar
+            </Button>
+          )}
+          {podeCancelarDireto && podeImprimirEtiqueta(data) && (
+            <Button
+              variant={etiquetaComprada ? 'secondary' : 'primary'}
+              size="md"
+              data-testid="pedido-etiqueta"
+              loading={busy === 'etiqueta'}
+              onClick={() => (etiquetaComprada ? void imprimirEtiqueta() : setEtiquetaOpen(true))}
+              leftIcon={<Truck className="h-3.5 w-3.5" />}
+            >
+              {etiquetaComprada ? 'Reimprimir etiqueta' : 'Imprimir etiqueta'}
             </Button>
           )}
           {data?.status === 'RASCUNHO' && (
@@ -614,6 +671,50 @@ export default function PedidoDetailPage() {
           }}
         />
       )}
+
+      {/* Etiqueta: confirma a COMPRA (debita o saldo do Melhor Envio). */}
+      <Dialog
+        open={etiquetaOpen}
+        onClose={() => setEtiquetaOpen(false)}
+        title="Comprar e imprimir a etiqueta?"
+        description="A etiqueta é paga com o saldo da carteira do Melhor Envio. Reimprimir depois não cobra de novo."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEtiquetaOpen(false)}>
+              Voltar
+            </Button>
+            <Button
+              data-testid="pedido-etiqueta-confirmar"
+              onClick={() => {
+                setEtiquetaOpen(false);
+                void imprimirEtiqueta();
+              }}
+              leftIcon={<Truck className="h-3.5 w-3.5" />}
+            >
+              Comprar e imprimir
+            </Button>
+          </>
+        }
+      >
+        {data?.entrega?.servico && (
+          <div className="text-sm text-text-subtle flex flex-col gap-1">
+            <p>
+              <strong className="text-text">
+                {data.entrega.servico.transportadora} {data.entrega.servico.nome}
+              </strong>
+              {typeof data.entrega.valor === 'number' && (
+                <> · cotado em {fmtBRL(data.entrega.valor)} na compra</>
+              )}
+            </p>
+            <p>
+              {data.entrega.volumes?.length ?? 1}{' '}
+              {(data.entrega.volumes?.length ?? 1) === 1 ? 'caixa' : 'caixas'}, com declaração de
+              conteúdo. O valor final é o do Melhor Envio na hora (pode mudar alguns centavos).
+            </p>
+          </div>
+        )}
+      </Dialog>
 
       {/* Cancel dialog */}
       <Dialog

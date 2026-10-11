@@ -48,6 +48,27 @@ describe('formDoStatus', () => {
   });
 });
 
+describe('remetente da etiqueta (Léo, 11/10)', () => {
+  it('vem da config salva e VOLTA no corpo do PUT (senão o Salvar apagaria)', () => {
+    const f = formDoStatus({
+      conectado: true,
+      config: { remetente: { nome: 'Ribelt Têxtil', cnpj: '31183032000101', uf: 'SP' } },
+      sugestao,
+      falta: [],
+    });
+    expect(f.remetente.nome).toBe('Ribelt Têxtil');
+    expect(f.remetente.cidade).toBe('');
+    f.remetente.cidade = '  Mairiporã ';
+    const r = corpoDoForm(f);
+    expect(r.ok && r.corpo.remetente).toMatchObject({
+      nome: 'Ribelt Têxtil',
+      cnpj: '31183032000101',
+      uf: 'SP',
+      cidade: 'Mairiporã',
+    });
+  });
+});
+
 describe('corpoDoForm', () => {
   const base = () => {
     const f = formDoStatus({ conectado: true, config: {}, sugestao, falta: [] });

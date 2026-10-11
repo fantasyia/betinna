@@ -228,6 +228,27 @@ export const freteConfigSchema = z.object({
     endereco: z.string().trim().max(240),
     horario: z.string().trim().max(160),
   }),
+  /**
+   * Remetente da etiqueta (Léo, 11/10). Pode ficar incompleto aqui — quem
+   * cobra completo é a hora de imprimir (`faltandoNoRemetente`).
+   */
+  remetente: z
+    .object({
+      nome: z.string().trim().max(120),
+      cnpj: z.string().trim().max(20),
+      telefone: z.string().trim().max(20),
+      email: z.string().trim().max(120),
+      cep: z.string().trim().max(10),
+      endereco: z.string().trim().max(160),
+      numero: z.string().trim().max(20),
+      complemento: z.string().trim().max(80),
+      bairro: z.string().trim().max(80),
+      cidade: z.string().trim().max(80),
+      uf: z.string().trim().max(2),
+    })
+    .partial()
+    .nullable()
+    .optional(),
 });
 export type FreteConfigDto = z.infer<typeof freteConfigSchema>;
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -31,6 +31,7 @@ import {
 } from './vitrine.dto';
 import { VitrineAdminService } from './vitrine-admin.service';
 import { FreteService } from './frete.service';
+import { EtiquetaService } from './etiqueta.service';
 import { PrivacidadeService } from './privacidade.service';
 import { MetaPixelService } from './meta-pixel.service';
 
@@ -49,6 +50,7 @@ export class VitrineAdminController {
   constructor(
     private readonly svc: VitrineAdminService,
     private readonly frete: FreteService,
+    private readonly etiqueta: EtiquetaService,
     private readonly privacidade: PrivacidadeService,
     private readonly pixel: MetaPixelService,
   ) {}
@@ -101,6 +103,17 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(freteConfigSchema)) dto: FreteConfigDto,
   ) {
     return this.frete.salvar(user, dto);
+  }
+
+  /**
+   * Etiqueta do Melhor Envio do pedido (Léo, 11/10): carrinho → compra com o
+   * saldo → geração → link do PDF. Repetir NÃO compra de novo (reimprime).
+   */
+  @Post('pedidos/:pedidoId/etiqueta')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Compra (uma vez) e imprime a etiqueta do Melhor Envio do pedido' })
+  etiquetaDoPedido(@CurrentUser() user: AuthenticatedUser, @Param('pedidoId') pedidoId: string) {
+    return this.etiqueta.imprimir(user, pedidoId);
   }
 
   @Post('frete/simular')

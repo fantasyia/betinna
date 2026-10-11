@@ -35,7 +35,24 @@ export interface ConfigFreteApi {
   embalagemIndividual?: Embalagem | null;
   caixas?: Embalagem[];
   retirada?: { ativo?: boolean; minimoPecas?: number; endereco?: string; horario?: string } | null;
+  remetente?: Partial<Record<CampoRemetente, string>> | null;
 }
+
+/** Remetente da etiqueta do Melhor Envio (Léo, 11/10). */
+export const CAMPOS_REMETENTE = [
+  { k: 'nome', rotulo: 'Razão social', largura: 'w-72' },
+  { k: 'cnpj', rotulo: 'CNPJ', largura: 'w-44' },
+  { k: 'telefone', rotulo: 'Telefone', largura: 'w-40' },
+  { k: 'email', rotulo: 'E-mail', largura: 'w-64' },
+  { k: 'cep', rotulo: 'CEP', largura: 'w-28' },
+  { k: 'endereco', rotulo: 'Rua', largura: 'w-72' },
+  { k: 'numero', rotulo: 'Número', largura: 'w-24' },
+  { k: 'complemento', rotulo: 'Complemento', largura: 'w-40' },
+  { k: 'bairro', rotulo: 'Bairro', largura: 'w-48' },
+  { k: 'cidade', rotulo: 'Cidade', largura: 'w-48' },
+  { k: 'uf', rotulo: 'UF', largura: 'w-16' },
+] as const;
+type CampoRemetente = (typeof CAMPOS_REMETENTE)[number]['k'];
 
 interface StatusFrete {
   conectado: boolean;
@@ -70,6 +87,7 @@ export interface FreteForm {
   retiradaMinimo: string;
   retiradaEndereco: string;
   retiradaHorario: string;
+  remetente: Record<CampoRemetente, string>;
 }
 
 const txt = (n: number | null | undefined) =>
@@ -113,6 +131,9 @@ export function formDoStatus(s: StatusFrete): FreteForm {
     retiradaMinimo: txt(c.retirada?.minimoPecas ?? s.sugestao.retiradaMinimoPecas),
     retiradaEndereco: c.retirada?.endereco ?? '',
     retiradaHorario: c.retirada?.horario ?? '',
+    remetente: Object.fromEntries(
+      CAMPOS_REMETENTE.map(({ k }) => [k, c.remetente?.[k] ?? '']),
+    ) as Record<CampoRemetente, string>,
   };
 }
 
@@ -205,6 +226,11 @@ export function corpoDoForm(f: FreteForm): { ok: true; corpo: Record<string, unk
         endereco: f.retiradaEndereco.trim(),
         horario: f.retiradaHorario.trim(),
       },
+      // Sempre junto: o PUT grava a config do frete INTEIRA — sem isto o
+      // "Salvar" apagaria o remetente.
+      remetente: Object.fromEntries(
+        CAMPOS_REMETENTE.map(({ k }) => [k, (f.remetente[k] ?? '').trim()]),
+      ),
     },
   };
 }
@@ -449,6 +475,26 @@ export function FreteConfig() {
             </Field>
           </div>
         )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium text-text">Remetente da etiqueta</p>
+        <p className="text-xs text-muted">
+          Vai na etiqueta do Melhor Envio (botão “Imprimir etiqueta” no pedido). Envio com
+          declaração de conteúdo.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          {CAMPOS_REMETENTE.map((c) => (
+            <Field key={c.k} label={c.rotulo}>
+              <Input
+                value={f.remetente[c.k]}
+                onChange={(e) => mudar({ remetente: { ...f.remetente, [c.k]: e.target.value } })}
+                className={`h-9 ${c.largura}`}
+                data-testid={`frete-remetente-${c.k}`}
+              />
+            </Field>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">

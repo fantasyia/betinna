@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import { MelhorEnvioClient } from '@integrations/melhorenvio/melhorenvio.client';
+import {
+  MelhorEnvioClient,
+  MelhorEnvioEtiquetaClient,
+  type MelhorEnvioEtiquetas,
+} from '@integrations/melhorenvio/melhorenvio.client';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -72,6 +76,29 @@ export class FreteService {
   /** Injetável nos testes. */
   protected cliente(token: string, ambiente: AmbienteFrete, email: string): MelhorEnvioClient {
     return new MelhorEnvioClient(token, ambiente, email);
+  }
+
+  /** Injetável nos testes. */
+  protected clienteEtiqueta(
+    token: string,
+    ambiente: AmbienteFrete,
+    email: string,
+  ): MelhorEnvioEtiquetas {
+    return new MelhorEnvioEtiquetaClient(token, ambiente, email);
+  }
+
+  /** Etiqueta: a API (com o token da empresa) e a config do frete. */
+  async paraEtiqueta(empresaId: string): Promise<{ me: MelhorEnvioEtiquetas; cfg: ConfigFrete }> {
+    const [cfg, cred] = await Promise.all([
+      this.configDaEmpresa(empresaId),
+      this.credenciais(empresaId),
+    ]);
+    if (!cred?.token)
+      throw regra('Conecte o Melhor Envio em Integrações antes de imprimir etiqueta');
+    return {
+      me: this.clienteEtiqueta(cred.token, cfg.ambiente ?? 'producao', cred.email ?? ''),
+      cfg,
+    };
   }
 
   private empresaDo(user: AuthenticatedUser): string {

@@ -31,6 +31,7 @@ const PEDIDO = {
 };
 
 let papel = 'DIRECTOR';
+let pedidoAtual: Record<string, unknown> = PEDIDO;
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
@@ -45,7 +46,7 @@ vi.mock('@/hooks/usePermission', () => ({
 }));
 
 vi.mock('@/hooks/useApiQuery', () => ({
-  useApiQuery: () => ({ data: PEDIDO, loading: false, error: null, refetch: vi.fn() }),
+  useApiQuery: () => ({ data: pedidoAtual, loading: false, error: null, refetch: vi.fn() }),
 }));
 
 vi.mock('@/components/toast', () => ({
@@ -156,5 +157,68 @@ describe('PedidoDetailPage — cancelamento por papel', () => {
     render(<PedidoDetailPage />);
     expect(screen.queryByTestId('pedido-page-cancelar')).toBeNull();
     PEDIDO.status = 'ENVIADO_ERP'; // restaura pros demais testes
+  });
+});
+
+describe('etiqueta do Melhor Envio (Léo, 11/10)', () => {
+  const comFrete = (extra: Record<string, unknown> = {}) => ({
+    ...PEDIDO,
+    status: 'PAGO',
+    entrega: {
+      servico: { id: 3, nome: '.Package', transportadora: 'Jadlog' },
+      valor: 84.55,
+      volumes: [{ embalagem: 'Caixa grande', pecas: 50, pesoKg: 10.2 }],
+      ...extra,
+    },
+  });
+  beforeEach(() => {
+    papel = 'DIRECTOR';
+    postMock.mockClear();
+  });
+  afterEach(() => {
+    pedidoAtual = PEDIDO;
+  });
+
+  it('pago com frete do Melhor Envio: confirma a compra, chama a rota e abre a aba', async () => {
+    pedidoAtual = comFrete();
+    const aba = { location: { href: '' }, close: vi.fn() };
+    const abrir = vi.spyOn(window, 'open').mockReturnValue(aba as unknown as Window);
+    postMock.mockResolvedValueOnce({ url: 'https://melhorenvio/imprimir/x' } as never);
+    render(<PedidoDetailPage />);
+    fireEvent.click(screen.getByTestId('pedido-etiqueta'));
+    expect(postMock).not.toHaveBeenCalled(); // primeiro confirma (debita o saldo)
+    fireEvent.click(screen.getByTestId('pedido-etiqueta-confirmar'));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith('/vitrine/admin/pedidos/ped-1/etiqueta'));
+    await waitFor(() => expect(aba.location.href).toBe('https://melhorenvio/imprimir/x'));
+    expect(abrir).toHaveBeenCalled();
+    abrir.mockRestore();
+  });
+
+  it('já comprada: "Reimprimir" vai direto, sem confirmação de compra', async () => {
+    pedidoAtual = comFrete({ etiqueta: { compradaEm: '2026-10-11T19:00:00Z' } });
+    const abrir = vi.spyOn(window, 'open').mockReturnValue({ location: { href: '' }, close: vi.fn() } as unknown as Window);
+    postMock.mockResolvedValueOnce({ url: 'https://melhorenvio/imprimir/x' } as never);
+    render(<PedidoDetailPage />);
+    expect(screen.getByTestId('pedido-etiqueta').textContent).toContain('Reimprimir');
+    fireEvent.click(screen.getByTestId('pedido-etiqueta'));
+    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+    abrir.mockRestore();
+  });
+
+  it('sem botão: retirada, frete a combinar, não pago ou quem não é diretor', () => {
+    for (const p of [
+      comFrete({ retirada: true }),
+      comFrete({ freteAConfirmar: true }),
+      { ...comFrete(), status: 'RASCUNHO' },
+    ]) {
+      pedidoAtual = p;
+      render(<PedidoDetailPage />);
+      expect(screen.queryByTestId('pedido-etiqueta')).toBeNull();
+      cleanup();
+    }
+    pedidoAtual = comFrete();
+    papel = 'REP';
+    render(<PedidoDetailPage />);
+    expect(screen.queryByTestId('pedido-etiqueta')).toBeNull();
   });
 });

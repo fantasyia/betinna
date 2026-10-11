@@ -3,7 +3,8 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AmbienteFrete, OpcaoCotada } from '@modules/vitrine/frete';
 
 /**
- * Melhor Envio — só a COTAÇÃO (POST /api/v2/me/shipment/calculate).
+ * Melhor Envio — COTAÇÃO (POST /api/v2/me/shipment/calculate) e ETIQUETA
+ * (carrinho → compra com o saldo da carteira → geração → impressão).
  *
  *  - produção `https://melhorenvio.com.br`, sandbox `https://sandbox.melhorenvio.com.br`;
  *    token de um ambiente não vale no outro (401);
@@ -116,6 +117,122 @@ export class MelhorEnvioClient {
     }
     return out;
   }
+}
+
+/** Um envio pro carrinho do Melhor Envio (corpo de POST /api/v2/me/cart). */
+export interface EnvioCarrinho {
+  service: number;
+  from: Record<string, string>;
+  to: Record<string, string>;
+  products: Array<{ name: string; quantity: string; unitary_value: string }>;
+  volumes: Array<{ height: number; width: number; length: number; weight: number }>;
+  options: Record<string, unknown>;
+}
+
+export interface MelhorEnvioEtiquetas {
+  adicionarAoCarrinho(envio: EnvioCarrinho): Promise<{ id: string; precoC: number | null }>;
+  comprar(ids: string[]): Promise<{ totalC: number | null }>;
+  gerar(ids: string[]): Promise<Array<{ id: string; ok: boolean; mensagem: string }>>;
+  imprimir(ids: string[]): Promise<string>;
+}
+
+/**
+ * Etiqueta: os 4 passos da API. Cada um é chamado em separado pelo serviço,
+ * que grava no pedido o que já foi feito — clicar de novo continua de onde
+ * parou e NUNCA compra duas vezes.
+ */
+export class MelhorEnvioEtiquetaClient implements MelhorEnvioEtiquetas {
+  constructor(
+    private readonly token: string,
+    readonly ambiente: AmbienteFrete,
+    private readonly emailTecnico: string,
+    private readonly fetchFn: typeof fetch = fetch,
+  ) {
+    if (!token.trim()) {
+      throw new IntegrationException('Token do Melhor Envio vazio', ErrorCode.INTEGRATION_ERROR);
+    }
+  }
+
+  private async post(caminho: string, body: unknown, rotulo: string): Promise<unknown> {
+    const r = await this.fetchFn(`${BASE[this.ambiente]}/api/v2/me${caminho}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.token}`,
+        'User-Agent': `Betinna.ai (${this.emailTecnico || 'sem e-mail'})`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+      redirect: 'error',
+    });
+    const texto = await r.text();
+    let json: unknown = null;
+    try {
+      json = texto ? JSON.parse(texto) : null;
+    } catch {
+      json = null;
+    }
+    if (!r.ok) {
+      const msg =
+        r.status === 401
+          ? 'O Melhor Envio recusou o token (inválido, vencido, de outro ambiente ou sem a permissão)'
+          : r.status === 422
+            ? `${rotulo}: ${resumoErros(json)}`
+            : `${rotulo}: o Melhor Envio respondeu ${r.status}${mensagemDe(json)}`;
+      throw new IntegrationException(msg, ErrorCode.INTEGRATION_ERROR);
+    }
+    return json;
+  }
+
+  async adicionarAoCarrinho(envio: EnvioCarrinho) {
+    const j = (await this.post('/cart', envio, 'Carrinho do Melhor Envio')) as {
+      id?: string;
+      price?: string | number;
+    } | null;
+    if (!j?.id) {
+      throw new IntegrationException(
+        'O Melhor Envio não devolveu o id do envio no carrinho',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    return { id: j.id, precoC: centavos(j.price) };
+  }
+
+  async comprar(ids: string[]) {
+    const j = (await this.post('/shipment/checkout', { orders: ids }, 'Compra da etiqueta')) as {
+      purchase?: { total?: string | number };
+    } | null;
+    return { totalC: centavos(j?.purchase?.total) };
+  }
+
+  async gerar(ids: string[]) {
+    const j = ((await this.post('/shipment/generate', { orders: ids }, 'Geração da etiqueta')) ??
+      {}) as Record<string, { status?: boolean; message?: string }>;
+    return ids.map((id) => ({
+      id,
+      ok: j[id]?.status === true,
+      mensagem: j[id]?.message ?? 'sem resposta pra este envio',
+    }));
+  }
+
+  async imprimir(ids: string[]) {
+    const j = (await this.post('/shipment/print', { orders: ids }, 'Impressão da etiqueta')) as {
+      url?: string;
+    } | null;
+    if (!j?.url) {
+      throw new IntegrationException(
+        'O Melhor Envio não devolveu o link de impressão',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    return j.url;
+  }
+}
+
+function mensagemDe(json: unknown): string {
+  const m = (json as { message?: unknown; error?: unknown } | null)?.message;
+  return typeof m === 'string' && m ? ` — ${m.slice(0, 160)}` : '';
 }
 
 function resumoErros(json: unknown): string {
