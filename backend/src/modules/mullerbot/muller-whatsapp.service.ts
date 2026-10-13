@@ -43,6 +43,17 @@ const FALLBACK_MSG = 'Recebi sua mensagem. Estou verificando e já te retorno.';
 const TIMEOUT_MS = 15_000;
 const SPAM_LIMITE = 10; // msgs
 const SPAM_JANELA_MS = 60_000; // por minuto
+
+/**
+ * Chave Redis da janela anti-spam do peer. O peer é o JID — o TELEFONE do
+ * cliente —, e a auto-instrumentação do Sentry escreve o comando do Redis,
+ * chave inclusa, na descrição do span: ~760 telefones/semana iam pro Sentry
+ * (card de 08/10). O hash mantém uma chave por peer sem guardar o número.
+ */
+export function chaveAntiSpam(empresaId: string, peerId: string): string {
+  const peer = createHash('sha256').update(peerId).digest('hex').slice(0, 32);
+  return `bot:spam:${empresaId}:${peer}`;
+}
 // Nome (case-insensitive) da tag que silencia o bot na rede de segurança (3.6).
 const TAG_ENCERRADO = 'Encerrado';
 const HISTORICO_MAX = 10;
@@ -1191,7 +1202,7 @@ export class MullerWhatsappService implements OnModuleInit {
    * lock sem serem contadas e o gate nunca dispara. Fail-open se o Redis cair.
    */
   private async contarMensagemPeer(empresaId: string, peerId: string): Promise<number> {
-    const key = `bot:spam:${empresaId}:${peerId}`;
+    const key = chaveAntiSpam(empresaId, peerId);
     const ttl = Math.ceil(SPAM_JANELA_MS / 1000);
     try {
       const n = (await this.redis.eval(

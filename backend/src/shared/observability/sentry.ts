@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/node';
+import type { NodeOptions } from '@sentry/node';
 import { sanitize, sanitizarTexto } from '@shared/utils/sanitize-pii';
 import { redigirCaminho } from '@shared/utils/redigir-caminho';
 
@@ -18,6 +19,8 @@ import { redigirCaminho } from '@shared/utils/redigir-caminho';
  *    Redis — sem código manual. Spans aparecem na timeline do Performance.
  *  - `beforeSend` limpa o TEXTO da mensagem/exceção (PII escrito pelo nosso
  *    código), aplica `sanitize()` em data e remove `user.email/ip_address`
+ *  - `beforeSendTransaction`/`beforeSendSpan` passam transação e span pelo mesmo
+ *    filtro (o `beforeSend` só roda em ERRO) e derrubam o IP do visitante
  *  - Captura uncaught exceptions e unhandled rejections automaticamente
  */
 export function initSentry(): void {
@@ -67,57 +70,117 @@ export function initSentry(): void {
       for (const ex of event.exception?.values ?? []) {
         if (typeof ex.value === 'string') ex.value = sanitizarTexto(ex.value);
       }
-      // Strip PII do usuário (mesmo que sendDefaultPii=false, defesa em profundidade)
-      if (event.user) {
-        delete event.user.email;
-        delete event.user.ip_address;
-        delete event.user.username;
-      }
-      // Sanitiza extra/contexts (que podem conter payloads de jobs/requests)
-      if (event.extra) {
-        event.extra = sanitize(event.extra) as Record<string, unknown>;
-      }
-      if (event.contexts) {
-        event.contexts = sanitize(event.contexts) as Record<string, Record<string, unknown>>;
-      }
-      // Strip tokens de breadcrumbs
-      if (event.breadcrumbs) {
-        event.breadcrumbs = event.breadcrumbs.map((b) => ({
-          ...b,
-          data: b.data ? (sanitize(b.data) as Record<string, unknown>) : undefined,
-        }));
-      }
-      // O CAMINHO da request carrega segredo (Tiny na URL, token legado do
-      // Evolution, `t=` do descadastro). `request.url`/`query_string` vêm da
-      // requestDataIntegration e não passavam pelo `redigirCaminho` — só o
-      // `meta.path` do filtro de exceção passava. Auditoria 29/09/2026.
-      if (event.request?.url) {
-        event.request.url = redigirCaminho(event.request.url);
-      }
-      if (typeof event.request?.query_string === 'string') {
-        event.request.query_string = event.request.query_string.replace(
-          /(^|&)t=[^&]+/g,
-          '$1t=[REDACTED]',
-        );
-      }
-      // Corpo da request (webhooks trazem telefone/e-mail do cliente): mesma
-      // sanitização por chave que extra/contexts já recebem.
-      if (event.request?.data && typeof event.request.data === 'object') {
-        event.request.data = sanitize(event.request.data) as Record<string, unknown>;
-      }
-      // Strip Authorization header de requests capturados
-      if (event.request?.headers) {
-        const h = event.request.headers as Record<string, string>;
-        if (h.authorization) h.authorization = '[REDACTED]';
-        if (h.Authorization) h.Authorization = '[REDACTED]';
-        if (h.cookie) h.cookie = '[REDACTED]';
-      }
-      return event;
+      return limparComum(event);
     },
+    // Transação e span NÃO passam pelo beforeSend — no SDK ele só roda em
+    // evento de ERRO. Sem estes dois, o filtro inteiro ficava fora da
+    // telemetria de desempenho (card de 08/10: ~760 spans/semana com o JID
+    // cru, vindo do comando do Redis que a auto-instrumentação descreve).
+    beforeSendTransaction: (event) => limparTransacao(event),
+    beforeSendSpan: (span) => limparSpan(span),
   });
 
   // eslint-disable-next-line no-console
   console.log(`Sentry inicializado (env=${env})`);
+}
+
+type EventoDeErro = Parameters<NonNullable<NodeOptions['beforeSend']>>[0];
+type Transacao = Parameters<NonNullable<NodeOptions['beforeSendTransaction']>>[0];
+type Span = Parameters<NonNullable<NodeOptions['beforeSendSpan']>>[0];
+
+/**
+ * O que vale pros DOIS tipos de evento que carregam request/usuário: erro e
+ * transação. Antes morava dentro do beforeSend, e por isso só o erro passava.
+ */
+function limparComum<T extends EventoDeErro | Transacao>(event: T): T {
+  // Strip PII do usuário (mesmo que sendDefaultPii=false, defesa em profundidade)
+  if (event.user) {
+    delete event.user.email;
+    delete event.user.ip_address;
+    delete event.user.username;
+  }
+  // Sanitiza extra/contexts (que podem conter payloads de jobs/requests)
+  if (event.extra) {
+    event.extra = sanitize(event.extra) as Record<string, unknown>;
+  }
+  if (event.contexts) {
+    event.contexts = sanitize(event.contexts) as Record<string, Record<string, unknown>>;
+  }
+  // Strip tokens de breadcrumbs
+  if (event.breadcrumbs) {
+    event.breadcrumbs = event.breadcrumbs.map((b) => ({
+      ...b,
+      data: b.data ? (sanitize(b.data) as Record<string, unknown>) : undefined,
+    }));
+  }
+  // O CAMINHO da request carrega segredo (Tiny na URL, token legado do
+  // Evolution, `t=` do descadastro). `request.url`/`query_string` vêm da
+  // requestDataIntegration e não passavam pelo `redigirCaminho` — só o
+  // `meta.path` do filtro de exceção passava. Auditoria 29/09/2026.
+  if (event.request?.url) {
+    event.request.url = redigirCaminho(event.request.url);
+  }
+  if (typeof event.request?.query_string === 'string') {
+    event.request.query_string = event.request.query_string.replace(
+      /(^|&)t=[^&]+/g,
+      '$1t=[REDACTED]',
+    );
+  }
+  // Corpo da request (webhooks trazem telefone/e-mail do cliente): mesma
+  // sanitização por chave que extra/contexts já recebem.
+  if (event.request?.data && typeof event.request.data === 'object') {
+    event.request.data = sanitize(event.request.data) as Record<string, unknown>;
+  }
+  // Strip Authorization header de requests capturados
+  if (event.request?.headers) {
+    const h = event.request.headers as Record<string, string>;
+    if (h.authorization) h.authorization = '[REDACTED]';
+    if (h.Authorization) h.Authorization = '[REDACTED]';
+    if (h.cookie) h.cookie = '[REDACTED]';
+  }
+  return event;
+}
+
+/** IP do visitante: vai cru nesses atributos apesar do `sendDefaultPii: false`. */
+const ATRIBUTOS_DE_IP = ['client.address', 'http.client_ip'];
+
+/** Texto livre de telemetria: segredo de caminho primeiro, depois PII. Sem regex nova. */
+function limparTextoLivre(texto: string): string {
+  return sanitizarTexto(redigirCaminho(texto));
+}
+
+/**
+ * Atributos de span (url.full, http.target, db.statement…). Todo valor de texto
+ * passa pelo mesmo filtro: `redigirCaminho` só casa caminho com segredo e
+ * `sanitizarTexto` não toca dígito solto, então id e trace chegam inteiros.
+ */
+function limparAtributos(dados: Record<string, unknown> | undefined): void {
+  if (!dados) return;
+  for (const chave of ATRIBUTOS_DE_IP) delete dados[chave];
+  for (const [chave, valor] of Object.entries(dados)) {
+    if (typeof valor === 'string') dados[chave] = limparTextoLivre(valor);
+  }
+}
+
+/** beforeSendSpan. Não pode devolver null (o SDK v10 não descarta span por aqui). */
+export function limparSpan(span: Span): Span {
+  if (typeof span.description === 'string') span.description = limparTextoLivre(span.description);
+  limparAtributos(span.data);
+  return span;
+}
+
+/**
+ * beforeSendTransaction: o nome da transação é o caminho concreto, o span raiz
+ * mora em `contexts.trace`, e os filhos em `spans` (limpos de novo aqui —
+ * idempotente, e não depende da ordem em que o SDK chama os dois ganchos).
+ */
+export function limparTransacao(event: Transacao): Transacao {
+  if (typeof event.transaction === 'string') {
+    event.transaction = limparTextoLivre(event.transaction);
+  }
+  limparAtributos(event.contexts?.trace?.data as Record<string, unknown> | undefined);
+  event.spans = event.spans?.map((s) => limparSpan(s));
+  return limparComum(event);
 }
 
 /**
