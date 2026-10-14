@@ -23,6 +23,7 @@ function montar(opts: { ligado?: boolean } = {}) {
         id: 'ml-1',
         modelo: { id: 'm-1', nome: 'Bermuda' },
         linha: { nome: 'Regular' },
+        tamanhos: ['P', 'M', 'G'].map((nome, ordem) => ({ tamanho: { nome, ordem } })),
       }),
       findMany: vi.fn().mockResolvedValue([]),
     },
@@ -156,6 +157,38 @@ describe('FichasService', () => {
     });
     expect(tx.fichaTecnicaItem.deleteMany).toHaveBeenCalledWith({ where: { fichaId: 'f-1' } });
     expect(tx.fichaTecnicaItem.createMany.mock.calls[0][0].data).toHaveLength(2);
+  });
+
+  it('14/10 elástico POR TAMANHO: grava o mapa e o consumo da grade vira a média', async () => {
+    const { svc, tx } = montar();
+    await svc.salvar(user as never, 'ml-1', {
+      observacoes: null,
+      itens: [
+        {
+          insumoId: 'tec',
+          consumoPorPeca: 9, // ignorado: com tamanhos, vale a média
+          observacao: null,
+          porTamanho: { P: 0.76, M: 0.8, G: 0.84 },
+        },
+        { insumoId: 'cord', consumoPorPeca: 1, observacao: null },
+      ],
+    });
+    const d = tx.fichaTecnicaItem.createMany.mock.calls[0][0].data[0];
+    expect(Number(d.consumoPorPeca)).toBeCloseTo(0.8, 4);
+    expect(d.porTamanho).toEqual({ P: 0.76, M: 0.8, G: 0.84 });
+  });
+
+  it('14/10: tamanho que não é da grade é recusado', async () => {
+    const { svc } = montar();
+    await expect(
+      svc.salvar(user as never, 'ml-1', {
+        observacoes: null,
+        itens: [
+          { insumoId: 'tec', consumoPorPeca: 1, observacao: null, porTamanho: { G1: 0.96 } },
+          { insumoId: 'cord', consumoPorPeca: 1, observacao: null },
+        ],
+      }),
+    ).rejects.toThrow(/fora da grade Regular: G1/);
   });
 
   it('cor fixa (cordão sempre Branco): o custo do item é o DAQUELA cor', async () => {

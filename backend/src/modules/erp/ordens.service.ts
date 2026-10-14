@@ -29,6 +29,8 @@ const regra = (msg: string) => new BusinessRuleException(msg, ErrorCode.BUSINESS
 export interface ItemFichaOp {
   insumoId: string;
   consumoPorPeca: number;
+  /** Quantidade por tamanho (elástico, 14/10). Tamanho fora dela = consumoPorPeca. */
+  porTamanho?: Map<string, number> | null;
   /** Cor fixada na ficha (cordão sempre Branco). */
   corFixaId?: string | null;
   /** Insumo com cores: corId da lista → id da cor DO insumo. null = sem cores. */
@@ -54,7 +56,8 @@ export interface Necessidade {
  * avisa). PURO.
  */
 export function necessidadesDaGrade(
-  pecas: Map<string, Map<string | null, number>>,
+  // Por cor: o total, ou as peças POR TAMANHO (pra ficha com quantidade por tamanho).
+  pecas: Map<string, Map<string | null, number | Map<string, number>>>,
   fichas: Map<string, ItemFichaOp[]>,
 ): Map<string, Necessidade> {
   const out = new Map<string, Necessidade>();
@@ -77,7 +80,13 @@ export function necessidadesDaGrade(
           quantidade: 0,
           semCor,
         };
-        atual.quantidade += qtd * i.consumoPorPeca;
+        atual.quantidade +=
+          typeof qtd === 'number'
+            ? qtd * i.consumoPorPeca
+            : [...qtd].reduce(
+                (s, [tam, q]) => s + q * (i.porTamanho?.get(tam) ?? i.consumoPorPeca),
+                0,
+              );
         out.set(k, atual);
       }
     }
@@ -216,6 +225,7 @@ export class OrdensService {
           select: {
             insumoId: true,
             consumoPorPeca: true,
+            porTamanho: true,
             corFixaId: true,
             insumo: {
               select: {
@@ -255,6 +265,9 @@ export class OrdensService {
           .map((i) => ({
             insumoId: i.insumoId,
             consumoPorPeca: Number(i.consumoPorPeca),
+            porTamanho: i.porTamanho
+              ? new Map(Object.entries(i.porTamanho as Record<string, number>))
+              : null,
             corFixaId: i.corFixaId,
             cores: i.insumo.cores.length
               ? new Map(i.insumo.cores.map((c) => [c.corId, c.id]))
@@ -297,14 +310,21 @@ export class OrdensService {
     return new Map(g.map((x) => [chaveSaldo(x.insumoId, x.insumoCorId), n(x._sum.quantidade)]));
   }
 
-  /** Peças por grade E cor da peça. */
+  /** Peças por grade, cor da peça e TAMANHO (a ficha pode ter quantidade por tamanho). */
   private pecasPorLinhaECor(
-    itens: Array<{ modeloLinhaId: string; corId: string | null; quantidade: number }>,
+    itens: Array<{
+      modeloLinhaId: string;
+      corId: string | null;
+      tamanho: string;
+      quantidade: number;
+    }>,
   ) {
-    const m = new Map<string, Map<string | null, number>>();
+    const m = new Map<string, Map<string | null, Map<string, number>>>();
     for (const i of itens) {
-      const porCor = m.get(i.modeloLinhaId) ?? new Map<string | null, number>();
-      porCor.set(i.corId, (porCor.get(i.corId) ?? 0) + i.quantidade);
+      const porCor = m.get(i.modeloLinhaId) ?? new Map<string | null, Map<string, number>>();
+      const porTam = porCor.get(i.corId) ?? new Map<string, number>();
+      porTam.set(i.tamanho, (porTam.get(i.tamanho) ?? 0) + i.quantidade);
+      porCor.set(i.corId, porTam);
       m.set(i.modeloLinhaId, porCor);
     }
     return m;
@@ -357,6 +377,7 @@ export class OrdensService {
         return {
           modeloLinhaId: v.modeloLinhaId,
           corId: v.modeloCor.corId,
+          tamanho: v.modeloTamanho.tamanho.nome,
           quantidade: i.quantidade,
         };
       }),
@@ -496,6 +517,7 @@ export class OrdensService {
         itens.map((i) => ({
           modeloLinhaId: i.modeloLinhaId,
           corId: i.corId,
+          tamanho: i.tamanho,
           quantidade: i[k] ?? 0,
         })),
       );

@@ -18,12 +18,15 @@ import { SIGLA, type Insumo } from '@/pages/insumos/insumo';
 interface FichaApi {
   modeloLinhaId: string;
   linha: string;
+  /** Tamanhos da grade, na ordem (14/10: quantidade por tamanho). */
+  tamanhos?: string[];
   existe: boolean;
   custoFaccaoPrevisto: number | null;
   observacoes: string | null;
   itens: Array<{
     insumoId: string;
     consumoPorPeca: number;
+    porTamanho?: Record<string, number> | null;
     observacao: string | null;
     corFixa: { id: string; nome: string; hex: string } | null;
   }>;
@@ -33,6 +36,10 @@ interface FichaApi {
 interface Linha {
   insumoId: string;
   consumo: string;
+  /** Quantidade POR TAMANHO (14/10: o elástico muda em cada um). null = um consumo só. */
+  porTamanho: Record<string, string> | null;
+  /** Vai e volta intacta (antes a tela apagava a observação ao salvar). */
+  observacao: string | null;
   /** Insumo com cores: '' = a cor da própria peça; senão a cor fixa (corId da lista). */
   corFixaId: string;
 }
@@ -73,7 +80,17 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
 
   useEffect(() => {
     if (!q.data) return;
-    setItens(q.data.itens.map((i) => ({ insumoId: i.insumoId, consumo: paraCampo(i.consumoPorPeca), corFixaId: i.corFixa?.id ?? '' })));
+    setItens(
+      q.data.itens.map((i) => ({
+        insumoId: i.insumoId,
+        consumo: paraCampo(i.consumoPorPeca),
+        porTamanho: i.porTamanho
+          ? Object.fromEntries(Object.entries(i.porTamanho).map(([t, v]) => [t, paraCampo(v)]))
+          : null,
+        observacao: i.observacao ?? null,
+        corFixaId: i.corFixa?.id ?? '',
+      })),
+    );
     setFaccao(paraCampo(q.data.custoFaccaoPrevisto));
     setObs(q.data.observacoes ?? '');
   }, [q.data]);
@@ -85,12 +102,19 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
     const fixa = l.corFixaId ? ins?.cores.find((c) => c.corId === l.corFixaId) : undefined;
     return fixa ? fixa.custoMedio : (ins?.custoMedio ?? 0);
   };
-  const custoItem = (l: Linha) => (lerNumero(l.consumo) ?? 0) * custoUnit(l);
+  const tamanhos = q.data?.tamanhos ?? [];
+  // Por tamanho: o consumo da grade é a média dos tamanhos preenchidos (o servidor confere).
+  const consumoDe = (l: Linha) => {
+    if (!l.porTamanho) return lerNumero(l.consumo) ?? 0;
+    const vs = Object.values(l.porTamanho).map((v) => lerNumero(v) ?? 0).filter((v) => v > 0);
+    return vs.length ? vs.reduce((s, v) => s + v, 0) / vs.length : 0;
+  };
+  const custoItem = (l: Linha) => consumoDe(l) * custoUnit(l);
   const custoInsumos = itens.reduce((s, l) => s + custoItem(l), 0);
   const total = custoInsumos + (lerNumero(faccao) ?? 0);
   const usados = new Set(itens.map((l) => l.insumoId));
   const livres = insumos.filter((i) => i.ativo && !usados.has(i.id));
-  const valido = itens.every((l) => l.insumoId && (lerNumero(l.consumo) ?? 0) > 0);
+  const valido = itens.every((l) => l.insumoId && consumoDe(l) > 0);
 
   async function salvar() {
     setSalvando(true);
@@ -98,7 +122,22 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
       await api.put(`/erp/fichas/${modeloLinhaId}`, {
         custoFaccaoPrevisto: lerNumero(faccao),
         observacoes: obs,
-        itens: itens.map((l) => ({ insumoId: l.insumoId, consumoPorPeca: lerNumero(l.consumo), corFixaId: l.corFixaId || null })),
+        itens: itens.map((l) => {
+          const porTamanho = l.porTamanho
+            ? Object.fromEntries(
+                Object.entries(l.porTamanho)
+                  .map(([t, v]) => [t, lerNumero(v) ?? 0] as const)
+                  .filter(([, v]) => v > 0),
+              )
+            : null;
+          return {
+            insumoId: l.insumoId,
+            consumoPorPeca: consumoDe(l),
+            porTamanho: porTamanho && Object.keys(porTamanho).length ? porTamanho : null,
+            observacao: l.observacao,
+            corFixaId: l.corFixaId || null,
+          };
+        }),
       });
       toast.success(`Ficha da grade ${nome} salva`);
       q.refetch();
@@ -148,9 +187,11 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
                 <Field label={idx === 0 ? 'Consumo por peça' : undefined}>
                   <div className="flex items-center gap-1.5">
                     <Input
-                      value={l.consumo}
+                      value={l.porTamanho ? paraCampo(Math.round(consumoDe(l) * 10000) / 10000) : l.consumo}
                       onChange={(e) => setItens((xs) => xs.map((x, i) => (i === idx ? { ...x, consumo: e.target.value } : x)))}
                       inputMode="decimal"
+                      disabled={!!l.porTamanho}
+                      title={l.porTamanho ? 'Média dos tamanhos' : undefined}
                       data-testid={`ficha-consumo-${idx}`}
                     />
                     <span className="text-xs text-muted w-6">{ins ? SIGLA[ins.unidade] : ''}</span>
@@ -185,6 +226,51 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
                   icon={<Trash2 className="h-4 w-4" />}
                   onClick={() => setItens((xs) => xs.filter((_, i) => i !== idx))}
                 />
+                {/* Quantidade POR TAMANHO (Léo, 14/10): o elástico muda em cada um. */}
+                {tamanhos.length > 0 && (
+                  <div className="col-span-full flex flex-wrap items-center gap-1.5 -mt-1">
+                    <button
+                      type="button"
+                      className="text-xs text-primary underline"
+                      onClick={() =>
+                        setItens((xs) =>
+                          xs.map((x, i) =>
+                            i !== idx
+                              ? x
+                              : x.porTamanho
+                                ? { ...x, consumo: paraCampo(Math.round(consumoDe(x) * 10000) / 10000), porTamanho: null }
+                                : { ...x, porTamanho: Object.fromEntries(tamanhos.map((t) => [t, x.consumo])) },
+                          ),
+                        )
+                      }
+                      data-testid={`ficha-por-tamanho-${idx}`}
+                    >
+                      {l.porTamanho ? 'Usar um consumo só' : 'Por tamanho'}
+                    </button>
+                    {l.porTamanho &&
+                      tamanhos.map((t) => (
+                        <label key={t} className="flex items-center gap-1 rounded-[10px] border border-border px-2 h-8 text-xs">
+                          <b>{t}</b>
+                          <input
+                            value={l.porTamanho?.[t] ?? ''}
+                            onChange={(e) =>
+                              setItens((xs) =>
+                                xs.map((x, i) =>
+                                  i === idx ? { ...x, porTamanho: { ...(x.porTamanho ?? {}), [t]: e.target.value } } : x,
+                                ),
+                              )
+                            }
+                            inputMode="decimal"
+                            className="w-14 bg-transparent text-right tabular-nums outline-none"
+                            aria-label={`Consumo do ${t}`}
+                            data-testid={`ficha-tam-${idx}-${t}`}
+                          />
+                          <span className="text-muted">{ins ? SIGLA[ins.unidade] : ''}</span>
+                        </label>
+                      ))}
+                  </div>
+                )}
+                {l.observacao && <p className="col-span-full -mt-1 text-xs text-muted">{l.observacao}</p>}
               </div>
             );
           })}
@@ -197,7 +283,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           variant="secondary"
           leftIcon={<Plus className="h-3.5 w-3.5" />}
           disabled={livres.length === 0}
-          onClick={() => setItens((xs) => [...xs, { insumoId: livres[0].id, consumo: '', corFixaId: '' }])}
+          onClick={() => setItens((xs) => [...xs, { insumoId: livres[0].id, consumo: '', porTamanho: null, observacao: null, corFixaId: '' }])}
           data-testid={`ficha-add-${modeloLinhaId}`}
         >
           Adicionar insumo

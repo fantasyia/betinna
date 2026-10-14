@@ -25,6 +25,15 @@ export function custoPrevistoDaFicha(
   return { insumos, faccao, total: insumos + faccao };
 }
 
+const temTamanhos = (v: Record<string, number> | null | undefined) =>
+  !!v && Object.keys(v).length > 0;
+
+/** Média das quantidades por tamanho — vira o consumo médio da grade. PURO. */
+export function mediaPorTamanho(porTamanho: Record<string, number>): number {
+  const vs = Object.values(porTamanho);
+  return vs.length ? vs.reduce((s, v) => s + v, 0) / vs.length : 0;
+}
+
 /**
  * Custo por unidade de um item da ficha: cor fixada → o custo DAQUELA cor;
  * senão o custo do insumo (com cores, é a média das cores com custo).
@@ -68,6 +77,7 @@ export class FichasService {
         id: true,
         modelo: { select: { id: true, nome: true } },
         linha: { select: { nome: true } },
+        tamanhos: { select: { tamanho: { select: { nome: true, ordem: true } } } },
       },
     });
     if (!ml) throw new NotFoundException('Linha do modelo', modeloLinhaId);
@@ -140,6 +150,7 @@ export class FichasService {
           cores: cores.map((c) => ({ corId: c.corId, nome: c.cor.nome, hex: c.cor.hex })),
         },
         consumoPorPeca: consumo,
+        porTamanho: (i.porTamanho as Record<string, number> | null) ?? null,
         observacao: i.observacao,
         /** Cor fixa (cordão sempre Branco). null = a cor da própria peça. */
         corFixa: i.corFixa,
@@ -151,6 +162,10 @@ export class FichasService {
       modeloLinhaId,
       modelo: ml.modelo,
       linha: ml.linha.nome,
+      // Tamanhos da grade, na ordem — a tela mostra um campo por tamanho.
+      tamanhos: [...ml.tamanhos]
+        .sort((a, b) => a.tamanho.ordem - b.tamanho.ordem)
+        .map((t) => t.tamanho.nome),
       existe: Boolean(ficha),
       custoFaccaoPrevisto,
       observacoes: ficha?.observacoes ?? null,
@@ -165,7 +180,17 @@ export class FichasService {
 
   async salvar(user: AuthenticatedUser, modeloLinhaId: string, dto: FichaDto) {
     const empresaId = await this.erp.empresaLigada(user);
-    await this.linhaDaEmpresa(empresaId, modeloLinhaId);
+    const ml = await this.linhaDaEmpresa(empresaId, modeloLinhaId);
+    const daGrade = new Set(ml.tamanhos.map((t) => t.tamanho.nome));
+    for (const i of dto.itens) {
+      const fora = Object.keys(i.porTamanho ?? {}).filter((t) => !daGrade.has(t));
+      if (fora.length) {
+        throw new BusinessRuleException(
+          `Tamanho fora da grade ${ml.linha.nome}: ${fora.join(', ')}`,
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+    }
     if (dto.itens.length) {
       const deles = await this.prisma.insumo.findMany({
         where: { empresaId, id: { in: dto.itens.map((i) => i.insumoId) } },
@@ -213,7 +238,12 @@ export class FichasService {
           data: dto.itens.map((i) => ({
             fichaId: ficha.id,
             insumoId: i.insumoId,
-            consumoPorPeca: D(i.consumoPorPeca, 4),
+            // Por tamanho: o consumo da grade é a MÉDIA (custo previsto).
+            consumoPorPeca: D(
+              temTamanhos(i.porTamanho) ? mediaPorTamanho(i.porTamanho!) : i.consumoPorPeca,
+              4,
+            ),
+            porTamanho: temTamanhos(i.porTamanho) ? i.porTamanho! : Prisma.DbNull,
             observacao: i.observacao ?? null,
             corFixaId: i.corFixaId ?? null,
           })),

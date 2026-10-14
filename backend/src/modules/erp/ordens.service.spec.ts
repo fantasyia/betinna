@@ -574,3 +574,35 @@ describe('OrdensService → financeiro (Fase 3)', () => {
     expect(fin.entregaFaccaoNaTx).toHaveBeenCalledWith(tx, 'op-1', ['ent-1']);
   });
 });
+
+/** Ficha com quantidade POR TAMANHO (elástico, Léo 14/10). */
+describe('necessidadesDaGrade — por tamanho', () => {
+  it('peças por tamanho × quantidade daquele tamanho; tamanho sem valor usa o médio', () => {
+    const elastico = {
+      insumoId: 'el',
+      consumoPorPeca: 0.8,
+      porTamanho: new Map([
+        ['P', 0.76],
+        ['G', 0.84],
+      ]),
+      cores: null,
+    };
+    const pecas = new Map([
+      [
+        'reg',
+        new Map<string | null, Map<string, number>>([
+          [
+            'cor-preto',
+            new Map([
+              ['P', 10],
+              ['M', 10], // sem valor no mapa → 0,8
+              ['G', 10],
+            ]),
+          ],
+        ]),
+      ],
+    ]);
+    const m = necessidadesDaGrade(pecas, new Map([['reg', [elastico]]]));
+    expect([...m.values()][0].quantidade).toBeCloseTo(7.6 + 8 + 8.4, 6);
+  });
+});

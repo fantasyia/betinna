@@ -20,6 +20,14 @@ export const fichaSchema = z.object({
       z.object({
         insumoId: z.string().min(1).max(40),
         consumoPorPeca: z.number().positive('Consumo maior que zero').max(100_000),
+        /**
+         * Quantidade POR TAMANHO (Léo, 14/10: o elástico muda em cada um), na
+         * unidade do insumo. Com ela, o consumoPorPeca é recalculado (média).
+         */
+        porTamanho: z
+          .record(z.string().trim().min(1).max(20), z.number().positive().max(100_000))
+          .nullable()
+          .optional(),
         observacao: textoOpcional(200),
         /** Insumo com cores: fixa uma cor (cordão sempre Branco). Vazio = a cor da peça. */
         corFixaId: z.string().min(1).max(40).nullable().optional(),
