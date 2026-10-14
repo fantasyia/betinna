@@ -231,6 +231,36 @@ describe('<EncaixeDaOp>', () => {
     expect(t).toContain('4 m de tira, 3 peças) por folha, além do risco');
   });
 
+  it('risco ideal até 6 m e mesa de 10,80 m (Léo, 14/10)', () => {
+    const job = (id: string, comprimentoM: number) => ({
+      id,
+      status: 'CONCLUIDO',
+      tempoMin: 30,
+      linha: 'Regular',
+      composicao: [{ tamanho: 'P', quantidade: 1 }],
+      codigoMolde: '107',
+      progresso: null,
+      resultado: { comprimentoM, aproveitamento: 80 },
+      erro: null,
+      agente: null,
+      pegoEm: null,
+      concluidoEm: null,
+      criadoEm: '2026-10-14T18:00:00Z',
+      atualizadoEm: '2026-10-14T18:00:00Z',
+      arquivos: [],
+    });
+    estado.jobs = [job('longo', 11.2), job('grande', 7.5), job('ideal', 5.9)];
+    montar();
+    // Acima da mesa: não corta (vermelho, e não repete o aviso do ideal).
+    expect(screen.getByTestId('encaixe-mesa-longo').textContent).toContain('Passa da mesa de 10,8 m');
+    expect(screen.queryByTestId('encaixe-ideal-longo')).toBeNull();
+    // Acima do ideal de 6 m: sugere dividir em 2 riscos.
+    expect(screen.getByTestId('encaixe-ideal-grande').textContent).toContain('dividir em 2 riscos');
+    expect(screen.queryByTestId('encaixe-mesa-grande')).toBeNull();
+    // Até 6 m: nada.
+    expect(screen.queryByTestId('encaixe-ideal-ideal')).toBeNull();
+  });
+
   it('com risco na fila: não deixa pedir outro; pronto: baixa o .plt', () => {
     estado.jobs = [
       {

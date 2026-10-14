@@ -130,6 +130,9 @@ interface Encaixe {
       viesAreaM2PorFolha?: number;
       /** Largura aberta pro corte a 45° (no tubular, 2× a do tubo). */
       viesLarguraAbertaM?: number;
+      /** O agente marca quando o risco passa do ideal (6 m). */
+      sugerirDividir?: boolean;
+      aviso_comprimento?: string;
     } | null;
   } | null;
   erro: string | null;
@@ -156,6 +159,10 @@ const VARIANTE: Record<Status, 'neutral' | 'warning' | 'success' | 'danger'> = {
   CANCELADO: 'neutral',
 };
 const aberto = (s: Status) => s === 'PENDENTE' || s === 'RODANDO';
+/** A mesa de corte da Ribelt (Léo, 14/10): acima disso não dá pra cortar. */
+export const MESA_M = 10.8;
+/** Risco IDEAL (Léo, 14/10): até ~6 m; acima, sugere dividir em 2 riscos. */
+export const RISCO_IDEAL_M = 6;
 const metros = (m: number | undefined) =>
   m === undefined ? '—' : `${formatNumero(Math.round(m * 1000) / 1000)} m`;
 const pct = (p: number | undefined) =>
@@ -356,7 +363,7 @@ export function EncaixeDaOp({
                 ? 'Os riscos do tecido e da ribana estão na fila — a GPU faz um depois do outro.'
                 : ativoDe('TECIDO') || ativoDe('RIBANA')
                   ? `Já tem um risco ${ativoDe('RIBANA') ? 'da ribana' : 'do tecido'} desta OP na fila.`
-                  : `${pecas} peça(s) no risco${nGrades > 1 ? ` · ${nGrades} grades juntas` : ''} · a GPU faz um por vez.`}
+                  : `${pecas} peça(s) no risco${nGrades > 1 ? ` · ${nGrades} grades juntas` : ''} · ideal até ${formatNumero(RISCO_IDEAL_M)} m (mesa: ${formatNumero(MESA_M)} m) · a GPU faz um por vez.`}
             </span>
           </div>
         </div>
@@ -462,6 +469,24 @@ function ItemEncaixe({
             </li>
           ))}
         </ul>
+      )}
+      {typeof numeros?.comprimentoM === 'number' && numeros.comprimentoM > MESA_M ? (
+        <p className="text-sm text-danger font-semibold" data-testid={`encaixe-mesa-${j.id}`}>
+          Passa da mesa de {formatNumero(MESA_M)} m ({metros(numeros.comprimentoM)}): não dá pra
+          cortar — divida em 2 riscos (menos peças em cada).
+        </p>
+      ) : (
+        ((typeof numeros?.comprimentoM === 'number' && numeros.comprimentoM > RISCO_IDEAL_M) ||
+          j.resultado?.detalhes?.sugerirDividir) && (
+          <p className="text-sm text-warning font-semibold" data-testid={`encaixe-ideal-${j.id}`}>
+            Risco acima do ideal de {formatNumero(RISCO_IDEAL_M)} m
+            {typeof numeros?.comprimentoM === 'number' ? ` (${metros(numeros.comprimentoM)})` : ''}:
+            sugestão, dividir em 2 riscos.
+            {j.resultado?.detalhes?.aviso_comprimento
+              ? ` ${j.resultado.detalhes.aviso_comprimento}`
+              : ''}
+          </p>
+        )
       )}
       {j.status === 'PENDENTE' && (
         <p className="text-xs text-muted">
