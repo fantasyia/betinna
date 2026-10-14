@@ -464,7 +464,13 @@ export class CheckoutPublicoService {
       });
       await tx.pedido.updateMany({
         where: { id: pg.pedidoId, status: 'RASCUNHO' },
-        data: { status: 'PAGO', pagoEm: new Date() },
+        // A forma vem do que foi PAGO: o pedido nasce com o padrão (Pix) e o
+        // cartão ficava registrado como Pix (PED-0007, 14/10).
+        data: {
+          status: 'PAGO',
+          pagoEm: new Date(),
+          formaPagamento: pix ? 'PIX' : 'CARTAO_CREDITO',
+        },
       });
       if (comFinanceiro && this.fin) {
         await this.fin.parcelarPedidoNaTx(

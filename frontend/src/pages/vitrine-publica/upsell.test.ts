@@ -89,14 +89,27 @@ describe('preencherConjunto', () => {
 });
 
 describe('sugestoesAntesDePagar', () => {
-  const bermuda = modelo('bermuda', { cores: [cor('x', 'PRETO')] });
-  const camiseta = modelo('camiseta', { cores: [cor('y', 'PRETO')] });
-  const regata = modelo('regata', { cores: [cor('z', 'PRETO')] });
+  const lin = (id: string) => [linha(id, 'REG', [[`${id}-p`, 'P']])];
+  const bermuda = modelo('bermuda', { cores: [cor('x', 'PRETO')], linhas: lin('x-reg') });
+  const camiseta = modelo('camiseta', { cores: [cor('y', 'PRETO')], linhas: lin('y-reg') });
+  const regata = modelo('regata', { cores: [cor('z', 'PRETO')], linhas: lin('z-reg') });
   const v = { modelos: [bermuda, camiseta, regata, blusa, calca] };
 
   it('primeiro o que combina com o pedido, depois o resto; nunca o que já está nele; até 3', () => {
     const s = sugestoesAntesDePagar(v, { blusa: { 'b-preto': { 'b-p': 1 } } });
     expect(s.map((m) => m.id)).toEqual(['calca', 'bermuda', 'camiseta']);
+  });
+
+  it('modelo SEM PREÇO não é sugerido (PED-0007: Zíper, Gola Careca, Canguru)', () => {
+    const semPreco = modelo('ziper', {
+      cores: [cor('w', 'PRETO')],
+      linhas: [{ ...linha('w-reg', 'REG', [['w-p', 'P']]), precoEntrada: null }],
+    });
+    const s = sugestoesAntesDePagar(
+      { modelos: [semPreco, bermuda, blusa, calca] },
+      { blusa: { 'b-preto': { 'b-p': 1 } } },
+    );
+    expect(s.map((m) => m.id)).toEqual(['calca', 'bermuda']);
   });
 
   it('pedido vazio: nenhuma sugestão', () => {

@@ -145,6 +145,41 @@ describe('<Pagamento>', () => {
     expect(onPago).toHaveBeenCalled();
   });
 
+  it('relógio e volta pra aba respondendo "pago" juntos: avisa a compra UMA vez (PED-0007)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    apiGet.mockImplementation((url: string) =>
+      url.includes('/status')
+        ? new Promise((r) => setTimeout(() => r({ pago: true }), 50))
+        : Promise.resolve({ ...OPCOES, pagamento: PIX }),
+    );
+    const { onPago } = montar();
+    await waitFor(() => screen.getByTestId('vt-pix'));
+    await act(async () => {
+      vi.advanceTimersByTime(5_000); // o relógio pergunta…
+      document.dispatchEvent(new Event('visibilitychange')); // …e a volta pra aba também
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    await waitFor(() => expect(screen.getByTestId('vt-pago')).toBeTruthy());
+    expect(apiGet.mock.calls.filter(([u]) => String(u).includes('/status')).length).toBe(2);
+    expect(onPago).toHaveBeenCalledTimes(1);
+  });
+
+  it('frete já cotado: não diz mais que o frete "combina no WhatsApp"', async () => {
+    apiGet.mockResolvedValue(OPCOES);
+    montar({ entrega: 'frete' });
+    await waitFor(() => screen.getByTestId('vt-pag-entrega'));
+    expect(screen.getByTestId('vt-pag-entrega').textContent).toBe('O frete já está somado no total.');
+  });
+
+  it('frete a combinar (sem cotação): mantém o aviso do WhatsApp', async () => {
+    apiGet.mockResolvedValue(OPCOES);
+    montar();
+    await waitFor(() => screen.getByTestId('vt-pag-entrega'));
+    expect(screen.getByTestId('vt-pag-entrega').textContent).toContain('combina com você no WhatsApp');
+  });
+
   it('loja sem pagamento online: não mostra nada (segue pelo WhatsApp)', async () => {
     apiGet.mockResolvedValue({
       ...OPCOES,

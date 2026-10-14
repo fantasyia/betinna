@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatMoeda } from '@/lib/masks';
 import { copiarTexto } from './kit';
@@ -9,6 +9,9 @@ import { copiarTexto } from './kit';
  * aqui mesmo (QR + copia-e-cola); o cartão, na página segura do Asaas — o
  * número do cartão nunca passa pela vitrine. A confirmação chega sozinha.
  */
+
+/** Como o pedido chega: frete já cotado e somado, retirada, ou a combinar. */
+export type EntregaDoPedido = 'frete' | 'retirada' | 'aCombinar';
 
 export interface AcessoPagamento {
   pedidoId: string;
@@ -65,6 +68,7 @@ export function Pagamento({
   empresa,
   onPago,
   onComecou,
+  entrega = 'aCombinar',
 }: {
   slug: string;
   acesso: AcessoPagamento;
@@ -73,6 +77,8 @@ export function Pagamento({
   onPago: () => void;
   /** Cobrança gerada: a reserva das peças ganhou mais tempo. */
   onComecou: () => void;
+  /** Frete já no total? Muda o que a tela promete (PED-0007, 14/10). */
+  entrega?: EntregaDoPedido;
 }) {
   const base = `/public/vitrine/${encodeURIComponent(slug)}/pedidos/${encodeURIComponent(acesso.pedidoId)}/pagamento`;
   const q = `?t=${encodeURIComponent(acesso.token)}`;
@@ -87,6 +93,9 @@ export function Pagamento({
   const [aberto, setAberto] = useState<PagamentoAberto | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [pago, setPago] = useState(false);
+  // O relógio e a volta pra aba conferem ao mesmo tempo: sem isto, as duas
+  // respostas "pago" avisavam a compra 2× (Purchase duplo no PED-0007, 14/10).
+  const avisouPago = useRef(false);
 
   useEffect(() => {
     let vivo = true;
@@ -112,7 +121,8 @@ export function Pagamento({
   const conferir = useCallback(async () => {
     try {
       const s = await api.get<{ pago: boolean }>(`${base}/status${q}`, { skipAuth: true });
-      if (s.pago) {
+      if (s.pago && !avisouPago.current) {
+        avisouPago.current = true;
         setPago(true);
         onPago();
       }
@@ -169,7 +179,12 @@ export function Pagamento({
       <div className="vt-pag vt-pag-ok" data-testid="vt-pago">
         <b>Pagamento confirmado ✓</b>
         <span>
-          Suas peças estão garantidas. A {empresa} te chama no WhatsApp pra combinar o envio.
+          Suas peças estão garantidas.{' '}
+          {entrega === 'frete'
+            ? `A ${empresa} te avisa no WhatsApp quando o pedido for despachado.`
+            : entrega === 'retirada'
+              ? `A ${empresa} te chama no WhatsApp pra combinar a retirada.`
+              : `A ${empresa} te chama no WhatsApp pra combinar o envio.`}
         </span>
       </div>
     );
@@ -329,7 +344,13 @@ export function Pagamento({
       >
         {gerando ? 'Gerando…' : metodo === 'PIX' ? 'Gerar Pix' : 'Pagar com cartão'}
       </button>
-      <span className="vt-pag-espera">O frete a {empresa} combina com você no WhatsApp.</span>
+      <span className="vt-pag-espera" data-testid="vt-pag-entrega">
+        {entrega === 'frete'
+          ? 'O frete já está somado no total.'
+          : entrega === 'retirada'
+            ? 'Retirada em mãos: sem frete.'
+            : `O frete a ${empresa} combina com você no WhatsApp.`}
+      </span>
     </div>
   );
 }

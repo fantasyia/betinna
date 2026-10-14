@@ -56,7 +56,7 @@ import {
   type EscolhaFrete,
   type FretePub,
 } from './Entrega';
-import { Pagamento, type AcessoPagamento } from './Pagamento';
+import { Pagamento, type AcessoPagamento, type EntregaDoPedido } from './Pagamento';
 import { atribuicaoParaEnvio, capturarAtribuicao, evento, iniciarPixel } from './pixel';
 import './vitrine.css';
 
@@ -1763,6 +1763,8 @@ interface Enviado {
   pagamento: AcessoPagamento | null;
   /** O documento digitado no envio já vem preenchido na hora de pagar. */
   cpfCnpj: string;
+  /** Frete cotado e somado, retirada ou a combinar (muda o texto do pagamento). */
+  entrega: EntregaDoPedido;
 }
 
 interface Contato extends Endereco {
@@ -1874,6 +1876,12 @@ function FolhaEnvio({
         reservaExpiraEm: r.reservaExpiraEm ?? null,
         pagamento: r.pagamento ?? null,
         cpfCnpj: f.cpfCnpj.trim(),
+        entrega:
+          frete && escolha?.tipo === 'servico'
+            ? 'frete'
+            : frete && escolha?.tipo === 'retirada'
+              ? 'retirada'
+              : 'aCombinar',
       });
     } catch (e) {
       setErro(
@@ -2102,11 +2110,12 @@ function PedidoEnviado({
             empresa={empresa}
             onPago={aoPagar}
             onComecou={aoComecar}
+            entrega={e.entrega}
           />
         ) : (
           <p className="vt-muted">
-            A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''} o
-            frete e o pagamento.
+            A {empresa} vai te chamar no WhatsApp pra confirmar{e.aConfirmar ? ' os preços,' : ''}
+            {e.entrega === 'aCombinar' ? ' o frete e' : ''} o pagamento.
           </p>
         )}
       </div>

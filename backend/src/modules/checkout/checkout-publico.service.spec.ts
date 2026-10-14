@@ -407,7 +407,7 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
     });
     expect(tx.pedido.updateMany.mock.calls[0][0]).toMatchObject({
       where: { id: 'ped-1', status: 'RASCUNHO' },
-      data: { status: 'PAGO' },
+      data: { status: 'PAGO', formaPagamento: 'PIX' },
     });
     // Título: à vista, vencendo no crédito; a BAIXA só vem com o RECEBIDO.
     expect(fin.parcelarPedidoNaTx).toHaveBeenCalledWith(
@@ -514,6 +514,8 @@ describe('CheckoutPublicoService — aviso do Asaas → pedido pago', () => {
       parcelas: 3,
       online: true,
     });
+    // PED-0007 (14/10): pago no cartão ficava registrado como Pix (o padrão).
+    expect(tx.pedido.updateMany.mock.calls[0][0].data.formaPagamento).toBe('CARTAO_CREDITO');
   });
 
   it('09/10: cartão 3x com 1% a.m. — as parcelas a receber somam preço + juros', async () => {

@@ -609,7 +609,10 @@ export function sugestoesAntesDePagar(
 ): ModeloPub[] {
   const noPedido = new Set(v.modelos.filter((m) => pecasDoModelo(c, m.id) > 0).map((m) => m.id));
   if (noPedido.size === 0) return [];
-  const fora = v.modelos.filter((m) => !noPedido.has(m.id) && m.cores.length > 0);
+  // Sem preço em nenhuma linha não entra (PED-0007, 14/10): sugerir peça que
+  // não dá pra pagar online só atrapalha o fechamento.
+  const comPreco = (m: ModeloPub) => m.linhas.some((l) => precoNaFaixa(l, 'atacadao') !== null);
+  const fora = v.modelos.filter((m) => !noPedido.has(m.id) && m.cores.length > 0 && comPreco(m));
   const complemento = new Set(
     v.modelos.filter((m) => noPedido.has(m.id)).flatMap((m) => m.combinaCom ?? []),
   );
