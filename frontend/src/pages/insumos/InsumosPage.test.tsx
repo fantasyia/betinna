@@ -131,6 +131,32 @@ describe('InsumosPage — insumo com cores', () => {
     });
   });
 
+  it('COPIAR (Léo, 14/10): novo insumo com nome (cópia), tipo, unidade, fornecedor e TODAS as cores', async () => {
+    estado.insumos = [{ ...moletinho, fornecedor: 'Malharia X' }];
+    apiPost.mockResolvedValue({});
+    render(<InsumosPage />);
+    fireEvent.click(screen.getByTestId('insumo-copiar-mol'));
+    expect((screen.getByTestId('insumo-nome') as HTMLInputElement).value).toBe(
+      'Moletinho 65% poliéster 35% algodão (cópia)',
+    );
+    fireEvent.click(screen.getByTestId('insumo-salvar'));
+    await waitFor(() => expect(apiPost).toHaveBeenCalled());
+    // É um insumo NOVO (POST), nunca uma edição do original (PUT).
+    expect(apiPut).not.toHaveBeenCalled();
+    const [rota, corpo] = apiPost.mock.calls[0] as [string, Record<string, unknown>];
+    expect(rota).toBe('/erp/insumos');
+    expect(corpo).toMatchObject({
+      nome: 'Moletinho 65% poliéster 35% algodão (cópia)',
+      tipo: 'TECIDO',
+      unidade: 'KG',
+      fornecedor: 'Malharia X',
+      cores: ['cor-preto', 'cor-bege'],
+    });
+    // Saldo, custo e movimento não viajam: o novo nasce zerado.
+    expect(corpo).not.toHaveProperty('custoMedio');
+    expect(corpo).not.toHaveProperty('saldo');
+  });
+
   it('insumo SEM cores: compra não pede cor (como antes)', async () => {
     estado.insumos = [{ ...moletinho, id: 'etq', nome: 'Etiqueta', temCores: false, cores: [] }];
     apiPost.mockResolvedValue({});

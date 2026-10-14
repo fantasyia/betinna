@@ -52,7 +52,7 @@ const custoUn = (v: number, u: Unidade) =>
 
 /** `cor` = id da cor do insumo já escolhida (botão na linha da cor). */
 type Dlg =
-  | { tipo: 'cadastro'; insumo: Insumo | null }
+  | { tipo: 'cadastro'; insumo: Insumo | null; copiaDe?: Insumo }
   | { tipo: 'compra'; insumo: Insumo; cor?: string }
   | { tipo: 'movimento'; insumo: Insumo; cor?: string }
   | { tipo: 'historico'; insumo: Insumo; cor?: string };
@@ -217,6 +217,14 @@ export default function InsumosPage() {
                             >
                               Histórico
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setDlg({ tipo: 'cadastro', insumo: null, copiaDe: i })}
+                              data-testid={`insumo-copiar-${i.id}`}
+                            >
+                              Copiar
+                            </Button>
                           </div>
                         </td>
                       </tr>,
@@ -292,7 +300,12 @@ export default function InsumosPage() {
       )}
 
       {dlg?.tipo === 'cadastro' && (
-        <CadastroDialog insumo={dlg.insumo} onClose={fechar} onSalvou={salvou} />
+        <CadastroDialog
+          insumo={dlg.insumo}
+          copiaDe={dlg.copiaDe}
+          onClose={fechar}
+          onSalvou={salvou}
+        />
       )}
       {dlg?.tipo === 'compra' && (
         <CompraDialog insumo={dlg.insumo} cor={dlg.cor} onClose={fechar} onSalvou={salvou} />
@@ -347,27 +360,39 @@ function useCorDoMovimento(insumo: Insumo, inicial: string | undefined) {
   return { insumoCorId: insumo.temCores ? cor || null : null, escolhida, campo };
 }
 
+/**
+ * Cadastro e edição de insumo. Com `copiaDe` (Léo, 14/10: "opção de copiar o
+ * item"): é um insumo NOVO que já nasce com o nome + " (cópia)", o tipo, a
+ * unidade, o fornecedor e todas as cores do original. Saldo, custo, compras,
+ * perdas e histórico NÃO vêm — tudo isso é movimento, e o novo nasce zerado.
+ */
 function CadastroDialog({
   insumo,
+  copiaDe,
   onClose,
   onSalvou,
 }: {
   insumo: Insumo | null;
+  copiaDe?: Insumo;
   onClose: () => void;
   onSalvou: () => void;
 }) {
-  const [nome, setNome] = useState(insumo?.nome ?? '');
-  const [tipo, setTipo] = useState<TipoInsumo>(insumo?.tipo ?? 'TECIDO');
-  const [unidade, setUnidade] = useState<Unidade>(insumo?.unidade ?? 'KG');
-  const [cor, setCor] = useState(insumo?.cor ?? '');
+  // Molde dos campos: o próprio insumo (editar) ou o original (copiar).
+  const base = insumo ?? copiaDe ?? null;
+  const [nome, setNome] = useState(
+    insumo ? insumo.nome : copiaDe ? `${copiaDe.nome} (cópia)` : '',
+  );
+  const [tipo, setTipo] = useState<TipoInsumo>(base?.tipo ?? 'TECIDO');
+  const [unidade, setUnidade] = useState<Unidade>(base?.unidade ?? 'KG');
+  const [cor, setCor] = useState(base?.cor ?? '');
   // Cores da lista da empresa (a mesma da vitrine). Sem a lista, o campo de texto de antes.
   const coresEmpresa = useApiQuery<CorEmpresa[]>('/erp/insumos/cores');
   const [cores, setCores] = useState<string[]>(
-    () => insumo?.cores.filter((c) => c.ativo).map((c) => c.corId) ?? [],
+    () => base?.cores.filter((c) => c.ativo).map((c) => c.corId) ?? [],
   );
   const alternar = (id: string) =>
     setCores((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
-  const [fornecedor, setFornecedor] = useState(insumo?.fornecedor ?? '');
+  const [fornecedor, setFornecedor] = useState(base?.fornecedor ?? '');
   const [minimo, setMinimo] = useState(paraCampo(insumo?.estoqueMinimo));
   const [ativo, setAtivo] = useState(insumo?.ativo ?? true);
   const { salvando, enviar } = useEnviar(onSalvou, insumo ? 'Insumo salvo' : 'Insumo cadastrado');
@@ -387,7 +412,7 @@ function CadastroDialog({
     <Dialog
       open
       onClose={onClose}
-      title={insumo ? 'Editar insumo' : 'Novo insumo'}
+      title={insumo ? 'Editar insumo' : copiaDe ? 'Copiar insumo' : 'Novo insumo'}
       footer={
         <div className="flex w-full items-center gap-2">
           {insumo && (
