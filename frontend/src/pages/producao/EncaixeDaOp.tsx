@@ -83,7 +83,10 @@ interface Encaixe {
   resultado: {
     comprimentoM: number;
     aproveitamento: number;
-    /** Viés das camisetas (14/10): o agente manda quanto tecido separar pra ele. */
+    /**
+     * Viés das camisetas (14/10): quanto tecido separar pra ele. É À PARTE —
+     * o comprimento do risco é só das peças (Léo); total = comprimento + viés.
+     */
     detalhes?: { viesTecidoM?: number; viesTiraM?: number; viesPecas?: number } | null;
   } | null;
   erro: string | null;
@@ -388,7 +391,8 @@ function ItemEncaixe({
           {(typeof j.resultado.detalhes.viesTiraM === 'number' ||
             typeof j.resultado.detalhes.viesPecas === 'number') &&
             ')'}
-          . Já está somado no comprimento do risco.
+          , além do risco. Tecido no total:{' '}
+          <b>{metros(j.resultado.comprimentoM + j.resultado.detalhes.viesTecidoM)}</b>.
         </p>
       )}
       {j.status === 'PENDENTE' && (

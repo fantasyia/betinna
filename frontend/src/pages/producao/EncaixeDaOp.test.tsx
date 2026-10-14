@@ -200,7 +200,9 @@ describe('<EncaixeDaOp>', () => {
     montar();
     const t = screen.getByTestId('encaixe-vies-j-v').textContent ?? '';
     expect(t).toContain('Separar 0,05 m de tecido pro viés');
-    expect(t).toContain('4 m de tira, 3 peças');
+    expect(t).toContain('4 m de tira, 3 peças), além do risco');
+    // O risco é SÓ das peças (Léo, 14/10): o total soma o viés à parte.
+    expect(t).toContain('Tecido no total: 1,25 m');
   });
 
   it('com risco na fila: não deixa pedir outro; pronto: baixa o .plt', () => {
