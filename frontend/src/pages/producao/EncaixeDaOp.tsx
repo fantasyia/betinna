@@ -80,7 +80,12 @@ interface Encaixe {
   composicao: Array<{ linha?: string; tamanho: string; quantidade: number }>;
   codigoMolde: string | null;
   progresso: { comprimentoM?: number; aproveitamento?: number; em?: string } | null;
-  resultado: { comprimentoM: number; aproveitamento: number } | null;
+  resultado: {
+    comprimentoM: number;
+    aproveitamento: number;
+    /** Viés das camisetas (14/10): o agente manda quanto tecido separar pra ele. */
+    detalhes?: { viesTecidoM?: number; viesTiraM?: number; viesPecas?: number } | null;
+  } | null;
   erro: string | null;
   agente: string | null;
   pegoEm: string | null;
@@ -372,6 +377,19 @@ function ItemEncaixe({
           <b>{metros(numeros.comprimentoM)}</b> · aproveitamento{' '}
           <b>{pct(numeros.aproveitamento)}</b>
         </div>
+      )}
+      {j.status === 'CONCLUIDO' && typeof j.resultado?.detalhes?.viesTecidoM === 'number' && (
+        <p className="text-sm rounded-[10px] bg-info/10 px-3 py-2" data-testid={`encaixe-vies-${j.id}`}>
+          Separar <b>{metros(j.resultado.detalhes.viesTecidoM)}</b> de tecido pro viés
+          {typeof j.resultado.detalhes.viesTiraM === 'number' &&
+            ` (${metros(j.resultado.detalhes.viesTiraM)} de tira`}
+          {typeof j.resultado.detalhes.viesPecas === 'number' &&
+            `${typeof j.resultado.detalhes.viesTiraM === 'number' ? ', ' : ' ('}${j.resultado.detalhes.viesPecas} peças`}
+          {(typeof j.resultado.detalhes.viesTiraM === 'number' ||
+            typeof j.resultado.detalhes.viesPecas === 'number') &&
+            ')'}
+          . Já está somado no comprimento do risco.
+        </p>
       )}
       {j.status === 'PENDENTE' && (
         <p className="text-xs text-muted">

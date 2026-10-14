@@ -173,6 +173,36 @@ describe('<EncaixeDaOp>', () => {
     });
   });
 
+  it('viés das camisetas (14/10): mostra quanto tecido separar quando o agente manda', () => {
+    estado.jobs = [
+      {
+        id: 'j-v',
+        status: 'CONCLUIDO',
+        tempoMin: 30,
+        linha: 'Regular',
+        composicao: [{ tamanho: 'P', quantidade: 1 }],
+        codigoMolde: '104',
+        progresso: null,
+        resultado: {
+          comprimentoM: 1.2,
+          aproveitamento: 80,
+          detalhes: { viesTecidoM: 0.05, viesTiraM: 4, viesPecas: 3 },
+        },
+        erro: null,
+        agente: null,
+        pegoEm: null,
+        concluidoEm: null,
+        criadoEm: '2026-10-14T18:00:00Z',
+        atualizadoEm: '2026-10-14T18:00:00Z',
+        arquivos: [],
+      },
+    ];
+    montar();
+    const t = screen.getByTestId('encaixe-vies-j-v').textContent ?? '';
+    expect(t).toContain('Separar 0,05 m de tecido pro viés');
+    expect(t).toContain('4 m de tira, 3 peças');
+  });
+
   it('com risco na fila: não deixa pedir outro; pronto: baixa o .plt', () => {
     estado.jobs = [
       {
