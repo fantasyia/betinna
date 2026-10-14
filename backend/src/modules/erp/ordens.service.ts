@@ -9,7 +9,16 @@ import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-auto
 import { EstoqueService } from './estoque.service';
 import { FichasService } from './fichas.service';
 import { chaveSaldo } from './insumos.service';
-import type { CorteDto, CriarOpDto, EnvioDto, RecebimentoDto, SimularOpDto } from './ordens.dto';
+import {
+  ETAPAS_OP,
+  type CorteDto,
+  type CriarOpDto,
+  type EnvioDto,
+  type EtapaOp,
+  type EtapaOpDto,
+  type RecebimentoDto,
+  type SimularOpDto,
+} from './ordens.dto';
 
 type Tx = Prisma.TransactionClient;
 const D = (v: number, casas: number) => new Prisma.Decimal(v.toFixed(casas));
@@ -136,6 +145,7 @@ function resumoDaOp(
     id: op.id,
     numero: op.numero,
     status: op.status,
+    etapa: op.etapa,
     modelo: op.modelo,
     faccao: op.faccao,
     prazo: op.prazo,
@@ -585,6 +595,29 @@ export class OrdensService {
     return op;
   }
 
+  /**
+   * Kanban: AVANÇA a etapa de produção até `alvo`, nunca volta (a ação chega
+   * depois de alguém já ter arrastado pra frente? fica onde está). PURO no SQL.
+   */
+  private async avancarEtapa(tx: Tx, id: string, alvo: EtapaOp) {
+    const antes = ETAPAS_OP.slice(0, ETAPAS_OP.indexOf(alvo));
+    await tx.ordemProducao.updateMany({
+      where: { id, etapa: { in: antes } },
+      data: { etapa: alvo },
+    });
+  }
+
+  /** Arrastar no kanban (14/10): qualquer etapa, só não em OP cancelada. */
+  async moverEtapa(user: AuthenticatedUser, id: string, dto: EtapaOpDto) {
+    const empresaId = await this.erp.empresaLigada(user);
+    const r = await this.prisma.ordemProducao.updateMany({
+      where: { id, empresaId, status: { not: 'CANCELADA' } },
+      data: { etapa: dto.etapa },
+    });
+    if (r.count === 0) throw regra('OP cancelada (ou de outra empresa) não muda de etapa');
+    return { id, etapa: dto.etapa };
+  }
+
   /** Vira a etapa só se a OP ainda estiver onde a tela achava (CAS). */
   private async virar(
     tx: Tx,
@@ -755,6 +788,7 @@ export class OrdensService {
         cortadaEm: new Date(),
         custoTecido: D(custo, 2),
       });
+      await this.avancarEtapa(tx, id, 'CORTE');
       for (const i of dto.itens) {
         await tx.ordemProducaoItem.updateMany({
           where: { opId: id, produtoId: i.produtoId },
@@ -799,6 +833,7 @@ export class OrdensService {
         custoAviamentos: D(custoAv, 2),
         ...(dto.prazo !== undefined ? { prazo: dto.prazo } : {}),
       });
+      await this.avancarEtapa(tx, id, 'COSTURA');
       for (const i of dto.itens) {
         await tx.ordemProducaoItem.updateMany({
           where: { opId: id, produtoId: i.produtoId },
@@ -816,6 +851,8 @@ export class OrdensService {
     await this.prisma.$transaction(async (tx) => {
       // CAS primeiro: trava a OP nesta etapa enquanto confere os saldos.
       await this.virar(tx, id, ['NA_FACCAO', 'RECEBENDO'], { status: 'RECEBENDO' });
+      // Voltou da facção: costura feita, vai pro acabamento (Isabela).
+      await this.avancarEtapa(tx, id, 'ACABAMENTO');
       const [itens, entregas] = await Promise.all([
         tx.ordemProducaoItem.findMany({
           where: { opId: id },
@@ -903,6 +940,7 @@ export class OrdensService {
     const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {
       await this.virar(tx, id, ['RECEBENDO'], { status: 'FECHADA', fechadaEm: new Date() });
+      await this.avancarEtapa(tx, id, 'CONCLUIDO');
       // Financeiro: peças enviadas que não voltaram = saldo da facção.
       if (comFinanceiro && this.fin) await this.fin.saldoFaccaoNaTx(tx, id);
       if (custos.length) {

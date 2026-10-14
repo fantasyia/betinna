@@ -51,6 +51,8 @@ interface OpResumo {
   id: string;
   numero: string;
   status: string;
+  /** Etapa do kanban da produção (14/10). */
+  etapa?: string;
   modelo: { id: string; nome: string };
   faccao: { id: string; nome: string } | null;
   prazo: string | null;
@@ -120,7 +122,7 @@ export default function ProducaoPage() {
           {(q.data ?? []).length === 0 ? (
             <Card className="p-6 text-sm text-muted text-center">Nenhuma ordem de produção ainda.</Card>
           ) : visao === 'kanban' ? (
-            <KanbanProducao ops={q.data ?? []} />
+            <KanbanProducao ops={q.data ?? []} onMudou={q.refetch} />
           ) : (
             <Card className="p-0 overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm tabular-nums" data-testid="ops-tabela">

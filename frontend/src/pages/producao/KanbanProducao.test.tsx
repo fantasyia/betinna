@@ -1,16 +1,30 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+
+/** Kanban da produção (Léo, 14/10): as 7 etapas e o "mover" de OP. */
+
+const apiPatch = vi.fn();
+vi.mock('@/lib/api', () => ({
+  api: { patch: (...a: unknown[]) => apiPatch(...a) },
+  apiErrorMessage: (e: unknown) => String(e),
+}));
+const toastError = vi.fn();
+vi.mock('@/components/toast', () => ({ useToast: () => ({ error: toastError, success: vi.fn() }) }));
+
 import { KanbanProducao, colunasDoKanban, type OpDoKanban } from './KanbanProducao';
 
-/** Kanban da produção (Léo, 14/10): quais OPs estão em cada etapa. */
+afterEach(() => {
+  cleanup();
+  apiPatch.mockReset();
+  toastError.mockReset();
+});
 
-afterEach(cleanup);
-
-const op = (id: string, status: string, extra: Partial<OpDoKanban> = {}): OpDoKanban => ({
+const op = (id: string, etapa: string | undefined, extra: Partial<OpDoKanban> = {}): OpDoKanban => ({
   id,
   numero: id.toUpperCase(),
-  status,
+  status: 'RASCUNHO',
+  etapa,
   modelo: { nome: 'Bermuda' },
   faccao: null,
   prazo: null,
@@ -22,33 +36,64 @@ const op = (id: string, status: string, extra: Partial<OpDoKanban> = {}): OpDoKa
 });
 
 describe('colunasDoKanban', () => {
-  it('uma coluna por etapa, na ordem da fábrica; cancelada fica fora', () => {
-    const c = colunasDoKanban([op('a', 'CORTADA'), op('b', 'RASCUNHO'), op('c', 'CANCELADA')]);
-    expect(c.map((x) => x.status)).toEqual(['RASCUNHO', 'CORTADA', 'NA_FACCAO', 'RECEBENDO', 'FECHADA']);
+  it('as 7 etapas do Léo, na ordem; sem etapa = rascunho; cancelada fora', () => {
+    const c = colunasDoKanban([
+      op('a', 'COSTURA'),
+      op('b', undefined),
+      op('c', 'CORTE', { status: 'CANCELADA' }),
+    ]);
+    expect(c.map((x) => x.titulo)).toEqual([
+      'Rascunho',
+      'Impressão Risco',
+      'Corte',
+      'Costura',
+      'Acabamento',
+      'Conferência',
+      'Concluído',
+    ]);
     expect(c[0].ops.map((o) => o.id)).toEqual(['b']);
+    expect(c[3].ops.map((o) => o.id)).toEqual(['a']);
     expect(c.flatMap((x) => x.ops).some((o) => o.id === 'c')).toBe(false);
   });
 
   it('na coluna: atrasada primeiro, depois o prazo mais curto, sem prazo no fim', () => {
     const c = colunasDoKanban([
-      op('sem', 'NA_FACCAO'),
-      op('longe', 'NA_FACCAO', { prazo: '2026-12-01' }),
-      op('perto', 'NA_FACCAO', { prazo: '2026-10-20' }),
-      op('atrasada', 'NA_FACCAO', { prazo: '2026-11-30', atrasada: true }),
+      op('sem', 'COSTURA'),
+      op('longe', 'COSTURA', { prazo: '2026-12-01' }),
+      op('perto', 'COSTURA', { prazo: '2026-10-20' }),
+      op('atrasada', 'COSTURA', { prazo: '2026-11-30', atrasada: true }),
     ]);
-    expect(c[2].ops.map((o) => o.id)).toEqual(['atrasada', 'perto', 'longe', 'sem']);
+    expect(c[3].ops.map((o) => o.id)).toEqual(['atrasada', 'perto', 'longe', 'sem']);
   });
 });
 
 describe('<KanbanProducao>', () => {
-  it('card leva pra OP e mostra a contagem da coluna', () => {
+  it('"Mover para" muda a etapa na API e o card já aparece na coluna nova', async () => {
+    let resolver: (v: unknown) => void = () => undefined;
+    apiPatch.mockImplementation(() => new Promise((r) => (resolver = r)));
+    const onMudou = vi.fn();
     render(
       <MemoryRouter>
-        <KanbanProducao ops={[op('op1', 'RASCUNHO'), op('op2', 'RASCUNHO')]} />
+        <KanbanProducao ops={[op('op1', 'CORTE')]} onMudou={onMudou} />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId('kanban-coluna-RASCUNHO').textContent).toContain('2');
-    expect(screen.getByTestId('kanban-op-op1').getAttribute('href')).toBe('/producao/op1');
-    expect(screen.getByTestId('kanban-coluna-FECHADA').textContent).toContain('Nenhuma OP');
+    fireEvent.change(screen.getByTestId('kanban-mover-op1'), { target: { value: 'COSTURA' } });
+    expect(apiPatch).toHaveBeenCalledWith('/erp/ops/op1/etapa', { etapa: 'COSTURA' });
+    // Otimista: antes da resposta já está em Costura.
+    expect(screen.getByTestId('kanban-coluna-COSTURA').textContent).toContain('OP1');
+    resolver({});
+    await waitFor(() => expect(onMudou).toHaveBeenCalled());
+  });
+
+  it('API recusou: avisa e o card volta pra etapa de antes', async () => {
+    apiPatch.mockRejectedValue(new Error('cancelada'));
+    render(
+      <MemoryRouter>
+        <KanbanProducao ops={[op('op1', 'CORTE')]} onMudou={vi.fn()} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByTestId('kanban-mover-op1'), { target: { value: 'COSTURA' } });
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(screen.getByTestId('kanban-coluna-CORTE').textContent).toContain('OP1');
   });
 });

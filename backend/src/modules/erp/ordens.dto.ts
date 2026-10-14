@@ -21,6 +21,20 @@ const gradeSchema = z
   .max(2000)
   .refine(semRepetir, 'Variação repetida na grade');
 
+/** Etapas do kanban da produção, na ordem do chão de fábrica (Léo, 14/10). */
+export const ETAPAS_OP = [
+  'RASCUNHO',
+  'IMPRESSAO_RISCO',
+  'CORTE',
+  'COSTURA',
+  'ACABAMENTO',
+  'CONFERENCIA',
+  'CONCLUIDO',
+] as const;
+export type EtapaOp = (typeof ETAPAS_OP)[number];
+export const etapaOpSchema = z.object({ etapa: z.enum(ETAPAS_OP) });
+export type EtapaOpDto = z.infer<typeof etapaOpSchema>;
+
 export const simularOpSchema = z.object({
   modeloId: id,
   faccaoId: id.nullable().optional(),

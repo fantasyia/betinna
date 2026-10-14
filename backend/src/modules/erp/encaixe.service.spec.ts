@@ -36,6 +36,7 @@ function montar(
   const jobs = opts.jobs ?? [];
   const prisma = {
     ordemProducao: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       findFirst: vi.fn().mockResolvedValue({
         id: 'op-1',
         numero: 'OP-0001',
@@ -94,6 +95,7 @@ function montar(
         async ({ where }: { where: { status: string } }) =>
           jobs.filter((j) => j.status === where.status).length,
       ),
+      findUnique: vi.fn().mockResolvedValue({ opId: 'op-1' }),
       create: vi.fn().mockResolvedValue({ id: 'j-novo' }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
@@ -311,6 +313,10 @@ describe('EncaixeService — agente da GPU', () => {
     expect(prisma.encaixeJob.updateMany).toHaveBeenCalledWith({
       where: { id: 'j-1', status: 'RODANDO' },
       data: expect.objectContaining({ status: 'CONCLUIDO' }),
+    }); // Kanban (14/10): risco pronto avança a OP pra impressão do risco — só se em rascunho.
+    expect(prisma.ordemProducao.updateMany).toHaveBeenCalledWith({
+      where: { id: 'op-1', etapa: 'RASCUNHO' },
+      data: { etapa: 'IMPRESSAO_RISCO' },
     });
   });
 

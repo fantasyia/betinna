@@ -4579,6 +4579,18 @@ enum OrdemProducaoStatus {
   CANCELADA
 }
 
+/// Etapa de PRODUÇÃO (kanban, Léo 14/10) — onde a OP está no chão de fábrica.
+/// Separada do status, que mexe em estoque e custo.
+enum OrdemProducaoEtapa {
+  RASCUNHO
+  IMPRESSAO_RISCO
+  CORTE
+  COSTURA
+  ACABAMENTO
+  CONFERENCIA
+  CONCLUIDO
+}
+
 model OrdemProducao {
   id                 String              @id @default(cuid())
   empresaId          String
@@ -4587,6 +4599,8 @@ model OrdemProducao {
   modeloId           String
   faccaoId           String?
   status             OrdemProducaoStatus @default(RASCUNHO)
+  /// Kanban da produção (14/10): arrastável; as ações da OP avançam sozinhas.
+  etapa              OrdemProducaoEtapa  @default(RASCUNHO)
   /// Prazo de entrega combinado com a facção.
   prazo              DateTime?
   observacoes        String?

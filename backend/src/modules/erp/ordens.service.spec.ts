@@ -303,6 +303,11 @@ describe('OrdensService', () => {
     const virada = tx.ordemProducao.updateMany.mock.calls[0][0];
     expect(virada.where.status).toEqual({ in: ['RASCUNHO'] });
     expect(Number(virada.data.custoTecido)).toBeCloseTo(134.4, 2);
+    // Kanban (14/10): o corte AVANÇA a etapa até CORTE — nunca volta uma que já passou.
+    expect(tx.ordemProducao.updateMany).toHaveBeenCalledWith({
+      where: { id: 'op-1', etapa: { in: ['RASCUNHO', 'IMPRESSAO_RISCO'] } },
+      data: { etapa: 'CORTE' },
+    });
   });
 
   describe('insumo com cores (Léo, 07/10)', () => {

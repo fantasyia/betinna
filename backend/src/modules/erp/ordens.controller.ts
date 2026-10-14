@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -8,11 +8,13 @@ import {
   type CorteDto,
   type CriarOpDto,
   type EnvioDto,
+  type EtapaOpDto,
   type RecebimentoDto,
   type SimularOpDto,
   corteSchema,
   criarOpSchema,
   envioSchema,
+  etapaOpSchema,
   recebimentoSchema,
   simularOpSchema,
 } from './ordens.dto';
@@ -111,6 +113,16 @@ export class OrdensController {
   @ApiOperation({ summary: 'Fecha a OP: custo real por peça por grade (vai pra calculadora)' })
   fechar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.fechar(user, id);
+  }
+
+  @Patch(':id/etapa')
+  @ApiOperation({ summary: 'Kanban da produção: muda a etapa (arrastar o card)' })
+  moverEtapa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(etapaOpSchema)) dto: EtapaOpDto,
+  ) {
+    return this.svc.moverEtapa(user, id, dto);
   }
 
   @Post(':id/cancelar')

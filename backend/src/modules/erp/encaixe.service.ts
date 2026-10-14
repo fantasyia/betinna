@@ -440,6 +440,14 @@ export class EncaixeService {
       },
     });
     if (r.count === 0) throw regra('Este encaixe foi cancelado enquanto entregava');
+    // Kanban (14/10): risco pronto = OP na impressão do risco (só avança).
+    const job = await this.prisma.encaixeJob.findUnique({ where: { id }, select: { opId: true } });
+    if (job) {
+      await this.prisma.ordemProducao.updateMany({
+        where: { id: job.opId, etapa: 'RASCUNHO' },
+        data: { etapa: 'IMPRESSAO_RISCO' },
+      });
+    }
     this.logger.log(
       `[encaixe] ${id} concluído: ${dto.comprimentoM.toFixed(3)} m, ${dto.aproveitamento.toFixed(1)}%`,
     );
