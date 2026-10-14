@@ -45,6 +45,7 @@ import {
   type ModeloPub,
   type VitrinePub,
 } from './calculo';
+import { VisorFotos, voltaDoArrasto } from './VisorFotos';
 import { baixarKit, copiarTexto } from './kit';
 import {
   Entrega,
@@ -710,15 +711,38 @@ function LinkPrivacidade({ slug }: { slug: string }) {
 }
 
 /** Fotos da cor, uma por tela; deslizar pro lado troca de foto. */
-function Carrossel({ cor, nome, onAbrir }: { cor: CorPub; nome: string; onAbrir?: () => void }) {
+function Carrossel({ cor, nome }: { cor: CorPub; nome: string }) {
   const [idx, setIdx] = useState(0);
+  // Visor em tela cheia (Léo, 14/10): índice da foto aberta, ou null.
+  const [visor, setVisor] = useState<number | null>(null);
+  const trilho = useRef<HTMLDivElement>(null);
+  const toque = useRef<{ x: number; y: number; idx: number } | null>(null);
+  const total = cor.fotos.length;
+  const irPara = (i: number) => {
+    const el = trilho.current;
+    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  };
   return (
     <>
       <div
+        ref={trilho}
         className="vt-fotos"
         onScroll={(e) => {
           const el = e.currentTarget;
           setIdx(Math.round(el.scrollLeft / Math.max(1, el.clientWidth)));
+        }}
+        // Dá a volta nas pontas: da última pra 1ª e da 1ª pra última (14/10).
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          toque.current = { x: t.clientX, y: t.clientY, idx };
+        }}
+        onTouchEnd={(e) => {
+          const ini = toque.current;
+          toque.current = null;
+          if (!ini) return;
+          const t = e.changedTouches[0];
+          const destino = voltaDoArrasto(ini.idx, total, t.clientX - ini.x, t.clientY - ini.y);
+          if (destino !== null) irPara(destino);
         }}
       >
         {cor.fotos.map((f, i) => (
@@ -729,10 +753,20 @@ function Carrossel({ cor, nome, onAbrir }: { cor: CorPub; nome: string; onAbrir?
             // A 2ª já vem carregada: o 1º deslize não mostra foto em branco.
             loading={i <= 1 ? 'eager' : 'lazy'}
             decoding="async"
-            onClick={onAbrir}
+            // Tocar abre a foto INTEIRA em tela cheia (14/10).
+            onClick={() => setVisor(i)}
+            data-testid={`vt-foto-${i}`}
           />
         ))}
       </div>
+      {visor !== null && (
+        <VisorFotos
+          fotos={cor.fotos}
+          nome={`${nome} · ${cor.nome}`}
+          inicial={visor}
+          onFechar={() => setVisor(null)}
+        />
+      )}
       {/* Contador DA FOTO (desta cor, nesta linha) — antes era a posição do
           modelo no feed, e parecia contagem de fotos errada. */}
       {cor.fotos.length > 1 && (
@@ -741,9 +775,19 @@ function Carrossel({ cor, nome, onAbrir }: { cor: CorPub; nome: string; onAbrir?
         </div>
       )}
       {cor.fotos.length > 1 && (
-        <div className="vt-pontos" aria-hidden>
+        <div className="vt-pontos">
+          {/* Bolinha = botão: pula direto pra foto dela (14/10). */}
           {cor.fotos.map((f, i) => (
-            <i key={f.url} data-on={i === idx} />
+            <button
+              key={f.url}
+              type="button"
+              aria-label={`Foto ${i + 1}`}
+              aria-current={i === idx || undefined}
+              onClick={() => irPara(i)}
+              data-testid={`vt-ponto-${i}`}
+            >
+              <i data-on={i === idx} />
+            </button>
           ))}
         </div>
       )}

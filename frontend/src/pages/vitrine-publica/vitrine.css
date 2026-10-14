@@ -76,9 +76,25 @@
 /* Ancorada no TOPO (Léo, 10/10): a cabeça do modelo nunca é cortada — se
    faltar altura, o corte é nos pés. */
 .vt-fotos img { flex: none; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0%; scroll-snap-align: center; scroll-snap-stop: always; }
-.vt-pontos { position: absolute; left: 0; right: 0; bottom: 32px; display: flex; justify-content: center; gap: 5px; pointer-events: none; }
-.vt-pontos i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 252, 245, .6); box-shadow: 0 0 0 1px rgba(26, 45, 56, .2); }
+.vt-pontos { position: absolute; left: 0; right: 0; bottom: 32px; display: flex; justify-content: center; gap: 0; pointer-events: none; }
+/* Bolinha clicável (14/10): a bolinha segue com 6 px, o toque pega 22 px em volta. */
+.vt-pontos button { pointer-events: auto; display: grid; place-items: center; width: 17px; height: 22px; padding: 0; background: none; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.vt-pontos i { display: block; width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 252, 245, .6); box-shadow: 0 0 0 1px rgba(26, 45, 56, .2); }
 .vt-pontos i[data-on='true'] { background: var(--petroleo); }
+.vt-fotos img { cursor: zoom-in; }
+
+/* Visor em tela cheia (14/10): a foto INTEIRA, sem corte, com zoom. */
+.vt-visor { position: fixed; inset: 0; z-index: 1000; background: #0c0e10; display: grid; place-items: center; animation: vt-visor-entra .18s ease-out; }
+@keyframes vt-visor-entra { from { opacity: 0; } to { opacity: 1; } }
+.vt-visor-palco { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; }
+.vt-visor-palco img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform .12s ease-out; user-select: none; -webkit-user-drag: none; }
+.vt-visor-fechar { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .14); color: #fff; font-size: 26px; line-height: 40px; cursor: pointer; }
+.vt-visor-seta { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 56px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, .12); color: #fff; font-size: 30px; cursor: pointer; }
+.vt-visor-ant { left: 10px; }
+.vt-visor-prox { right: 10px; }
+.vt-visor-cont { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); color: rgba(255, 255, 255, .85); font-size: 13px; font-variant-numeric: tabular-nums; }
+/* No celular a seta só atrapalha a foto: lá passa arrastando. */
+@media (hover: none) { .vt-visor-seta { display: none; } }
 /* nome da cor escolhida: canto de baixo à direita da foto, acima do card */
 .vt-cor-nome { position: absolute; right: 16px; bottom: 34px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; color: var(--petroleo); background: rgba(248, 241, 224, .78); padding: 3px 10px; border-radius: 999px; pointer-events: none; animation: vt-cor-in .35s ease-out; backdrop-filter: blur(4px); }
 .vt-pdp .vt-cor-nome { bottom: 12px; }
