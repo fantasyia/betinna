@@ -8,6 +8,8 @@ export interface VitrineConfig {
   minimoVolume: number | null;
   minimoAtacadao: number | null;
   respeitaEstoque?: boolean;
+  /** Domínio próprio (branding) — a vitrine abre na raiz dele. null = sem. */
+  dominio?: string | null;
 }
 
 export interface Cor {

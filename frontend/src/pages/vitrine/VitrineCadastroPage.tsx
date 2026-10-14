@@ -298,7 +298,13 @@ function ConfigForm({ config, onSalvou }: { config: VitrineConfig | null; onSalv
     }
   }
 
-  const link = slug.trim() ? `${window.location.origin}/v/${slug.trim().toLowerCase()}` : null;
+  // Domínio próprio: a vitrine mora na raiz dele (14/10) — é ESSE o link do cliente.
+  const dominio = config?.dominio ?? null;
+  const link = dominio
+    ? `https://${dominio}`
+    : slug.trim()
+      ? `${window.location.origin}/v/${slug.trim().toLowerCase()}`
+      : null;
 
   return (
     <Card className="p-4 max-w-xl">
@@ -308,9 +314,20 @@ function ConfigForm({ config, onSalvou }: { config: VitrineConfig | null; onSalv
         </p>
       )}
       <div className="flex flex-col gap-3">
-        <Field label="Endereço do link" hint="Letras minúsculas, números e hífen" required>
-          <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="ribelt" data-testid="vitrine-slug" />
-        </Field>
+        {config ? (
+          // Já ligada: o identificador não muda (Léo, 14/10). O domínio próprio, os
+          // links já compartilhados, o pagamento e a política dependem dele.
+          <Field
+            label="Identificador interno"
+            hint="Não aparece pro cliente no domínio próprio. Não dá pra trocar: o domínio, os links já enviados e o pagamento dependem dele."
+          >
+            <Input value={slug} readOnly disabled data-testid="vitrine-slug" />
+          </Field>
+        ) : (
+          <Field label="Endereço do link" hint="Letras minúsculas, números e hífen" required>
+            <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="ribelt" data-testid="vitrine-slug" />
+          </Field>
+        )}
         {link && (
           <p className="flex items-center gap-1 text-xs text-muted">
             <ExternalLink size={12} /> {link}

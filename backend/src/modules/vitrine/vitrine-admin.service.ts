@@ -119,7 +119,16 @@ export class VitrineAdminService {
 
   async obterConfig(user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
-    return this.prisma.vitrine.findUnique({ where: { empresaId } });
+    const [v, e] = await Promise.all([
+      this.prisma.vitrine.findUnique({ where: { empresaId } }),
+      this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
+    ]);
+    if (!v) return v;
+    // Domínio próprio (branding): o link que o cliente usa é a RAIZ dele (14/10).
+    const dominio =
+      ((e?.config ?? {}) as { branding?: { dominio?: string | null } }).branding?.dominio?.trim() ||
+      null;
+    return { ...v, dominio };
   }
 
   async salvarConfig(user: AuthenticatedUser, dto: VitrineConfigDto) {
