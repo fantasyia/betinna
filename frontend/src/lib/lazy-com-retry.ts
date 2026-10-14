@@ -83,7 +83,10 @@ export function jaRecarregouPorChunk(): boolean {
  * inútil, que falha igual e cai no ErrorBoundary logo em seguida. Prefiro
  * gastar uma recarga a deixar o defeito passar por não reconhecer uma string.
  */
-export function lazyComRetry<T extends ComponentType<unknown>>(
+// Mesma restrição do `lazy` do React (ComponentType<any>): com `unknown` a página
+// não podia receber props (a vitrine na raiz recebe o slug — 14/10).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function lazyComRetry<T extends ComponentType<any>>(
   importar: () => Promise<{ default: T }>,
 ) {
   return lazy(async () => {

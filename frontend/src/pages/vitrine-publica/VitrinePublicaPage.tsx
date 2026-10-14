@@ -116,8 +116,10 @@ function lerCarrinho(slug: string): Carrinho {
   }
 }
 
-export default function VitrinePublicaPage() {
-  const { slug = '' } = useParams<{ slug: string }>();
+/** `slugFixo`: a vitrine na RAIZ do domínio próprio (sem /v/<slug> na URL). */
+export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } = {}) {
+  const { slug: slugDaUrl = '' } = useParams<{ slug: string }>();
+  const slug = slugFixo ?? slugDaUrl;
   useFontes();
   const [dados, setDados] = useState<VitrinePub | null>(null);
   const [erro, setErro] = useState<string | null>(null);

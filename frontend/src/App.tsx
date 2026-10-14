@@ -145,6 +145,17 @@ function RaizDoApp() {
       clearTimeout(desiste);
     };
   }, [destino, host]);
+  // Domínio próprio com vitrine: a vitrine abre AQUI, na raiz — a barra mostra
+  // só o domínio (Léo, 14/10). O servidor já manda /v/<slug> pra cá.
+  if (destino?.startsWith("/v/")) {
+    return (
+      <ErrorBoundary>
+        <PageSuspense>
+          <VitrinePublicaPage slugFixo={decodeURIComponent(destino.slice(3))} />
+        </PageSuspense>
+      </ErrorBoundary>
+    );
+  }
   return destino ? <Navigate to={destino} replace /> : null;
 }
 

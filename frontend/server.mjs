@@ -282,9 +282,13 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
         });
         return res.end(req.method === 'HEAD' ? undefined : corpo);
       }
-      if (caminho === '/' && doTenant && marca.vitrineSlug) {
+      // A vitrine mora na RAIZ do domínio próprio (Léo, 14/10: na barra, só
+      // "atacado.ribelt.com.br"). O link antigo /v/<slug>, já compartilhado em
+      // WhatsApp e anúncio, vem pra raiz levando a query (utm, fbclid). 302,
+      // não 301: o navegador não grava pra sempre se um dia mudar de novo.
+      if (doTenant && marca.vitrineSlug && caminho.replace(/\/+$/, '') === `/v/${marca.vitrineSlug}`) {
         res.writeHead(302, {
-          Location: `/v/${encodeURIComponent(marca.vitrineSlug)}${url.search}`,
+          Location: `/${url.search}`,
           'Cache-Control': SEM_CACHE,
           ...SEGURANCA,
         });

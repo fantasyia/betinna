@@ -138,21 +138,34 @@ describe('servidor do front — o app continua igual', () => {
 
 describe('servidor do front — preview do link com a marca do domínio', () => {
   it('domínio do tenant: título, descrição e imagem DELE (absolutas, escapadas)', async () => {
-    const r = await get('/v/atacado-ribelt', 'atacado.ribelt.com.br');
+    const r = await get('/', 'atacado.ribelt.com.br');
     const html = await r.text();
     expect(html).toContain('<title>Ribelt Atacado</title>');
     expect(html).toContain('<meta property="og:title" content="Ribelt Atacado" />');
     expect(html).toContain('content="Moda masculina no atacado &quot;direto&quot; da produção"');
     expect(html).toContain('<meta property="og:image" content="https://atacado.ribelt.com.br/marcas/ribelt-og.png" />');
-    expect(html).toContain('<meta property="og:url" content="https://atacado.ribelt.com.br/v/atacado-ribelt" />');
+    expect(html).toContain('<meta property="og:url" content="https://atacado.ribelt.com.br/" />');
     expect(html).toContain('summary_large_image');
     expect(html).not.toContain('Betinna.ai — Plataforma');
   });
 
-  it('raiz do domínio com vitrine → vitrine (302), mantendo a query', async () => {
+  it('14/10: a vitrine mora na RAIZ do domínio — sem redirecionar', async () => {
     const r = await get('/?utm_source=whatsapp', 'atacado.ribelt.com.br');
-    expect(r.status).toBe(302);
-    expect(r.headers.get('location')).toBe('/v/atacado-ribelt?utm_source=whatsapp');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('<title>Ribelt Atacado</title>');
+  });
+
+  it('link antigo /v/<slug> no domínio da vitrine → raiz (302), mantendo a query', async () => {
+    for (const caminho of ['/v/atacado-ribelt', '/v/atacado-ribelt/']) {
+      const r = await get(`${caminho}?utm_source=meta&fbclid=abc`, 'atacado.ribelt.com.br');
+      expect(r.status).toBe(302);
+      expect(r.headers.get('location')).toBe('/?utm_source=meta&fbclid=abc');
+    }
+  });
+
+  it('/v/<slug> no domínio do APP segue como está (sem redirecionar)', async () => {
+    const r = await get('/v/atacado-ribelt', 'app.somatecblocking.com.br');
+    expect(r.status).toBe(200);
   });
 
   it('a raiz de domínio SEM vitrine segue pro app (sem redirecionar)', async () => {
