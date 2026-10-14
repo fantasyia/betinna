@@ -58,6 +58,9 @@
 .vt-cats::-webkit-scrollbar { display: none; }
 .vt-cats button { flex: none; font-size: 13.5px; color: var(--oliva); padding: 4px 0; border-bottom: 2px solid transparent; }
 .vt-cats button[aria-pressed='true'] { color: var(--petroleo); font-weight: 600; border-color: var(--terracota); }
+/* Categorias mais compactas (14/10): a fileira inteira tira menos foto. */
+.vt-cats { padding: 4px 2px 2px; gap: 16px; }
+.vt-cats button { font-size: 13px; padding: 3px 0; }
 
 /* feed */
 .vt-feed { position: absolute; inset: 0; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; }
@@ -269,6 +272,9 @@
 .vt-linhas button { height: 26px; }
 .vt-slide .vt-fotos { top: 70px; }
 .vt-counter { top: 80px; }
+/* Com a fileira de categorias: a foto começa logo abaixo DELA (14/10). */
+.vt-top[data-cats] + .vt-feed .vt-slide .vt-fotos { top: 105px; }
+.vt-top[data-cats] + .vt-feed .vt-counter { top: 115px; }
 
 /* envio do pedido */
 .vt-envio { max-height: 94%; }
@@ -428,6 +434,8 @@
   .vt-linhas button { height: 24px; }
   .vt-slide .vt-fotos { top: 65px; }
   .vt-counter { top: 73px; }
+  .vt-top[data-cats] + .vt-feed .vt-slide .vt-fotos { top: 100px; }
+  .vt-top[data-cats] + .vt-feed .vt-counter { top: 108px; }
   /* Investe | Lucro no pedido fica só na Ficha técnica; o preço e o "Se você
      levar" continuam. O aviso "deslize" também sai. */
   .vt-slide .vt-sim-r { display: none; }

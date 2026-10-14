@@ -320,7 +320,9 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
 
   return (
     <>
-      <div className="vt-top">
+      {/* data-cats: com a fileira de categorias, a foto desce junto (Léo, 14/10:
+          a cabeça do modelo ficava atrás dela). */}
+      <div className="vt-top" data-cats={categorias.length > 1 || undefined}>
         <div className="vt-brand">
           {/* Logo = "início": volta pro começo dos produtos (Léo, 09/10). */}
           <button
