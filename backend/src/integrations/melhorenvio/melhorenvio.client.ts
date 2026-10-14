@@ -235,8 +235,21 @@ function mensagemDe(json: unknown): string {
   return typeof m === 'string' && m ? ` — ${m.slice(0, 160)}` : '';
 }
 
-function resumoErros(json: unknown): string {
-  const erros = (json as { errors?: Record<string, string[]> } | null)?.errors;
-  if (!erros) return 'dados inválidos';
-  return Object.values(erros).flat().slice(0, 3).join('; ') || 'dados inválidos';
+/**
+ * 422 do Melhor Envio: ou vem `errors` por campo, ou só `message` (+ `suggestion`).
+ * Sem ler o `message`, a recusa do seguro acima de R$ 1.000 virava "dados
+ * inválidos" e ninguém sabia o que mudar (PED-0008, 14/10). PURO.
+ */
+export function resumoErros(json: unknown): string {
+  const j = json as {
+    errors?: Record<string, string[]>;
+    message?: unknown;
+    suggestion?: unknown;
+  } | null;
+  const porCampo = j?.errors ? Object.values(j.errors).flat().slice(0, 3).join('; ') : '';
+  if (porCampo) return porCampo;
+  const msg = typeof j?.message === 'string' ? j.message.trim().slice(0, 240) : '';
+  const dica = typeof j?.suggestion === 'string' ? j.suggestion.trim().slice(0, 160) : '';
+  if (msg) return dica ? `${msg} ${dica}` : msg;
+  return 'dados inválidos';
 }
