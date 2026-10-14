@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { EnvService } from '@config/env.service';
+import { BUCKET_VITRINE } from '@modules/vitrine/vitrine-fotos.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { IndexacaoService } from '@modules/rag/indexacao.service';
@@ -30,7 +32,43 @@ export class ProdutosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly indexacao: IndexacaoService,
+    // Foto da vitrine como miniatura (Léo, 14/10). Opcional pra quem monta à mão.
+    @Optional() private readonly env?: EnvService,
   ) {}
+
+  /**
+   * Produto da vitrine sem `imagem` própria: a miniatura é a capa da cor DELE
+   * na linha dele (foto da linha → foto geral da cor → a 1ª que houver). Léo,
+   * 14/10: a lista de produtos mostrava só o quadrado cinza. PURO de Prisma.
+   */
+  private async fotosDaVitrine(empresaId: string, produtoIds: string[]) {
+    const out = new Map<string, string>();
+    const base = this.env?.get('SUPABASE_URL')?.replace(/\/$/, '');
+    if (!base || !produtoIds.length) return out;
+    const vs = await this.prisma.catalogoVariacao.findMany({
+      where: { empresaId, produtoId: { in: produtoIds } },
+      select: { produtoId: true, modeloCorId: true, modeloLinha: { select: { linhaId: true } } },
+    });
+    if (!vs.length) return out;
+    const fotos = await this.prisma.catalogoFoto.findMany({
+      where: { modeloCorId: { in: [...new Set(vs.map((v) => v.modeloCorId))] } },
+      select: { modeloCorId: true, linhaId: true, storagePath: true, thumbPath: true },
+      orderBy: { ordem: 'asc' },
+    });
+    for (const v of vs) {
+      const daCor = fotos.filter((f) => f.modeloCorId === v.modeloCorId);
+      const f =
+        daCor.find((x) => x.linhaId === v.modeloLinha.linhaId) ??
+        daCor.find((x) => !x.linhaId) ??
+        daCor[0];
+      if (f)
+        out.set(
+          v.produtoId,
+          `${base}/storage/v1/object/public/${BUCKET_VITRINE}/${f.thumbPath ?? f.storagePath}`,
+        );
+    }
+    return out;
+  }
 
   /** Empresa do contexto — todos os endpoints filtram por aqui. */
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -84,8 +122,16 @@ export class ProdutosService {
         include: produtoInclude,
       }),
     ]);
+    // Sem imagem própria: a foto da vitrine (capa da cor na linha).
+    const semImagem = data.filter((p) => !p.imagem).map((p) => p.id);
+    const fotos = await this.fotosDaVitrine(empresaId, semImagem).catch(
+      () => new Map<string, string>(),
+    );
+    const comFoto = data.map((p) =>
+      !p.imagem && fotos.has(p.id) ? { ...p, imagem: fotos.get(p.id)! } : p,
+    );
     // REP não vê custo (regra do Léo, 26/08) — ver custo-oculto.util.
-    return buildPaginated(semCustoParaRepLista(user, data), total, params.page, params.limit);
+    return buildPaginated(semCustoParaRepLista(user, comFoto), total, params.page, params.limit);
   }
 
   async findById(user: AuthenticatedUser, id: string): Promise<ProdutoWithRel> {

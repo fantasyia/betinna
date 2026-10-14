@@ -47,6 +47,10 @@ interface Facets {
   marcas: string[];
 }
 
+const CHAVE_FOTOS = 'produtos:fotos';
+/** `imagem` pode ser URL (foto) ou emoji (cadastro antigo). */
+const ehUrl = (v: string | null | undefined) => !!v && /^https?:\/\//.test(v);
+
 export default function ProdutosPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -112,6 +116,23 @@ export default function ProdutosPage() {
   const estoqueModo = useEstoqueModo();
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [adicionando, setAdicionando] = useState(false);
+  // Esconder as fotos da lista (Léo, 14/10) — lembrado no navegador.
+  const [mostrarFotos, setMostrarFotos] = useState(() => {
+    try {
+      return localStorage.getItem(CHAVE_FOTOS) !== 'nao';
+    } catch {
+      return true;
+    }
+  });
+  const alternarFotos = () =>
+    setMostrarFotos((v) => {
+      try {
+        localStorage.setItem(CHAVE_FOTOS, v ? 'nao' : 'sim');
+      } catch {
+        /* sem armazenamento: vale só nesta visita */
+      }
+      return !v;
+    });
 
   const daPagina = pageResp?.data ?? [];
   const selecionaveis = daPagina.filter((p) => !jaNoCatalogo.has(p.id));
@@ -236,15 +257,23 @@ export default function ProdutosPage() {
       header: 'Produto',
       render: (p) => (
         <div className="flex gap-2 items-center">
-          {p.imagem ? (
-            <img
-              src={p.imagem}
-              alt=""
-              className="w-9 h-9 rounded-[4px] object-cover bg-[#f0f0f0]"
-            />
-          ) : (
-            <div className="w-9 h-9 rounded-[4px] bg-[#f0f0f0]" />
-          )}
+          {mostrarFotos &&
+            (ehUrl(p.imagem) ? (
+              <img
+                src={p.imagem as string}
+                alt=""
+                loading="lazy"
+                className="w-9 h-9 rounded-[4px] object-cover bg-[#f0f0f0]"
+                data-testid={`prod-foto-${p.id}`}
+              />
+            ) : p.imagem ? (
+              // `imagem` também aceita emoji (cadastro antigo).
+              <div className="w-9 h-9 rounded-[4px] bg-[#f0f0f0] grid place-items-center text-lg">
+                {p.imagem}
+              </div>
+            ) : (
+              <div className="w-9 h-9 rounded-[4px] bg-[#f0f0f0]" />
+            ))}
           <div>
             <div className="font-semibold">{p.nome}</div>
             <div className="text-[11px] text-muted">
@@ -363,6 +392,15 @@ export default function ProdutosPage() {
       <CatalogoTabs />
       <div className="bg-surface border border-border rounded-[10px] p-6">
         <div className="flex justify-end gap-2 mb-3">
+          <button
+            type="button"
+            data-testid="prod-alternar-fotos"
+            onClick={alternarFotos}
+            aria-pressed={!mostrarFotos}
+            className="bg-surface text-text border border-border-strong rounded-md py-2 px-4 text-sm font-semibold cursor-pointer"
+          >
+            {mostrarFotos ? 'Esconder fotos' : 'Mostrar fotos'}
+          </button>
           {podeSincronizarErp && (
             <button
               type="button"
