@@ -4504,6 +4504,8 @@ model FichaTecnica {
   modeloLinhaId       String   @unique
   /// Custo de facção previsto por peça (R$) — antes de escolher a facção da OP.
   custoFaccaoPrevisto Decimal? @db.Decimal(14, 2)
+  /// Serviços de acabamento da grade (ids de Empresa.config.acabamento.servicos), 14/10.
+  acabamento          Json?
   observacoes         String?
   criadoEm            DateTime @default(now())
   atualizadoEm        DateTime @updatedAt
@@ -4618,6 +4620,8 @@ model OrdemProducao {
   custoTecido        Decimal             @default(0) @db.Decimal(14, 2)
   custoAviamentos    Decimal             @default(0) @db.Decimal(14, 2)
   custoFaccao        Decimal             @default(0) @db.Decimal(14, 2)
+  /// Acabamento (Isabela, 14/10): serviços da ficha × peças recebidas, no fechamento.
+  custoAcabamento    Decimal             @default(0) @db.Decimal(14, 2)
   usuarioId          String?
   cortadaEm          DateTime?
   enviadaEm          DateTime?

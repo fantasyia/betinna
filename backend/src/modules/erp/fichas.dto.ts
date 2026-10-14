@@ -15,6 +15,8 @@ const textoOpcional = (max: number) =>
 export const fichaSchema = z.object({
   custoFaccaoPrevisto: z.number().nonnegative().max(100_000).nullable().optional(),
   observacoes: textoOpcional(1000),
+  /** Serviços de acabamento que a grade leva (ids da lista da empresa), 14/10. */
+  acabamento: z.array(z.string().min(1).max(60)).max(30).optional(),
   itens: z
     .array(
       z.object({
@@ -115,3 +117,17 @@ export const regrasEncaixeSchema = z.object({
     .transform((v) => v ?? null),
 });
 export type RegrasEncaixeDto = z.infer<typeof regrasEncaixeSchema>;
+
+/** Lista de serviços de acabamento da empresa (Isabela, 14/10). Sem id = serviço novo. */
+export const acabamentoSchema = z.object({
+  servicos: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(60).optional(),
+        nome: z.string().trim().min(2, 'Nome do serviço').max(80),
+        preco: z.number().min(0).max(1000),
+      }),
+    )
+    .max(30),
+});
+export type AcabamentoDto = z.infer<typeof acabamentoSchema>;

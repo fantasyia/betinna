@@ -63,6 +63,8 @@ interface Op {
   custoTecido: number;
   custoAviamentos: number;
   custoFaccao: number;
+  /** Acabamento da Isabela (14/10), calculado no fechamento. */
+  custoAcabamento?: number;
   cortadaEm: string | null;
   enviadaEm: string | null;
   fechadaEm: string | null;
@@ -200,7 +202,7 @@ export default function OpDetalhePage() {
 
               <Card className="p-4 flex flex-col gap-2" data-testid="op-custos">
                 <h2 className="text-base font-semibold">Custos reais</h2>
-                <div className="grid gap-2 sm:grid-cols-4 text-sm">
+                <div className="grid gap-2 sm:grid-cols-5 text-sm">
                   <Valor rotulo="Tecido (corte)" v={formatMoeda(op.custoTecido)} />
                   <Valor rotulo="Aviamentos" v={formatMoeda(op.custoAviamentos)} />
                   <Valor
@@ -208,7 +210,15 @@ export default function OpDetalhePage() {
                     v={formatMoeda(op.custoFaccao)}
                     dica={op.precoFaccaoPorPeca !== null ? `${formatMoeda(op.precoFaccaoPorPeca)}/peça enviada` : undefined}
                   />
-                  <Valor rotulo="Total" v={formatMoeda(op.custoTecido + op.custoAviamentos + op.custoFaccao)} />
+                  <Valor
+                    rotulo="Acabamento"
+                    v={formatMoeda(op.custoAcabamento ?? 0)}
+                    dica={op.status === 'FECHADA' ? undefined : 'Calculado ao fechar a OP'}
+                  />
+                  <Valor
+                    rotulo="Total"
+                    v={formatMoeda(op.custoTecido + op.custoAviamentos + op.custoFaccao + (op.custoAcabamento ?? 0))}
+                  />
                 </div>
                 {op.consumoRealPorPeca !== null && (
                   <p className="text-sm text-muted">

@@ -21,6 +21,9 @@ interface FichaApi {
   /** Tamanhos da grade, na ordem (14/10: quantidade por tamanho). */
   tamanhos?: string[];
   existe: boolean;
+  /** Serviços de acabamento marcados na grade + a lista da empresa (14/10). */
+  acabamento?: string[];
+  servicosAcabamento?: ServicoAcabamento[];
   custoFaccaoPrevisto: number | null;
   observacoes: string | null;
   itens: Array<{
@@ -31,6 +34,12 @@ interface FichaApi {
     corFixa: { id: string; nome: string; hex: string } | null;
   }>;
   semCusto: string[];
+}
+
+interface ServicoAcabamento {
+  id: string;
+  nome: string;
+  preco: number;
 }
 
 interface Linha {
@@ -62,11 +71,86 @@ export function FichaTecnicaAba({
           Nenhum insumo cadastrado ainda — cadastre tecido e aviamentos em Catálogo → Insumos.
         </p>
       )}
+      <ServicosAcabamento />
       {linhas.map((l) => (
         <FichaDaGrade key={l.id} modeloLinhaId={l.id} nome={l.nome} insumos={insumos.data ?? []} />
       ))}
       <RegrasEncaixe modeloId={modeloId} />
     </div>
+  );
+}
+
+/**
+ * Serviços de ACABAMENTO da empresa (Léo, 14/10): a Isabela cobra por tarefa —
+ * passar cordão, dobrar e embalar, ilhós. Lista única; cada grade marca os seus.
+ */
+function ServicosAcabamento() {
+  const toast = useToast();
+  const q = useApiQuery<{ servicos: ServicoAcabamento[] }>('/erp/acabamento');
+  const [lista, setLista] = useState<Array<{ id?: string; nome: string; preco: string }>>([]);
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    if (q.data) setLista(q.data.servicos.map((s) => ({ id: s.id, nome: s.nome, preco: paraCampo(s.preco) })));
+  }, [q.data]);
+  const valido = lista.every((s) => s.nome.trim().length >= 2 && (lerNumero(s.preco) ?? -1) >= 0);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await api.put('/erp/acabamento', {
+        servicos: lista.map((s) => ({ ...(s.id ? { id: s.id } : {}), nome: s.nome.trim(), preco: lerNumero(s.preco) ?? 0 })),
+      });
+      toast.success('Serviços de acabamento salvos');
+      q.refetch();
+    } catch (err) {
+      toast.error('Não foi possível salvar', apiErrorMessage(err));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Card variant="outline" padding="md" className="flex flex-col gap-2" data-testid="servicos-acabamento">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h3 className="text-sm font-semibold mr-auto">Serviços de acabamento (R$ por peça)</h3>
+        <span className="text-xs text-muted">Valem pra todos os produtos; cada grade marca os seus abaixo.</span>
+      </div>
+      {lista.map((s, idx) => (
+        <div key={s.id ?? `novo-${idx}`} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">
+          <Input
+            value={s.nome}
+            onChange={(e) => setLista((xs) => xs.map((x, i) => (i === idx ? { ...x, nome: e.target.value } : x)))}
+            placeholder="Ex.: Passar cordão"
+            data-testid={`acab-nome-${idx}`}
+          />
+          <Input
+            value={s.preco}
+            onChange={(e) => setLista((xs) => xs.map((x, i) => (i === idx ? { ...x, preco: e.target.value } : x)))}
+            inputMode="decimal"
+            data-testid={`acab-preco-${idx}`}
+          />
+          <IconButton
+            aria-label="Tirar serviço"
+            icon={<Trash2 className="h-4 w-4" />}
+            onClick={() => setLista((xs) => xs.filter((_, i) => i !== idx))}
+          />
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          leftIcon={<Plus className="h-3.5 w-3.5" />}
+          onClick={() => setLista((xs) => [...xs, { nome: '', preco: '0,25' }])}
+          data-testid="acab-add"
+        >
+          Adicionar serviço
+        </Button>
+        <Button size="sm" onClick={salvar} loading={salvando} disabled={!valido} data-testid="acab-salvar">
+          Salvar serviços
+        </Button>
+      </div>
+    </Card>
   );
 }
 
@@ -76,10 +160,12 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
   const [itens, setItens] = useState<Linha[]>([]);
   const [faccao, setFaccao] = useState('');
   const [obs, setObs] = useState('');
+  const [acab, setAcab] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     if (!q.data) return;
+    setAcab(q.data.acabamento ?? []);
     setItens(
       q.data.itens.map((i) => ({
         insumoId: i.insumoId,
@@ -111,7 +197,9 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
   };
   const custoItem = (l: Linha) => consumoDe(l) * custoUnit(l);
   const custoInsumos = itens.reduce((s, l) => s + custoItem(l), 0);
-  const total = custoInsumos + (lerNumero(faccao) ?? 0);
+  const servicos = q.data?.servicosAcabamento ?? [];
+  const custoAcab = servicos.filter((s) => acab.includes(s.id)).reduce((t, s) => t + s.preco, 0);
+  const total = custoInsumos + (lerNumero(faccao) ?? 0) + custoAcab;
   const usados = new Set(itens.map((l) => l.insumoId));
   const livres = insumos.filter((i) => i.ativo && !usados.has(i.id));
   const valido = itens.every((l) => l.insumoId && consumoDe(l) > 0);
@@ -122,6 +210,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
       await api.put(`/erp/fichas/${modeloLinhaId}`, {
         custoFaccaoPrevisto: lerNumero(faccao),
         observacoes: obs,
+        acabamento: acab,
         itens: itens.map((l) => {
           const porTamanho = l.porTamanho
             ? Object.fromEntries(
@@ -290,6 +379,26 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
         </Button>
       </div>
 
+      {/* Acabamento da Isabela (Léo, 14/10): cada serviço é cobrado por peça. */}
+      {servicos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" data-testid={`ficha-acabamento-${modeloLinhaId}`}>
+          <span className="text-xs font-semibold text-muted">Acabamento:</span>
+          {servicos.map((s) => (
+            <label key={s.id} className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={acab.includes(s.id)}
+                onChange={(e) =>
+                  setAcab((xs) => (e.target.checked ? [...xs, s.id] : xs.filter((x) => x !== s.id)))
+                }
+                data-testid={`ficha-acab-${modeloLinhaId}-${s.id}`}
+              />
+              {s.nome} <span className="text-muted tabular-nums">{formatMoeda(s.preco)}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
       <div className="grid gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
         <Field label="Facção prevista (R$/peça)" hint="Até escolher a facção da OP">
           <Input value={faccao} onChange={(e) => setFaccao(e.target.value)} inputMode="decimal" data-testid={`ficha-faccao-${modeloLinhaId}`} />
@@ -300,7 +409,8 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
       </div>
 
       <p className="text-xs text-muted">
-        Insumos {formatMoeda(custoInsumos)} + facção {formatMoeda(lerNumero(faccao) ?? 0)}. Consumo médio por peça da grade
+        Insumos {formatMoeda(custoInsumos)} + facção {formatMoeda(lerNumero(faccao) ?? 0)}
+        {custoAcab > 0 ? ` + acabamento ${formatMoeda(custoAcab)}` : ''}. Consumo médio por peça da grade
         inteira, na unidade do insumo. A OP mede o consumo real e você decide se atualiza aqui.
       </p>
       <div>

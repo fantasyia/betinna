@@ -18,6 +18,14 @@ function montar(opts: { ligado?: boolean } = {}) {
     },
   };
   const prisma = {
+    // Serviços de acabamento da empresa (Isabela, 14/10).
+    empresa: {
+      findUnique: vi.fn().mockResolvedValue({
+        config: {
+          acabamento: { servicos: [{ id: 'embalar', nome: 'Dobrar e embalar', preco: 0.25 }] },
+        },
+      }),
+    },
     catalogoModeloLinha: {
       findFirst: vi.fn().mockResolvedValue({
         id: 'ml-1',
@@ -113,7 +121,19 @@ describe('custo previsto pela ficha', () => {
         ],
         4.5,
       ),
-    ).toEqual({ insumos: expect.closeTo(13.79, 6), faccao: 4.5, total: expect.closeTo(18.29, 6) });
+    ).toEqual({
+      insumos: expect.closeTo(13.79, 6),
+      faccao: 4.5,
+      acabamento: 0,
+      total: expect.closeTo(18.29, 6),
+    });
+  });
+
+  it('14/10: acabamento da Isabela entra no total', () => {
+    expect(custoPrevistoDaFicha([{ consumoPorPeca: 1, custoMedio: 2 }], 3, 0.75).total).toBeCloseTo(
+      5.75,
+      6,
+    );
   });
 });
 

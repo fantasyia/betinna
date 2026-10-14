@@ -41,14 +41,27 @@ const fixos = vi.hoisted(() => {
       },
     ],
     semCusto: [],
+    acabamento: [],
+    servicosAcabamento: [{ id: 'embalar', nome: 'Dobrar e embalar', preco: 0.25 }],
   };
   const r = (data: unknown) => ({ data, loading: false, error: null, refetch: () => undefined });
-  return { insumos: r([] as unknown[]), ficha: r(ficha), regras: r({ regras: null }) };
+  return {
+    insumos: r([] as unknown[]),
+    ficha: r(ficha),
+    regras: r({ regras: null }),
+    acabamento: r({ servicos: [{ id: 'embalar', nome: 'Dobrar e embalar', preco: 0.25 }] }),
+  };
 });
 fixos.insumos.data = [ELASTICO];
 vi.mock('@/hooks/useApiQuery', () => ({
   useApiQuery: (path: string | null) =>
-    path?.startsWith('/erp/insumos') ? fixos.insumos : path?.startsWith('/erp/fichas/') ? fixos.ficha : fixos.regras,
+    path?.startsWith('/erp/insumos')
+      ? fixos.insumos
+      : path?.startsWith('/erp/fichas/')
+        ? fixos.ficha
+        : path === '/erp/acabamento'
+          ? fixos.acabamento
+          : fixos.regras,
 }));
 
 import { FichaTecnicaAba } from './FichaTecnica';
@@ -72,6 +85,17 @@ describe('Ficha técnica — por tamanho', () => {
     expect(item.porTamanho).toEqual({ P: 0.76, M: 0.8, G: 0.84 });
     expect(item.consumoPorPeca).toBeCloseTo(0.8, 6);
     expect(item.observacao).toBe('PENDENTE: medida (Léo)');
+  });
+
+  it('14/10 acabamento: marcar o serviço manda o id e soma no custo previsto', async () => {
+    apiPut.mockResolvedValue({});
+    render(<FichaTecnicaAba modeloId="m-1" linhas={[{ id: 'ml-reg', nome: 'Regular' }]} />);
+    const antes = screen.getByTestId('ficha-total-ml-reg').textContent;
+    fireEvent.click(screen.getByTestId('ficha-acab-ml-reg-embalar'));
+    expect(screen.getByTestId('ficha-total-ml-reg').textContent).not.toBe(antes);
+    fireEvent.click(screen.getByTestId('ficha-salvar-ml-reg'));
+    await waitFor(() => expect(apiPut).toHaveBeenCalled());
+    expect(apiPut.mock.calls[0][1].acabamento).toEqual(['embalar']);
   });
 
   it('sem "por tamanho": manda porTamanho null (um consumo só)', async () => {

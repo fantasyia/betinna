@@ -200,6 +200,8 @@ interface Simulacao {
   }>;
   custoInsumos: number;
   custoFaccao: number;
+  /** Acabamento da Isabela pela ficha (14/10). */
+  custoAcabamento?: number;
   precoFaccaoTabela: number | null;
   custoPorPeca: number;
   gradesSemFicha: number;
@@ -568,7 +570,9 @@ function SimulacaoCard({ s }: { s: Simulacao }) {
         <h3 className="text-sm font-semibold mr-auto">Simulação pela ficha técnica</h3>
         <span className="text-sm">
           Custo previsto: <b className="tabular-nums">{formatMoeda(s.custoPorPeca)}</b>/peça ·{' '}
-          <span className="text-muted">{formatMoeda(s.custoInsumos + s.custoFaccao)} no total</span>
+          <span className="text-muted">
+            {formatMoeda(s.custoInsumos + s.custoFaccao + (s.custoAcabamento ?? 0))} no total
+          </span>
         </span>
       </div>
       {s.gradesSemFicha > 0 && (
@@ -611,6 +615,7 @@ function SimulacaoCard({ s }: { s: Simulacao }) {
       <p className="text-xs text-muted">
         Facção: {formatMoeda(s.custoFaccao)}
         {s.precoFaccaoTabela !== null ? ` (${formatMoeda(s.precoFaccaoTabela)}/peça na tabela da facção)` : ' (prevista na ficha técnica)'}.
+        {(s.custoAcabamento ?? 0) > 0 && ` Acabamento: ${formatMoeda(s.custoAcabamento ?? 0)}.`}
       </p>
     </Card>
   );

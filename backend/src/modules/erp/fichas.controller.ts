@@ -5,6 +5,8 @@ import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
+  acabamentoSchema,
+  type AcabamentoDto,
   type FaccaoDto,
   type FichaDto,
   type PrecosFaccaoDto,
@@ -47,6 +49,21 @@ export class FichasController {
     @Body(new ZodValidationPipe(fichaSchema)) dto: FichaDto,
   ) {
     return this.svc.salvar(user, id, dto);
+  }
+
+  @Get('acabamento')
+  @ApiOperation({ summary: 'Serviços de acabamento da empresa (Isabela): nome e R$ por peça' })
+  acabamento(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.acabamento(user);
+  }
+
+  @Put('acabamento')
+  @ApiOperation({ summary: 'Salva a lista de serviços de acabamento' })
+  salvarAcabamento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(acabamentoSchema)) dto: AcabamentoDto,
+  ) {
+    return this.svc.salvarAcabamento(user, dto);
   }
 
   @Get('modelos/:modeloId/encaixe')

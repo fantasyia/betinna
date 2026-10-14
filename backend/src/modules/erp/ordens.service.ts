@@ -409,6 +409,9 @@ export class OrdensService {
     });
     const pecas = dto.itens.reduce((s, i) => s + i.quantidade, 0);
     const custoInsumos = insumos.reduce((s, i) => s + i.custo, 0);
+    // Acabamento (Isabela, 14/10): serviços da ficha de cada grade × peças.
+    const acab = await this.fichas.acabamentoPorGrade(empresaId, [...pecasPorLinha.keys()]);
+    const custoAcabamento = [...pecasPorLinha].reduce((s, [l, p]) => s + p * (acab.get(l) ?? 0), 0);
     const precoFaccao = await this.precoFaccao(dto.faccaoId, modelo.id);
     // Sem facção escolhida (ou sem preço na tabela dela): a facção prevista da ficha.
     const custoFaccao =
@@ -429,9 +432,10 @@ export class OrdensService {
       ),
       custoInsumos,
       custoFaccao,
+      custoAcabamento,
       precoFaccaoTabela: precoFaccao,
-      custoTotal: custoInsumos + custoFaccao,
-      custoPorPeca: pecas ? (custoInsumos + custoFaccao) / pecas : 0,
+      custoTotal: custoInsumos + custoFaccao + custoAcabamento,
+      custoPorPeca: pecas ? (custoInsumos + custoFaccao + custoAcabamento) / pecas : 0,
       gradesSemFicha: [...pecasPorLinha.keys()].filter((l) => !fichas.has(l)).length,
     };
   }
@@ -560,6 +564,7 @@ export class OrdensService {
       custoTecido: n(op.custoTecido),
       custoAviamentos: n(op.custoAviamentos),
       custoFaccao: n(op.custoFaccao),
+      custoAcabamento: n(op.custoAcabamento),
       cortadaEm: op.cortadaEm,
       enviadaEm: op.enviadaEm,
       fechadaEm: op.fechadaEm,
@@ -957,11 +962,21 @@ export class OrdensService {
         .reduce((s, e) => s + e.quantidade, 0),
       previstoPorPeca: previsto.get(l) ?? null,
     }));
-    const total = n(op.custoTecido) + n(op.custoAviamentos) + n(op.custoFaccao);
+    // Acabamento (Isabela, 14/10): serviços da ficha × peças RECEBIDAS de cada grade.
+    const acab = await this.fichas.acabamentoPorGrade(empresaId, linhas);
+    const custoAcabamento = grades.reduce(
+      (s, g) => s + g.recebidas * (acab.get(g.modeloLinhaId) ?? 0),
+      0,
+    );
+    const total = n(op.custoTecido) + n(op.custoAviamentos) + n(op.custoFaccao) + custoAcabamento;
     const custos = ratearCusto(total, grades);
     const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {
-      await this.virar(tx, id, ['RECEBENDO'], { status: 'FECHADA', fechadaEm: new Date() });
+      await this.virar(tx, id, ['RECEBENDO'], {
+        status: 'FECHADA',
+        fechadaEm: new Date(),
+        custoAcabamento: D(custoAcabamento, 2),
+      });
       await this.avancarEtapa(tx, id, 'CONCLUIDO');
       // Financeiro: peças enviadas que não voltaram = saldo da facção.
       if (comFinanceiro && this.fin) await this.fin.saldoFaccaoNaTx(tx, id);
