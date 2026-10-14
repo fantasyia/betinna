@@ -9,6 +9,7 @@ import { minimoDaVitrine } from './vitrine-pedido.service';
 import { configFrete } from './frete';
 import { privacidadePublicada } from './privacidade.service';
 import { pixelLigado } from './meta-pixel.service';
+import { whatsappDaVitrine } from './contato.service';
 
 /** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
 function freteDaVitrine(config: unknown) {
@@ -211,6 +212,8 @@ export class VitrinePublicaService {
         logoUrl: branding?.logoUrl ?? null,
         // Símbolo da marca (o passarinho da Ribelt) ao lado do logo, no topo.
         simboloUrl: branding?.iconeUrl?.trim() || null,
+        // WhatsApp de atendimento (ícone no topo, 14/10). null = sem ícone.
+        whatsapp: whatsappDaVitrine(vitrine.empresa.config),
       },
       faixas: {
         minimoEntrada: vitrine.minimoEntrada,

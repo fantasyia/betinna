@@ -48,6 +48,11 @@
 .vt-carrinho-n { position: absolute; top: -1px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--terracota); color: var(--branco); font: 700 10.5px/18px var(--f-text); text-align: center; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--creme); animation: vt-pop .28s ease-out; }
 @keyframes vt-pop { 0% { transform: scale(.6); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
 .vt-brand .vt-carrinho + .vt-entrar { margin-left: 0; }
+/* WhatsApp no topo (14/10): mesmo tamanho do carrinho, abre o bloco da direita. */
+.vt-brand .vt-whats { margin-left: auto; position: relative; display: grid; place-items: center; width: 32px; height: 24px; color: var(--petroleo); -webkit-tap-highlight-color: transparent; }
+.vt-brand .vt-whats::after { content: ''; position: absolute; inset: -6px 0; }
+.vt-brand .vt-whats:active { transform: scale(.94); }
+.vt-brand .vt-whats + .vt-carrinho, .vt-brand .vt-whats + .vt-entrar { margin-left: 0; }
 .vt-brand .vt-entrar { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--petroleo); border: 1px solid #d9cdb0; border-radius: 999px; padding: 4px 12px; text-decoration: none; line-height: 1.2; }
 .vt-brand .vt-entrar:active { background: var(--linho); }
 /* Seletor de linha mais leve (Léo, 10/10): menor, claro, a marcada em branco. */

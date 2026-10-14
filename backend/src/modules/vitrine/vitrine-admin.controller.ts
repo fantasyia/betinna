@@ -18,6 +18,8 @@ import {
   type FreteConfigDto,
   type PrivacidadeConfigDto,
   type PixelConfigDto,
+  type ContatoConfigDto,
+  contatoConfigSchema,
   corSchema,
   pixelConfigSchema,
   privacidadeConfigSchema,
@@ -34,6 +36,7 @@ import { FreteService } from './frete.service';
 import { EtiquetaService } from './etiqueta.service';
 import { PrivacidadeService } from './privacidade.service';
 import { MetaPixelService } from './meta-pixel.service';
+import { ContatoService } from './contato.service';
 
 /**
  * Vitrine de atacado — cadastro do lado da empresa (Fase 1).
@@ -53,6 +56,7 @@ export class VitrineAdminController {
     private readonly etiqueta: EtiquetaService,
     private readonly privacidade: PrivacidadeService,
     private readonly pixel: MetaPixelService,
+    private readonly contato: ContatoService,
   ) {}
 
   // ─── Pixel do Meta ───────────────────────────────────────────────────────
@@ -87,6 +91,22 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(privacidadeConfigSchema)) dto: PrivacidadeConfigDto,
   ) {
     return this.privacidade.salvar(user, dto);
+  }
+
+  // ─── WhatsApp de atendimento (ícone no topo da vitrine) ─────────────────
+  @Get('contato')
+  @ApiOperation({ summary: 'WhatsApp de atendimento que aparece no topo da vitrine' })
+  contatoStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.contato.status(user);
+  }
+
+  @Put('contato')
+  @ApiOperation({ summary: 'Salva o WhatsApp de atendimento (vazio tira o ícone)' })
+  contatoSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(contatoConfigSchema)) dto: ContatoConfigDto,
+  ) {
+    return this.contato.salvar(user, dto);
   }
 
   // ─── Frete (Melhor Envio) ───────────────────────────────────────────────

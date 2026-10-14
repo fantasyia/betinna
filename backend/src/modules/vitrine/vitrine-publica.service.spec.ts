@@ -160,11 +160,13 @@ describe('VitrinePublicaService', () => {
     // Sem "respeita estoque": nenhum número de estoque sai.
     expect(r.respeitaEstoque).toBe(false);
     expect(r.modelos.every((m) => m.estoque === null)).toBe(true);
-    // Só marca pública (nome, logo e símbolo) — nada da config da empresa.
+    // Só marca pública (nome, logo, símbolo e o WhatsApp de atendimento, que é
+    // público de propósito) — nada mais da config da empresa.
     expect(r.empresa).toEqual({
       nome: 'Ribelt Distribuidora',
       logoUrl: 'https://x/logo.png',
       simboloUrl: null,
+      whatsapp: null,
     });
   });
 

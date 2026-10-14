@@ -291,6 +291,24 @@ export const privacidadeConfigSchema = z.object({
 });
 export type PrivacidadeConfigDto = z.infer<typeof privacidadeConfigSchema>;
 
+/** WhatsApp de atendimento da vitrine (ícone no topo). Vazio = ícone some. */
+export const contatoConfigSchema = z.object({
+  whatsapp: z
+    .string()
+    .trim()
+    .max(20)
+    .refine((v) => {
+      const d = v.replace(/\D/g, '');
+      return (
+        d.length === 0 ||
+        d.length === 10 ||
+        d.length === 11 ||
+        ((d.length === 12 || d.length === 13) && d.startsWith('55'))
+      );
+    }, 'WhatsApp com DDD (ex.: 11 99999-9999)'),
+});
+export type ContatoConfigDto = z.infer<typeof contatoConfigSchema>;
+
 /** "Simular frete" da tela de configuração: N peças de X gramas pra um CEP. */
 export const simularFreteSchema = z.object({
   cep: cepSchema,

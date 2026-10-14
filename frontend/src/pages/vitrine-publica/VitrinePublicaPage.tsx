@@ -46,6 +46,7 @@ import {
   type VitrinePub,
 } from './calculo';
 import { VisorFotos, voltaDoArrasto } from './VisorFotos';
+import { BotaoWhatsapp } from './Whatsapp';
 import { baixarKit, copiarTexto } from './kit';
 import {
   Entrega,
@@ -338,6 +339,10 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
             )}
             <Marca nome={v.empresa.nome} logoUrl={v.empresa.logoUrl} />
           </button>
+          {/* WhatsApp de atendimento (Léo, 14/10): ícone pequeno, antes do carrinho. */}
+          {v.empresa.whatsapp && (
+            <BotaoWhatsapp numero={v.empresa.whatsapp} empresa={v.empresa.nome} />
+          )}
           {/* Carrinho no topo (Léo, 10/10): no lugar da barra fixa de baixo. */}
           {pecas > 0 && (
             <button

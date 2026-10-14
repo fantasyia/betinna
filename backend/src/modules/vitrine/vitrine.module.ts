@@ -17,6 +17,7 @@ import { FreteService } from './frete.service';
 import { EtiquetaService } from './etiqueta.service';
 import { PrivacidadeService } from './privacidade.service';
 import { MetaPixelService } from './meta-pixel.service';
+import { ContatoService } from './contato.service';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 
 /**
@@ -51,6 +52,7 @@ import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
     EtiquetaService,
     PrivacidadeService,
     MetaPixelService,
+    ContatoService,
     PrecificacaoService,
   ],
   exports: [VitrineAdminService, VitrineFotosService],
