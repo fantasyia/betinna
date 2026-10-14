@@ -5,6 +5,7 @@ import { formatNumero } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { Badge, Button, Card, Field, Select } from '@/components/ui';
+import type { GradeRisco } from './gradeRisco';
 
 /**
  * Encaixe automático (risco) na OP: escolhe a grade, quantas peças de cada
@@ -112,24 +113,39 @@ export function EncaixeDaOp({
   numero,
   modeloId,
   itens,
+  risco,
 }: {
   opId: string;
   numero: string;
   modeloId: string;
   itens: ItemDaGrade[];
+  /** Grade do risco com que a OP foi montada (Léo, 14/10): já vem preenchida. */
+  risco?: GradeRisco | null;
 }) {
   const toast = useToast();
   const q = useApiQuery<Encaixe[]>(`/erp/ops/${opId}/encaixes`);
   const grades = useMemo(() => gradesDaOp(itens), [itens]);
-  const [gradeId, setGradeId] = useState(grades[0]?.modeloLinhaId ?? '');
+  // Começa na linha da grade do risco (se a OP foi montada por ela).
+  const [gradeId, setGradeId] = useState(
+    grades.find((g) => g.linha === risco?.linha)?.modeloLinhaId ?? grades[0]?.modeloLinhaId ?? '',
+  );
   const grade = grades.find((g) => g.modeloLinhaId === gradeId) ?? grades[0];
   // Padrão: 1 de cada tamanho da grade ("1 de cada tamanho", como os riscos de hoje).
   const [qtd, setQtd] = useState<Record<string, number>>({});
   const [tempo, setTempo] = useState(30);
   const [enviando, setEnviando] = useState(false);
   useEffect(() => {
-    setQtd(Object.fromEntries((grade?.tamanhos ?? []).map((t) => [t, 1])));
-  }, [grade?.modeloLinhaId, grade?.tamanhos]);
+    // A grade da OP É a composição do risco (#03 Modelista): mesma linha → ela.
+    const daOp =
+      risco && grade?.linha === risco.linha
+        ? new Map(risco.composicao.map((c) => [c.tamanho, c.quantidade]))
+        : null;
+    setQtd(
+      Object.fromEntries(
+        (grade?.tamanhos ?? []).map((t) => [t, daOp ? (daOp.get(t) ?? 0) : 1]),
+      ),
+    );
+  }, [grade?.modeloLinhaId, grade?.tamanhos, grade?.linha, risco]);
 
   const jobs = q.data ?? [];
   const ativo = jobs.find((j) => aberto(j.status));

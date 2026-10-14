@@ -16,6 +16,7 @@ import { GradeEditor, inteiro, totalGrade, type CelulaGrade, type ValoresGrade }
 import { STATUS_OP } from './ProducaoPage';
 import { PagamentosDaFaccao } from '@/pages/financeiro/Atalhos';
 import { EncaixeDaOp } from './EncaixeDaOp';
+import { textoDaGrade, type GradeRisco } from './gradeRisco';
 
 /**
  * Uma ordem de produção (ERP próprio · entrega 4): a grade em cada etapa, o
@@ -56,6 +57,8 @@ interface Op {
   faccao: { id: string; nome: string } | null;
   prazo: string | null;
   observacoes: string | null;
+  /** Grade do risco com que a OP foi montada (null = peça por peça). */
+  gradeRisco?: GradeRisco | null;
   precoFaccaoPorPeca: number | null;
   custoTecido: number;
   custoAviamentos: number;
@@ -92,7 +95,17 @@ export default function OpDetalhePage() {
   return (
     <PageLayout
       title={op ? `${op.numero} · ${op.modelo.nome}` : 'Ordem de produção'}
-      description={op ? `Criada em ${data(op.criadoEm)}${op.faccao ? ` · facção ${op.faccao.nome}` : ''}` : undefined}
+      description={
+        op
+          ? `Criada em ${data(op.criadoEm)}${op.faccao ? ` · facção ${op.faccao.nome}` : ''}${
+              op.gradeRisco
+                ? ` · grade ${op.gradeRisco.linha} ${textoDaGrade(op.gradeRisco.composicao)} (${op.gradeRisco.cores
+                    .map((c) => `${c.cor} ×${c.grades}`)
+                    .join(', ')})`
+                : ''
+            }`
+          : undefined
+      }
       actions={
         <Link to="/producao" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text">
           <ArrowLeft className="h-4 w-4" /> Produção
@@ -229,7 +242,13 @@ export default function OpDetalhePage() {
                 )}
               </Card>
 
-              <EncaixeDaOp opId={op.id} numero={op.numero} modeloId={op.modelo.id} itens={op.itens} />
+              <EncaixeDaOp
+                opId={op.id}
+                numero={op.numero}
+                modeloId={op.modelo.id}
+                itens={op.itens}
+                risco={op.gradeRisco ?? null}
+              />
             </div>
           )}
         </StateView>

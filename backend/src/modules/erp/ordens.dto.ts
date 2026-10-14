@@ -28,9 +28,38 @@ export const simularOpSchema = z.object({
 });
 export type SimularOpDto = z.infer<typeof simularOpSchema>;
 
+/**
+ * Grade do risco (Léo, 14/10): a OP montada "2M 2G 1GG × grades por cor". Uma
+ * grade por OP, uma linha por grade (decisão do Léo). Só referência — quem
+ * manda são os `itens`; volta preenchida no "Gerar risco" do encaixe.
+ */
+const gradeRiscoSchema = z.object({
+  linha: z.string().trim().min(1).max(60),
+  composicao: z
+    .array(
+      z.object({
+        tamanho: z.string().trim().min(1).max(20),
+        quantidade: z.number().int().min(1).max(99),
+      }),
+    )
+    .min(1)
+    .max(40),
+  cores: z
+    .array(
+      z.object({
+        cor: z.string().trim().min(1).max(60),
+        grades: z.number().int().min(1).max(100_000),
+      }),
+    )
+    .min(1)
+    .max(60),
+});
+export type GradeRiscoDto = z.infer<typeof gradeRiscoSchema>;
+
 export const criarOpSchema = simularOpSchema.extend({
   prazo: z.coerce.date().nullable().optional(),
   observacoes: textoOpcional(1000),
+  gradeRisco: gradeRiscoSchema.nullable().optional(),
 });
 export type CriarOpDto = z.infer<typeof criarOpSchema>;
 

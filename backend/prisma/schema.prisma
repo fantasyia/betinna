@@ -4590,6 +4590,10 @@ model OrdemProducao {
   /// Prazo de entrega combinado com a facção.
   prazo              DateTime?
   observacoes        String?
+  /// Grade do risco (Léo, 14/10): { linha, composicao: [{tamanho, quantidade}],
+  /// cores: [{cor, grades}] }. Referência pro "Gerar risco" — as quantidades
+  /// de verdade são os itens. Editar peça por peça apaga (deixa de bater).
+  gradeRisco         Json?
   /// Preço por peça da facção NO ENVIO (snapshot: a tabela pode mudar depois).
   precoFaccaoPorPeca Decimal?            @db.Decimal(14, 2)
   /// Custos REAIS acumulados (R$): tecido no corte, aviamentos no envio,

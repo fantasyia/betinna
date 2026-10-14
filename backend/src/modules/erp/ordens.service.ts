@@ -523,6 +523,7 @@ export class OrdensService {
       faccao: op.faccao,
       prazo: op.prazo,
       observacoes: op.observacoes,
+      gradeRisco: op.gradeRisco ?? null,
       precoFaccaoPorPeca: op.precoFaccaoPorPeca === null ? null : Number(op.precoFaccaoPorPeca),
       custoTecido: n(op.custoTecido),
       custoAviamentos: n(op.custoAviamentos),
@@ -619,6 +620,9 @@ export class OrdensService {
         faccaoId: dto.faccaoId ?? null,
         prazo: dto.prazo ?? null,
         observacoes: dto.observacoes ?? null,
+        ...(dto.gradeRisco
+          ? { gradeRisco: dto.gradeRisco as unknown as Prisma.InputJsonValue }
+          : {}),
         usuarioId: user.id,
         itens: {
           create: dto.itens.map((i) => ({
@@ -651,6 +655,10 @@ export class OrdensService {
         faccaoId: dto.faccaoId ?? null,
         prazo: dto.prazo ?? null,
         observacoes: dto.observacoes ?? null,
+        // Editou peça por peça: a grade do risco deixa de bater com a OP.
+        gradeRisco: dto.gradeRisco
+          ? (dto.gradeRisco as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
       });
       await tx.ordemProducaoItem.deleteMany({ where: { opId: id } });
       await tx.ordemProducaoItem.createMany({

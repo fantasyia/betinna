@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { formatMoeda, formatNumero } from '@/lib/masks';
@@ -10,10 +10,16 @@ import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { CatalogoTabs } from '@/components/CatalogoTabs';
-import { Badge, Button, Card, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
+import { Badge, Button, Card, Dialog, Field, Input, Select, Tabs, Textarea } from '@/components/ui';
 import type { SaldoVariacao } from '@/pages/estoque/grade';
 import { SIGLA, type Unidade } from '@/pages/insumos/insumo';
 import { GradeEditor, inteiro, totalGrade, type CelulaGrade, type ValoresGrade } from './GradeEditor';
+import {
+  linhasDoModelo,
+  pecasPorGrade,
+  quantidadesDaGrade,
+  registroDaGrade,
+} from './gradeRisco';
 
 /**
  * Produção (ERP próprio · Fase 2 · entrega 4): ordens de produção.
@@ -176,7 +182,7 @@ export interface NovaInicial {
   grade: ValoresGrade;
 }
 
-function NovaOpDialog({
+export function NovaOpDialog({
   inicial,
   onClose,
   onCriou,
@@ -196,15 +202,36 @@ function NovaOpDialog({
   const [faccaoId, setFaccaoId] = useState('');
   const [prazo, setPrazo] = useState('');
   const [obs, setObs] = useState('');
-  const [grade, setGrade] = useState<ValoresGrade>(inicial?.grade ?? {});
+  const [gradeManual, setGradeManual] = useState<ValoresGrade>(inicial?.grade ?? {});
   const [sim, setSim] = useState<Simulacao | null>(null);
   const [salvando, setSalvando] = useState(false);
+  // OP pela GRADE DO RISCO (Léo, 14/10) é o padrão; peça por peça continua
+  // (e é o modo de quem chega com a grade pronta, ex.: reposição do estoque).
+  const [modo, setModo] = useState<'grade' | 'peca'>(inicial?.grade ? 'peca' : 'grade');
+  const [linha, setLinha] = useState('');
+  const [risco, setRisco] = useState<Record<string, string>>({});
+  const [coresRisco, setCoresRisco] = useState<Array<{ cor: string; grades: string }>>([]);
 
   useEffect(() => {
     if (!modeloId && modelos[0]) setModeloId(modelos[0].id);
   }, [modelos, modeloId]);
 
   const celulas = (variacoes.data ?? []).filter((v) => v.modelo.id === modeloId && v.ativo).map(paraCelula);
+  const linhas = linhasDoModelo(celulas);
+  const linhaAtual = linhas.find((l) => l.linha === linha) ?? linhas[0];
+  const composicao = Object.fromEntries(
+    (linhaAtual?.tamanhos ?? []).map((t) => [t, inteiro(risco[t])]),
+  );
+  const coresNum = coresRisco.map((c) => ({ cor: c.cor, grades: inteiro(c.grades) }));
+  const porGrade = pecasPorGrade(composicao);
+  const grade: ValoresGrade =
+    modo === 'grade' && linhaAtual
+      ? quantidadesDaGrade(celulas, linhaAtual.linha, composicao, coresNum)
+      : gradeManual;
+  const registro =
+    modo === 'grade' && linhaAtual
+      ? registroDaGrade(linhaAtual.linha, linhaAtual.tamanhos, composicao, coresNum)
+      : null;
   const itens = Object.entries(grade)
     .map(([produtoId, t]) => ({ produtoId, quantidade: inteiro(t) }))
     .filter((i) => i.quantidade > 0);
@@ -234,6 +261,7 @@ function NovaOpDialog({
         ...corpo,
         prazo: prazo || null,
         observacoes: obs,
+        ...(registro ? { gradeRisco: registro } : {}),
       });
       toast.success(`${op.numero} gerada`);
       onCriou(op.id);
@@ -271,7 +299,10 @@ function NovaOpDialog({
                 value={modeloId}
                 onChange={(e) => {
                   setModeloId(e.target.value);
-                  setGrade({});
+                  setGradeManual({});
+                  setLinha('');
+                  setRisco({});
+                  setCoresRisco([]);
                 }}
                 data-testid="op-modelo"
               >
@@ -301,7 +332,126 @@ function NovaOpDialog({
           {celulas.length === 0 ? (
             <p className="text-sm text-muted">Este modelo ainda não tem grade (cores, linhas e tamanhos) no cadastro.</p>
           ) : (
-            <GradeEditor celulas={celulas} valores={grade} onChange={setGrade} testid="op-grade" />
+            <>
+              <Tabs
+                variant="pills"
+                value={modo}
+                onChange={(v) => setModo(v as 'grade' | 'peca')}
+                items={[
+                  { value: 'grade', label: 'Pela grade do risco' },
+                  { value: 'peca', label: 'Peça por peça' },
+                ]}
+              />
+              {modo === 'peca' ? (
+                <GradeEditor celulas={celulas} valores={gradeManual} onChange={setGradeManual} testid="op-grade" />
+              ) : (
+                linhaAtual && (
+                  <div className="flex flex-col gap-3" data-testid="op-pela-grade">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <Field label="Linha">
+                        <Select
+                          value={linhaAtual.linha}
+                          onChange={(e) => {
+                            setLinha(e.target.value);
+                            setRisco({});
+                            setCoresRisco([]);
+                          }}
+                          data-testid="op-risco-linha"
+                        >
+                          {linhas.map((l) => (
+                            <option key={l.linha} value={l.linha}>
+                              {l.linha}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      {linhaAtual.tamanhos.map((t) => (
+                        <Field key={t} label={t}>
+                          <Input
+                            value={risco[t] ?? ''}
+                            onChange={(e) => setRisco((x) => ({ ...x, [t]: e.target.value }))}
+                            inputMode="numeric"
+                            className="h-9 w-16 text-center"
+                            data-testid={`op-risco-${t}`}
+                          />
+                        </Field>
+                      ))}
+                      <p className="pb-2 text-sm text-muted">
+                        = <strong className="text-text">{porGrade}</strong>{' '}
+                        {porGrade === 1 ? 'peça' : 'peças'} por grade
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      {coresRisco.map((c, i) => {
+                        const hex = linhaAtual.cores.find((x) => x.nome === c.cor)?.hex ?? '#999999';
+                        const pecas = inteiro(c.grades) * porGrade;
+                        return (
+                          <div key={c.cor} className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex w-36 items-center gap-1.5 text-sm">
+                              <span className="h-3 w-3 rounded-full border border-border" style={{ background: hex }} />
+                              {c.cor}
+                            </span>
+                            <Input
+                              value={c.grades}
+                              onChange={(e) =>
+                                setCoresRisco((xs) =>
+                                  xs.map((x, j) => (j === i ? { ...x, grades: e.target.value } : x)),
+                                )
+                              }
+                              inputMode="numeric"
+                              className="h-9 w-20 text-center"
+                              aria-label={`Grades de ${c.cor}`}
+                              data-testid={`op-risco-grades-${c.cor}`}
+                              autoFocus
+                            />
+                            <span className="text-sm text-muted">
+                              grades = <strong className="text-text">{formatNumero(pecas)}</strong> peças
+                            </span>
+                            <button
+                              type="button"
+                              className="text-muted hover:text-danger"
+                              aria-label={`Tirar ${c.cor}`}
+                              onClick={() => setCoresRisco((xs) => xs.filter((_, j) => j !== i))}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {linhaAtual.cores.some((c) => !coresRisco.some((x) => x.cor === c.nome)) && (
+                        <Select
+                          value=""
+                          onChange={(e) => {
+                            const cor = e.target.value;
+                            if (cor) setCoresRisco((xs) => [...xs, { cor, grades: '' }]);
+                          }}
+                          className="w-56"
+                          data-testid="op-risco-add-cor"
+                        >
+                          <option value="">+ adicionar cor…</option>
+                          {linhaAtual.cores
+                            .filter((c) => !coresRisco.some((x) => x.cor === c.nome))
+                            .map((c) => (
+                              <option key={c.nome} value={c.nome}>
+                                {c.nome}
+                              </option>
+                            ))}
+                        </Select>
+                      )}
+                    </div>
+
+                    {porGrade > 0 && coresNum.some((c) => c.grades > 0) && (
+                      <PreviaDaGrade
+                        tamanhos={linhaAtual.tamanhos}
+                        composicao={composicao}
+                        cores={coresNum.filter((c) => c.grades > 0)}
+                      />
+                    )}
+                  </div>
+                )
+              )}
+            </>
           )}
           <Field label="Observações">
             <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} maxLength={1000} />
@@ -310,6 +460,63 @@ function NovaOpDialog({
         </div>
       </StateView>
     </Dialog>
+  );
+}
+
+/** O que a grade vai gerar: peças por cor × tamanho (só leitura), com totais. */
+function PreviaDaGrade({
+  tamanhos,
+  composicao,
+  cores,
+}: {
+  tamanhos: string[];
+  composicao: Record<string, number>;
+  cores: Array<{ cor: string; grades: number }>;
+}) {
+  const usados = tamanhos.filter((t) => (composicao[t] ?? 0) > 0);
+  const total = (t: string) => cores.reduce((s, c) => s + (composicao[t] ?? 0) * c.grades, 0);
+  return (
+    <div className="overflow-x-auto" data-testid="op-risco-previa">
+      <table className="text-sm tabular-nums">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-muted">
+            <th className="px-2 py-1 text-left font-semibold">Vai gerar</th>
+            {usados.map((t) => (
+              <th key={t} className="px-2 py-1 text-right font-semibold">
+                {t}
+              </th>
+            ))}
+            <th className="px-2 py-1 text-right font-semibold">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cores.map((c) => (
+            <tr key={c.cor} className="border-t border-border">
+              <td className="px-2 py-1">
+                {c.cor} × {formatNumero(c.grades)}
+              </td>
+              {usados.map((t) => (
+                <td key={t} className="px-2 py-1 text-right">
+                  {formatNumero((composicao[t] ?? 0) * c.grades)}
+                </td>
+              ))}
+              <td className="px-2 py-1 text-right font-semibold">
+                {formatNumero(usados.reduce((s, t) => s + (composicao[t] ?? 0) * c.grades, 0))}
+              </td>
+            </tr>
+          ))}
+          <tr className="border-t border-border font-semibold">
+            <td className="px-2 py-1">OP</td>
+            {usados.map((t) => (
+              <td key={t} className="px-2 py-1 text-right">
+                {formatNumero(total(t))}
+              </td>
+            ))}
+            <td className="px-2 py-1 text-right">{formatNumero(usados.reduce((s, t) => s + total(t), 0))}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 

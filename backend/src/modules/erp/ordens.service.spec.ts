@@ -253,6 +253,31 @@ describe('OrdensService', () => {
     expect(s.custoPorPeca).toBeCloseTo(17.6, 6);
   });
 
+  it('OP pela grade do risco (Léo, 14/10): guarda a grade junto da OP', async () => {
+    const { svc, prisma } = montar();
+    const gradeRisco = {
+      linha: 'Regular',
+      composicao: [{ tamanho: 'M', quantidade: 2 }],
+      cores: [{ cor: 'Preto', grades: 5 }],
+    };
+    await svc.criar(user as never, {
+      modeloId: 'm-1',
+      itens: [{ produtoId: 'p-m', quantidade: 10 }],
+      gradeRisco,
+    });
+    expect(prisma.ordemProducao.create.mock.calls[0][0].data.gradeRisco).toEqual(gradeRisco);
+  });
+
+  it('editar o rascunho PEÇA POR PEÇA apaga a grade do risco (deixa de bater)', async () => {
+    const { svc, tx } = montar();
+    await svc.editar(user as never, 'op-1', {
+      modeloId: 'm-1',
+      itens: [{ produtoId: 'p-m', quantidade: 7 }],
+    });
+    const virada = tx.ordemProducao.updateMany.mock.calls[0][0];
+    expect(virada.data.gradeRisco).toBe(Prisma.DbNull);
+  });
+
   it('grade com variação de OUTRO modelo: recusa', async () => {
     const { svc } = montar();
     await expect(

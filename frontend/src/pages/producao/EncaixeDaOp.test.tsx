@@ -43,10 +43,10 @@ const itens = [
   item('Infantil', 'ml-inf', '2', 0, 0), // sem peça planejada: fora
 ];
 
-const montar = () =>
+const montar = (risco: Parameters<typeof EncaixeDaOp>[0]['risco'] = null) =>
   render(
     <MemoryRouter>
-      <EncaixeDaOp opId="op-1" numero="OP-0001" modeloId="m-1" itens={itens} />
+      <EncaixeDaOp opId="op-1" numero="OP-0001" modeloId="m-1" itens={itens} risco={risco} />
     </MemoryRouter>,
   );
 
@@ -83,6 +83,28 @@ describe('<EncaixeDaOp>', () => {
         { tamanho: 'G', quantidade: 1 },
       ],
       tempoMin: 30,
+    });
+  });
+
+  it('OP montada pela GRADE DO RISCO (Léo, 14/10): o risco já vem com a grade dela', async () => {
+    apiPost.mockResolvedValue({});
+    montar({
+      linha: 'Regular',
+      composicao: [
+        { tamanho: 'M', quantidade: 2 },
+        { tamanho: 'G', quantidade: 1 },
+      ],
+      cores: [{ cor: 'Preto', grades: 20 }],
+    });
+    // Abre na linha da grade, sem precisar escolher nem digitar nada.
+    fireEvent.click(screen.getByTestId('encaixe-gerar'));
+    await waitFor(() => expect(apiPost).toHaveBeenCalled());
+    expect(apiPost.mock.calls[0][1]).toMatchObject({
+      modeloLinhaId: 'ml-reg',
+      composicao: [
+        { tamanho: 'M', quantidade: 2 },
+        { tamanho: 'G', quantidade: 1 },
+      ],
     });
   });
 
