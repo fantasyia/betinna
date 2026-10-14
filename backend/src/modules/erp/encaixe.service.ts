@@ -8,6 +8,7 @@ import { EstoqueService } from './estoque.service';
 import type { RegrasEncaixeDto } from './fichas.dto';
 import {
   LARGURA_PLOTTER_MM,
+  type MaterialEncaixe,
   type CriarEncaixeDto,
   type FalhaEncaixeDto,
   type ProgressoEncaixeDto,
@@ -23,6 +24,11 @@ export const FOLGA_AGENTE_MIN = 15;
 const SILENCIO_MAX_MIN = 10;
 
 const ABERTOS: EncaixeStatus[] = ['PENDENTE', 'RODANDO'];
+
+/** Material do trabalho (entrada sem `material` = tecido, como os de antes de 14/10). PURO. */
+export function materialDe(entrada: unknown): MaterialEncaixe {
+  return (entrada as { material?: unknown } | null)?.material === 'RIBANA' ? 'RIBANA' : 'TECIDO';
+}
 
 /** O trabalho rodando sumiu? (passou do tempo + folga, ou ficou mudo demais). PURO. */
 export function agenteSumiu(
@@ -80,9 +86,18 @@ export class EncaixeService {
         'Falta o código do molde (a pasta do Lectra, ex.: 100) nas regras de encaixe da ficha técnica',
       );
     }
-    if (regras.larguraUtilMm > LARGURA_PLOTTER_MM) {
+    // Ribana (14/10): risco próprio, com o tecido e a largura DELA.
+    const material: MaterialEncaixe = dto.material ?? 'TECIDO';
+    const rib = regras.ribana ?? null;
+    if (material === 'RIBANA' && !rib) {
       throw regra(
-        `A largura útil do tecido (${regras.larguraUtilMm} mm) passa do papel do plotter (${LARGURA_PLOTTER_MM} mm)`,
+        'Este produto não tem ribana nas regras de encaixe da ficha técnica — preencha o bloco "Ribana"',
+      );
+    }
+    const largura = material === 'RIBANA' ? rib!.larguraUtilMm : regras.larguraUtilMm;
+    if (largura > LARGURA_PLOTTER_MM) {
+      throw regra(
+        `A largura útil ${material === 'RIBANA' ? 'da ribana' : 'do tecido'} (${largura} mm) passa do papel do plotter (${LARGURA_PLOTTER_MM} mm)`,
       );
     }
 
@@ -103,20 +118,33 @@ export class EncaixeService {
       );
     }
 
-    const aberto = await this.prisma.encaixeJob.findFirst({
+    // Um aberto por OP E por material: tecido e ribana podem estar na fila juntos
+    // (no PC do Léo rodam um depois do outro — o agente faz um por vez).
+    const abertos = await this.prisma.encaixeJob.findMany({
       where: { opId, status: { in: ABERTOS } },
-      select: { id: true },
+      select: { entrada: true },
     });
-    if (aberto) throw regra('Esta OP já tem um risco na fila — espere terminar ou cancele');
+    if (abertos.some((j) => materialDe(j.entrada) === material)) {
+      throw regra(
+        `Esta OP já tem um risco ${material === 'RIBANA' ? 'da ribana ' : ''}na fila — espere terminar ou cancele`,
+      );
+    }
 
     // Ordem da grade (P, M, G… / 2, 4, 6…), não a de quem clicou.
     const ordem = new Map(ml.tamanhos.map((t) => [t.tamanho.nome, t.tamanho.ordem]));
     const composicao = [...dto.composicao].sort(
       (a, b) => (ordem.get(a.tamanho) ?? 0) - (ordem.get(b.tamanho) ?? 0),
     );
-    const { observacoes: _obs, ...regrasDoAgente } = regras;
+    const { observacoes: _obs, ribana: _rib, ...base } = regras;
+    // O agente recebe UM conjunto de regras: na ribana, o tecido e a largura dela.
+    const regrasDoAgente =
+      material === 'RIBANA'
+        ? { ...base, tecido: rib!.tecido, larguraUtilMm: rib!.larguraUtilMm }
+        : base;
     const entrada = {
       versao: 1,
+      // TECIDO = as peças do tecido principal; RIBANA = só gola/punho/barra (.002).
+      material,
       op: { id: op.id, numero: op.numero },
       modelo: { id: op.modelo.id, nome: op.modelo.nome, codigoMolde: regras.codigoMolde.trim() },
       linha: { modeloLinhaId: ml.id, nome: ml.linha.nome },
@@ -145,7 +173,7 @@ export class EncaixeService {
       select: { id: true },
     });
     this.logger.log(
-      `[encaixe] ${op.numero}: risco ${ml.linha.nome} (${composicao.map((c) => `${c.quantidade}×${c.tamanho}`).join(' ')}) na fila`,
+      `[encaixe] ${op.numero}: risco ${material === 'RIBANA' ? 'da RIBANA ' : ''}${ml.linha.nome} (${composicao.map((c) => `${c.quantidade}×${c.tamanho}`).join(' ')}) na fila`,
     );
     return this.paraTela(empresaId, job.id);
   }
@@ -185,7 +213,8 @@ export class EncaixeService {
     if (!a) throw new NotFoundException('Arquivo do encaixe', `${id}/${tipo}`);
     const e = a.job.entrada as { op?: { numero?: string }; linha?: { nome?: string } };
     const ext = tipo === 'PLT' ? 'plt' : tipo === 'DXF' ? 'dxf' : 'png';
-    const nome = `${e.op?.numero ?? 'OP'}-${(e.linha?.nome ?? 'risco').replace(/\s+/g, '')}.${ext}`;
+    const sufixo = materialDe(a.job.entrada) === 'RIBANA' ? '-ribana' : '';
+    const nome = `${e.op?.numero ?? 'OP'}-${(e.linha?.nome ?? 'risco').replace(/\s+/g, '')}${sufixo}.${ext}`;
     return { mime: a.mime, conteudo: Buffer.from(a.conteudo), nome };
   }
 
@@ -217,6 +246,7 @@ export class EncaixeService {
     };
     return {
       ...resto,
+      material: materialDe(entrada),
       linha: e.linha?.nome ?? null,
       composicao: e.composicao ?? [],
       codigoMolde: e.modelo?.codigoMolde ?? null,

@@ -91,5 +91,19 @@ export const regrasEncaixeSchema = z.object({
   /** Folga mínima entre peças (mm). No 100: 0 (encostadas). */
   espacamentoMm: z.number().min(0).max(50),
   observacoes: textoOpcional(1000),
+  /**
+   * Ribana (gola, punho e barra — os .002 do molde), Léo + #03, 14/10. É outro
+   * tecido, com risco próprio: aqui só o que muda dela (tubular/aberto e a
+   * largura); espelhar, giro, encavalamento e folga vêm das regras acima.
+   * null/ausente = o produto não tem ribana.
+   */
+  ribana: z
+    .object({
+      tecido: z.enum(['TUBULAR', 'ABERTO']),
+      larguraUtilMm: z.number().int().min(100).max(5000),
+    })
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
 });
 export type RegrasEncaixeDto = z.infer<typeof regrasEncaixeSchema>;

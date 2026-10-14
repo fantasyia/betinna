@@ -260,6 +260,7 @@ describe('FichasService', () => {
       encavalamentoMm: 0,
       espacamentoMm: 0,
       observacoes: null,
+      ribana: null,
     };
     expect(regrasEncaixeSchema.safeParse(r100).success).toBe(true);
     await svc.salvarRegrasEncaixe(user as never, 'm-1', r100);
@@ -267,6 +268,30 @@ describe('FichasService', () => {
       where: { id: 'm-1' },
       data: { regrasEncaixe: r100 },
     });
+  });
+
+  it('ribana (14/10): opcional; sem ela = null; com ela = tecido e largura válidos', () => {
+    const base = {
+      codigoMolde: '107',
+      tecido: 'TUBULAR',
+      larguraUtilMm: 1030,
+      espelhar: true,
+      giroCorpo: 'GIRA_180',
+      giroForro: 'LIVRE',
+      encavalamentoMm: 0,
+      espacamentoMm: 0,
+    };
+    const sem = regrasEncaixeSchema.parse(base);
+    expect(sem.ribana).toBeNull();
+    const com = regrasEncaixeSchema.parse({
+      ...base,
+      ribana: { tecido: 'TUBULAR', larguraUtilMm: 580 },
+    });
+    expect(com.ribana).toEqual({ tecido: 'TUBULAR', larguraUtilMm: 580 });
+    expect(
+      regrasEncaixeSchema.safeParse({ ...base, ribana: { tecido: 'TUBULAR', larguraUtilMm: 50 } })
+        .success,
+    ).toBe(false);
   });
 
   it('regras de encaixe: modelo de OUTRA empresa é 404; giro 90° não existe', async () => {

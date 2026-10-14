@@ -237,7 +237,12 @@ interface Regras {
   encavalamentoMm: number;
   espacamentoMm: number;
   observacoes: string | null;
+  /** Ribana (gola, punho, barra): risco próprio. null = o produto não tem. */
+  ribana?: { tecido: 'TUBULAR' | 'ABERTO'; larguraUtilMm: number } | null;
 }
+
+/** Ribana da Ribelt (Léo, 14/10): tubular, 58 cm úteis. */
+const RIBANA_PADRAO = { tecido: 'TUBULAR' as const, larguraUtilMm: 580 };
 
 /** Ponto de partida = o molde 100 (bermuda moletinho, tubular 1,03 m), o 1º encaixado na GPU. */
 const PADRAO: Regras = {
@@ -264,6 +269,9 @@ function RegrasEncaixe({ modeloId }: { modeloId: string }) {
   const [largura, setLargura] = useState(String(PADRAO.larguraUtilMm));
   const [enc, setEnc] = useState('0');
   const [esp, setEsp] = useState('0');
+  const [comRibana, setComRibana] = useState(false);
+  const [ribTecido, setRibTecido] = useState<'TUBULAR' | 'ABERTO'>(RIBANA_PADRAO.tecido);
+  const [ribLargura, setRibLargura] = useState(String(RIBANA_PADRAO.larguraUtilMm));
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -272,10 +280,17 @@ function RegrasEncaixe({ modeloId }: { modeloId: string }) {
     setLargura(String(atual.larguraUtilMm));
     setEnc(paraCampo(atual.encavalamentoMm));
     setEsp(paraCampo(atual.espacamentoMm));
+    setComRibana(!!atual.ribana);
+    setRibTecido(atual.ribana?.tecido ?? RIBANA_PADRAO.tecido);
+    setRibLargura(String(atual.ribana?.larguraUtilMm ?? RIBANA_PADRAO.larguraUtilMm));
   }, [q.data]);
 
   const larguraN = Math.round(lerNumero(largura) ?? 0);
-  const valido = larguraN >= 100 && larguraN <= 5000;
+  const ribLarguraN = Math.round(lerNumero(ribLargura) ?? 0);
+  const valido =
+    larguraN >= 100 &&
+    larguraN <= 5000 &&
+    (!comRibana || (ribLarguraN >= 100 && ribLarguraN <= 5000));
 
   async function salvar() {
     setSalvando(true);
@@ -287,6 +302,7 @@ function RegrasEncaixe({ modeloId }: { modeloId: string }) {
         encavalamentoMm: lerNumero(enc) ?? 0,
         espacamentoMm: lerNumero(esp) ?? 0,
         observacoes: r.observacoes ?? '',
+        ribana: comRibana ? { tecido: ribTecido, larguraUtilMm: ribLarguraN } : null,
       });
       toast.success('Regras de encaixe salvas');
       q.refetch();
@@ -347,6 +363,41 @@ function RegrasEncaixe({ modeloId }: { modeloId: string }) {
             <Input value={esp} onChange={(e) => setEsp(e.target.value)} inputMode="decimal" />
           </Field>
         </div>
+      </div>
+      {/* Ribana (Léo + #03, 14/10): gola, punho e barra têm risco próprio, em
+          outro tecido. Espelhar, giro, encavalamento e folga: os de cima. */}
+      <div className="flex flex-col gap-2 rounded-[10px] border border-border p-3" data-testid="regras-ribana">
+        <Switch
+          label="Tem ribana (gola, punho ou barra)"
+          checked={comRibana}
+          onChange={(e) => setComRibana(e.target.checked)}
+          data-testid="regra-tem-ribana"
+        />
+        {comRibana && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Tecido da ribana">
+              <Select
+                value={ribTecido}
+                onChange={(e) => setRibTecido(e.target.value as 'TUBULAR' | 'ABERTO')}
+                data-testid="regra-ribana-tecido"
+              >
+                <option value="TUBULAR">Tubular</option>
+                <option value="ABERTO">Aberto (folha simples)</option>
+              </Select>
+            </Field>
+            <Field label="Largura útil da ribana (mm)" hint="Já sem a ourela">
+              <Input
+                value={ribLargura}
+                onChange={(e) => setRibLargura(e.target.value)}
+                inputMode="numeric"
+                data-testid="regra-ribana-largura"
+              />
+            </Field>
+            <p className="text-xs text-muted self-end pb-2">
+              Espelhar, giro e folga seguem as regras do tecido acima.
+            </p>
+          </div>
+        )}
       </div>
       <Field label="Observações do modelista">
         <Textarea

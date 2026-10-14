@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BusinessRuleException } from '@shared/errors/app-exception';
-import { EncaixeService, agenteSumiu } from './encaixe.service';
+import { EncaixeService, agenteSumiu, materialDe } from './encaixe.service';
 
 const user = { id: 'u-1', role: 'DIRECTOR', empresaIdAtiva: 'emp-1', empresaIds: ['emp-1'] };
 
@@ -22,6 +22,8 @@ function montar(
     regras?: unknown;
     status?: string;
     aberto?: boolean;
+    /** Material do risco que já está aberto (sem = tecido, como os antigos). */
+    abertoMaterial?: 'TECIDO' | 'RIBANA';
     jobs?: Array<{
       id: string;
       status: string;
@@ -64,10 +66,14 @@ function montar(
           arquivos: [],
         };
       }),
-      findMany: vi.fn(async ({ where }: { where: { status: string } }) =>
-        jobs
-          .filter((j) => j.status === where.status)
-          .map((j) => ({ tempoMin: 30, pegoEm: null, atualizadoEm: new Date(), ...j })),
+      findMany: vi.fn(async ({ where }: { where: { status: string; opId?: string } }) =>
+        where.opId
+          ? opts.aberto
+            ? [{ entrada: opts.abertoMaterial ? { material: opts.abertoMaterial } : {} }]
+            : []
+          : jobs
+              .filter((j) => j.status === where.status)
+              .map((j) => ({ tempoMin: 30, pegoEm: null, atualizadoEm: new Date(), ...j })),
       ),
       findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => ({
         id: where.id,
@@ -95,6 +101,7 @@ const pedido = {
     { tamanho: '4', quantidade: 2 },
   ],
   tempoMin: 30,
+  material: 'TECIDO' as const,
 };
 
 describe('EncaixeService — pedir o risco pela OP', () => {
@@ -156,6 +163,62 @@ describe('EncaixeService — pedir o risco pela OP', () => {
     const { svc, prisma } = montar({ aberto: true });
     await expect(svc.criar(user as never, 'op-1', pedido)).rejects.toThrow(/já tem um risco/);
     expect(prisma.encaixeJob.create).not.toHaveBeenCalled();
+  });
+});
+
+/** Risco da RIBANA (Léo + #03, 14/10): gola, punho e barra, com o tecido e a largura dela. */
+describe('EncaixeService — risco da ribana', () => {
+  const comRibana = { ...regras100, ribana: { tecido: 'TUBULAR', larguraUtilMm: 580 } };
+  const daRibana = { ...pedido, material: 'RIBANA' as const };
+
+  it('vai pro agente com material RIBANA, o tecido e a largura DELA e o resto das regras do produto', async () => {
+    const { svc, prisma } = montar({ regras: { ...comRibana, tecido: 'ABERTO' } });
+    await svc.criar(user as never, 'op-1', daRibana);
+    const e = prisma.encaixeJob.create.mock.calls[0][0].data.entrada;
+    expect(e.material).toBe('RIBANA');
+    expect(e.regras).toMatchObject({
+      tecido: 'TUBULAR',
+      larguraUtilMm: 580,
+      espelhar: true,
+      giroCorpo: 'GIRA_180',
+    });
+    expect(e.regras.ribana).toBeUndefined();
+    // mesma composição (a grade da OP)
+    expect(e.composicao.map((c: { tamanho: string }) => c.tamanho)).toEqual(['2', '4', '8']);
+  });
+
+  it('risco do TECIDO segue igual: material TECIDO e as regras do tecido, sem o bloco da ribana', async () => {
+    const { svc, prisma } = montar({ regras: comRibana });
+    await svc.criar(user as never, 'op-1', pedido);
+    const e = prisma.encaixeJob.create.mock.calls[0][0].data.entrada;
+    expect(e.material).toBe('TECIDO');
+    expect(e.regras).toMatchObject({ tecido: 'TUBULAR', larguraUtilMm: 1030 });
+    expect(e.regras.ribana).toBeUndefined();
+  });
+
+  it('produto sem ribana na ficha: recusa o risco da ribana', async () => {
+    await expect(montar().svc.criar(user as never, 'op-1', daRibana)).rejects.toThrow(
+      /não tem ribana/,
+    );
+  });
+
+  it('trava por material: tecido na fila NÃO impede a ribana; ribana na fila impede outra ribana', async () => {
+    const a = montar({ regras: comRibana, aberto: true }); // aberto antigo, sem material = tecido
+    await a.svc.criar(user as never, 'op-1', daRibana);
+    expect(a.prisma.encaixeJob.create).toHaveBeenCalled();
+    const b = montar({ regras: comRibana, aberto: true, abertoMaterial: 'RIBANA' });
+    await expect(b.svc.criar(user as never, 'op-1', daRibana)).rejects.toThrow(
+      /risco da ribana na fila/,
+    );
+    const c = montar({ regras: comRibana, aberto: true, abertoMaterial: 'RIBANA' });
+    await c.svc.criar(user as never, 'op-1', pedido);
+    expect(c.prisma.encaixeJob.create).toHaveBeenCalled();
+  });
+
+  it('materialDe: entrada antiga (sem material) = tecido', () => {
+    expect(materialDe({})).toBe('TECIDO');
+    expect(materialDe(null)).toBe('TECIDO');
+    expect(materialDe({ material: 'RIBANA' })).toBe('RIBANA');
   });
 });
 

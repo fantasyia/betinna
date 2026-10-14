@@ -4,11 +4,17 @@ import { MemoryRouter } from 'react-router-dom';
 
 /** Encaixe na OP: grade, peças de cada tamanho no risco, fila e o .plt. */
 
-const estado = vi.hoisted(() => ({ jobs: [] as unknown[] }));
+const estado = vi.hoisted(() => ({ jobs: [] as unknown[], regras: null as unknown }));
 const apiPost = vi.fn();
 const baixar = vi.fn();
 vi.mock('@/hooks/useApiQuery', () => ({
-  useApiQuery: () => ({ data: estado.jobs, loading: false, error: null, refetch: vi.fn() }),
+  // Regras do modelo (tem ribana?) e a lista de riscos da OP.
+  useApiQuery: (path: string) => ({
+    data: path.endsWith('/encaixe') ? { regras: estado.regras } : estado.jobs,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock('@/lib/api', () => ({
   api: { post: (...a: unknown[]) => apiPost(...a) },
@@ -55,6 +61,7 @@ afterEach(() => {
   apiPost.mockReset();
   baixar.mockReset();
   estado.jobs = [];
+  estado.regras = null;
 });
 
 describe('gradesDaOp', () => {
@@ -77,6 +84,7 @@ describe('<EncaixeDaOp>', () => {
     expect(apiPost.mock.calls[0][0]).toBe('/erp/ops/op-1/encaixes');
     expect(apiPost.mock.calls[0][1]).toEqual({
       modeloLinhaId: 'ml-reg',
+      material: 'TECIDO',
       composicao: [
         { tamanho: 'P', quantidade: 1 },
         { tamanho: 'M', quantidade: 2 },
@@ -84,6 +92,53 @@ describe('<EncaixeDaOp>', () => {
       ],
       tempoMin: 30,
     });
+  });
+
+  it('ribana (14/10): o botão só aparece com ribana na ficha e pede com a MESMA grade', async () => {
+    montar();
+    expect(screen.queryByTestId('encaixe-gerar-ribana')).toBeNull();
+    cleanup();
+    estado.regras = { ribana: { tecido: 'TUBULAR', larguraUtilMm: 580 } };
+    apiPost.mockResolvedValue({});
+    montar();
+    fireEvent.change(screen.getByTestId('encaixe-grade'), { target: { value: 'ml-reg' } });
+    fireEvent.click(screen.getByTestId('encaixe-gerar-ribana'));
+    await waitFor(() => expect(apiPost).toHaveBeenCalled());
+    expect(apiPost.mock.calls[0][1]).toMatchObject({
+      modeloLinhaId: 'ml-reg',
+      material: 'RIBANA',
+      composicao: [
+        { tamanho: 'P', quantidade: 1 },
+        { tamanho: 'M', quantidade: 1 },
+        { tamanho: 'G', quantidade: 1 },
+      ],
+    });
+  });
+
+  it('trava por material: tecido na fila não trava a ribana (e vice-versa)', () => {
+    estado.regras = { ribana: { tecido: 'TUBULAR', larguraUtilMm: 580 } };
+    estado.jobs = [
+      {
+        id: 'j1',
+        status: 'RODANDO',
+        tempoMin: 30,
+        linha: 'Regular',
+        composicao: [],
+        codigoMolde: '107',
+        progresso: null,
+        resultado: null,
+        erro: null,
+        agente: null,
+        pegoEm: null,
+        concluidoEm: null,
+        criadoEm: '2026-10-14T18:00:00Z',
+        atualizadoEm: '2026-10-14T18:00:00Z',
+        arquivos: [],
+      },
+    ];
+    montar();
+    expect((screen.getByTestId('encaixe-gerar') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('encaixe-gerar-ribana') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('OP montada pela GRADE DO RISCO (Léo, 14/10): o risco já vem com a grade dela', async () => {

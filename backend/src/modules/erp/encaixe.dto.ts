@@ -9,8 +9,13 @@ export const TIPOS_ARQUIVO_ENCAIXE = ['PREVIEW', 'PNG', 'PLT', 'DXF'] as const;
 export type TipoArquivoEncaixe = (typeof TIPOS_ARQUIVO_ENCAIXE)[number];
 
 /** O que vai NO risco: quantas peças de cada tamanho da grade (ex.: 1 de cada). */
+/** Material do risco: o tecido principal ou a ribana (gola, punho, barra — 14/10). */
+export const MATERIAIS_ENCAIXE = ['TECIDO', 'RIBANA'] as const;
+export type MaterialEncaixe = (typeof MATERIAIS_ENCAIXE)[number];
+
 export const criarEncaixeSchema = z.object({
   modeloLinhaId: z.string().min(1).max(40),
+  material: z.enum(MATERIAIS_ENCAIXE).default('TECIDO'),
   composicao: z
     .array(
       z.object({

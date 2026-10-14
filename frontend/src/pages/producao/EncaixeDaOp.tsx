@@ -48,9 +48,13 @@ export function gradesDaOp(itens: ItemDaGrade[]): Grade[] {
 
 type Status = 'PENDENTE' | 'RODANDO' | 'CONCLUIDO' | 'FALHOU' | 'CANCELADO';
 
+type Material = 'TECIDO' | 'RIBANA';
+
 interface Encaixe {
   id: string;
   status: Status;
+  /** Antigos (antes de 14/10) vêm sem: tecido. */
+  material?: Material;
   tempoMin: number;
   linha: string | null;
   composicao: Array<{ tamanho: string; quantidade: number }>;
@@ -124,6 +128,11 @@ export function EncaixeDaOp({
 }) {
   const toast = useToast();
   const q = useApiQuery<Encaixe[]>(`/erp/ops/${opId}/encaixes`);
+  // Produto com ribana na ficha ganha o "Gerar risco da ribana" (14/10).
+  const regras = useApiQuery<{ regras: { ribana?: unknown } | null }>(
+    `/erp/modelos/${modeloId}/encaixe`,
+  );
+  const temRibana = !!regras.data?.regras?.ribana;
   const grades = useMemo(() => gradesDaOp(itens), [itens]);
   // Começa na linha da grade do risco (se a OP foi montada por ela).
   const [gradeId, setGradeId] = useState(
@@ -149,6 +158,9 @@ export function EncaixeDaOp({
 
   const jobs = q.data ?? [];
   const ativo = jobs.find((j) => aberto(j.status));
+  // Um aberto por material: tecido e ribana podem estar na fila juntos.
+  const ativoDe = (m: Material) =>
+    jobs.some((j) => aberto(j.status) && (j.material ?? 'TECIDO') === m);
   // Enquanto tem risco na fila/rodando, pergunta de novo a cada 5 s.
   useEffect(() => {
     if (!ativo) return;
@@ -161,16 +173,21 @@ export function EncaixeDaOp({
     .filter((c) => c.quantidade > 0);
   const pecas = composicao.reduce((s, c) => s + c.quantidade, 0);
 
-  async function gerar() {
+  async function gerar(material: Material) {
     if (!grade || !pecas) return;
     setEnviando(true);
     try {
       await api.post(`/erp/ops/${opId}/encaixes`, {
         modeloLinhaId: grade.modeloLinhaId,
+        material,
         composicao,
         tempoMin: tempo,
       });
-      toast.success('Risco na fila — o agente da GPU pega em instantes');
+      toast.success(
+        material === 'RIBANA'
+          ? 'Risco da ribana na fila — o agente da GPU pega em instantes'
+          : 'Risco na fila — o agente da GPU pega em instantes',
+      );
       q.refetch();
     } catch (err) {
       toast.error('Não foi possível pedir o risco', apiErrorMessage(err));
@@ -256,17 +273,30 @@ export function EncaixeDaOp({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              onClick={() => void gerar()}
+              onClick={() => void gerar('TECIDO')}
               loading={enviando}
-              disabled={!pecas || !!ativo}
+              disabled={!pecas || ativoDe('TECIDO')}
               data-testid="encaixe-gerar"
             >
               Gerar risco
             </Button>
+            {temRibana && (
+              <Button
+                variant="secondary"
+                onClick={() => void gerar('RIBANA')}
+                loading={enviando}
+                disabled={!pecas || ativoDe('RIBANA')}
+                data-testid="encaixe-gerar-ribana"
+              >
+                Gerar risco da ribana
+              </Button>
+            )}
             <span className="text-xs text-muted">
-              {ativo
-                ? 'Já tem um risco desta OP na fila — espere terminar ou cancele.'
-                : `${pecas} peça(s) no risco · a GPU faz um por vez.`}
+              {ativoDe('TECIDO') && ativoDe('RIBANA')
+                ? 'Os riscos do tecido e da ribana estão na fila — a GPU faz um depois do outro.'
+                : ativoDe('TECIDO') || ativoDe('RIBANA')
+                  ? `Já tem um risco ${ativoDe('RIBANA') ? 'da ribana' : 'do tecido'} desta OP na fila.`
+                  : `${pecas} peça(s) no risco · a GPU faz um por vez.`}
             </span>
           </div>
         </div>
@@ -307,6 +337,11 @@ function ItemEncaixe({
         <Badge variant={VARIANTE[j.status]} size="sm">
           {NOME_STATUS[j.status]}
         </Badge>
+        {j.material === 'RIBANA' && (
+          <Badge variant="info" size="sm" data-testid={`encaixe-ribana-${j.id}`}>
+            Ribana
+          </Badge>
+        )}
         <span>
           {j.linha} · {j.composicao.map((c) => `${c.quantidade}×${c.tamanho}`).join(' ')} · molde{' '}
           {j.codigoMolde}
@@ -345,7 +380,7 @@ function ItemEncaixe({
             onClick={() =>
               void downloadFile(
                 `/erp/encaixes/${j.id}/arquivos/PLT`,
-                `${numero}-${(j.linha ?? 'risco').replace(/\s+/g, '')}.plt`,
+                `${numero}-${(j.linha ?? 'risco').replace(/\s+/g, '')}${j.material === 'RIBANA' ? '-ribana' : ''}.plt`,
               )
             }
             data-testid={`encaixe-plt-${j.id}`}
