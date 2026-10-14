@@ -6,6 +6,7 @@ import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exc
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { EstoqueService } from './estoque.service';
+import { InsumoFotosService } from './insumo-fotos.service';
 import type { CompraInsumoDto, InsumoDto, MovimentoInsumoDto } from './insumos.dto';
 
 type Tx = Prisma.TransactionClient;
@@ -32,6 +33,9 @@ const INCLUI_CORES = {
       id: true,
       corId: true,
       custoMedio: true,
+      precoReferencia: true,
+      fotoPath: true,
+      fotoThumbPath: true,
       ativo: true,
       cor: { select: { nome: true, hex: true, ordem: true } },
     },
@@ -70,7 +74,70 @@ export class InsumosService {
     private readonly erp: EstoqueService,
     // Financeiro (Fase 3): a compra vira conta a pagar do fornecedor.
     @Optional() private readonly fin?: FinanceiroAutomaticoService,
+    // Foto do insumo/cor (Léo, 14/10). Opcional pra quem monta o service à mão.
+    @Optional() private readonly fotos?: InsumoFotosService,
   ) {}
+
+  /** Quem já teve COMPRA (insumo e cor): só esses deixam de usar a referência. */
+  private async comCompra(empresaId: string, ids?: string[]) {
+    const g = await this.prisma.insumoMovimento.groupBy({
+      by: ['insumoId', 'insumoCorId'],
+      where: { empresaId, tipo: 'ENTRADA_COMPRA', ...(ids ? { insumoId: { in: ids } } : {}) },
+      _count: { _all: true },
+    });
+    return new Set(g.map((x) => chaveSaldo(x.insumoId, x.insumoCorId)));
+  }
+
+  /**
+   * Preço de referência → custo médio, ENQUANTO não houver compra (Léo, 14/10:
+   * "o preço vai puxar sempre da média da entrada?"). A 1ª compra assume sozinha:
+   * com saldo zero, a média ponderada É o preço da compra. Ficha e OP continuam
+   * lendo só `custoMedio`. Com compra, a referência não mexe em nada.
+   */
+  private async aplicarReferencia(tx: Tx, empresaId: string, insumoId: string) {
+    const compras = await tx.insumoMovimento.groupBy({
+      by: ['insumoCorId'],
+      where: { empresaId, insumoId, tipo: 'ENTRADA_COMPRA' },
+      _count: { _all: true },
+    });
+    const comprou = new Set(compras.map((c) => c.insumoCorId ?? ''));
+    const cores = await tx.insumoCor.findMany({
+      where: { insumoId },
+      select: { id: true, precoReferencia: true },
+    });
+    if (cores.length) {
+      for (const c of cores) {
+        if (comprou.has(c.id)) continue;
+        await tx.insumoCor.update({
+          where: { id: c.id },
+          data: { custoMedio: c.precoReferencia ?? D(0, 4) },
+        });
+      }
+      await this.recalcularMediaDasCores(tx, insumoId);
+      return;
+    }
+    if (comprou.has('')) return;
+    const i = await tx.insumo.findUnique({
+      where: { id: insumoId },
+      select: { precoReferencia: true },
+    });
+    await tx.insumo.update({
+      where: { id: insumoId },
+      data: { custoMedio: i?.precoReferencia ?? D(0, 4) },
+    });
+  }
+
+  /** Grava a referência de cada cor (por cor da lista) e a do insumo. */
+  private async gravarReferencias(tx: Tx, insumoId: string, dto: InsumoDto) {
+    if (dto.precosCor) {
+      for (const [corId, preco] of Object.entries(dto.precosCor)) {
+        await tx.insumoCor.updateMany({
+          where: { insumoId, corId },
+          data: { precoReferencia: preco == null ? null : D(preco, 4) },
+        });
+      }
+    }
+  }
 
   /** Saldo por insumo E cor (chave `chaveSaldo`). */
   private async saldos(empresaId: string, ids?: string[]) {
@@ -90,7 +157,8 @@ export class InsumosService {
     return i;
   }
 
-  private paraTela(i: InsumoComCores, saldos: Map<string, number>) {
+  private paraTela(i: InsumoComCores, saldos: Map<string, number>, compras = new Set<string>()) {
+    const url = (p: string | null) => this.fotos?.urlPublica(p) ?? null;
     const minimo = num(i.estoqueMinimo);
     // Cor desligada some, a não ser que ainda tenha saldo (não esconde estoque).
     const cores = i.cores
@@ -105,6 +173,12 @@ export class InsumosService {
           ordem: c.cor.ordem,
           ativo: c.ativo,
           custoMedio,
+          precoReferencia: num(c.precoReferencia),
+          // Custo ainda é o da referência (cor sem nenhuma compra).
+          custoDaReferencia:
+            num(c.precoReferencia) !== null && !compras.has(chaveSaldo(i.id, c.id)),
+          fotoUrl: url(c.fotoPath),
+          thumbUrl: url(c.fotoThumbPath ?? c.fotoPath),
           saldo,
           valorEmEstoque: Math.max(0, saldo) * custoMedio,
           // O mínimo do insumo vale pra CADA cor.
@@ -129,6 +203,12 @@ export class InsumosService {
       ativo: i.ativo,
       /** Com cores: média das cores com custo (o que a ficha usa sem cor fixa). */
       custoMedio,
+      precoReferencia: num(i.precoReferencia),
+      custoDaReferencia: temCores
+        ? cores.some((c) => c.custoDaReferencia)
+        : num(i.precoReferencia) !== null && !compras.has(chaveSaldo(i.id, null)),
+      fotoUrl: url(i.fotoPath),
+      thumbUrl: url(i.fotoThumbPath ?? i.fotoPath),
       estoqueMinimo: minimo,
       saldo,
       valorEmEstoque: temCores
@@ -142,15 +222,16 @@ export class InsumosService {
 
   async listar(user: AuthenticatedUser) {
     const empresaId = await this.erp.empresaLigada(user);
-    const [insumos, saldos] = await Promise.all([
+    const [insumos, saldos, compras] = await Promise.all([
       this.prisma.insumo.findMany({
         where: { empresaId },
         orderBy: [{ ativo: 'desc' }, { tipo: 'asc' }, { nome: 'asc' }],
         include: INCLUI_CORES,
       }),
       this.saldos(empresaId),
+      this.comCompra(empresaId),
     ]);
-    return insumos.map((i) => this.paraTela(i, saldos));
+    return insumos.map((i) => this.paraTela(i, saldos, compras));
   }
 
   /** Lista de cores da empresa (a mesma da vitrine) — sem depender da vitrine ligada. */
@@ -230,7 +311,11 @@ export class InsumosService {
       include: INCLUI_CORES,
     });
     if (!i) throw new NotFoundException('Insumo', id);
-    return this.paraTela(i, await this.saldos(empresaId, [id]));
+    const [saldos, compras] = await Promise.all([
+      this.saldos(empresaId, [id]),
+      this.comCompra(empresaId, [id]),
+    ]);
+    return this.paraTela(i, saldos, compras);
   }
 
   async criar(user: AuthenticatedUser, dto: InsumoDto) {
@@ -249,10 +334,14 @@ export class InsumosService {
           fornecedor: dto.fornecedor ?? null,
           estoqueMinimo: dto.estoqueMinimo == null ? null : D(dto.estoqueMinimo, 3),
           ativo: dto.ativo ?? true,
+          precoReferencia:
+            corIds.length || dto.precoReferencia == null ? null : D(dto.precoReferencia, 4),
         },
         select: { id: true },
       });
       if (corIds.length) await this.sincronizarCores(tx, empresaId, novo.id, corIds);
+      await this.gravarReferencias(tx, novo.id, dto);
+      await this.aplicarReferencia(tx, empresaId, novo.id);
       return novo;
     });
     return this.umComSaldo(empresaId, i.id);
@@ -287,9 +376,16 @@ export class InsumosService {
           fornecedor: dto.fornecedor ?? null,
           estoqueMinimo: dto.estoqueMinimo == null ? null : D(dto.estoqueMinimo, 3),
           ...(dto.ativo !== undefined ? { ativo: dto.ativo } : {}),
+          ...(dto.precoReferencia !== undefined
+            ? {
+                precoReferencia:
+                  temCores || dto.precoReferencia === null ? null : D(dto.precoReferencia, 4),
+              }
+            : {}),
         },
       });
-      if (temCores) await this.recalcularMediaDasCores(tx, id);
+      await this.gravarReferencias(tx, id, dto);
+      await this.aplicarReferencia(tx, empresaId, id);
     });
     return this.umComSaldo(empresaId, id);
   }

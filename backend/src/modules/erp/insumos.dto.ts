@@ -29,6 +29,18 @@ export const insumoSchema = z.object({
   fornecedor: textoOpcional(120),
   estoqueMinimo: z.number().nonnegative().max(1_000_000).nullable().optional(),
   ativo: z.boolean().optional(),
+  /**
+   * Preço de referência por unidade (Léo, 14/10) — do insumo SEM cores. Vale
+   * como custo enquanto não houver compra. Ausente = não mexe; null = tira.
+   */
+  precoReferencia: z.number().nonnegative().max(1_000_000).nullable().optional(),
+  /**
+   * Preço de referência POR COR, pela cor da lista da empresa (o mesmo id de
+   * `cores`). Ausente = não mexe; valor null = tira daquela cor.
+   */
+  precosCor: z
+    .record(z.string().min(1).max(40), z.number().nonnegative().max(1_000_000).nullable())
+    .optional(),
 });
 export type InsumoDto = z.infer<typeof insumoSchema>;
 

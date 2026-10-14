@@ -54,13 +54,17 @@ function montar(
         .mockResolvedValue({ _sum: { quantidade: new Prisma.Decimal(opts.saldo ?? 0) } }),
       create: vi.fn().mockResolvedValue({}),
       count: vi.fn().mockResolvedValue(opts.movs ?? 0),
+      // Compras por cor (preço de referência, 14/10): nenhuma por padrão.
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     insumo: {
       create: vi.fn().mockResolvedValue({ id: 'ins-1' }),
       update: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue({ precoReferencia: null }),
     },
     insumoCor: {
       findMany: vi.fn().mockResolvedValue(cores),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       findUnique: vi.fn(
         async ({ where }: { where: { id: string } }) =>
           cores.find((c) => c.id === where.id) ?? null,
@@ -395,5 +399,80 @@ describe('InsumosService → financeiro (Fase 3)', () => {
       vencimento: '2026-11-05',
       valorTotal: 616.67,
     });
+  });
+});
+
+describe('InsumosService — preço de referência (Léo, 14/10)', () => {
+  it('insumo SEM cores e SEM compra: a referência vira o custo médio', async () => {
+    const { svc, tx } = montar();
+    tx.insumo.findUnique.mockResolvedValue({ precoReferencia: new Prisma.Decimal(32.5) });
+    await svc.criar(user as never, {
+      nome: 'Ribana',
+      tipo: 'TECIDO',
+      unidade: 'KG',
+      cor: null,
+      fornecedor: null,
+      precoReferencia: 32.5,
+    });
+    expect(tx.insumo.create.mock.calls[0][0].data.precoReferencia).toEqual(
+      new Prisma.Decimal(32.5),
+    );
+    expect(tx.insumo.update).toHaveBeenCalledWith({
+      where: { id: 'ins-1' },
+      data: { custoMedio: new Prisma.Decimal(32.5) },
+    });
+  });
+
+  it('⚠️ já teve COMPRA: a referência NÃO mexe no custo (a média das compras manda)', async () => {
+    const { svc, tx } = montar();
+    tx.insumoMovimento.groupBy.mockResolvedValue([{ insumoCorId: null, _count: { _all: 2 } }]);
+    tx.insumo.findUnique.mockResolvedValue({ precoReferencia: new Prisma.Decimal(99) });
+    await svc.atualizar(user as never, 'ins-1', {
+      nome: 'Moletom 3 cabos',
+      tipo: 'TECIDO',
+      unidade: 'KG',
+      cor: null,
+      fornecedor: null,
+      precoReferencia: 99,
+    });
+    const custo = tx.insumo.update.mock.calls.find((c) => 'custoMedio' in c[0].data);
+    expect(custo).toBeUndefined();
+  });
+
+  it('com cores: cada cor SEM compra recebe a referência dela; a que comprou fica', async () => {
+    const preto = corDoInsumo('ic-preto', 'Preto', 30);
+    const bege = corDoInsumo('ic-bege', 'Bege', 0);
+    const { svc, tx } = montar({ cores: [preto, bege] });
+    // Preto já comprou; Bege não.
+    tx.insumoMovimento.groupBy.mockResolvedValue([
+      { insumoCorId: 'ic-preto', _count: { _all: 1 } },
+    ]);
+    tx.insumoCor.findMany.mockImplementation(
+      async ({ select }: { select?: Record<string, boolean> }) =>
+        select && 'precoReferencia' in select
+          ? [
+              { id: 'ic-preto', precoReferencia: new Prisma.Decimal(28) },
+              { id: 'ic-bege', precoReferencia: new Prisma.Decimal(35) },
+            ]
+          : [preto, bege],
+    );
+    await svc.atualizar(user as never, 'ins-1', {
+      nome: 'Moletinho',
+      tipo: 'TECIDO',
+      unidade: 'KG',
+      cor: null,
+      fornecedor: null,
+      cores: ['cor-preto', 'cor-bege'],
+      precosCor: { 'cor-preto': 28, 'cor-bege': 35 },
+    });
+    // Grava a referência pela cor da LISTA da empresa.
+    expect(tx.insumoCor.updateMany).toHaveBeenCalledWith({
+      where: { insumoId: 'ins-1', corId: 'cor-bege' },
+      data: { precoReferencia: new Prisma.Decimal(35) },
+    });
+    const custos = tx.insumoCor.update.mock.calls
+      .filter((c) => 'custoMedio' in c[0].data)
+      .map((c) => [c[0].where.id, Number(c[0].data.custoMedio)]);
+    expect(custos).toEqual([['ic-bege', 35]]);
   });
 });

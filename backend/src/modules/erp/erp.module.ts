@@ -5,6 +5,7 @@ import { EstoqueService } from './estoque.service';
 import { ReservaExpiracaoJob } from './reserva-expiracao.job';
 import { InsumosController } from './insumos.controller';
 import { InsumosService } from './insumos.service';
+import { InsumoFotosService } from './insumo-fotos.service';
 import { FichasController } from './fichas.controller';
 import { FichasService } from './fichas.service';
 import { OrdensController } from './ordens.controller';
@@ -33,6 +34,7 @@ import { EncaixeService } from './encaixe.service';
     EstoqueService,
     ReservaExpiracaoJob,
     InsumosService,
+    InsumoFotosService,
     FichasService,
     OrdensService,
     EncaixeService,

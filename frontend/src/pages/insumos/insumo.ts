@@ -19,6 +19,13 @@ export interface Insumo {
   /** Com cores: saldo, custo e movimento são POR COR (Léo, 07/10). */
   temCores: boolean;
   cores: CorInsumo[];
+  /** Preço digitado no cadastro: vale como custo até a 1ª compra (Léo, 14/10). */
+  precoReferencia?: number | null;
+  /** O custo médio de agora ainda é o da referência (sem nenhuma compra). */
+  custoDaReferencia?: boolean;
+  /** Foto do insumo SEM cores (com cores, a foto é por cor). */
+  fotoUrl?: string | null;
+  thumbUrl?: string | null;
 }
 
 /** Uma cor do insumo (Moletinho Preto), com saldo e custo próprios. */
@@ -34,6 +41,11 @@ export interface CorInsumo {
   saldo: number;
   valorEmEstoque: number;
   repor: boolean;
+  precoReferencia?: number | null;
+  custoDaReferencia?: boolean;
+  /** Foto do tecido nesta cor (Léo, 14/10). */
+  fotoUrl?: string | null;
+  thumbUrl?: string | null;
 }
 
 /** Cor da lista da empresa (a mesma da vitrine). */

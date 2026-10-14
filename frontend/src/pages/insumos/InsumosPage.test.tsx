@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 const estado = vi.hoisted(() => ({ insumos: [] as unknown[] }));
 const apiPost = vi.fn();
 const apiPut = vi.fn();
+const apiUpload = vi.fn();
 
 vi.mock('@/hooks/usePermission', () => ({ useRole: () => 'DIRECTOR' }));
 vi.mock('@/hooks/useApiQuery', () => ({
@@ -33,6 +34,7 @@ vi.mock('@/lib/api', () => ({
   api: {
     post: (...a: unknown[]) => apiPost(...a),
     put: (...a: unknown[]) => apiPut(...a),
+    upload: (...a: unknown[]) => apiUpload(...a),
     delete: vi.fn(),
   },
   apiErrorMessage: (e: unknown) => String(e),
@@ -86,6 +88,7 @@ afterEach(() => {
   cleanup();
   apiPost.mockReset();
   apiPut.mockReset();
+  apiUpload.mockReset();
 });
 
 describe('InsumosPage — insumo com cores', () => {
@@ -155,6 +158,42 @@ describe('InsumosPage — insumo com cores', () => {
     // Saldo, custo e movimento não viajam: o novo nasce zerado.
     expect(corpo).not.toHaveProperty('custoMedio');
     expect(corpo).not.toHaveProperty('saldo');
+  });
+
+  it('PREÇO DE REFERÊNCIA (Léo, 14/10): por cor, pela cor da lista da empresa', async () => {
+    estado.insumos = [moletinho];
+    apiPut.mockResolvedValue({ ...moletinho });
+    render(<InsumosPage />);
+    fireEvent.click(screen.getByText('Moletinho 65% poliéster 35% algodão'));
+    fireEvent.change(screen.getByTestId('insumo-preco-cor-bege'), { target: { value: '35,50' } });
+    fireEvent.click(screen.getByTestId('insumo-salvar'));
+    await waitFor(() => expect(apiPut).toHaveBeenCalled());
+    const corpo = apiPut.mock.calls[0][1] as Record<string, unknown>;
+    expect(corpo.precosCor).toEqual({ 'cor-preto': null, 'cor-bege': 35.5 });
+    expect(corpo.precoReferencia).toBeNull();
+  });
+
+  it('insumo SEM cores: um preço de referência do insumo', async () => {
+    const ribana = { ...moletinho, id: 'rib', nome: 'Ribana', temCores: false, cores: [] };
+    estado.insumos = [ribana];
+    apiPut.mockResolvedValue(ribana);
+    render(<InsumosPage />);
+    fireEvent.click(screen.getByText('Ribana'));
+    fireEvent.change(screen.getByTestId('insumo-preco-geral'), { target: { value: '28' } });
+    fireEvent.click(screen.getByTestId('insumo-salvar'));
+    await waitFor(() => expect(apiPut).toHaveBeenCalled());
+    expect((apiPut.mock.calls[0][1] as Record<string, unknown>).precoReferencia).toBe(28);
+  });
+
+  it('custo que ainda é da referência aparece marcado na lista', () => {
+    estado.insumos = [
+      {
+        ...moletinho,
+        cores: [{ ...cor('ic-bege', 'cor-bege', 'Bege', 0, 35.5), custoDaReferencia: true }],
+      },
+    ];
+    render(<InsumosPage />);
+    expect(screen.getByTestId('insumo-cor-ic-bege').textContent).toContain('referência');
   });
 
   it('insumo SEM cores: compra não pede cor (como antes)', async () => {

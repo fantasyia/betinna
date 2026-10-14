@@ -23,6 +23,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { lerNumero, paraCampo } from '@/pages/precificacao/calculo';
+import { prepararFoto } from '@/pages/vitrine/imagem';
 import {
   NOME_TIPO,
   NOME_UNIDADE,
@@ -56,6 +57,32 @@ type Dlg =
   | { tipo: 'compra'; insumo: Insumo; cor?: string }
   | { tipo: 'movimento'; insumo: Insumo; cor?: string }
   | { tipo: 'historico'; insumo: Insumo; cor?: string };
+
+/** Miniatura da foto do insumo/cor na lista (sem foto, nada). */
+function Miniatura({ url, nome }: { url?: string | null; nome: string }) {
+  if (!url) return null;
+  return (
+    <img
+      src={url}
+      alt={nome}
+      loading="lazy"
+      className="inline-block h-7 w-7 rounded-md object-cover align-middle mr-2 border border-border"
+    />
+  );
+}
+
+/** "ref." ao lado do custo: ainda é o preço de referência, sem nenhuma compra. */
+function MarcaReferencia({ ativo }: { ativo?: boolean }) {
+  if (!ativo) return null;
+  return (
+    <span
+      className="block text-[11px] text-muted"
+      title="Preço de referência do cadastro — vale até a 1ª compra"
+    >
+      referência
+    </span>
+  );
+}
 
 function Bolinha({ hex }: { hex: string }) {
   return (
@@ -152,6 +179,7 @@ export default function InsumosPage() {
                         className={cn('border-t border-border', !i.ativo && 'opacity-50')}
                       >
                         <td className="px-2 py-2">
+                          <Miniatura url={i.thumbUrl} nome={i.nome} />
                           <button
                             type="button"
                             className="text-left font-medium hover:underline"
@@ -191,6 +219,7 @@ export default function InsumosPage() {
                           {i.temCores && i.custoMedio > 0 && (
                             <span className="block text-[11px] text-muted">média das cores</span>
                           )}
+                          {!i.temCores && <MarcaReferencia ativo={i.custoDaReferencia} />}
                         </td>
                         <td className="px-2 py-2 text-right">{formatMoeda(i.valorEmEstoque)}</td>
                         <td className="px-2 py-2 text-muted">{i.fornecedor ?? '—'}</td>
@@ -237,6 +266,7 @@ export default function InsumosPage() {
                         >
                           <td className="py-1 pl-6 pr-2">
                             <span className="inline-flex items-center gap-1.5">
+                              <Miniatura url={c.thumbUrl} nome={`${i.nome} ${c.nome}`} />
                               <Bolinha hex={c.hex} />
                               {c.nome}
                               {!c.ativo && <span className="text-muted">(tirada)</span>}
@@ -253,6 +283,7 @@ export default function InsumosPage() {
                           </td>
                           <td className="px-2 py-1 text-right">
                             {c.custoMedio > 0 ? custoUn(c.custoMedio, i.unidade) : '—'}
+                            <MarcaReferencia ativo={c.custoDaReferencia} />
                           </td>
                           <td className="px-2 py-1 text-right">{formatMoeda(c.valorEmEstoque)}</td>
                           <td />
@@ -395,6 +426,23 @@ function CadastroDialog({
   const [fornecedor, setFornecedor] = useState(base?.fornecedor ?? '');
   const [minimo, setMinimo] = useState(paraCampo(insumo?.estoqueMinimo));
   const [ativo, setAtivo] = useState(insumo?.ativo ?? true);
+  // Preço de referência (Léo, 14/10): do insumo sem cores e de cada cor. Só do
+  // próprio insumo — a cópia nasce sem preço (preço é custo, e custo não copia).
+  const [precoRef, setPrecoRef] = useState(paraCampo(insumo?.precoReferencia ?? undefined));
+  const [precosCor, setPrecosCor] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      (insumo?.cores ?? []).map((c) => [c.corId, paraCampo(c.precoReferencia ?? undefined)]),
+    ),
+  );
+  // Foto escolhida mas ainda não enviada (sobe depois de salvar, quando a cor já
+  // tem id). Chave: corId da lista, ou '' pro insumo sem cores. null = tirar.
+  const [fotos, setFotos] = useState<Record<string, { arquivo: File; previa: string } | null>>({});
+  const fotoAtual = (chave: string): string | null => {
+    if (chave in fotos) return fotos[chave]?.previa ?? null;
+    if (!insumo) return null;
+    if (!chave) return insumo.thumbUrl ?? null;
+    return insumo.cores.find((c) => c.corId === chave)?.thumbUrl ?? null;
+  };
   const { salvando, enviar } = useEnviar(onSalvou, insumo ? 'Insumo salvo' : 'Insumo cadastrado');
   const corpo = () => ({
     nome: nome.trim(),
@@ -406,7 +454,36 @@ function CadastroDialog({
     fornecedor,
     estoqueMinimo: lerNumero(minimo),
     ativo,
+    precoReferencia: cores.length ? null : lerNumero(precoRef),
+    ...(cores.length
+      ? { precosCor: Object.fromEntries(cores.map((id) => [id, lerNumero(precosCor[id] ?? '')])) }
+      : {}),
   });
+
+  /** Salva o insumo e, com o id em mãos, sobe/tira as fotos escolhidas. */
+  async function salvarTudo() {
+    const salvo = await (insumo
+      ? api.put<Insumo>(`/erp/insumos/${insumo.id}`, corpo())
+      : api.post<Insumo>('/erp/insumos', corpo()));
+    for (const [chave, escolhida] of Object.entries(fotos)) {
+      const arquivo = escolhida?.arquivo ?? null;
+      const corDoInsumo = chave ? salvo.cores.find((c) => c.corId === chave)?.id : undefined;
+      if (chave && !corDoInsumo) continue; // cor que saiu no mesmo salvar
+      if (arquivo === null) {
+        await api.delete(
+          `/erp/insumos/${salvo.id}/foto${corDoInsumo ? `?corId=${encodeURIComponent(corDoInsumo)}` : ''}`,
+        );
+        continue;
+      }
+      const p = await prepararFoto(arquivo);
+      const form = new FormData();
+      form.append('foto', p.foto, 'foto.webp');
+      form.append('thumb', p.thumb, 'thumb.webp');
+      if (corDoInsumo) form.append('corId', corDoInsumo);
+      await api.upload(`/erp/insumos/${salvo.id}/foto`, form);
+    }
+    return salvo;
+  }
 
   return (
     <Dialog
@@ -432,13 +509,7 @@ function CadastroDialog({
           <Button
             loading={salvando}
             disabled={nome.trim().length < 2}
-            onClick={() =>
-              enviar(() =>
-                insumo
-                  ? api.put(`/erp/insumos/${insumo.id}`, corpo())
-                  : api.post('/erp/insumos', corpo()),
-              )
-            }
+            onClick={() => enviar(salvarTudo)}
             data-testid="insumo-salvar"
           >
             Salvar
@@ -517,6 +588,72 @@ function CadastroDialog({
             <Input value={cor} onChange={(e) => setCor(e.target.value)} />
           </Field>
         )}
+        <div className="col-span-2 flex flex-col gap-2" data-testid="insumo-precos-fotos">
+          <p className="text-sm font-medium text-text">
+            {cores.length ? 'Preço de referência e foto por cor' : 'Preço de referência e foto'}
+          </p>
+          <p className="text-xs text-muted">
+            O preço de referência vale como custo até a 1ª compra; depois, o custo é a média das
+            compras.
+          </p>
+          {(cores.length
+            ? (coresEmpresa.data ?? []).filter((c) => cores.includes(c.id))
+            : [null]
+          ).map((c) => {
+            const chave = c?.id ?? '';
+            const atual = fotoAtual(chave);
+            return (
+              <div key={chave || 'geral'} className="flex flex-wrap items-center gap-2">
+                {c && (
+                  <span className="inline-flex w-32 items-center gap-1.5 text-[13px]">
+                    <Bolinha hex={c.hex} />
+                    {c.nome}
+                  </span>
+                )}
+                <Input
+                  value={c ? (precosCor[chave] ?? '') : precoRef}
+                  onChange={(e) =>
+                    c
+                      ? setPrecosCor((x) => ({ ...x, [chave]: e.target.value }))
+                      : setPrecoRef(e.target.value)
+                  }
+                  inputMode="decimal"
+                  placeholder={`R$/${SIGLA[unidade]}`}
+                  className="h-9 w-28"
+                  aria-label={`Preço de referência${c ? ` ${c.nome}` : ''}`}
+                  data-testid={`insumo-preco-${chave || 'geral'}`}
+                />
+                {atual ? (
+                  <img src={atual} alt="" className="h-9 w-9 rounded-md object-cover border border-border" />
+                ) : null}
+                <label className="inline-flex h-9 cursor-pointer items-center rounded-md border border-border px-2.5 text-[13px] text-text-subtle hover:text-text">
+                  {atual ? 'Trocar foto' : 'Foto'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    data-testid={`insumo-foto-${chave || 'geral'}`}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      // Prévia criada UMA vez (não a cada redesenho da tela).
+                      if (f) setFotos((x) => ({ ...x, [chave]: { arquivo: f, previa: URL.createObjectURL(f) } }));
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {atual && (
+                  <button
+                    type="button"
+                    className="text-[12px] text-muted hover:text-danger"
+                    onClick={() => setFotos((x) => ({ ...x, [chave]: null }))}
+                  >
+                    tirar
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
         <Field
           label={`Estoque mínimo (${SIGLA[unidade]})`}
           hint={cores.length ? 'Vale pra cada cor' : 'Abaixo disso aparece “repor”'}

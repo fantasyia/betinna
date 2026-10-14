@@ -4406,21 +4406,27 @@ enum InsumoMovTipo {
 }
 
 model Insumo {
-  id            String        @id @default(cuid())
-  empresaId     String
-  nome          String
-  tipo          InsumoTipo
-  unidade       InsumoUnidade
+  id              String        @id @default(cuid())
+  empresaId       String
+  nome            String
+  tipo            InsumoTipo
+  unidade         InsumoUnidade
   /// Quando faz sentido (tecido, zíper colorido…).
-  cor           String?
-  fornecedor    String?
+  cor             String?
+  fornecedor      String?
   /// Custo médio ponderado por unidade (R$). 4 casas: tecido por grama soma.
-  custoMedio    Decimal       @default(0) @db.Decimal(14, 4)
+  custoMedio      Decimal       @default(0) @db.Decimal(14, 4)
+  /// Preço digitado no cadastro (Léo, 14/10): vira o custo médio enquanto não
+  /// houver nenhuma compra; a 1ª compra assume (média ponderada com saldo 0).
+  precoReferencia Decimal?      @db.Decimal(14, 4)
+  /// Foto do insumo SEM cores (com cores, a foto é por cor).
+  fotoPath        String?
+  fotoThumbPath   String?
   /// Abaixo disto aparece "repor" (opcional).
-  estoqueMinimo Decimal?      @db.Decimal(14, 3)
-  ativo         Boolean       @default(true)
-  criadoEm      DateTime      @default(now())
-  atualizadoEm  DateTime      @updatedAt
+  estoqueMinimo   Decimal?      @db.Decimal(14, 3)
+  ativo           Boolean       @default(true)
+  criadoEm        DateTime      @default(now())
+  atualizadoEm    DateTime      @updatedAt
 
   movimentos InsumoMovimento[]
   fichaItens FichaTecnicaItem[]
@@ -4436,16 +4442,21 @@ model Insumo {
 /// cores"). Saldo = soma dos movimentos da cor; custo médio próprio. Insumo
 /// com ao menos uma cor exige a cor em todo movimento.
 model InsumoCor {
-  id           String   @id @default(cuid())
-  empresaId    String
-  insumoId     String
-  corId        String
+  id              String   @id @default(cuid())
+  empresaId       String
+  insumoId        String
+  corId           String
   /// Custo médio ponderado DESTA cor (R$ por unidade do insumo).
-  custoMedio   Decimal  @default(0) @db.Decimal(14, 4)
+  custoMedio      Decimal  @default(0) @db.Decimal(14, 4)
+  /// Preço de referência DESTA cor (vale até a 1ª compra dela).
+  precoReferencia Decimal? @db.Decimal(14, 4)
+  /// Foto do tecido nesta cor (Léo, 14/10).
+  fotoPath        String?
+  fotoThumbPath   String?
   /// Cor tirada do insumo depois de ter histórico: some da tela, o histórico fica.
-  ativo        Boolean  @default(true)
-  criadoEm     DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  ativo           Boolean  @default(true)
+  criadoEm        DateTime @default(now())
+  atualizadoEm    DateTime @updatedAt
 
   insumo     Insumo                 @relation(fields: [insumoId], references: [id], onDelete: Cascade)
   cor        CatalogoCor            @relation(fields: [corId], references: [id], onDelete: Restrict)
