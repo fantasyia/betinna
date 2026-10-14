@@ -727,6 +727,7 @@ export function ModeloEditor({
                             onChange={(e) =>
                               e.target.value && setR((x) => copiarPrecos(x, e.target.value, l.id))
                             }
+                            data-testid={`modelo-copiar-precos-${l.id}`}
                             className="h-8 w-36"
                           >
                             <option value="">escolha…</option>
