@@ -28,17 +28,24 @@ export interface ArquivoFoto {
 @Injectable()
 export class InsumoFotosService {
   private readonly logger = new Logger(InsumoFotosService.name);
-  private readonly storage: SupabaseClient;
+  private cliente: SupabaseClient | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
-  ) {
-    this.storage = createClient(
+  ) {}
+
+  /**
+   * Conexão com o Storage só no 1º uso: criar no construtor derrubava a montagem
+   * do módulo onde o ambiente não tem SUPABASE_URL (teste de DI do ERP no CI).
+   */
+  private get storage(): SupabaseClient {
+    this.cliente ??= createClient(
       this.env.get('SUPABASE_URL'),
       this.env.get('SUPABASE_SERVICE_ROLE_KEY'),
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
+    return this.cliente;
   }
 
   urlPublica(path: string | null | undefined): string | null {

@@ -263,6 +263,7 @@ describe('OrdensService', () => {
     await svc.criar(user as never, {
       modeloId: 'm-1',
       itens: [{ produtoId: 'p-m', quantidade: 10 }],
+      observacoes: null,
       gradeRisco,
     });
     expect(prisma.ordemProducao.create.mock.calls[0][0].data.gradeRisco).toEqual(gradeRisco);
@@ -273,6 +274,7 @@ describe('OrdensService', () => {
     await svc.editar(user as never, 'op-1', {
       modeloId: 'm-1',
       itens: [{ produtoId: 'p-m', quantidade: 7 }],
+      observacoes: null,
     });
     const virada = tx.ordemProducao.updateMany.mock.calls[0][0];
     expect(virada.data.gradeRisco).toBe(Prisma.DbNull);
