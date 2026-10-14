@@ -136,6 +136,10 @@ export class EtiquetaService {
         const sobrou = ids.length
           ? ` (${ids.length} envio(s) ficaram no carrinho do Melhor Envio, sem pagar)`
           : '';
+        // O 422 sozinho não diz o motivo no log (PED-0008, 14/10): registra a recusa.
+        this.logger.warn(
+          `[etiqueta] pedido ${pedido.numero}: Melhor Envio recusou o carrinho: ${err instanceof Error ? err.message : String(err)}`,
+        );
         throw regra(`${err instanceof Error ? err.message : String(err)}${sobrou}`);
       }
       et = { ids, carrinhoEm: new Date().toISOString() };

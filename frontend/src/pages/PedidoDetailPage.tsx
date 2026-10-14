@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useRole } from '@/hooks/usePermission';
+import { useToast } from '@/components/toast';
 import {
   Send,
   ArrowRight,
@@ -196,6 +197,7 @@ export default function PedidoDetailPage() {
   const podeCancelarDireto = role === 'ADMIN' || role === 'DIRECTOR';
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const toast = useToast();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -246,7 +248,11 @@ export default function PedidoDetailPage() {
       refetch();
     } catch (err) {
       aba?.close();
-      setActionError(err instanceof ApiError ? err.message : 'Falha ao emitir a etiqueta');
+      const msg = err instanceof ApiError ? err.message : 'Falha ao emitir a etiqueta';
+      setActionError(msg);
+      // A caixa de erro fica no fim da página, longe do botão: sem o toast, a
+      // recusa parecia "clique que não faz nada" (PED-0008, 14/10).
+      toast.error('A etiqueta não saiu', msg);
     } finally {
       setBusy(null);
     }

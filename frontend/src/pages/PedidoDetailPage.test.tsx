@@ -49,8 +49,9 @@ vi.mock('@/hooks/useApiQuery', () => ({
   useApiQuery: () => ({ data: pedidoAtual, loading: false, error: null, refetch: vi.fn() }),
 }));
 
+const toastError = vi.fn();
 vi.mock('@/components/toast', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }),
+  useToast: () => ({ success: vi.fn(), error: toastError, info: vi.fn(), warning: vi.fn() }),
 }));
 
 const postMock = vi.fn(() => Promise.resolve({}));
@@ -191,6 +192,20 @@ describe('etiqueta do Melhor Envio (Léo, 11/10)', () => {
     await waitFor(() => expect(postMock).toHaveBeenCalledWith('/vitrine/admin/pedidos/ped-1/etiqueta'));
     await waitFor(() => expect(aba.location.href).toBe('https://melhorenvio/imprimir/x'));
     expect(abrir).toHaveBeenCalled();
+    abrir.mockRestore();
+  });
+
+  it('recusa do Melhor Envio vira TOAST (a caixa de erro fica no fim da página — PED-0008)', async () => {
+    pedidoAtual = comFrete();
+    const aba = { location: { href: '' }, close: vi.fn() };
+    const abrir = vi.spyOn(window, 'open').mockReturnValue(aba as unknown as Window);
+    toastError.mockClear();
+    postMock.mockRejectedValueOnce(new Error('O campo to.document é inválido') as never);
+    render(<PedidoDetailPage />);
+    fireEvent.click(screen.getByTestId('pedido-etiqueta'));
+    fireEvent.click(screen.getByTestId('pedido-etiqueta-confirmar'));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('A etiqueta não saiu', expect.any(String)));
+    expect(aba.close).toHaveBeenCalled();
     abrir.mockRestore();
   });
 
