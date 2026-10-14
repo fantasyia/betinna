@@ -24,7 +24,7 @@ vi.mock('@/lib/api', () => ({
 }));
 vi.mock('@/components/toast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
 
-import { EncaixeDaOp, gradesDaOp, type ItemDaGrade } from './EncaixeDaOp';
+import { EncaixeDaOp, gradesDaOp, viesPorCor, type ItemDaGrade } from './EncaixeDaOp';
 
 const item = (
   linha: string,
@@ -70,6 +70,34 @@ describe('gradesDaOp', () => {
       { modeloLinhaId: 'ml-inf', linha: 'Infantil', tamanhos: ['4'] },
       { modeloLinhaId: 'ml-reg', linha: 'Regular', tamanhos: ['P', 'M', 'G'] },
     ]);
+  });
+});
+
+describe('viesPorCor (14/10): o viés é por COR, cada cor é um tecido', () => {
+  const comCor = (cor: string, linha: string, tamanho: string, planejada: number): ItemDaGrade => ({
+    ...item(linha, linha === 'Regular' ? 'ml-reg' : 'ml-inf', tamanho, 0, planejada),
+    cor: { nome: cor },
+  });
+  const det = { viesAreaM2PorFolha: 0.03, viesLarguraAbertaM: 2.4 };
+
+  it('área × folhas da cor ÷ largura aberta, pra cima no centímetro só no fim', () => {
+    // grade de 4 peças; Preto 40 peças = 10 folhas; Branco 8 = 2 folhas
+    const itens = [comCor('Preto', 'Regular', 'P', 20), comCor('Preto', 'Regular', 'M', 20), comCor('Branco', 'Regular', 'P', 8)];
+    const r = viesPorCor(itens, [{ quantidade: 2 }, { quantidade: 2 }], 'Regular', det);
+    expect(r).toEqual([
+      { cor: 'Preto', folhas: 10, metros: 0.13 }, // 0,03×10÷2,4 = 0,125 → 0,13
+      { cor: 'Branco', folhas: 2, metros: 0.03 }, // 0,025 → 0,03
+    ]);
+  });
+
+  it('mesclado: só conta as grades que estão no risco', () => {
+    const itens = [comCor('Preto', 'Regular', 'P', 8), comCor('Preto', 'Infantil', '4', 100)];
+    const r = viesPorCor(itens, [{ linha: 'Regular', quantidade: 4 }], 'Regular', det);
+    expect(r[0].folhas).toBe(2);
+  });
+
+  it('agente antigo (sem área/largura): nada por cor', () => {
+    expect(viesPorCor([comCor('Preto', 'Regular', 'P', 8)], [{ quantidade: 4 }], 'Regular', { viesTecidoM: 0.05 } as never)).toEqual([]);
   });
 });
 
@@ -200,9 +228,7 @@ describe('<EncaixeDaOp>', () => {
     montar();
     const t = screen.getByTestId('encaixe-vies-j-v').textContent ?? '';
     expect(t).toContain('Separar 0,05 m de tecido pro viés');
-    expect(t).toContain('4 m de tira, 3 peças), além do risco');
-    // O risco é SÓ das peças (Léo, 14/10): o total soma o viés à parte.
-    expect(t).toContain('Tecido no total: 1,25 m');
+    expect(t).toContain('4 m de tira, 3 peças) por folha, além do risco');
   });
 
   it('com risco na fila: não deixa pedir outro; pronto: baixa o .plt', () => {

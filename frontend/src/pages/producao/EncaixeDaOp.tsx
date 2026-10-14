@@ -20,6 +20,8 @@ export interface ItemDaGrade {
   tamanho: string;
   tamanhoOrdem: number;
   planejada: number;
+  /** Cor da variação (a OP manda; o viés é por cor — cada cor é um tecido). */
+  cor?: { nome: string };
 }
 
 export interface Grade {
@@ -45,6 +47,39 @@ export function qtdInicial(
     }
   }
   return out;
+}
+
+/**
+ * Tecido do VIÉS por cor (Léo + #03, 14/10): cada cor é um tecido cortado à
+ * parte. folhas da cor = peças da cor (nas grades do risco) ÷ peças do risco;
+ * metros = área por folha × folhas ÷ largura aberta, arredondado pra CIMA no
+ * centímetro só no fim (o viesTecidoM do agente já vem arredondado — não
+ * serve pra multiplicar). Sem área/largura do agente: []. PURO.
+ */
+export function viesPorCor(
+  itens: ItemDaGrade[],
+  composicao: Array<{ linha?: string; quantidade: number }>,
+  linhaDoRisco: string | null,
+  detalhes: { viesAreaM2PorFolha?: number; viesLarguraAbertaM?: number } | null | undefined,
+): Array<{ cor: string; folhas: number; metros: number }> {
+  const area = detalhes?.viesAreaM2PorFolha;
+  const largura = detalhes?.viesLarguraAbertaM;
+  if (!area || !largura || area <= 0 || largura <= 0) return [];
+  const pecasFolha = composicao.reduce((s, c) => s + c.quantidade, 0);
+  if (pecasFolha <= 0) return [];
+  // Grades que estão no risco: a linha de cada item (mesclado) ou a do risco.
+  const linhas = new Set(composicao.map((c) => c.linha ?? linhaDoRisco ?? ''));
+  const porCor = new Map<string, number>();
+  for (const i of itens) {
+    if (!i.cor || i.planejada <= 0 || !linhas.has(i.linha)) continue;
+    porCor.set(i.cor.nome, (porCor.get(i.cor.nome) ?? 0) + i.planejada);
+  }
+  return [...porCor.entries()].map(([cor, pecas]) => {
+    const folhas = pecas / pecasFolha;
+    // 1e-9: 0,1 + 0,2 não vira 0,31 no arredondamento pra cima.
+    const metros = Math.ceil((area * folhas) / largura * 100 - 1e-9) / 100;
+    return { cor, folhas, metros };
+  });
 }
 
 /** As grades da OP (Regular, Plus…) com os tamanhos que ela tem planejados. PURO. */
@@ -87,7 +122,15 @@ interface Encaixe {
      * Viés das camisetas (14/10): quanto tecido separar pra ele. É À PARTE —
      * o comprimento do risco é só das peças (Léo); total = comprimento + viés.
      */
-    detalhes?: { viesTecidoM?: number; viesTiraM?: number; viesPecas?: number } | null;
+    detalhes?: {
+      viesTecidoM?: number;
+      viesTiraM?: number;
+      viesPecas?: number;
+      /** Por FOLHA (1× a grade do risco), já com os 10% de sobra. */
+      viesAreaM2PorFolha?: number;
+      /** Largura aberta pro corte a 45° (no tubular, 2× a do tubo). */
+      viesLarguraAbertaM?: number;
+    } | null;
   } | null;
   erro: string | null;
   agente: string | null;
@@ -322,7 +365,13 @@ export function EncaixeDaOp({
       {jobs.length > 0 && (
         <ul className="flex flex-col gap-3">
           {jobs.slice(0, 5).map((j) => (
-            <ItemEncaixe key={j.id} j={j} numero={numero} onCancelar={() => void cancelar(j.id)} />
+            <ItemEncaixe
+              key={j.id}
+              j={j}
+              numero={numero}
+              itens={itens}
+              onCancelar={() => void cancelar(j.id)}
+            />
           ))}
         </ul>
       )}
@@ -333,12 +382,18 @@ export function EncaixeDaOp({
 function ItemEncaixe({
   j,
   numero,
+  itens,
   onCancelar,
 }: {
   j: Encaixe;
   numero: string;
+  itens: ItemDaGrade[];
   onCancelar: () => void;
 }) {
+  const vies =
+    j.status === 'CONCLUIDO'
+      ? viesPorCor(itens, j.composicao, j.linha, j.resultado?.detalhes)
+      : [];
   const tem = (t: string) => j.arquivos.some((a) => a.tipo === t);
   const tipoImagem =
     j.status === 'CONCLUIDO' && tem('PNG') ? 'PNG' : tem('PREVIEW') ? 'PREVIEW' : null;
@@ -391,9 +446,22 @@ function ItemEncaixe({
           {(typeof j.resultado.detalhes.viesTiraM === 'number' ||
             typeof j.resultado.detalhes.viesPecas === 'number') &&
             ')'}
-          , além do risco. Tecido no total:{' '}
-          <b>{metros(j.resultado.comprimentoM + j.resultado.detalhes.viesTecidoM)}</b>.
+          {' '}por folha, além do risco.
         </p>
+      )}
+      {vies.length > 0 && (
+        <ul className="text-sm flex flex-col gap-0.5" data-testid={`encaixe-vies-cores-${j.id}`}>
+          {vies.map((v) => (
+            <li key={v.cor}>
+              <b>{v.cor}</b>: separar <b>{metros(v.metros)}</b> de tecido pro viés
+              <span className="text-muted">
+                {' '}
+                ({formatNumero(Math.round(v.folhas * 10) / 10)} folha
+                {Math.abs(v.folhas - 1) < 1e-9 ? '' : 's'})
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       {j.status === 'PENDENTE' && (
         <p className="text-xs text-muted">
