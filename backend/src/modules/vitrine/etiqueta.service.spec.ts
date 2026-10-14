@@ -91,6 +91,7 @@ function montar(p = pedido(), mudaTrava = 1) {
         ids.map((id) => ({ id, ok: true, mensagem: 'ok' })),
       ),
     imprimir: vi.fn().mockResolvedValue('https://sandbox.melhorenvio.com.br/imprimir/abc'),
+    pdfs: vi.fn(),
   };
   const executeRaw = vi
     .fn()
@@ -252,5 +253,34 @@ describe('frete — peças da etiqueta', () => {
     expect(faltandoNoRemetente(remetente)).toEqual([]);
     expect(faltandoNoRemetente({ ...remetente, cnpj: '123', uf: '' })).toEqual(['CNPJ', 'UF']);
     expect(faltandoNoRemetente(null)).toHaveLength(10);
+  });
+});
+
+/** Etiqueta sem login (14/10): todas as etiquetas do pedido num PDF só. */
+describe('EtiquetaService.pdf', () => {
+  const umPdf = async (txt: string) => {
+    const { PDFDocument } = await import('pdf-lib');
+    const d = await PDFDocument.create();
+    d.addPage().drawText(txt);
+    return Buffer.from(await d.save());
+  };
+
+  it('2 caixas = 2 etiquetas = 1 PDF com 2 páginas, com o nome do pedido', async () => {
+    const { svc, me, user } = montar(
+      pedido({ etiqueta: { ids: ['o1', 'o2'], geradaEm: '2026-10-14T18:00:00Z' } }),
+    );
+    me.pdfs.mockResolvedValue([await umPdf('1'), await umPdf('2')]);
+    const r = await svc.pdf(user, 'ped-1');
+    expect(me.pdfs).toHaveBeenCalledWith(['o1', 'o2']);
+    const { PDFDocument } = await import('pdf-lib');
+    expect((await PDFDocument.load(r.conteudo)).getPageCount()).toBe(2);
+    expect(r.nome).toMatch(/^etiqueta-.+\.pdf$/);
+  });
+
+  it('ainda não emitida: recusa (não compra nada por aqui)', async () => {
+    const { svc, me, user } = montar();
+    await expect(svc.pdf(user, 'ped-1')).rejects.toThrow(/ainda não foi emitida/);
+    expect(me.pdfs).not.toHaveBeenCalled();
+    expect(me.comprar).not.toHaveBeenCalled();
   });
 });

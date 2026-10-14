@@ -55,6 +55,7 @@ vi.mock('@/components/toast', () => ({
 }));
 
 const postMock = vi.fn(() => Promise.resolve({}));
+const buscarArquivoMock = vi.fn((_path: string) => Promise.resolve(new Blob(['%PDF'])));
 vi.mock('@/lib/api', () => ({
   api: {
     get: vi.fn(() => Promise.resolve({})),
@@ -65,6 +66,7 @@ vi.mock('@/lib/api', () => ({
   },
   ApiError: class extends Error {},
   apiErrorMessage: (e: unknown) => String(e),
+  buscarArquivo: (p: string) => buscarArquivoMock(p),
 }));
 
 vi.mock('@/components/PageLayout', () => ({
@@ -175,6 +177,10 @@ describe('etiqueta do Melhor Envio (Léo, 11/10)', () => {
   beforeEach(() => {
     papel = 'DIRECTOR';
     postMock.mockClear();
+    buscarArquivoMock.mockClear();
+    // jsdom não tem createObjectURL.
+    URL.createObjectURL = vi.fn(() => 'blob:etiqueta');
+    URL.revokeObjectURL = vi.fn();
   });
   afterEach(() => {
     pedidoAtual = PEDIDO;
@@ -190,8 +196,25 @@ describe('etiqueta do Melhor Envio (Léo, 11/10)', () => {
     expect(postMock).not.toHaveBeenCalled(); // primeiro confirma (debita o saldo)
     fireEvent.click(screen.getByTestId('pedido-etiqueta-confirmar'));
     await waitFor(() => expect(postMock).toHaveBeenCalledWith('/vitrine/admin/pedidos/ped-1/etiqueta'));
-    await waitFor(() => expect(aba.location.href).toBe('https://melhorenvio/imprimir/x'));
+    // Abre o PDF baixado pelo app (sem login no Melhor Envio), não o link do portal.
+    await waitFor(() => expect(aba.location.href).toBe('blob:etiqueta'));
+    expect(buscarArquivoMock).toHaveBeenCalledWith('/vitrine/admin/pedidos/ped-1/etiqueta/pdf');
     expect(abrir).toHaveBeenCalled();
+    abrir.mockRestore();
+  });
+
+  it('PDF do app falhou: cai no link do Melhor Envio e avisa', async () => {
+    pedidoAtual = comFrete();
+    const aba = { location: { href: '' }, close: vi.fn() };
+    const abrir = vi.spyOn(window, 'open').mockReturnValue(aba as unknown as Window);
+    toastError.mockClear();
+    buscarArquivoMock.mockRejectedValueOnce(new Error('502'));
+    postMock.mockResolvedValueOnce({ url: 'https://melhorenvio/imprimir/x' } as never);
+    render(<PedidoDetailPage />);
+    fireEvent.click(screen.getByTestId('pedido-etiqueta'));
+    fireEvent.click(screen.getByTestId('pedido-etiqueta-confirmar'));
+    await waitFor(() => expect(aba.location.href).toBe('https://melhorenvio/imprimir/x'));
+    expect(toastError).toHaveBeenCalledWith('O PDF da etiqueta não abriu', expect.any(String));
     abrir.mockRestore();
   });
 

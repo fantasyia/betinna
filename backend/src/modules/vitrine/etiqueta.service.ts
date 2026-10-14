@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
+import { juntarPdfs } from '@modules/propostas/pdf-juntar.util';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { EnvioCarrinho } from '@integrations/melhorenvio/melhorenvio.client';
@@ -176,6 +177,31 @@ export class EtiquetaService {
     et = { ...et, url, impressaEm: new Date().toISOString() };
     await this.gravar(pedido.id, empresaId, et);
     return { url, etiquetas: ids.length, totalC: et.totalC ?? null, reimpressao };
+  }
+
+  /**
+   * O PDF de TODAS as etiquetas do pedido num arquivo só (Léo, 14/10): abre
+   * direto no navegador, sem login no Melhor Envio. Só depois de gerada.
+   */
+  async pdf(
+    user: AuthenticatedUser,
+    pedidoId: string,
+  ): Promise<{ conteudo: Buffer; nome: string }> {
+    const empresaId = user.empresaIdAtiva ?? user.empresaIds?.[0];
+    if (!empresaId) throw regra('Empresa não definida');
+    const pedido = await this.prisma.pedido.findFirst({
+      where: { id: pedidoId, empresaId },
+      select: { numero: true, entrega: true },
+    });
+    if (!pedido) throw new NotFoundException('Pedido', pedidoId);
+    const et = ((pedido.entrega ?? {}) as EntregaPedido).etiqueta ?? {};
+    if (!et.ids?.length || !et.geradaEm) {
+      throw regra('A etiqueta deste pedido ainda não foi emitida — use "Imprimir etiqueta"');
+    }
+    const { me } = await this.frete.paraEtiqueta(empresaId);
+    const arquivos = await me.pdfs(et.ids);
+    const conteudo = arquivos.length === 1 ? arquivos[0] : await juntarPdfs(arquivos);
+    return { conteudo, nome: `etiqueta-${pedido.numero}.pdf` };
   }
 
   /** Grava (ou apaga, com null) `entrega.etiqueta` — atômico, só essa chave. */

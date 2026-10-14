@@ -134,6 +134,21 @@ export interface MelhorEnvioEtiquetas {
   comprar(ids: string[]): Promise<{ totalC: number | null }>;
   gerar(ids: string[]): Promise<Array<{ id: string; ok: boolean; mensagem: string }>>;
   imprimir(ids: string[]): Promise<string>;
+  /** O PDF de cada etiqueta, baixado com o token — abre sem login no Melhor Envio. */
+  pdfs(ids: string[]): Promise<Buffer[]>;
+}
+
+/**
+ * Link do PDF que o Melhor Envio devolve: só https no S3 da Amazon. Qualquer
+ * outro destino é recusado antes do download (o app não busca URL arbitrária). PURO.
+ */
+export function linkPdfConfiavel(u: string): boolean {
+  try {
+    const q = new URL(u);
+    return q.protocol === 'https:' && q.hostname.endsWith('.amazonaws.com');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -227,6 +242,58 @@ export class MelhorEnvioEtiquetaClient implements MelhorEnvioEtiquetas {
       );
     }
     return j.url;
+  }
+
+  /**
+   * Etiqueta sem login (Léo, 14/10): o link do /shipment/print abre o portal do
+   * Melhor Envio e cai no login quando o navegador não tem sessão lá (testado
+   * no sandbox, até com mode "public"). GET /imprimir/pdf/<id> devolve o link
+   * assinado do PDF no S3 (30 min) — 1 id por chamada.
+   */
+  async pdfs(ids: string[]): Promise<Buffer[]> {
+    const arquivos: Buffer[] = [];
+    for (const id of ids) {
+      const r = await this.fetchFn(
+        `${BASE[this.ambiente]}/api/v2/me/imprimir/pdf/${encodeURIComponent(id)}`,
+        {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${this.token}`,
+            'User-Agent': `Betinna.ai (${this.emailTecnico || 'sem e-mail'})`,
+          },
+          signal: AbortSignal.timeout(20_000),
+          redirect: 'error',
+        },
+      );
+      const links = r.ok ? ((await r.json().catch(() => null)) as unknown) : null;
+      const lista = Array.isArray(links)
+        ? links.filter((x): x is string => typeof x === 'string')
+        : [];
+      if (!lista.length) {
+        throw new IntegrationException(
+          `PDF da etiqueta: o Melhor Envio respondeu ${r.status} sem o link`,
+          ErrorCode.INTEGRATION_ERROR,
+        );
+      }
+      for (const u of lista) {
+        if (!linkPdfConfiavel(u)) {
+          throw new IntegrationException(
+            'PDF da etiqueta: link fora do armazenamento do Melhor Envio',
+            ErrorCode.INTEGRATION_ERROR,
+          );
+        }
+        const a = await this.fetchFn(u, { signal: AbortSignal.timeout(30_000), redirect: 'error' });
+        const buf = Buffer.from(await a.arrayBuffer());
+        if (!a.ok || buf.subarray(0, 4).toString() !== '%PDF') {
+          throw new IntegrationException(
+            `PDF da etiqueta: o download falhou (${a.status})`,
+            ErrorCode.INTEGRATION_ERROR,
+          );
+        }
+        arquivos.push(buf);
+      }
+    }
+    return arquivos;
   }
 }
 

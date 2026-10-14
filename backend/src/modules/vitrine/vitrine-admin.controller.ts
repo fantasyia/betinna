@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -134,6 +146,20 @@ export class VitrineAdminController {
   @ApiOperation({ summary: 'Compra (uma vez) e imprime a etiqueta do Melhor Envio do pedido' })
   etiquetaDoPedido(@CurrentUser() user: AuthenticatedUser, @Param('pedidoId') pedidoId: string) {
     return this.etiqueta.imprimir(user, pedidoId);
+  }
+
+  @Get('pedidos/:pedidoId/etiqueta/pdf')
+  @ApiOperation({ summary: 'PDF de todas as etiquetas do pedido (abre sem login no Melhor Envio)' })
+  async etiquetaPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pedidoId') pedidoId: string,
+    @Res() res: Response,
+  ) {
+    const a = await this.etiqueta.pdf(user, pedidoId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Disposition', `inline; filename="${a.nome}"`);
+    res.send(a.conteudo);
   }
 
   @Post('frete/simular')

@@ -23,7 +23,7 @@ import {
   Copy,
   Edit3,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, buscarArquivo } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
@@ -243,8 +243,21 @@ export default function PedidoDetailPage() {
     setActionError(null);
     try {
       const r = await api.post<{ url: string }>(`/vitrine/admin/pedidos/${id}/etiqueta`);
-      if (aba) aba.location.href = r.url;
-      else window.location.href = r.url;
+      // O link do Melhor Envio cai no login dele sem sessão no navegador (14/10):
+      // abre o PDF que o app baixa com o token. Falhou? Cai no link de antes.
+      let destino = r.url;
+      try {
+        const pdf = await buscarArquivo(`/vitrine/admin/pedidos/${id}/etiqueta/pdf`);
+        destino = URL.createObjectURL(pdf);
+        window.setTimeout(() => URL.revokeObjectURL(destino), 5 * 60_000);
+      } catch {
+        toast.error(
+          'O PDF da etiqueta não abriu',
+          'Abrindo pelo site do Melhor Envio (pode pedir login lá).',
+        );
+      }
+      if (aba) aba.location.href = destino;
+      else window.location.href = destino;
       refetch();
     } catch (err) {
       aba?.close();
