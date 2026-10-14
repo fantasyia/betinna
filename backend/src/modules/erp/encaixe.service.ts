@@ -25,6 +25,19 @@ const SILENCIO_MAX_MIN = 10;
 
 const ABERTOS: EncaixeStatus[] = ['PENDENTE', 'RODANDO'];
 
+/**
+ * Nome das grades do risco: "Regular", ou "Infantil + Regular + Plus Size" no
+ * mesclado (a linha de cada item, na ordem em que aparecem). PURO.
+ */
+export function rotuloLinhas(entrada: unknown): string {
+  const e = entrada as {
+    linha?: { nome?: string };
+    composicao?: Array<{ linha?: string }>;
+  } | null;
+  const dosItens = [...new Set((e?.composicao ?? []).map((c) => c.linha).filter(Boolean))];
+  return dosItens.length ? dosItens.join(' + ') : (e?.linha?.nome ?? '');
+}
+
 /** Material do trabalho (entrada sem `material` = tecido, como os de antes de 14/10). PURO. */
 export function materialDe(entrada: unknown): MaterialEncaixe {
   return (entrada as { material?: unknown } | null)?.material === 'RIBANA' ? 'RIBANA' : 'TECIDO';
@@ -101,22 +114,31 @@ export class EncaixeService {
       );
     }
 
-    const ml = await this.prisma.catalogoModeloLinha.findFirst({
-      where: { id: dto.modeloLinhaId, modeloId: op.modelo.id },
+    // Grades do risco: a do pedido + as que vierem nos itens (risco mesclado).
+    const linhaDe = (c: { modeloLinhaId?: string }) => c.modeloLinhaId ?? dto.modeloLinhaId;
+    const idsLinha = [...new Set([dto.modeloLinhaId, ...dto.composicao.map(linhaDe)])];
+    const mls = await this.prisma.catalogoModeloLinha.findMany({
+      where: { id: { in: idsLinha }, modeloId: op.modelo.id },
       select: {
         id: true,
-        linha: { select: { nome: true } },
+        linha: { select: { nome: true, ordem: true } },
         tamanhos: { select: { tamanho: { select: { nome: true, ordem: true } } } },
       },
     });
-    if (!ml) throw regra('Esta grade não é do modelo da OP');
-    const daGrade = new Set(ml.tamanhos.map((t) => t.tamanho.nome));
-    const fora = dto.composicao.filter((c) => !daGrade.has(c.tamanho));
-    if (fora.length) {
-      throw regra(
-        `Tamanho fora da grade ${ml.linha.nome}: ${fora.map((f) => f.tamanho).join(', ')}`,
-      );
+    if (mls.length !== idsLinha.length) throw regra('Esta grade não é do modelo da OP');
+    const porId = new Map(mls.map((m) => [m.id, m]));
+    const ml = porId.get(dto.modeloLinhaId)!;
+    const vistos = new Set<string>();
+    for (const c of dto.composicao) {
+      const g = porId.get(linhaDe(c))!;
+      if (!g.tamanhos.some((t) => t.tamanho.nome === c.tamanho)) {
+        throw regra(`Tamanho fora da grade ${g.linha.nome}: ${c.tamanho}`);
+      }
+      const chave = `${g.id}|${c.tamanho}`;
+      if (vistos.has(chave)) throw regra(`Tamanho repetido na grade ${g.linha.nome}: ${c.tamanho}`);
+      vistos.add(chave);
     }
+    const mesclado = idsLinha.length > 1;
 
     // Um aberto por OP E por material: tecido e ribana podem estar na fila juntos
     // (no PC do Léo rodam um depois do outro — o agente faz um por vez).
@@ -130,11 +152,25 @@ export class EncaixeService {
       );
     }
 
-    // Ordem da grade (P, M, G… / 2, 4, 6…), não a de quem clicou.
-    const ordem = new Map(ml.tamanhos.map((t) => [t.tamanho.nome, t.tamanho.ordem]));
-    const composicao = [...dto.composicao].sort(
-      (a, b) => (ordem.get(a.tamanho) ?? 0) - (ordem.get(b.tamanho) ?? 0),
-    );
+    // Ordem da grade (Infantil, Regular, Plus… e P, M, G… / 2, 4, 6…), não a de quem clicou.
+    const ordemDe = (c: { modeloLinhaId?: string; tamanho: string }) => {
+      const g = porId.get(linhaDe(c))!;
+      const t = g.tamanhos.find((x) => x.tamanho.nome === c.tamanho)!;
+      return g.linha.ordem * 10_000 + t.tamanho.ordem;
+    };
+    // Mesclado: cada item leva a linha (o agente acha a pasta do molde por ela).
+    // De uma grade só: como sempre, sem linha no item.
+    const composicao = [...dto.composicao]
+      .sort((a, b) => ordemDe(a) - ordemDe(b))
+      .map((c) =>
+        mesclado
+          ? {
+              linha: porId.get(linhaDe(c))!.linha.nome,
+              tamanho: c.tamanho,
+              quantidade: c.quantidade,
+            }
+          : { tamanho: c.tamanho, quantidade: c.quantidade },
+      );
     const { observacoes: _obs, ribana: _rib, ...base } = regras;
     // O agente recebe UM conjunto de regras: na ribana, o tecido e a largura dela.
     const regrasDoAgente =
@@ -148,6 +184,7 @@ export class EncaixeService {
       op: { id: op.id, numero: op.numero },
       modelo: { id: op.modelo.id, nome: op.modelo.nome, codigoMolde: regras.codigoMolde.trim() },
       linha: { modeloLinhaId: ml.id, nome: ml.linha.nome },
+      mesclado,
       composicao,
       regras: regrasDoAgente,
       // Plotter da Ribelt (07/10): TEXWARE V4.1, jato de tinta, HPGL em texto,
@@ -173,7 +210,7 @@ export class EncaixeService {
       select: { id: true },
     });
     this.logger.log(
-      `[encaixe] ${op.numero}: risco ${material === 'RIBANA' ? 'da RIBANA ' : ''}${ml.linha.nome} (${composicao.map((c) => `${c.quantidade}×${c.tamanho}`).join(' ')}) na fila`,
+      `[encaixe] ${op.numero}: risco ${material === 'RIBANA' ? 'da RIBANA ' : ''}${rotuloLinhas(entrada)} (${composicao.map((c) => `${c.quantidade}×${c.tamanho}`).join(' ')}) na fila`,
     );
     return this.paraTela(empresaId, job.id);
   }
@@ -241,13 +278,13 @@ export class EncaixeService {
     const { entrada, ...resto } = j;
     const e = entrada as {
       linha?: { nome?: string };
-      composicao?: Array<{ tamanho: string; quantidade: number }>;
+      composicao?: Array<{ linha?: string; tamanho: string; quantidade: number }>;
       modelo?: { codigoMolde?: string };
     };
     return {
       ...resto,
       material: materialDe(entrada),
-      linha: e.linha?.nome ?? null,
+      linha: rotuloLinhas(entrada) || null,
       composicao: e.composicao ?? [],
       codigoMolde: e.modelo?.codigoMolde ?? null,
       // Só o que existe — a tela mostra o botão de baixar quando tem.

@@ -28,6 +28,25 @@ export interface Grade {
   tamanhos: string[];
 }
 
+/**
+ * Quantidade inicial de cada grade|tamanho no risco. OP montada pela grade do
+ * risco: a composição dela na linha dela, as outras zeradas. Sem: 1 de cada
+ * tamanho em TODAS as grades (o risco mesclado do dia a dia do Léo). PURO.
+ */
+export function qtdInicial(
+  grades: Grade[],
+  risco: { linha: string; composicao: Array<{ tamanho: string; quantidade: number }> } | null,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  const daOp = risco ? new Map(risco.composicao.map((c) => [c.tamanho, c.quantidade])) : null;
+  for (const g of grades) {
+    for (const t of g.tamanhos) {
+      out[`${g.modeloLinhaId}|${t}`] = daOp ? (g.linha === risco!.linha ? (daOp.get(t) ?? 0) : 0) : 1;
+    }
+  }
+  return out;
+}
+
 /** As grades da OP (Regular, Plus…) com os tamanhos que ela tem planejados. PURO. */
 export function gradesDaOp(itens: ItemDaGrade[]): Grade[] {
   const por = new Map<string, { linha: string; ordem: number; tam: Map<string, number> }>();
@@ -57,7 +76,8 @@ interface Encaixe {
   material?: Material;
   tempoMin: number;
   linha: string | null;
-  composicao: Array<{ tamanho: string; quantidade: number }>;
+  /** No risco mesclado cada item traz a linha (Infantil, Regular, Plus Size). */
+  composicao: Array<{ linha?: string; tamanho: string; quantidade: number }>;
   codigoMolde: string | null;
   progresso: { comprimentoM?: number; aproveitamento?: number; em?: string } | null;
   resultado: { comprimentoM: number; aproveitamento: number } | null;
@@ -134,27 +154,14 @@ export function EncaixeDaOp({
   );
   const temRibana = !!regras.data?.regras?.ribana;
   const grades = useMemo(() => gradesDaOp(itens), [itens]);
-  // Começa na linha da grade do risco (se a OP foi montada por ela).
-  const [gradeId, setGradeId] = useState(
-    grades.find((g) => g.linha === risco?.linha)?.modeloLinhaId ?? grades[0]?.modeloLinhaId ?? '',
-  );
-  const grade = grades.find((g) => g.modeloLinhaId === gradeId) ?? grades[0];
-  // Padrão: 1 de cada tamanho da grade ("1 de cada tamanho", como os riscos de hoje).
+  // Risco MESCLADO (Léo, 14/10): todas as grades da OP de uma vez — Infantil +
+  // Regular + Plus num risco só, como ele encaixa no dia a dia. Chave: grade|tamanho.
   const [qtd, setQtd] = useState<Record<string, number>>({});
   const [tempo, setTempo] = useState(30);
   const [enviando, setEnviando] = useState(false);
   useEffect(() => {
-    // A grade da OP É a composição do risco (#03 Modelista): mesma linha → ela.
-    const daOp =
-      risco && grade?.linha === risco.linha
-        ? new Map(risco.composicao.map((c) => [c.tamanho, c.quantidade]))
-        : null;
-    setQtd(
-      Object.fromEntries(
-        (grade?.tamanhos ?? []).map((t) => [t, daOp ? (daOp.get(t) ?? 0) : 1]),
-      ),
-    );
-  }, [grade?.modeloLinhaId, grade?.tamanhos, grade?.linha, risco]);
+    setQtd(qtdInicial(grades, risco ?? null));
+  }, [grades, risco]);
 
   const jobs = q.data ?? [];
   const ativo = jobs.find((j) => aberto(j.status));
@@ -168,17 +175,24 @@ export function EncaixeDaOp({
     return () => window.clearInterval(id);
   }, [ativo, q]);
 
-  const composicao = (grade?.tamanhos ?? [])
-    .map((t) => ({ tamanho: t, quantidade: qtd[t] ?? 0 }))
-    .filter((c) => c.quantidade > 0);
+  const composicao = grades.flatMap((g) =>
+    g.tamanhos
+      .map((t) => ({
+        modeloLinhaId: g.modeloLinhaId,
+        tamanho: t,
+        quantidade: qtd[`${g.modeloLinhaId}|${t}`] ?? 0,
+      }))
+      .filter((c) => c.quantidade > 0),
+  );
   const pecas = composicao.reduce((s, c) => s + c.quantidade, 0);
+  const nGrades = new Set(composicao.map((c) => c.modeloLinhaId)).size;
 
   async function gerar(material: Material) {
-    if (!grade || !pecas) return;
+    if (!pecas) return;
     setEnviando(true);
     try {
       await api.post(`/erp/ops/${opId}/encaixes`, {
-        modeloLinhaId: grade.modeloLinhaId,
+        modeloLinhaId: composicao[0].modeloLinhaId,
         material,
         composicao,
         tempoMin: tempo,
@@ -221,44 +235,39 @@ export function EncaixeDaOp({
         <p className="text-sm text-muted">A OP não tem peças planejadas.</p>
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="grid gap-2 sm:grid-cols-[12rem_minmax(0,1fr)_9rem] items-end">
-            <Field label="Grade">
-              <Select
-                value={grade?.modeloLinhaId}
-                onChange={(e) => setGradeId(e.target.value)}
-                data-testid="encaixe-grade"
-              >
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem] items-end">
+            <Field label="Peças de cada tamanho NO risco (zere a grade que não entra)">
+              <div className="flex flex-col gap-1.5">
                 {grades.map((g) => (
-                  <option key={g.modeloLinhaId} value={g.modeloLinhaId}>
-                    {g.linha}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Peças de cada tamanho NO risco">
-              <div className="flex flex-wrap gap-1.5">
-                {(grade?.tamanhos ?? []).map((t) => (
-                  <label
-                    key={t}
-                    className="flex items-center gap-1 rounded-[10px] border border-border px-2 h-9 text-sm"
-                  >
-                    <b>{t}</b>
-                    <input
-                      type="number"
-                      min={0}
-                      max={9}
-                      value={qtd[t] ?? 0}
-                      onChange={(e) =>
-                        setQtd((x) => ({
-                          ...x,
-                          [t]: Math.max(0, Math.min(9, Math.trunc(Number(e.target.value) || 0))),
-                        }))
-                      }
-                      className="w-10 bg-transparent text-center tabular-nums outline-none"
-                      aria-label={`Peças do ${t} no risco`}
-                      data-testid={`encaixe-qtd-${t}`}
-                    />
-                  </label>
+                  <div key={g.modeloLinhaId} className="flex flex-wrap items-center gap-1.5">
+                    <span className="w-20 text-xs font-semibold text-muted">{g.linha}</span>
+                    {g.tamanhos.map((t) => {
+                      const k = `${g.modeloLinhaId}|${t}`;
+                      return (
+                        <label
+                          key={k}
+                          className="flex items-center gap-1 rounded-[10px] border border-border px-2 h-9 text-sm"
+                        >
+                          <b>{t}</b>
+                          <input
+                            type="number"
+                            min={0}
+                            max={9}
+                            value={qtd[k] ?? 0}
+                            onChange={(e) =>
+                              setQtd((x) => ({
+                                ...x,
+                                [k]: Math.max(0, Math.min(9, Math.trunc(Number(e.target.value) || 0))),
+                              }))
+                            }
+                            className="w-10 bg-transparent text-center tabular-nums outline-none"
+                            aria-label={`Peças do ${t} ${g.linha} no risco`}
+                            data-testid={`encaixe-qtd-${g.linha}-${t}`}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
                 ))}
               </div>
             </Field>
@@ -296,7 +305,7 @@ export function EncaixeDaOp({
                 ? 'Os riscos do tecido e da ribana estão na fila — a GPU faz um depois do outro.'
                 : ativoDe('TECIDO') || ativoDe('RIBANA')
                   ? `Já tem um risco ${ativoDe('RIBANA') ? 'da ribana' : 'do tecido'} desta OP na fila.`
-                  : `${pecas} peça(s) no risco · a GPU faz um por vez.`}
+                  : `${pecas} peça(s) no risco${nGrades > 1 ? ` · ${nGrades} grades juntas` : ''} · a GPU faz um por vez.`}
             </span>
           </div>
         </div>
@@ -343,7 +352,11 @@ function ItemEncaixe({
           </Badge>
         )}
         <span>
-          {j.linha} · {j.composicao.map((c) => `${c.quantidade}×${c.tamanho}`).join(' ')} · molde{' '}
+          {j.linha} ·{' '}
+          {j.composicao
+            .map((c) => `${c.quantidade}×${c.tamanho}${c.linha && j.linha?.includes('+') ? ` ${c.linha}` : ''}`)
+            .join(' ')}{' '}
+          · molde{' '}
           {j.codigoMolde}
         </span>
         <span className="text-muted">· {j.tempoMin} min</span>

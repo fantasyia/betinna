@@ -74,24 +74,34 @@ describe('gradesDaOp', () => {
 });
 
 describe('<EncaixeDaOp>', () => {
-  it('pede o risco com 1 de cada tamanho (padrão) e o tempo escolhido', async () => {
+  it('risco MESCLADO (14/10): todas as grades da OP, 1 de cada tamanho por padrão', async () => {
     apiPost.mockResolvedValue({});
     montar();
-    fireEvent.change(screen.getByTestId('encaixe-grade'), { target: { value: 'ml-reg' } });
-    fireEvent.change(screen.getByTestId('encaixe-qtd-M'), { target: { value: '2' } });
+    fireEvent.change(screen.getByTestId('encaixe-qtd-Regular-M'), { target: { value: '2' } });
     fireEvent.click(screen.getByTestId('encaixe-gerar'));
     await waitFor(() => expect(apiPost).toHaveBeenCalled());
     expect(apiPost.mock.calls[0][0]).toBe('/erp/ops/op-1/encaixes');
     expect(apiPost.mock.calls[0][1]).toEqual({
-      modeloLinhaId: 'ml-reg',
+      modeloLinhaId: 'ml-inf',
       material: 'TECIDO',
       composicao: [
-        { tamanho: 'P', quantidade: 1 },
-        { tamanho: 'M', quantidade: 2 },
-        { tamanho: 'G', quantidade: 1 },
+        { modeloLinhaId: 'ml-inf', tamanho: '4', quantidade: 1 },
+        { modeloLinhaId: 'ml-reg', tamanho: 'P', quantidade: 1 },
+        { modeloLinhaId: 'ml-reg', tamanho: 'M', quantidade: 2 },
+        { modeloLinhaId: 'ml-reg', tamanho: 'G', quantidade: 1 },
       ],
       tempoMin: 30,
     });
+  });
+
+  it('zerando uma grade, o risco sai só com a outra', async () => {
+    apiPost.mockResolvedValue({});
+    montar();
+    fireEvent.change(screen.getByTestId('encaixe-qtd-Infantil-4'), { target: { value: '0' } });
+    fireEvent.click(screen.getByTestId('encaixe-gerar'));
+    await waitFor(() => expect(apiPost).toHaveBeenCalled());
+    expect(apiPost.mock.calls[0][1].modeloLinhaId).toBe('ml-reg');
+    expect(apiPost.mock.calls[0][1].composicao.map((c: { tamanho: string }) => c.tamanho)).toEqual(['P', 'M', 'G']);
   });
 
   it('ribana (14/10): o botão só aparece com ribana na ficha e pede com a MESMA grade', async () => {
@@ -101,7 +111,7 @@ describe('<EncaixeDaOp>', () => {
     estado.regras = { ribana: { tecido: 'TUBULAR', larguraUtilMm: 580 } };
     apiPost.mockResolvedValue({});
     montar();
-    fireEvent.change(screen.getByTestId('encaixe-grade'), { target: { value: 'ml-reg' } });
+    fireEvent.change(screen.getByTestId('encaixe-qtd-Infantil-4'), { target: { value: '0' } });
     fireEvent.click(screen.getByTestId('encaixe-gerar-ribana'));
     await waitFor(() => expect(apiPost).toHaveBeenCalled());
     expect(apiPost.mock.calls[0][1]).toMatchObject({

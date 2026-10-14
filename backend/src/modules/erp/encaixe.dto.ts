@@ -19,13 +19,18 @@ export const criarEncaixeSchema = z.object({
   composicao: z
     .array(
       z.object({
+        /**
+         * Risco MESCLADO (Léo, 14/10): cada item pode ser de outra grade da OP
+         * (Infantil + Regular + Plus num risco só, como ele encaixa no dia a
+         * dia). Sem o campo = a grade `modeloLinhaId` do pedido.
+         */
+        modeloLinhaId: z.string().min(1).max(40).optional(),
         tamanho: z.string().trim().min(1).max(20),
         quantidade: z.number().int().min(1).max(50),
       }),
     )
     .min(1, 'Escolha ao menos um tamanho pro risco')
-    .max(40)
-    .refine((xs) => new Set(xs.map((x) => x.tamanho)).size === xs.length, 'Tamanho repetido'),
+    .max(60),
   /** Quanto tempo a GPU pode procurar um risco melhor. */
   tempoMin: z.number().int().min(2).max(180),
 });

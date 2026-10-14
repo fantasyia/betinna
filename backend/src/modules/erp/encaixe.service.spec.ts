@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BusinessRuleException } from '@shared/errors/app-exception';
-import { EncaixeService, agenteSumiu, materialDe } from './encaixe.service';
+import { EncaixeService, agenteSumiu, materialDe, rotuloLinhas } from './encaixe.service';
 
 const user = { id: 'u-1', role: 'DIRECTOR', empresaIdAtiva: 'emp-1', empresaIds: ['emp-1'] };
 
@@ -48,11 +48,21 @@ function montar(
       }),
     },
     catalogoModeloLinha: {
-      findFirst: vi.fn().mockResolvedValue({
-        id: 'ml-inf',
-        linha: { nome: 'Infantil' },
-        tamanhos: ['2', '4', '6', '8'].map((nome, ordem) => ({ tamanho: { nome, ordem } })),
-      }),
+      // Duas grades do modelo: Infantil (2-8) e Regular (P-G).
+      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        [
+          {
+            id: 'ml-inf',
+            linha: { nome: 'Infantil', ordem: 0 },
+            tamanhos: ['2', '4', '6', '8'].map((nome, ordem) => ({ tamanho: { nome, ordem } })),
+          },
+          {
+            id: 'ml-reg',
+            linha: { nome: 'Regular', ordem: 1 },
+            tamanhos: ['P', 'M', 'G'].map((nome, ordem) => ({ tamanho: { nome, ordem } })),
+          },
+        ].filter((m) => where.id.in.includes(m.id)),
+      ),
     },
     encaixeJob: {
       findFirst: vi.fn(async ({ where }: { where: { id?: string; opId?: string } }) => {
@@ -310,5 +320,64 @@ describe('EncaixeService — agente da GPU', () => {
       svc.concluir(user as never, 'j-1', { comprimentoM: 1, aproveitamento: 80, plt: 'IN;PU0,0;' }),
     ).rejects.toThrow(/CANCELADO/);
     expect(prisma.encaixeArquivo.upsert).not.toHaveBeenCalled();
+  });
+});
+
+/** Risco MESCLADO (Léo + #03, 14/10): Infantil + Regular + Plus num risco só. */
+describe('EncaixeService — risco mesclado', () => {
+  const mesclado = {
+    ...pedido,
+    composicao: [
+      { modeloLinhaId: 'ml-reg', tamanho: 'G', quantidade: 1 },
+      { tamanho: '4', quantidade: 2 }, // sem grade = a do pedido (Infantil)
+      { modeloLinhaId: 'ml-reg', tamanho: 'P', quantidade: 1 },
+    ],
+  };
+
+  it('cada item leva a LINHA, na ordem das grades e dos tamanhos', async () => {
+    const { svc, prisma } = montar();
+    await svc.criar(user as never, 'op-1', mesclado);
+    const e = prisma.encaixeJob.create.mock.calls[0][0].data.entrada;
+    expect(e.mesclado).toBe(true);
+    expect(e.composicao).toEqual([
+      { linha: 'Infantil', tamanho: '4', quantidade: 2 },
+      { linha: 'Regular', tamanho: 'P', quantidade: 1 },
+      { linha: 'Regular', tamanho: 'G', quantidade: 1 },
+    ]);
+    expect(rotuloLinhas(e)).toBe('Infantil + Regular');
+  });
+
+  it('de uma grade só: igual a antes (sem linha no item)', async () => {
+    const { svc, prisma } = montar();
+    await svc.criar(user as never, 'op-1', pedido);
+    const e = prisma.encaixeJob.create.mock.calls[0][0].data.entrada;
+    expect(e.mesclado).toBe(false);
+    expect(e.composicao.every((c: object) => !('linha' in c))).toBe(true);
+    expect(rotuloLinhas(e)).toBe('Infantil');
+  });
+
+  it('recusa: grade de outro modelo, tamanho fora DAQUELA grade, tamanho repetido na mesma grade', async () => {
+    await expect(
+      montar().svc.criar(user as never, 'op-1', {
+        ...pedido,
+        composicao: [{ modeloLinhaId: 'ml-de-outro', tamanho: 'P', quantidade: 1 }],
+      }),
+    ).rejects.toThrow(/não é do modelo/);
+    await expect(
+      montar().svc.criar(user as never, 'op-1', {
+        ...pedido,
+        composicao: [{ modeloLinhaId: 'ml-reg', tamanho: '4', quantidade: 1 }],
+      }),
+    ).rejects.toThrow(/fora da grade Regular/);
+    await expect(
+      montar().svc.criar(user as never, 'op-1', {
+        ...pedido,
+        composicao: [
+          { modeloLinhaId: 'ml-reg', tamanho: 'P', quantidade: 1 },
+          { modeloLinhaId: 'ml-reg', tamanho: 'P', quantidade: 2 },
+        ],
+      }),
+    ).rejects.toThrow(/repetido/);
+    // O MESMO tamanho em grades diferentes pode (ex.: G do Regular e G do Plus).
   });
 });
