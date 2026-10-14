@@ -20,6 +20,17 @@ import {
   quantidadesDaGrade,
   registroDaGrade,
 } from './gradeRisco';
+import { KanbanProducao } from './KanbanProducao';
+
+/** Visão da produção: kanban (etapas) ou lista. Fica lembrada neste aparelho. */
+const CHAVE_VISAO = 'producao:visao';
+function visaoSalva(): 'kanban' | 'lista' {
+  try {
+    return localStorage.getItem(CHAVE_VISAO) === 'lista' ? 'lista' : 'kanban';
+  } catch {
+    return 'kanban';
+  }
+}
 
 /**
  * Produção (ERP próprio · Fase 2 · entrega 4): ordens de produção.
@@ -62,6 +73,16 @@ export default function ProducaoPage() {
   // Veio da Reposição: abre a Nova OP já com o modelo e a grade do que falta.
   const pre = (location.state as { nova?: NovaInicial } | null)?.nova ?? null;
   const [nova, setNova] = useState(Boolean(pre));
+  // Kanban das etapas (Léo, 14/10) é o padrão; a lista segue a um clique.
+  const [visao, setVisaoEstado] = useState<'kanban' | 'lista'>(visaoSalva);
+  const setVisao = (v: 'kanban' | 'lista') => {
+    setVisaoEstado(v);
+    try {
+      localStorage.setItem(CHAVE_VISAO, v);
+    } catch {
+      /* sem armazenamento: só não lembra */
+    }
+  };
 
   return (
     <PageLayout
@@ -80,8 +101,26 @@ export default function ProducaoPage() {
         <Card className="p-6 text-sm text-muted">Só a diretoria acessa a produção.</Card>
       ) : (
         <StateView loading={q.loading} error={q.error} onRetry={q.refetch}>
+          {(q.data ?? []).length > 0 && (
+            <div className="mb-3 flex gap-1" role="group" aria-label="Visão">
+              {(['kanban', 'lista'] as const).map((v) => (
+                <Button
+                  key={v}
+                  size="sm"
+                  variant={visao === v ? 'primary' : 'secondary'}
+                  onClick={() => setVisao(v)}
+                  aria-pressed={visao === v}
+                  data-testid={`ops-visao-${v}`}
+                >
+                  {v === 'kanban' ? 'Etapas' : 'Lista'}
+                </Button>
+              ))}
+            </div>
+          )}
           {(q.data ?? []).length === 0 ? (
             <Card className="p-6 text-sm text-muted text-center">Nenhuma ordem de produção ainda.</Card>
+          ) : visao === 'kanban' ? (
+            <KanbanProducao ops={q.data ?? []} />
           ) : (
             <Card className="p-0 overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm tabular-nums" data-testid="ops-tabela">
