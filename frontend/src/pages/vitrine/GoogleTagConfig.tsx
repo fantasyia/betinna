@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { BarChart3 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -12,6 +13,8 @@ import { Badge, Button, Card, Field, Input, Switch } from '@/components/ui';
  * pedido, o valor e o e-mail/telefone do cliente (conversões otimizadas).
  */
 interface StatusGoogleTag {
+  /** Secret do Measurement Protocol em Integrações: a compra vai também pelo servidor. */
+  servidor?: boolean;
   config: { ativo?: boolean; ga4Id?: string | null; adsId?: string | null; compraLabel?: string | null };
 }
 
@@ -73,7 +76,20 @@ export function GoogleTagConfig() {
         <BarChart3 className="h-4 w-4 text-muted" aria-hidden />
         <h2 className="text-base font-semibold">Tag do Google (GA4 e Google Ads)</h2>
         <Badge variant={s.config.ativo ? 'success' : 'neutral'}>{s.config.ativo ? 'Ligada' : 'Desligada'}</Badge>
+        <Badge variant={s.servidor ? 'success' : 'warning'}>
+          {s.servidor ? 'Compra também pelo servidor' : 'Compra só pelo navegador'}
+        </Badge>
       </div>
+      {!s.servidor && (
+        <p className="text-sm text-muted">
+          Pra compra chegar no GA4 mesmo se o cliente fechar a tela do Pix, cole o secret do Measurement
+          Protocol em{' '}
+          <Link to="/integracoes" className="text-primary hover:underline">
+            Integrações → Google Analytics
+          </Link>
+          .
+        </p>
+      )}
       <p className="text-sm text-muted">
         Mede no Google os mesmos passos do pixel: visitas, produtos vistos, itens no pedido, início do
         pagamento e a compra paga — com o número do pedido, o valor e o e-mail/telefone do cliente

@@ -116,3 +116,10 @@ describe('correspondência avançada e compra única (#04, 15/10)', () => {
     expect(primeiraCompra('ped-2')).toBe(true);
   });
 });
+
+describe('client_id do GA4 no pedido (15/10)', () => {
+  it('lê o cookie _ga (GA1.1.<id>.<ts>) e manda só "<id>.<ts>"', () => {
+    document.cookie = '_ga=GA1.1.1234567890.1792036294; path=/';
+    expect(atribuicaoParaEnvio(BASE).gaClientId).toBe('1234567890.1792036294');
+  });
+});

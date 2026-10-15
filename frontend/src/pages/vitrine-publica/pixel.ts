@@ -184,6 +184,7 @@ export function atribuicaoParaEnvio(paginaAtual: string): {
   ultimo?: Toque;
   fbc?: string;
   fbp?: string;
+  gaClientId?: string;
 } {
   const a = ler();
   // Sem toque de campanha, o "último" é a página do pedido (o Meta pede a URL do evento).
@@ -200,5 +201,12 @@ export function atribuicaoParaEnvio(paginaAtual: string): {
     ultimo,
     ...(fbc ? { fbc } : {}),
     ...(cookie('_fbp') ? { fbp: cookie('_fbp') } : {}),
+    ...(gaClientId() ? { gaClientId: gaClientId() } : {}),
   };
+}
+
+/** `_ga` = GA1.1.<id>.<ts> → o client_id do GA4 é "<id>.<ts>". */
+function gaClientId(): string | undefined {
+  const m = cookie('_ga')?.match(/^GA\d\.\d\.(\d+\.\d+)$/);
+  return m ? m[1] : undefined;
 }

@@ -34,6 +34,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'asaas',
   'melhorenvio',
   'meta_pixel',
+  'ga4_mp',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -52,7 +53,8 @@ type ServicoEmpresa =
   | 'clicksign'
   | 'asaas'
   | 'melhorenvio'
-  | 'meta_pixel';
+  | 'meta_pixel'
+  | 'ga4_mp';
 
 interface ServicoMeta {
   nome: string;
@@ -267,6 +269,20 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     credentialFields: [{ name: 'accessToken', label: 'Token da API de Conversões', type: 'password' }],
     atalho: { rotulo: 'Configurar o pixel →', rota: '/vitrine?aba=config' },
   },
+  ga4_mp: {
+    nome: 'Google Analytics (compra pelo servidor)',
+    tipo: 'anuncios',
+    obrigatorio: false,
+    color: '#e37400',
+    icon: '📊',
+    description:
+      'Secret do Measurement Protocol do GA4: manda a COMPRA paga pro GA4 pelo servidor (não depende da ' +
+      'tela do Pix ficar aberta). Crie no GA4 → Administrador → Fluxos de dados → fluxo da vitrine → ' +
+      'Secrets da API do Measurement Protocol. O ID G- vai em Vitrine → Configuração → Tag do Google.',
+    connectMode: 'credentials',
+    credentialFields: [{ name: 'apiSecret', label: 'Secret da API do Measurement Protocol', type: 'password' }],
+    atalho: { rotulo: 'Configurar a tag →', rota: '/vitrine?aba=config' },
+  },
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
@@ -284,6 +300,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'asaas',
   'melhorenvio',
   'meta_pixel',
+  'ga4_mp',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {

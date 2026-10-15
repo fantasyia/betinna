@@ -34,6 +34,9 @@ export const SERVICOS_EMPRESA = [
   // Pixel do Meta da vitrine: o TOKEN da API de Conversões (o ID do pixel é
   // público e fica na config da vitrine).
   'meta_pixel',
+  // GA4 da vitrine: o API secret do Measurement Protocol (a compra paga vai
+  // também pelo servidor — o ID G- é público e fica na config da vitrine).
+  'ga4_mp',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -199,6 +202,14 @@ export const SERVICO_METADATA: Record<
   // Token que manda a compra pro Meta com dados do cliente (hash): diretoria.
   meta_pixel: {
     nome: 'Pixel do Meta (API de Conversões)',
+    tipo: 'anuncios',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  // Secret que manda a compra paga pro GA4 pelo servidor: diretoria.
+  ga4_mp: {
+    nome: 'Google Analytics (compra pelo servidor)',
     tipo: 'anuncios',
     escopo: 'empresa',
     obrigatorio: false,

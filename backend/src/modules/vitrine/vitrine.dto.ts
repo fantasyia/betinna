@@ -427,6 +427,8 @@ export const pedidoVitrineSchema = z.object({
       ultimo: blocoAtribuicao.optional(),
       fbc: z.string().max(500).optional(),
       fbp: z.string().max(500).optional(),
+      /** Do cookie `_ga` (GA4): a compra pelo servidor cai na mesma visita. */
+      gaClientId: z.string().max(100).optional(),
     })
     .optional(),
   /** Isca pra robô: campo invisível na tela. Gente nunca preenche. */

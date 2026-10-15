@@ -734,6 +734,11 @@ export function atribuicaoDoPedido(
     .trim()
     .slice(0, 64);
   if (ip && ua) meta.ip = ip;
-  const out = { ...campanha, ...(Object.keys(meta).length ? { meta } : {}) };
+  const ga = a?.gaClientId && /^\d{1,20}\.\d{1,20}$/.test(a.gaClientId) ? a.gaClientId : null;
+  const out = {
+    ...campanha,
+    ...(Object.keys(meta).length ? { meta } : {}),
+    ...(ga ? { google: { clientId: ga } } : {}),
+  };
   return Object.keys(out).length ? (out as Prisma.InputJsonObject) : undefined;
 }
