@@ -43,6 +43,13 @@ interface Opcoes {
 }
 
 /** CPF (11) ou CNPJ (14) — só a contagem; o Asaas confere o dígito. */
+/** E-mail obrigatório no Pix e no cartão (Léo, 15/10). PURO. */
+export function emailOk(v: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+}
+
+const CHAVE_EMAIL = 'vitrine:email';
+
 export function documentoOk(v: string): boolean {
   const n = v.replace(/\D/g, '').length;
   return n === 11 || n === 14;
@@ -88,7 +95,13 @@ export function Pagamento({
   const [metodo, setMetodo] = useState<'PIX' | 'CARTAO'>('PIX');
   const [parcelas, setParcelas] = useState(1);
   const [doc, setDoc] = useState(docInicial);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => {
+    try {
+      return localStorage.getItem(CHAVE_EMAIL) ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aberto, setAberto] = useState<PagamentoAberto | null>(null);
@@ -146,7 +159,7 @@ export function Pagamento({
   }, [aberto, pago, conferir]);
 
   async function gerar() {
-    if (gerando || !documentoOk(doc)) return;
+    if (gerando || !documentoOk(doc) || !emailOk(email)) return;
     setGerando(true);
     setErro(null);
     try {
@@ -157,7 +170,7 @@ export function Pagamento({
           metodo,
           parcelas: metodo === 'PIX' ? 1 : parcelas,
           cpfCnpj: doc,
-          email: email.trim() || null,
+          email: email.trim().toLowerCase(),
         },
         { skipAuth: true },
       );
@@ -315,21 +328,21 @@ export function Pagamento({
             data-testid="vt-pag-doc"
           />
         </label>
-        {metodo === 'CARTAO' && (
-          <label>
-            <span>
-              E-mail <small>(opcional, pro comprovante)</small>
-            </span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              maxLength={120}
-              data-testid="vt-pag-email"
-            />
-          </label>
-        )}
+        <label>
+          <span>
+            E-mail <small>(pra receber o comprovante)</small>
+          </span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            inputMode="email"
+            maxLength={120}
+            required
+            data-testid="vt-pag-email"
+          />
+        </label>
       </div>
       {erro && (
         <p className="vt-aviso" role="alert">
@@ -339,7 +352,7 @@ export function Pagamento({
       <button
         type="button"
         className="vt-cta"
-        disabled={gerando || !documentoOk(doc)}
+        disabled={gerando || !documentoOk(doc) || !emailOk(email)}
         onClick={() => void gerar()}
         data-testid="vt-pag-gerar"
       >

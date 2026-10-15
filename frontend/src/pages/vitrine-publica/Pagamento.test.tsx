@@ -100,6 +100,9 @@ describe('<Pagamento>', () => {
     const gerar = screen.getByTestId('vt-pag-gerar') as HTMLButtonElement;
     expect(gerar.disabled).toBe(true);
     fireEvent.change(screen.getByTestId('vt-pag-doc'), { target: { value: '123.456.789-09' } });
+    // E-mail obrigatório também no Pix (Léo, 15/10).
+    expect(gerar.disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('vt-pag-email'), { target: { value: ' Ana@Loja.com ' } });
     expect(gerar.disabled).toBe(false);
     fireEvent.click(gerar);
 
@@ -109,7 +112,7 @@ describe('<Pagamento>', () => {
       metodo: 'PIX',
       parcelas: 1,
       cpfCnpj: '123.456.789-09',
-      email: null,
+      email: 'ana@loja.com',
     });
     expect(onComecou).toHaveBeenCalled();
     const img = screen.getByAltText('QR Code do Pix') as HTMLImageElement;
@@ -124,6 +127,7 @@ describe('<Pagamento>', () => {
     await waitFor(() => screen.getByTestId('vt-pag-cartao'));
     fireEvent.click(screen.getByTestId('vt-pag-cartao'));
     fireEvent.click(screen.getByText(/^3x de/));
+    fireEvent.change(screen.getByTestId('vt-pag-email'), { target: { value: 'ana@loja.com' } });
     fireEvent.click(screen.getByTestId('vt-pag-gerar'));
 
     await waitFor(() => expect(screen.getByTestId('vt-cartao-aberto')).toBeTruthy());
