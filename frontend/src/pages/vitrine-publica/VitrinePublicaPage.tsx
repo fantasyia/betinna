@@ -1980,7 +1980,8 @@ function FolhaEnvio({
           <div>
             <div className="vt-name">Enviar pedido</div>
             <span className="vt-muted">
-              A {empresa} confirma tudo com você pelo WhatsApp antes de separar.
+              {/* Léo, 15/10: não há conferência no WhatsApp — o sistema separa o que foi escolhido. */}
+              A {empresa} separa e envia exatamente o que você escolheu aqui.
             </span>
             {privacidade && (
               <span className="vt-muted vt-priv-linha">
