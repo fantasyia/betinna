@@ -101,9 +101,14 @@ export class CheckoutService {
     }
   }
 
-  /** Endereço do aviso de pagamento DESTA empresa (origem pública da API). */
-  urlDoWebhook(empresaId: string): string {
-    const origem = (this.env.get('API_PUBLIC_URL') || '').replace(/\/+$/, '');
+  /**
+   * Endereço do aviso de pagamento DESTA empresa. A origem é o domínio da API
+   * da própria empresa (`config.dominioApi`, Ribelt 15/10: api.ribelt.com.br)
+   * ou, sem ele, a origem pública geral da API.
+   */
+  urlDoWebhook(empresaId: string, dominioApi?: string | null): string {
+    const propria = dominioApi && /^https:\/\/[a-z0-9.-]+$/i.test(dominioApi) ? dominioApi : null;
+    const origem = (propria || this.env.get('API_PUBLIC_URL') || '').replace(/\/+$/, '');
     if (!origem) {
       throw regra('API_PUBLIC_URL não configurada — sem ela o Asaas não sabe pra onde avisar');
     }
@@ -141,7 +146,12 @@ export class CheckoutService {
     const asaas = this.cliente(cred.apiKey);
     await asaas.saldo(); // chave válida?
     const taxas = await asaas.taxas();
-    const url = this.urlDoWebhook(empresaId);
+    const emp = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const dominioApi = ((emp?.config ?? {}) as { dominioApi?: string }).dominioApi ?? null;
+    const url = this.urlDoWebhook(empresaId, dominioApi);
     const token = cred.webhookToken || randomBytes(32).toString('hex');
     let webhook;
     try {

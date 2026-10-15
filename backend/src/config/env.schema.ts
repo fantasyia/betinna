@@ -13,6 +13,11 @@ export const envSchema = z
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     CORS_ORIGINS: z.string().default('http://localhost:3000'),
     /**
+     * Origens A MAIS (vírgula), somadas ao CORS_ORIGINS — domínio do app de um
+     * tenant (Ribelt, 15/10: app.ribelt.com.br) entra sem reescrever a lista.
+     */
+    CORS_ORIGINS_EXTRA: z.string().default(''),
+    /**
      * URL pública do frontend — usada em links de e-mail transacional
      * (botão "Acessar Betinna.ai", deep-links pra pedido/ocorrência).
      * Default: primeiro CORS_ORIGINS.

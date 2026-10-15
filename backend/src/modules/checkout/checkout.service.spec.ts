@@ -92,6 +92,18 @@ describe('CheckoutService — ligar a conta Asaas (entrega 1)', () => {
     expect(sql).not.toContain(dados.authToken);
   });
 
+  it('empresa com domínio de API próprio (Ribelt, 15/10): o aviso usa o domínio dela', async () => {
+    const { svc, asaas } = montar({ config: { dominioApi: 'https://api.ribelt.com.br' } });
+    await svc.ativar(user as never);
+    expect(asaas.salvarWebhook.mock.calls[0][0].url).toBe(
+      'https://api.ribelt.com.br/api/v1/webhooks/asaas/emp-1',
+    );
+    // valor torto não vira endereço: cai na origem geral
+    expect(svc.urlDoWebhook('emp-1', 'javascript:alert(1)')).toBe(
+      'https://api.exemplo.com/api/v1/webhooks/asaas/emp-1',
+    );
+  });
+
   it('ativar de novo reaproveita o mesmo aviso e o mesmo código (atualiza, não duplica)', async () => {
     const { svc, asaas } = montar({
       cred: { apiKey: '$aact_hmlg_x', webhookId: 'wh_9', webhookToken: TOKEN },

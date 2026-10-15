@@ -35,7 +35,8 @@ export class EnvService {
   }
 
   get corsOrigins(): string[] {
-    return this.get('CORS_ORIGINS')
+    return [this.get('CORS_ORIGINS'), this.get('CORS_ORIGINS_EXTRA')]
+      .join(',')
       .split(',')
       .map((o) => o.trim())
       .filter(Boolean);
