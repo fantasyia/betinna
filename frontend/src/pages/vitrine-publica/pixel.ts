@@ -62,6 +62,34 @@ export function evento(nome: string, params: Record<string, unknown> = {}, event
   else window.fbq('track', nome, params);
 }
 
+/**
+ * Correspondência avançada (#04, 15/10): e-mail e telefone que o cliente
+ * digitou vão no `init` de novo — o fbevents.js cifra (hash) antes de enviar.
+ */
+export function dadosDoCliente(c: { email?: string | null; whatsapp?: string | null }): void {
+  if (!iniciado || !window.fbq) return;
+  const em = c.email?.trim().toLowerCase() || undefined;
+  const d = (c.whatsapp ?? '').replace(/\D/g, '');
+  const ph = d.length >= 10 ? (d.startsWith('55') && d.length >= 12 ? d : `55${d}`) : undefined;
+  if (!em && !ph) return;
+  window.fbq('init', iniciado, { ...(em ? { em } : {}), ...(ph ? { ph } : {}) });
+}
+
+/**
+ * Compra do navegador UMA vez por pedido neste aparelho (#04, 15/10: 4 do
+ * navegador pra 2 pedidos). Sem armazenamento, deixa passar.
+ */
+export function primeiraCompra(pedidoId: string): boolean {
+  const k = `vitrine:compra:${pedidoId}`;
+  try {
+    if (localStorage.getItem(k)) return false;
+    localStorage.setItem(k, new Date().toISOString());
+  } catch {
+    /* sem armazenamento: o eventID igual ainda deduplica no Meta */
+  }
+  return true;
+}
+
 /** Só pros testes. */
 export function _resetarPixel(): void {
   iniciado = null;

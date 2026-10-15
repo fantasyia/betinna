@@ -3,8 +3,10 @@ import {
   _resetarPixel,
   atribuicaoParaEnvio,
   capturarAtribuicao,
+  dadosDoCliente,
   evento,
   iniciarPixel,
+  primeiraCompra,
 } from './pixel';
 
 /** Pixel do Meta + campanha de origem na vitrine (card da #04, 09/10). */
@@ -91,5 +93,26 @@ describe('pixel', () => {
     window.fbq!.callMethod = real;
     evento('AddToCart', { num_items: 3 });
     expect(real).toHaveBeenCalledWith('track', 'AddToCart', { num_items: 3 });
+  });
+});
+
+describe('correspondência avançada e compra única (#04, 15/10)', () => {
+  it('e-mail e telefone vão num novo init do mesmo pixel (sem pixel, nada)', () => {
+    dadosDoCliente({ email: 'a@b.com', whatsapp: '11999990000' });
+    expect(window.fbq).toBeUndefined();
+    iniciarPixel('1126234867014742');
+    const fbq = vi.fn();
+    window.fbq = fbq as never;
+    dadosDoCliente({ email: ' Ana@Loja.com ', whatsapp: '(11) 99999-0000' });
+    expect(fbq).toHaveBeenCalledWith('init', '1126234867014742', { em: 'ana@loja.com', ph: '5511999990000' });
+    fbq.mockClear();
+    dadosDoCliente({ whatsapp: '12' });
+    expect(fbq).not.toHaveBeenCalled();
+  });
+
+  it('a compra do navegador sai uma vez por pedido neste aparelho', () => {
+    expect(primeiraCompra('ped-1')).toBe(true);
+    expect(primeiraCompra('ped-1')).toBe(false);
+    expect(primeiraCompra('ped-2')).toBe(true);
   });
 });

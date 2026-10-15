@@ -57,7 +57,14 @@ import {
   type FretePub,
 } from './Entrega';
 import { Pagamento, type AcessoPagamento, type EntregaDoPedido } from './Pagamento';
-import { atribuicaoParaEnvio, capturarAtribuicao, evento, iniciarPixel } from './pixel';
+import {
+  atribuicaoParaEnvio,
+  capturarAtribuicao,
+  dadosDoCliente,
+  evento,
+  iniciarPixel,
+  primeiraCompra,
+} from './pixel';
 import { compraGoogle, iniciarGoogleTag } from './google-tag';
 import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
 import './vitrine.css';
@@ -1928,6 +1935,8 @@ function FolhaEnvio({
         },
         { skipAuth: true },
       );
+      // Correspondência avançada do pixel: o telefone digitado no envio.
+      dadosDoCliente({ whatsapp: f.whatsapp });
       try {
         localStorage.setItem(CHAVE_CONTATO, JSON.stringify(f));
       } catch {
@@ -2132,7 +2141,8 @@ function PedidoEnviado({
     (info: { email?: string; clienteNovo?: boolean } = {}) => {
       setPago(true);
       // Mesmo eventID da API de Conversões: o Meta conta UMA compra.
-      if (e.pagamento) {
+      if (e.pagamento && primeiraCompra(e.pagamento.pedidoId)) {
+        dadosDoCliente({ email: info.email, whatsapp: e.whatsapp });
         evento(
           'Purchase',
           { value: e.total, currency: 'BRL', num_items: e.pecas },

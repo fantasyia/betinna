@@ -302,6 +302,14 @@ export class CheckoutPublicoService {
         ...(dto.email ? { email: dto.email } : {}),
         externalReference: p.clienteId,
       }));
+    // E-mail digitado no pagamento fica no pedido (15/10): a compra que vai pro
+    // Meta (CAPI) leva o `em` — antes ele só ia pro Asaas.
+    const email = dto.email?.trim().toLowerCase();
+    if (email && !p.contatoEmail) {
+      await this.prisma.pedido
+        .update({ where: { id: p.id }, data: { contatoEmail: email.slice(0, 160) } })
+        .catch(() => undefined);
+    }
     // O cadastro do cliente só ganha o documento se estava vazio.
     if (!p.cliente?.cnpj) {
       await this.prisma.cliente

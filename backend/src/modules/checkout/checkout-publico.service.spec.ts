@@ -54,6 +54,7 @@ function montar(
   const prisma = {
     pedido: {
       findFirst: vi.fn().mockResolvedValue(opts.pedido === undefined ? pedidoBase : opts.pedido),
+      update: vi.fn().mockResolvedValue({}),
       // Pro contexto do gatilho PEDIDO_PAGO.
       findUnique: vi.fn().mockResolvedValue({
         id: 'ped-1',
@@ -283,6 +284,32 @@ describe('CheckoutPublicoService.iniciar', () => {
       imagem: 'iVBOR',
       expiraEm: '2026-10-08 23:59:59',
     });
+  });
+
+  it('e-mail digitado no pagamento fica no pedido (vai no `em` da CAPI) — sem sobrescrever', async () => {
+    const a = montar({ pagamentos: [null, pagPix] });
+    await a.svc.iniciar('atacado-ribelt', 'ped-1', {
+      token: tk(a.svc),
+      metodo: 'PIX',
+      cpfCnpj: '12.345.678/0001-90',
+      email: ' Ana@Loja.com ',
+    });
+    expect(a.prisma.pedido.update).toHaveBeenCalledWith({
+      where: { id: 'ped-1' },
+      data: { contatoEmail: 'ana@loja.com' },
+    });
+
+    const b = montar({
+      pedido: { ...pedidoBase, contatoEmail: 'ja@tem.com' },
+      pagamentos: [null, pagPix],
+    });
+    await b.svc.iniciar('atacado-ribelt', 'ped-1', {
+      token: tk(b.svc),
+      metodo: 'PIX',
+      cpfCnpj: '12.345.678/0001-90',
+      email: 'outro@x.com',
+    });
+    expect(b.prisma.pedido.update).not.toHaveBeenCalled();
   });
 
   it('cartão 1x: preço da vitrine (sem acréscimo)', async () => {
