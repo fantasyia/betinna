@@ -19,6 +19,7 @@ import {
   simularOpSchema,
 } from './ordens.dto';
 import { OrdensService } from './ordens.service';
+import { FichaImpressaoService } from './ficha-impressao.service';
 
 /**
  * ERP próprio · ordem de produção. Só ADMIN/DIRECTOR e só com
@@ -29,7 +30,10 @@ import { OrdensService } from './ordens.service';
 @Roles('ADMIN', 'DIRECTOR')
 @Controller('erp/ops')
 export class OrdensController {
-  constructor(private readonly svc: OrdensService) {}
+  constructor(
+    private readonly svc: OrdensService,
+    private readonly impressaoSvc: FichaImpressaoService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'OPs (mais recentes primeiro) com totais da grade' })
@@ -61,6 +65,14 @@ export class OrdensController {
     @Body(new ZodValidationPipe(criarOpSchema)) dto: CriarOpDto,
   ) {
     return this.svc.criar(user, dto);
+  }
+
+  @Get(':id/impressao')
+  @ApiOperation({
+    summary: 'Ficha da OP pra imprimir: dados das vias do corte, da facção e do acabamento',
+  })
+  impressao(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.impressaoSvc.dadosDaOp(user, id);
   }
 
   @Get(':id')

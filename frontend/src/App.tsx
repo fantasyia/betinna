@@ -58,6 +58,7 @@ const InsumosPage = lazyComRetry(() => import("@/pages/insumos/InsumosPage"));
 const FaccoesPage = lazyComRetry(() => import("@/pages/faccoes/FaccoesPage"));
 const ProducaoPage = lazyComRetry(() => import("@/pages/producao/ProducaoPage"));
 const OpDetalhePage = lazyComRetry(() => import("@/pages/producao/OpDetalhePage"));
+const FichaOpImpressaoPage = lazyComRetry(() => import("@/pages/producao/FichaOpImpressaoPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
@@ -505,6 +506,19 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <ProducaoPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // Ficha da OP pra imprimir (14/10): aba própria, sem o menu do app.
+    path: "/producao/:id/imprimir",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <FichaOpImpressaoPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

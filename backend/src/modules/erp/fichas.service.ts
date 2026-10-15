@@ -160,6 +160,7 @@ export class FichasService {
         },
         consumoPorPeca: consumo,
         porTamanho: (i.porTamanho as Record<string, number> | null) ?? null,
+        etapa: i.etapa,
         observacao: i.observacao,
         /** Cor fixa (cordão sempre Branco). null = a cor da própria peça. */
         corFixa: i.corFixa,
@@ -277,6 +278,7 @@ export class FichasService {
               4,
             ),
             porTamanho: temTamanhos(i.porTamanho) ? i.porTamanho! : Prisma.DbNull,
+            etapa: i.etapa ?? 'FACCAO',
             observacao: i.observacao ?? null,
             corFixaId: i.corFixaId ?? null,
           })),

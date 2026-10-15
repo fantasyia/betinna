@@ -30,6 +30,8 @@ export const fichaSchema = z.object({
           .record(z.string().trim().min(1).max(20), z.number().positive().max(100_000))
           .nullable()
           .optional(),
+        /** Ficha da OP impressa (14/10): vai pra facção ou pro acabamento. */
+        etapa: z.enum(['FACCAO', 'ACABAMENTO']).optional(),
         observacao: textoOpcional(200),
         /** Insumo com cores: fixa uma cor (cordão sempre Branco). Vazio = a cor da peça. */
         corFixaId: z.string().min(1).max(40).nullable().optional(),

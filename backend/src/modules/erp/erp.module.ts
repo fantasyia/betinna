@@ -10,6 +10,7 @@ import { FichasController } from './fichas.controller';
 import { FichasService } from './fichas.service';
 import { OrdensController } from './ordens.controller';
 import { OrdensService } from './ordens.service';
+import { FichaImpressaoService } from './ficha-impressao.service';
 import { EncaixeAgenteController, EncaixeController } from './encaixe.controller';
 import { EncaixeService } from './encaixe.service';
 
@@ -37,6 +38,7 @@ import { EncaixeService } from './encaixe.service';
     InsumoFotosService,
     FichasService,
     OrdensService,
+    FichaImpressaoService,
     EncaixeService,
   ],
   exports: [EstoqueService, FichasService, OrdensService],

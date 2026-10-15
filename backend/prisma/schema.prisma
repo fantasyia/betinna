@@ -4533,6 +4533,8 @@ model FichaTecnicaItem {
   /// Por tamanho (Léo, 14/10: elástico P 0,76 m, M 0,80 m…), na unidade do insumo.
   /// null = vale o consumoPorPeca pra todos; com ele, consumoPorPeca = a média.
   porTamanho     Json?
+  /// Onde o item é usado (ficha da OP impressa, 14/10): FACCAO | ACABAMENTO.
+  etapa          String  @default("FACCAO")
   observacao     String?
   /// Insumo com cores: fixa UMA cor pra toda peça (cordão sempre Branco).
   /// null = a OP usa a cor da própria peça.

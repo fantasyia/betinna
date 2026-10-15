@@ -30,6 +30,7 @@ interface FichaApi {
     insumoId: string;
     consumoPorPeca: number;
     porTamanho?: Record<string, number> | null;
+    etapa?: Etapa;
     observacao: string | null;
     corFixa: { id: string; nome: string; hex: string } | null;
   }>;
@@ -42,9 +43,13 @@ interface ServicoAcabamento {
   preco: number;
 }
 
+/** Onde o item é usado (ficha da OP impressa, 14/10): sai na via da facção ou na do acabamento. */
+type Etapa = 'FACCAO' | 'ACABAMENTO';
+
 interface Linha {
   insumoId: string;
   consumo: string;
+  etapa: Etapa;
   /** Quantidade POR TAMANHO (14/10: o elástico muda em cada um). null = um consumo só. */
   porTamanho: Record<string, string> | null;
   /** Vai e volta intacta (antes a tela apagava a observação ao salvar). */
@@ -170,6 +175,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
       q.data.itens.map((i) => ({
         insumoId: i.insumoId,
         consumo: paraCampo(i.consumoPorPeca),
+        etapa: i.etapa ?? 'FACCAO',
         porTamanho: i.porTamanho
           ? Object.fromEntries(Object.entries(i.porTamanho).map(([t, v]) => [t, paraCampo(v)]))
           : null,
@@ -224,6 +230,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
             consumoPorPeca: consumoDe(l),
             porTamanho: porTamanho && Object.keys(porTamanho).length ? porTamanho : null,
             observacao: l.observacao,
+            etapa: l.etapa,
             corFixaId: l.corFixaId || null,
           };
         }),
@@ -315,6 +322,23 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
                   icon={<Trash2 className="h-4 w-4" />}
                   onClick={() => setItens((xs) => xs.filter((_, i) => i !== idx))}
                 />
+                {/* Aviamento: em qual via da ficha impressa ele sai (facção ou acabamento da Isabela). */}
+                {ins?.tipo === 'AVIAMENTO' && (
+                  <label className="col-span-full -mt-1 flex items-center gap-2 text-xs text-muted">
+                    Vai pra
+                    <select
+                      className="rounded-[10px] border border-border bg-surface px-2 py-0.5 text-xs text-text"
+                      value={l.etapa}
+                      onChange={(e) =>
+                        setItens((xs) => xs.map((x, i) => (i === idx ? { ...x, etapa: e.target.value as Etapa } : x)))
+                      }
+                      data-testid={`ficha-etapa-${idx}`}
+                    >
+                      <option value="FACCAO">Facção</option>
+                      <option value="ACABAMENTO">Acabamento</option>
+                    </select>
+                  </label>
+                )}
                 {/* Quantidade POR TAMANHO (Léo, 14/10): o elástico muda em cada um. */}
                 {tamanhos.length > 0 && (
                   <div className="col-span-full flex flex-wrap items-center gap-1.5 -mt-1">
@@ -372,7 +396,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           variant="secondary"
           leftIcon={<Plus className="h-3.5 w-3.5" />}
           disabled={livres.length === 0}
-          onClick={() => setItens((xs) => [...xs, { insumoId: livres[0].id, consumo: '', porTamanho: null, observacao: null, corFixaId: '' }])}
+          onClick={() => setItens((xs) => [...xs, { insumoId: livres[0].id, consumo: '', etapa: 'FACCAO', porTamanho: null, observacao: null, corFixaId: '' }])}
           data-testid={`ficha-add-${modeloLinhaId}`}
         >
           Adicionar insumo

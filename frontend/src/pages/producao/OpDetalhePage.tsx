@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Printer, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { formatMoeda, formatNumero } from '@/lib/masks';
@@ -109,9 +109,22 @@ export default function OpDetalhePage() {
           : undefined
       }
       actions={
-        <Link to="/producao" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text">
-          <ArrowLeft className="h-4 w-4" /> Produção
-        </Link>
+        <div className="flex items-center gap-3">
+          {gestor && id && (
+            <a
+              href={`/producao/${id}/imprimir`}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              data-testid="op-imprimir-ficha"
+            >
+              <Printer className="h-4 w-4" /> Imprimir ficha
+            </a>
+          )}
+          <Link to="/producao" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text">
+            <ArrowLeft className="h-4 w-4" /> Produção
+          </Link>
+        </div>
       }
     >
       {!gestor ? (
