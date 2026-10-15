@@ -269,6 +269,54 @@ export const pixelConfigSchema = z.object({
 });
 export type PixelConfigDto = z.infer<typeof pixelConfigSchema>;
 
+/** Tag do Google da vitrine (15/10): GA4 e/ou Google Ads + rótulo da conversão de compra. */
+const vazioVira = (s: z.ZodString) =>
+  z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? null : v),
+    s.nullable().optional(),
+  );
+export const googleTagConfigSchema = z
+  .object({
+    ativo: z.boolean(),
+    ga4Id: vazioVira(
+      z
+        .string()
+        .trim()
+        .toUpperCase()
+        .regex(/^G-[A-Z0-9]{4,20}$/, 'ID do GA4: G-XXXXXXX'),
+    ),
+    adsId: vazioVira(
+      z
+        .string()
+        .trim()
+        .toUpperCase()
+        .regex(/^AW-\d{6,15}$/, 'ID do Google Ads: AW-123456789'),
+    ),
+    compraLabel: vazioVira(
+      z
+        .string()
+        .trim()
+        .regex(/^[A-Za-z0-9_-]{4,64}$/, 'Rótulo da conversão: só letras, números, _ e -'),
+    ),
+  })
+  .superRefine((d, ctx) => {
+    if (d.ativo && !d.ga4Id && !d.adsId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['ga4Id'],
+        message: 'Informe o ID do GA4 ou do Google Ads',
+      });
+    }
+    if (d.compraLabel && !d.adsId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['adsId'],
+        message: 'O rótulo da conversão precisa do ID do Google Ads',
+      });
+    }
+  });
+export type GoogleTagConfigDto = z.infer<typeof googleTagConfigSchema>;
+
 const blocoAtribuicao = z
   .object({
     utmSource: z.string().max(2048),
@@ -277,6 +325,8 @@ const blocoAtribuicao = z
     utmContent: z.string().max(2048),
     utmTerm: z.string().max(2048),
     gclid: z.string().max(2048),
+    gbraid: z.string().max(2048),
+    wbraid: z.string().max(2048),
     fbclid: z.string().max(2048),
     landingPage: z.string().max(2048),
     referrer: z.string().max(2048),

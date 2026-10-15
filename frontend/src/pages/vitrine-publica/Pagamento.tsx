@@ -74,7 +74,8 @@ export function Pagamento({
   acesso: AcessoPagamento;
   docInicial: string;
   empresa: string;
-  onPago: () => void;
+  /** `email` digitado aqui e se é a 1ª compra do cliente: vão pra conversão do Google. */
+  onPago: (info: { email?: string; clienteNovo?: boolean }) => void;
   /** Cobrança gerada: a reserva das peças ganhou mais tempo. */
   onComecou: () => void;
   /** Frete já no total? Muda o que a tela promete (PED-0007, 14/10). */
@@ -120,16 +121,16 @@ export function Pagamento({
   // Com cobrança aberta, pergunta se já caiu (o aviso do Asaas confirma no servidor).
   const conferir = useCallback(async () => {
     try {
-      const s = await api.get<{ pago: boolean }>(`${base}/status${q}`, { skipAuth: true });
+      const s = await api.get<{ pago: boolean; clienteNovo?: boolean }>(`${base}/status${q}`, { skipAuth: true });
       if (s.pago && !avisouPago.current) {
         avisouPago.current = true;
         setPago(true);
-        onPago();
+        onPago({ email: email.trim() || undefined, clienteNovo: s.clienteNovo });
       }
     } catch {
       /* rede oscilou: tenta na próxima volta */
     }
-  }, [base, q, onPago]);
+  }, [base, q, onPago, email]);
 
   useEffect(() => {
     if (!aberto || pago) return;

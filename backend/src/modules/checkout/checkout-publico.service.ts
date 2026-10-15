@@ -184,10 +184,24 @@ export class CheckoutPublicoService {
       orderBy: { criadoEm: 'desc' },
       select: { status: true, metodo: true },
     });
+    const pago = p.status === 'PAGO' || pg?.status === 'PAGO';
+    // 1ª compra paga do cliente? Vai no `new_customer` da conversão do Google (15/10).
+    const clienteNovo =
+      pago && p.clienteId
+        ? (await this.prisma.pedido.count({
+            where: {
+              empresaId: p.empresaId,
+              clienteId: p.clienteId,
+              status: 'PAGO',
+              id: { not: pedidoId },
+            },
+          })) === 0
+        : undefined;
     return {
       pedidoStatus: p.status,
-      pago: p.status === 'PAGO' || pg?.status === 'PAGO',
+      pago,
       pagamento: pg,
+      ...(clienteNovo === undefined ? {} : { clienteNovo }),
     };
   }
 

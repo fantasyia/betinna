@@ -25,6 +25,7 @@ import { PagamentoOnline } from './PagamentoOnline';
 import { FreteConfig } from './FreteConfig';
 import { PrivacidadeConfig } from './PrivacidadeConfig';
 import { PixelConfig } from './PixelConfig';
+import { GoogleTagConfig } from './GoogleTagConfig';
 import { ContatoConfig } from './ContatoConfig';
 
 /**
@@ -188,6 +189,7 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
           {config && <ContatoConfig />}
           {config && <PrivacidadeConfig slug={config.slug} />}
           {config && <PixelConfig />}
+          {config && <GoogleTagConfig />}
         </div>
       )}
 

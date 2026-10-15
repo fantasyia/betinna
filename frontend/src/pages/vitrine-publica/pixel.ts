@@ -22,6 +22,8 @@ declare global {
   }
 }
 
+import { espelharEvento } from './google-tag';
+
 let iniciado: string | null = null;
 
 /** Carrega o fbevents.js (uma vez), inicia o pixel e manda o PageView. */
@@ -49,8 +51,12 @@ export function iniciarPixel(pixelId: string): void {
   iniciado = pixelId;
 }
 
-/** Evento padrão do Meta. Sem pixel iniciado, não faz nada. */
+/**
+ * Evento padrão do Meta. Sem pixel iniciado, não faz nada no Meta — mas vai
+ * pro GA4 do mesmo jeito (tag do Google, 15/10), que é independente.
+ */
 export function evento(nome: string, params: Record<string, unknown> = {}, eventID?: string): void {
+  espelharEvento(nome, params);
   if (!iniciado || !window.fbq) return;
   if (eventID) window.fbq('track', nome, params, { eventID });
   else window.fbq('track', nome, params);
@@ -71,6 +77,9 @@ export interface Toque {
   utmTerm?: string;
   fbclid?: string;
   gclid?: string;
+  /** Cliques do Google Ads vindos de iOS (app/web): o gclid deles (15/10). */
+  gbraid?: string;
+  wbraid?: string;
   landingPage?: string;
   referrer?: string;
   capturadoEm?: string;
@@ -88,6 +97,8 @@ const PARAMS: Array<[keyof Toque, string]> = [
   ['utmTerm', 'utm_term'],
   ['fbclid', 'fbclid'],
   ['gclid', 'gclid'],
+  ['gbraid', 'gbraid'],
+  ['wbraid', 'wbraid'],
 ];
 
 function ler(): { primeiro?: Toque; ultimo?: Toque } {

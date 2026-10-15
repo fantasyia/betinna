@@ -6,6 +6,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { configFrete } from './frete';
 import { pixelLigado } from './meta-pixel.service';
+import { googleTagLigada } from './google-tag.service';
 import { politicaDePrivacidade, type Politica } from './privacidade';
 import type { PrivacidadeConfigDto } from './vitrine.dto';
 
@@ -115,6 +116,7 @@ export class PrivacidadeService {
         frete: configFrete(e.config).ativo === true,
         assistenteIa: e.botWhatsappAtivo,
         pixel: !!pixelLigado(e.config),
+        google: !!googleTagLigada(e.config),
       },
     });
   }

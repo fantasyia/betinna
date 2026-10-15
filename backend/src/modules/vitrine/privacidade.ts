@@ -33,6 +33,8 @@ export interface DadosPolitica {
     assistenteIa: boolean;
     /** Pixel do Meta + API de Conversões ligados na vitrine. */
     pixel?: boolean;
+    /** Tag do Google (GA4 + Google Ads) ligada na vitrine (15/10). */
+    google?: boolean;
   };
 }
 
@@ -90,6 +92,12 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
     );
   }
 
+  if (x.usa.google) {
+    coleta.push(
+      'Navegação e anúncios (Google Analytics e Google Ads): páginas e produtos vistos, itens colocados no pedido, início do pagamento e compras, junto com identificadores de cookie e do navegador e o clique do anúncio de onde você veio.',
+    );
+  }
+
   const finalidades: string[] = [
     'Receber, conferir e atender o seu pedido, inclusive confirmar itens, preços e prazos com você (execução de contrato e procedimentos preliminares).',
     'Responder o seu contato e enviar informações sobre pedidos e produtos que você pediu (legítimo interesse e execução de contrato).',
@@ -106,6 +114,12 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
   if (x.usa.pixel) {
     finalidades.push(
       'Medir o resultado dos nossos anúncios no Facebook e no Instagram e mostrar anúncios mais relevantes (legítimo interesse).',
+    );
+  }
+
+  if (x.usa.google) {
+    finalidades.push(
+      'Medir as visitas da vitrine e o resultado dos nossos anúncios no Google (legítimo interesse).',
     );
   }
 
@@ -130,6 +144,11 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
   if (x.usa.pixel) {
     compartilha.push(
       'Meta (Pixel e API de Conversões): recebe os eventos de navegação e de compra. Na compra, telefone, e-mail, nome, cidade, UF e CEP vão em formato cifrado (hash), só para a Meta associar a compra ao anúncio.',
+    );
+  }
+  if (x.usa.google) {
+    compartilha.push(
+      'Google (Analytics e Ads): recebe os eventos de navegação e de compra. Na compra, e-mail e telefone vão em formato cifrado (hash), só para o Google associar a compra ao anúncio.',
     );
   }
   compartilha.push(

@@ -34,6 +34,8 @@ import {
   contatoConfigSchema,
   corSchema,
   pixelConfigSchema,
+  googleTagConfigSchema,
+  type GoogleTagConfigDto,
   privacidadeConfigSchema,
   freteConfigSchema,
   simularFreteSchema,
@@ -48,6 +50,7 @@ import { FreteService } from './frete.service';
 import { EtiquetaService } from './etiqueta.service';
 import { PrivacidadeService } from './privacidade.service';
 import { MetaPixelService } from './meta-pixel.service';
+import { GoogleTagService } from './google-tag.service';
 import { ContatoService } from './contato.service';
 
 /**
@@ -68,6 +71,7 @@ export class VitrineAdminController {
     private readonly etiqueta: EtiquetaService,
     private readonly privacidade: PrivacidadeService,
     private readonly pixel: MetaPixelService,
+    private readonly googleTag: GoogleTagService,
     private readonly contato: ContatoService,
   ) {}
 
@@ -85,6 +89,22 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(pixelConfigSchema)) dto: PixelConfigDto,
   ) {
     return this.pixel.salvar(user, dto);
+  }
+
+  // ─── Tag do Google (GA4 + Google Ads) ───────────────────────────────────
+  @Get('google-tag')
+  @ApiOperation({ summary: 'Tag do Google: IDs do GA4 e do Google Ads e se está ligada' })
+  googleTagStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.googleTag.status(user);
+  }
+
+  @Put('google-tag')
+  @ApiOperation({ summary: 'Salva os IDs do GA4/Google Ads (e o rótulo da compra) e liga/desliga' })
+  googleTagSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(googleTagConfigSchema)) dto: GoogleTagConfigDto,
+  ) {
+    return this.googleTag.salvar(user, dto);
   }
 
   // ─── Política de Privacidade ────────────────────────────────────────────

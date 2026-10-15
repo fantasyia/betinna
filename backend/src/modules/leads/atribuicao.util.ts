@@ -56,6 +56,9 @@ export interface AtribuicaoBloco {
   utmContent?: string;
   utmTerm?: string;
   gclid?: string;
+  /** Clique do Google Ads vindo de iOS (no lugar do gclid). */
+  gbraid?: string;
+  wbraid?: string;
   fbclid?: string;
   landingPage?: string;
   referrer?: string;
@@ -80,6 +83,8 @@ function normalizarBloco(bloco: unknown): AtribuicaoBloco | undefined {
     utmContent: sanitizar(b.utmContent),
     utmTerm: sanitizar(b.utmTerm),
     gclid: sanitizar(b.gclid),
+    gbraid: sanitizar(b.gbraid),
+    wbraid: sanitizar(b.wbraid),
     fbclid: sanitizar(b.fbclid),
     landingPage: sanitizar(b.landingPage),
     referrer: sanitizar(b.referrer),

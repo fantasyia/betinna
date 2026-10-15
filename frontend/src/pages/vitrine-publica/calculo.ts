@@ -93,6 +93,8 @@ export interface VitrinePub {
   privacidade?: boolean;
   /** ID do Pixel do Meta (ligado na config da vitrine). null = sem pixel. */
   pixel?: string | null;
+  /** Tag do Google (GA4 + Ads). null = desligada. */
+  googleTag?: import('./google-tag').GoogleTag | null;
   /** `selo`: aviso da linha (Plus Size de verdade…); null = sem selo. */
   linhas: Array<{ id: string; nome: string; selo?: string | null }>;
   modelos: ModeloPub[];

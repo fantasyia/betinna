@@ -58,6 +58,7 @@ import {
 } from './Entrega';
 import { Pagamento, type AcessoPagamento, type EntregaDoPedido } from './Pagamento';
 import { atribuicaoParaEnvio, capturarAtribuicao, evento, iniciarPixel } from './pixel';
+import { compraGoogle, iniciarGoogleTag } from './google-tag';
 import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
 import './vitrine.css';
 
@@ -135,6 +136,7 @@ export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } =
         // De onde o cliente veio (utm/fbclid) — guardado no aparelho pro pedido.
         capturarAtribuicao(window.location.href, document.referrer);
         if (v.pixel) iniciarPixel(v.pixel);
+        if (v.googleTag) iniciarGoogleTag(v.googleTag);
       })
       .catch((e) =>
         setErro(
@@ -1822,6 +1824,8 @@ interface Enviado {
   pagamento: AcessoPagamento | null;
   /** O documento digitado no envio já vem preenchido na hora de pagar. */
   cpfCnpj: string;
+  /** WhatsApp do envio: vai (normalizado) na conversão otimizada do Google. */
+  whatsapp?: string;
   /** Frete cotado e somado, retirada ou a combinar (muda o texto do pagamento). */
   entrega: EntregaDoPedido;
 }
@@ -1937,6 +1941,7 @@ function FolhaEnvio({
         reservaExpiraEm: r.reservaExpiraEm ?? null,
         pagamento: r.pagamento ?? null,
         cpfCnpj: f.cpfCnpj.trim(),
+        whatsapp: f.whatsapp,
         entrega:
           frete && escolha?.tipo === 'servico'
             ? 'frete'
@@ -2123,17 +2128,29 @@ function PedidoEnviado({
   const agora = useAgora(Boolean(reservaAte) && !pago);
   const relogio = pago ? null : restante(reservaAte, agora);
   const online = Boolean(e.pagamento) && !e.aConfirmar;
-  const aoPagar = useCallback(() => {
-    setPago(true);
-    // Mesmo eventID da API de Conversões: o Meta conta UMA compra.
-    if (e.pagamento) {
-      evento(
-        'Purchase',
-        { value: e.total, currency: 'BRL', num_items: e.pecas },
-        `pedido-${e.pagamento.pedidoId}`,
-      );
-    }
-  }, [e]);
+  const aoPagar = useCallback(
+    (info: { email?: string; clienteNovo?: boolean } = {}) => {
+      setPago(true);
+      // Mesmo eventID da API de Conversões: o Meta conta UMA compra.
+      if (e.pagamento) {
+        evento(
+          'Purchase',
+          { value: e.total, currency: 'BRL', num_items: e.pecas },
+          `pedido-${e.pagamento.pedidoId}`,
+        );
+        // Google: purchase (GA4) + conversão de compra (Ads), transaction_id = pedido.
+        compraGoogle({
+          pedidoId: e.pagamento.pedidoId,
+          total: e.total,
+          pecas: e.pecas,
+          email: info.email,
+          whatsapp: e.whatsapp,
+          clienteNovo: info.clienteNovo,
+        });
+      }
+    },
+    [e],
+  );
   const aoComecar = useCallback(() => {
     evento('AddPaymentInfo', { value: e.total, currency: 'BRL' });
     // Mesma conta do servidor: quem está pagando não perde a peça pelo relógio.

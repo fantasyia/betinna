@@ -9,6 +9,7 @@ import { minimoDaVitrine } from './vitrine-pedido.service';
 import { configFrete } from './frete';
 import { privacidadePublicada } from './privacidade.service';
 import { pixelLigado } from './meta-pixel.service';
+import { googleTagLigada } from './google-tag.service';
 import { whatsappDaVitrine } from './contato.service';
 
 /** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
@@ -230,6 +231,8 @@ export class VitrinePublicaService {
       privacidade: privacidadePublicada(vitrine.empresa.config),
       // Pixel do Meta (ID é público; o token da CAPI nunca sai do servidor).
       pixel: pixelLigado(vitrine.empresa.config),
+      // Tag do Google (GA4 + Ads) — IDs públicos.
+      googleTag: googleTagLigada(vitrine.empresa.config),
       linhas,
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({
