@@ -175,6 +175,11 @@ export function Pagamento({
         { skipAuth: true },
       );
       setAberto(r);
+      try {
+        localStorage.setItem(CHAVE_EMAIL, email.trim().toLowerCase());
+      } catch {
+        /* sem armazenamento: só não lembra da próxima vez */
+      }
       onComecou();
       if (r.metodo === 'CARTAO' && r.invoiceUrl) window.open(r.invoiceUrl, '_blank', 'noopener');
     } catch (e) {
