@@ -90,6 +90,21 @@ export function primeiraCompra(pedidoId: string): boolean {
   return true;
 }
 
+/**
+ * "Começou o checkout" uma vez por carrinho na sessão: abrir e fechar o
+ * "Enviar pedido" com o mesmo carrinho não conta de novo (#04, 15/10).
+ */
+export function primeiroCheckout(slug: string, assinatura: string): boolean {
+  const k = `vitrine:checkout:${slug}`;
+  try {
+    if (sessionStorage.getItem(k) === assinatura) return false;
+    sessionStorage.setItem(k, assinatura);
+  } catch {
+    /* sem armazenamento: conta toda vez, como antes */
+  }
+  return true;
+}
+
 /** Só pros testes. */
 export function _resetarPixel(): void {
   iniciado = null;
@@ -210,3 +225,4 @@ function gaClientId(): string | undefined {
   const m = cookie('_ga')?.match(/^GA\d\.\d\.(\d+\.\d+)$/);
   return m ? m[1] : undefined;
 }
+

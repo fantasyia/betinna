@@ -7,6 +7,7 @@ import {
   evento,
   iniciarPixel,
   primeiraCompra,
+  primeiroCheckout,
 } from './pixel';
 
 /** Pixel do Meta + campanha de origem na vitrine (card da #04, 09/10). */
@@ -121,5 +122,14 @@ describe('client_id do GA4 no pedido (15/10)', () => {
   it('lê o cookie _ga (GA1.1.<id>.<ts>) e manda só "<id>.<ts>"', () => {
     document.cookie = '_ga=GA1.1.1234567890.1792036294; path=/';
     expect(atribuicaoParaEnvio(BASE).gaClientId).toBe('1234567890.1792036294');
+  });
+});
+
+describe('checkout uma vez por carrinho (#04, 15/10)', () => {
+  it('mesmo carrinho não conta de novo; carrinho mudou, conta', () => {
+    sessionStorage.clear();
+    expect(primeiroCheckout('loja', '42|820')).toBe(true);
+    expect(primeiroCheckout('loja', '42|820')).toBe(false);
+    expect(primeiroCheckout('loja', '48|900')).toBe(true);
   });
 });

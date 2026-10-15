@@ -64,6 +64,7 @@ import {
   evento,
   iniciarPixel,
   primeiraCompra,
+  primeiroCheckout,
 } from './pixel';
 import { compraGoogle, iniciarGoogleTag } from './google-tag';
 import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
@@ -1603,9 +1604,10 @@ function SeuPedido({
   const barra = progressoFaixa(r.pecas, v.faixas);
   const ganho = lucroNaProximaFaixa(carrinho, v);
 
-  // Pixel: abriu o "Enviar pedido" = começou o checkout.
+  // Pixel: abriu o "Enviar pedido" = começou o checkout. UMA vez por carrinho
+  // na sessão (#04, 15/10: 14 begin_checkout numa sessão de abre-e-fecha).
   useEffect(() => {
-    if (envio) {
+    if (envio && primeiroCheckout(slug, `${r.pecas}|${r.investe}`)) {
       evento('InitiateCheckout', {
         currency: 'BRL',
         value: r.aConfirmar ? undefined : r.investe,
