@@ -164,6 +164,9 @@
 .vt-scrim { position: absolute; inset: 0; z-index: 50; background: rgba(26, 45, 56, .35); }
 .vt-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 51; max-height: 90%; background: var(--creme); border-radius: 22px 22px 0 0; display: flex; flex-direction: column; }
 .vt-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--quente); margin: 8px auto 4px; flex: none; }
+/* X do "Enviar pedido" (15/10) e a folha não puxa o "recarregar" do navegador. */
+.vt-envio { overscroll-behavior: contain; }
+.vt-sh-x { position: absolute; top: 10px; right: 12px; z-index: 2; width: 32px; height: 32px; border-radius: 50%; background: var(--branco) !important; border: 1px solid #e3d8bf !important; font-size: 20px; line-height: 1; display: grid; place-items: center; cursor: pointer; }
 .vt-sh-head { padding: 6px 16px 10px; display: flex; gap: 12px; align-items: center; }
 .vt-sh-head img { width: 50px; height: 64px; object-fit: cover; border-radius: 10px; flex: none; }
 .vt-sh-head .vt-name { font-size: 20px; }

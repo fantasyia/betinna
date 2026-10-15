@@ -1976,6 +1976,10 @@ function FolhaEnvio({
       <div className="vt-scrim" onClick={onFechar} />
       <form className="vt-sheet vt-envio" onSubmit={enviar} aria-label="Enviar pedido">
         <div className="vt-grab" />
+        {/* X pra fechar (Léo, 15/10): puxar a alça no celular recarregava a página. */}
+        <button type="button" className="vt-sh-x" onClick={onFechar} aria-label="Fechar" data-testid="vt-envio-fechar">
+          ×
+        </button>
         <div className="vt-sh-head">
           <div>
             <div className="vt-name">Enviar pedido</div>
