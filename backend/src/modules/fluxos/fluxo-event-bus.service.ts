@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { type MotivoParar, motivoDoEvento } from './parar-reguas';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import type { FluxoTriggerTipo, Prisma } from '@prisma/client';
@@ -66,6 +67,74 @@ export class FluxoEventBusService {
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoJobData>,
     private readonly env: EnvService,
   ) {}
+
+  /**
+   * Parar a régua (Léo + #01, 14/10): cancela as execuções vivas, DESTE lead,
+   * dos fluxos marcados pra parar com `motivo`. Só produção (teste não mexe em
+   * régua real). Nunca derruba o evento: falha só vira log.
+   */
+  async pararReguasDoLead(
+    empresaId: string,
+    leadId: string,
+    motivo: MotivoParar,
+    excetoExecucaoId?: string,
+  ): Promise<number> {
+    try {
+      // Barato e sem efeito colateral: empresa sem fluxo marcado com o motivo
+      // (a maioria, e toda mensagem do lead passa aqui) nem toca nas execuções.
+      const algum = await this.prisma.fluxo.findFirst({
+        where: { empresaId, pararQuando: { has: motivo } },
+        select: { id: true },
+      });
+      if (!algum) return 0;
+      const n = await this.prisma.$executeRaw`
+        UPDATE "FluxoExecucao" e
+        SET status = 'CANCELADO', "aguardandoNoId" = NULL, "timeoutEm" = NULL, "terminouEm" = now()
+        FROM "Fluxo" f
+        WHERE e."fluxoId" = f.id
+          AND e."empresaId" = ${empresaId}
+          AND e.status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
+          AND e.teste = false
+          AND (e.contexto #>> '{leadId}') = ${leadId}
+          AND ${motivo} = ANY(f."pararQuando")
+          AND e.id <> ${excetoExecucaoId ?? ''}`;
+      if (n > 0)
+        this.logger.log(`[régua] ${n} execução(ões) do lead ${leadId} paradas (${motivo})`);
+      return n;
+    } catch (err) {
+      this.logger.warn(`[régua] falha ao parar (${motivo}) o lead ${leadId}: ${String(err)}`);
+      return 0;
+    }
+  }
+
+  private async pararReguasDoEvento(
+    empresaId: string,
+    triggerTipo: FluxoTriggerTipo,
+    contexto: Record<string, unknown>,
+  ) {
+    let leadId = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : null;
+    // Pedido pago sem leadId no contexto: o lead ligado ao cliente.
+    if (!leadId && triggerTipo === 'PEDIDO_PAGO' && typeof contexto['clienteId'] === 'string') {
+      const l = await this.prisma.lead
+        .findFirst({
+          where: { empresaId, clienteId: contexto['clienteId'] },
+          orderBy: { atualizadoEm: 'desc' },
+          select: { id: true },
+        })
+        .catch(() => null);
+      leadId = l?.id ?? null;
+    }
+    if (!leadId) return;
+    let funilOrigem: string | null = null;
+    if (triggerTipo === 'LEAD_ETAPA_MUDOU' && typeof contexto['deFunilEtapaId'] === 'string') {
+      const e = await this.prisma.funilEtapa
+        .findUnique({ where: { id: contexto['deFunilEtapaId'] }, select: { funilId: true } })
+        .catch(() => null);
+      funilOrigem = e?.funilId ?? null;
+    }
+    const motivo = motivoDoEvento(triggerTipo, contexto, funilOrigem);
+    if (motivo) await this.pararReguasDoLead(empresaId, leadId, motivo);
+  }
 
   /**
    * Completa o contexto com a CONVERSA do lead quando ela falta.
@@ -219,6 +288,12 @@ export class FluxoEventBusService {
       this.logger.warn(`Cadeia ${triggerTipo} cortada em _hops=${hops} (empresa ${empresaId})`);
       return;
     }
+    // Parar a régua (14/10): ANTES de acender fluxo novo, as réguas marcadas
+    // pra parar com este evento (respondeu, comprou, mudou de funil) param.
+    // Nunca derruba o evento: parar a régua é rede, não condição.
+    await this.pararReguasDoEvento(empresaId, triggerTipo, contexto).catch((err) =>
+      this.logger.warn(`[régua] falha ao avaliar parada (${triggerTipo}): ${String(err)}`),
+    );
     try {
       // Busca fluxos ATIVOS para este triggerTipo
       const fluxos = await this.prisma.fluxo.findMany({

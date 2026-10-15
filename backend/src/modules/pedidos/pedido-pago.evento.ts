@@ -1,4 +1,6 @@
+import { Logger } from '@nestjs/common';
 import type { PrismaService } from '@database/prisma.service';
+import { ligarLeadDoPedido } from './lead-do-pedido';
 import { primeiroNome, reais } from '@modules/vitrine/carrinho-recuperador';
 import type { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 
@@ -38,6 +40,8 @@ export function ouvirPedidoPago(fn: OuvintePedidoPago): () => void {
  * clienteId, cliente{…}, telefone) — os nós de WhatsApp acham o cliente pelo
  * telefone do pedido.
  */
+const logger = new Logger('PedidoPago');
+
 export async function dispararPedidoPago(
   prisma: PrismaService,
   bus: FluxoEventBusService | undefined,
@@ -66,8 +70,12 @@ export async function dispararPedidoPago(
       },
     });
     if (!p) return;
+    // Funil (14/10): liga ao lead e move pra "Pedido pago" (ou cria na borda) —
+    // só com config.funilPedidos. O leadId vai no contexto (parar régua "comprou").
+    const leadId = await ligarLeadDoPedido({ prisma, bus, logger }, p.id, 'PAGO');
     await bus.disparar(p.empresaId, 'PEDIDO_PAGO', {
       pedidoId: p.id,
+      ...(leadId ? { leadId } : {}),
       pedido: {
         id: p.id,
         numero: p.numero,

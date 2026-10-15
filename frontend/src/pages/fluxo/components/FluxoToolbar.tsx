@@ -98,6 +98,37 @@ export function FluxoToolbar({
             Aviso transacional
           </label>
         )}
+        {/* Parar a régua (Léo + #01, 14/10): quando ESTE fluxo para pro lead. Salva na hora. */}
+        {gestao && (
+          <details className="relative hidden lg:block shrink-0 text-xs" data-testid="fluxo-parar-quando">
+            <summary
+              className="cursor-pointer text-muted select-none"
+              title="Quando esta régua para pro lead. Nada para sem estar marcado. Use em régua (sequência de mensagens), nunca em conversa."
+            >
+              Parar régua{editor.pararQuando.length ? ` (${editor.pararQuando.length})` : ''}
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 flex w-56 flex-col gap-1.5 rounded-[10px] border border-border bg-surface p-2 shadow-lg">
+              {(
+                [
+                  ['RESPONDEU', 'Quando o lead responder'],
+                  ['COMPROU', 'Quando ele comprar (pedido pago)'],
+                  ['MUDOU_FUNIL', 'Quando mudar de funil'],
+                  ['HUMANO', 'Quando for pra um atendente'],
+                ] as const
+              ).map(([m, rotulo]) => (
+                <label key={m} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editor.pararQuando.includes(m)}
+                    onChange={(e) => void editor.alternarPararQuando(m, e.target.checked)}
+                    data-testid={`fluxo-parar-${m}`}
+                  />
+                  {rotulo}
+                </label>
+              ))}
+            </div>
+          </details>
+        )}
         <Badge
           variant={status === 'ATIVO' ? 'success' : 'neutral'}
           className="hidden sm:inline-flex"

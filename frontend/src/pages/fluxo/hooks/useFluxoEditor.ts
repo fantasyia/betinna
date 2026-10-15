@@ -110,6 +110,8 @@ export function useFluxoEditor({
   // fluxo ATIVO pra rascunho só por ligar a marca).
   const [transacional, setTransacional] = useState(false);
   const [salvandoTransacional, setSalvandoTransacional] = useState(false);
+  // PARAR A RÉGUA (Léo + #01, 14/10): também campo solto, salva na hora.
+  const [pararQuando, setPararQuando] = useState<string[]>([]);
   const [triggerTipo, setTriggerTipo] = useState<TriggerTipo | ''>('');
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, Edge> | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -196,6 +198,7 @@ export function useFluxoEditor({
     setName(hidratado.name);
     setRemetenteEmail(data?.remetenteEmail ?? '');
     setTransacional(!!data?.transacional);
+    setPararQuando(data?.pararQuando ?? []);
     setTriggerTipo(hidratado.triggerTipo);
     setNodes(hidratado.nodes);
     setEdges(hidratado.edges);
@@ -647,6 +650,21 @@ export function useFluxoEditor({
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
 
+  const alternarPararQuando = useCallback(
+    async (motivo: string, ligado: boolean) => {
+      const nova = ligado
+        ? [...new Set([...pararQuando, motivo])]
+        : pararQuando.filter((m) => m !== motivo);
+      try {
+        await api.put(`/fluxos/${fluxoId}`, { pararQuando: nova });
+        setPararQuando(nova);
+      } catch (err) {
+        toast.error('Não foi possível salvar', apiErrorMessage(err));
+      }
+    },
+    [fluxoId, toast, pararQuando],
+  );
+
   const alternarTransacional = useCallback(
     async (valor: boolean) => {
       setSalvandoTransacional(true);
@@ -679,6 +697,8 @@ export function useFluxoEditor({
     transacional,
     salvandoTransacional,
     alternarTransacional,
+    pararQuando,
+    alternarPararQuando,
     triggerTipo,
     dirty,
     saving,

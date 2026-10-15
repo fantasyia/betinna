@@ -2367,6 +2367,8 @@ model Fluxo {
   /// abordagens (Léo, 25/09: "imagina o susto do cliente comprar de noite e
   /// só receber a informação de dia"). Marca do FLUXO, ligada pela gestão.
   transacional   Boolean           @default(false)
+  /// Parar a régua (14/10): RESPONDEU | COMPROU | MUDOU_FUNIL | HUMANO. Vazio = nunca.
+  pararQuando    String[]          @default([])
   criadoEm       DateTime          @default(now())
   atualizadoEm   DateTime          @updatedAt
 

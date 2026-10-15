@@ -74,6 +74,8 @@ export interface FluxoDetailApi {
   remetenteEmail?: string | null;
   /** Sai fora da janela de envio (aviso de pedido). */
   transacional?: boolean;
+  /** Parar a régua (14/10): RESPONDEU | COMPROU | MUDOU_FUNIL | HUMANO. */
+  pararQuando?: string[];
   status: 'RASCUNHO' | 'ATIVO' | 'PAUSADO' | 'ARQUIVADO';
   triggerTipo?: TriggerTipo | null;
   /// Agendamento do CRON (o job lê daqui). Fluxo criado por MCP/import guarda o

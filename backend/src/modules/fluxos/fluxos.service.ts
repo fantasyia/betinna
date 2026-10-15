@@ -934,6 +934,8 @@ export class FluxosService {
         }
         updateData.transacional = dto.transacional;
       }
+      // Parar a régua (14/10): campo solto, sem mexer no grafo.
+      if (dto.pararQuando !== undefined) updateData.pararQuando = [...new Set(dto.pararQuando)];
       if (dto.remetenteEmail !== undefined) {
         // `existing.remetenteEmail` entra pra guarda saber o que é MUDANÇA e o
         // que é o mesmo valor vindo de carona no payload do editor.

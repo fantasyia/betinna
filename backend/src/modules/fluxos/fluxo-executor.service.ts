@@ -1782,8 +1782,18 @@ export class FluxoExecutorService {
       case 'CRIAR_LEAD':
         return this.acaoCriarLead(cfg as CriarLeadConfig, ctx, empresaId, execucaoId);
 
-      case 'TRANSFERIR_ATENDIMENTO':
-        return this.acaoTransferirAtendimento(cfg as TransferirAtendimentoConfig, ctx, empresaId);
+      case 'TRANSFERIR_ATENDIMENTO': {
+        const r = await this.acaoTransferirAtendimento(
+          cfg as TransferirAtendimentoConfig,
+          ctx,
+          empresaId,
+        );
+        // Parar a régua (14/10): foi pro atendente — régua marcada não fala por cima.
+        if (typeof ctx['leadId'] === 'string' && ctx['_teste'] !== true) {
+          await this.bus.pararReguasDoLead(empresaId, ctx['leadId'], 'HUMANO', execucaoId);
+        }
+        return r;
+      }
 
       case 'EXTRAIR_VARIAVEIS':
         return this.extrairVariaveis.executar(cfg as ExtrairVariaveisConfig, ctx, empresaId);

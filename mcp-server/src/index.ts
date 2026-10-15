@@ -2010,6 +2010,17 @@ server.registerTool(
             "prospecção ou follow-up de dias depois. Nó CONVERSAR_IA continua na janela. " +
             "Só a gestão pode ligar (REP recebe 403).",
         ),
+      pararQuando: z
+        .array(z.enum(["RESPONDEU", "COMPROU", "MUDOU_FUNIL", "HUMANO"]))
+        .max(4)
+        .optional()
+        .describe(
+          "PARAR A RÉGUA (14/10): quando as execuções vivas DESTE fluxo pro lead são canceladas — " +
+            "RESPONDEU (o lead mandou mensagem), COMPROU (PEDIDO_PAGO), MUDOU_FUNIL (foi pra etapa " +
+            "de OUTRO funil), HUMANO (TRANSFERIR_ATENDIMENTO). Lista vazia = nunca para. Campo solto: " +
+            "não mexe no grafo nem no status. Use em RÉGUA (sequência com DELAY), nunca em conversa " +
+            "(CONVERSAR_IA para a si mesma ao receber resposta). Substitui a lista inteira.",
+        ),
       triggerTipo: FLUXO_TRIGGER_TIPO.optional(),
       triggerConfig: z.record(z.unknown()).optional(),
       nos: z
@@ -2041,7 +2052,7 @@ server.registerTool(
       );
       if (Object.keys(definidos).length === 0) {
         return erro(
-          "Informe pelo menos um campo (nome, descricao, remetenteEmail, transacional, triggerTipo, nos, arestas)",
+          "Informe pelo menos um campo (nome, descricao, remetenteEmail, transacional, pararQuando, triggerTipo, nos, arestas)",
         );
       }
       const f = await api.put<FluxoResumo>(`/fluxos/${seg(fluxoId)}`, definidos);

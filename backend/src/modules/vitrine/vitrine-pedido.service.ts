@@ -15,6 +15,7 @@ import { configFrete, retiradaLiberada, type ConfigFrete } from './frete';
 import { FreteIndisponivel, FreteService, type Cotacao } from './frete.service';
 import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
 import { primeiroNome, reais } from './carrinho-recuperador';
+import { ligarLeadDoPedido } from '@modules/pedidos/lead-do-pedido';
 import type { PedidoVitrineDto } from './vitrine.dto';
 import { normalizarAtribuicao } from '@modules/leads/atribuicao.util';
 
@@ -561,8 +562,16 @@ export class VitrinePedidoService {
       })
       .catch(() => undefined);
 
+    // Funil (card cmv8qmn…, 14/10): liga o pedido ao lead do WhatsApp (acha pelo
+    // telefone ou cria) e move pra "Pedido montado" — só com config.funilPedidos.
+    const leadId = await ligarLeadDoPedido(
+      { prisma: this.prisma, bus: this.bus, logger: this.logger },
+      pedido.id,
+      'CRIADO',
+    );
     void this.bus.disparar(empresaId, 'PEDIDO_CRIADO', {
       pedidoId: pedido.id,
+      ...(leadId ? { leadId } : {}),
       pedido: {
         id: pedido.id,
         numero: pedido.numero,

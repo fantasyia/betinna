@@ -1,3 +1,4 @@
+import { MOTIVOS_PARAR } from './parar-reguas';
 import { z } from 'zod';
 import { boolQuery } from '@shared/validators/query.schema';
 
@@ -196,6 +197,12 @@ export const updateFluxoSchema = z
      * solto: não mexe no grafo nem no status.
      */
     transacional: z.boolean().optional(),
+    /**
+     * Parar a régua (14/10): quando ela para pro lead — respondeu, comprou,
+     * mudou de funil, foi passado pra um atendente. Campo solto (não mexe no
+     * grafo nem no status). Lista vazia = nunca para.
+     */
+    pararQuando: z.array(z.enum(MOTIVOS_PARAR)).max(4).optional(),
     /**
      * Endereço de envio DESTE fluxo (vazio = o do ambiente).
      *
