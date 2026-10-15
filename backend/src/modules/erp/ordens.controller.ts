@@ -115,6 +115,18 @@ export class OrdensController {
     return this.svc.fechar(user, id);
   }
 
+  @Get(':id/divisao')
+  @ApiOperation({ summary: 'Prévia da divisão da OP em 2 (metade A e B da grade)' })
+  previaDivisao(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.previaDivisao(user, id);
+  }
+
+  @Post(':id/dividir')
+  @ApiOperation({ summary: 'Divide a OP em 2: a atual fica com a metade A, nasce a B' })
+  dividir(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.dividir(user, id);
+  }
+
   @Patch(':id/etapa')
   @ApiOperation({ summary: 'Kanban da produção: muda a etapa (arrastar o card)' })
   moverEtapa(

@@ -4,7 +4,7 @@ import { api, apiErrorMessage, buscarArquivo, downloadFile } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
-import { Badge, Button, Card, Field, Select } from '@/components/ui';
+import { Badge, Button, Card, Dialog, Field, Select } from '@/components/ui';
 import type { GradeRisco } from './gradeRisco';
 
 /**
@@ -196,6 +196,8 @@ export function EncaixeDaOp({
   modeloId,
   itens,
   risco,
+  podeDividir = false,
+  onDividiu,
 }: {
   opId: string;
   numero: string;
@@ -203,9 +205,13 @@ export function EncaixeDaOp({
   itens: ItemDaGrade[];
   /** Grade do risco com que a OP foi montada (Léo, 14/10): já vem preenchida. */
   risco?: GradeRisco | null;
+  /** OP em rascunho: risco acima de 6 m oferece "Dividir OP em 2" (14/10). */
+  podeDividir?: boolean;
+  onDividiu?: (b: { id: string; numero: string }) => void;
 }) {
   const toast = useToast();
   const q = useApiQuery<Encaixe[]>(`/erp/ops/${opId}/encaixes`);
+  const [dividindo, setDividindo] = useState(false);
   // Produto com ribana na ficha ganha o "Gerar risco da ribana" (14/10).
   const regras = useApiQuery<{ regras: { ribana?: unknown } | null }>(
     `/erp/modelos/${modeloId}/encaixe`,
@@ -369,6 +375,18 @@ export function EncaixeDaOp({
         </div>
       )}
 
+      {dividindo && (
+        <DividirOp
+          opId={opId}
+          numero={numero}
+          onFechar={() => setDividindo(false)}
+          onDividiu={(b) => {
+            setDividindo(false);
+            q.refetch();
+            onDividiu?.(b);
+          }}
+        />
+      )}
       {jobs.length > 0 && (
         <ul className="flex flex-col gap-3">
           {jobs.slice(0, 5).map((j) => (
@@ -378,6 +396,7 @@ export function EncaixeDaOp({
               numero={numero}
               itens={itens}
               onCancelar={() => void cancelar(j.id)}
+              onDividir={podeDividir ? () => setDividindo(true) : undefined}
             />
           ))}
         </ul>
@@ -386,16 +405,93 @@ export function EncaixeDaOp({
   );
 }
 
+interface PreviaDivisao {
+  a: Array<{ linha: string; cor: string; tamanho: string; quantidade: number }>;
+  b: Array<{ linha: string; cor: string; tamanho: string; quantidade: number }>;
+}
+
+/**
+ * Dividir a OP em 2 (Léo, 14/10): mostra as duas metades da grade (sobra ímpar
+ * na A) e, confirmando, a OP atual fica com a A e nasce uma OP nova com a B.
+ */
+function DividirOp({
+  opId,
+  numero,
+  onFechar,
+  onDividiu,
+}: {
+  opId: string;
+  numero: string;
+  onFechar: () => void;
+  onDividiu: (b: { id: string; numero: string }) => void;
+}) {
+  const toast = useToast();
+  const q = useApiQuery<PreviaDivisao>(`/erp/ops/${opId}/divisao`);
+  const [enviando, setEnviando] = useState(false);
+  const total = (xs: PreviaDivisao['a']) => xs.reduce((s, x) => s + x.quantidade, 0);
+  const lista = (xs: PreviaDivisao['a']) =>
+    xs.map((x) => `${x.quantidade}× ${x.cor} ${x.tamanho}${x.linha ? ` (${x.linha})` : ''}`).join(' · ');
+
+  async function confirmar() {
+    setEnviando(true);
+    try {
+      const r = await api.post<{ b: { id: string; numero: string } }>(`/erp/ops/${opId}/dividir`, {});
+      toast.success(`OP dividida: a metade B é a ${r.b.numero}`);
+      onDividiu(r.b);
+    } catch (err) {
+      toast.error('Não foi possível dividir', apiErrorMessage(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onFechar}
+      title={`Dividir a ${numero} em 2?`}
+      description="Metade da grade em cada OP; a peça que sobra (quantidade ímpar) fica na A. Depois gere o risco de cada uma."
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onFechar}>
+            Voltar
+          </Button>
+          <Button onClick={() => void confirmar()} loading={enviando} disabled={!q.data} data-testid="dividir-confirmar">
+            Dividir
+          </Button>
+        </>
+      }
+    >
+      {q.data ? (
+        <div className="flex flex-col gap-2 text-sm" data-testid="dividir-previa">
+          <p>
+            <b>A — fica na {numero}</b> ({formatNumero(total(q.data.a))} peças): {lista(q.data.a)}
+          </p>
+          <p>
+            <b>B — OP nova</b> ({formatNumero(total(q.data.b))} peças): {lista(q.data.b) || '—'}
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted">Calculando…</p>
+      )}
+    </Dialog>
+  );
+}
+
 function ItemEncaixe({
   j,
   numero,
   itens,
   onCancelar,
+  onDividir,
 }: {
   j: Encaixe;
   numero: string;
   itens: ItemDaGrade[];
   onCancelar: () => void;
+  /** Risco acima do ideal + OP em rascunho: oferece dividir a OP em 2. */
+  onDividir?: () => void;
 }) {
   const vies =
     j.status === 'CONCLUIDO'
@@ -485,6 +581,14 @@ function ItemEncaixe({
             {j.resultado?.detalhes?.aviso_comprimento
               ? ` ${j.resultado.detalhes.aviso_comprimento}`
               : ''}
+            {onDividir && (
+              <>
+                {' '}
+                <Button size="sm" variant="secondary" onClick={onDividir} data-testid={`encaixe-dividir-${j.id}`}>
+                  Dividir OP em 2
+                </Button>
+              </>
+            )}
           </p>
         )
       )}

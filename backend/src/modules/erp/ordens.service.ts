@@ -9,6 +9,7 @@ import { FinanceiroAutomaticoService } from '@modules/financeiro/financeiro-auto
 import { EstoqueService } from './estoque.service';
 import { FichasService } from './fichas.service';
 import { chaveSaldo } from './insumos.service';
+import { dividirOp, type GradeRiscoOp } from './dividir-op';
 import {
   ETAPAS_OP,
   type CorteDto,
@@ -696,6 +697,115 @@ export class OrdensService {
     });
     this.logger.log(`[op] ${op.numero}: ${sim.pecas} peças de ${sim.modelo.nome}`);
     return op;
+  }
+
+  /**
+   * Divisão da OP em 2 (Léo, 14/10): risco acima de 6 m → duas OPs pela
+   * metade da grade (sobra ímpar na A). Só em rascunho (antes do corte).
+   */
+  private async planoDaDivisao(empresaId: string, id: string) {
+    const op = await this.prisma.ordemProducao.findFirst({
+      where: { id, empresaId },
+      include: { itens: true },
+    });
+    if (!op) throw new NotFoundException('Ordem de produção', id);
+    if (op.status !== STATUS_EDITAVEL) throw regra('Só OP em rascunho (antes do corte) se divide');
+    const vs = await this.variacoesDoModelo(
+      empresaId,
+      op.modeloId,
+      op.itens.map((i) => i.produtoId),
+    );
+    const itens = op.itens.map((i) => {
+      const v = vs.get(i.produtoId);
+      return {
+        produtoId: i.produtoId,
+        modeloLinhaId: i.modeloLinhaId,
+        linha: v?.modeloLinha.linha.nome ?? '',
+        cor: v?.modeloCor.cor.nome ?? '',
+        tamanho: v?.modeloTamanho.tamanho.nome ?? '',
+        planejada: i.planejada,
+      };
+    });
+    const d = dividirOp(itens, (op.gradeRisco as GradeRiscoOp | null) ?? null);
+    const resumo = (m: Map<string, number>) =>
+      itens
+        .map((i) => ({
+          linha: i.linha,
+          cor: i.cor,
+          tamanho: i.tamanho,
+          quantidade: m.get(i.produtoId) ?? 0,
+        }))
+        .filter((x) => x.quantidade > 0);
+    return { op, itens, d, previa: { a: resumo(d.a), b: resumo(d.b) } };
+  }
+
+  async previaDivisao(user: AuthenticatedUser, id: string) {
+    const empresaId = await this.erp.empresaLigada(user);
+    const { previa, d } = await this.planoDaDivisao(empresaId, id);
+    return { ...previa, riscoA: d.riscoA, riscoB: d.riscoB };
+  }
+
+  async dividir(user: AuthenticatedUser, id: string) {
+    const empresaId = await this.erp.empresaLigada(user);
+    const { op, itens, d } = await this.planoDaDivisao(empresaId, id);
+    const pecasB = [...d.b.values()].reduce((s, q) => s + q, 0);
+    if (pecasB === 0) throw regra('A OP é pequena demais pra dividir (a metade B ficaria vazia)');
+    const seq = await this.sequence.next(empresaId, 'ordem-producao');
+    const numeroB = `OP-${String(seq).padStart(4, '0')}`;
+    const nova = await this.prisma.$transaction(async (tx) => {
+      // A: a OP atual fica com a metade A e volta pro rascunho (o risco refaz).
+      await this.virar(tx, id, ['RASCUNHO'], {
+        etapa: 'RASCUNHO',
+        gradeRisco: d.riscoA ? (d.riscoA as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+        observacoes: [
+          op.observacoes,
+          `Dividida em 2 (risco acima de 6 m): a metade B é a ${numeroB}.`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+      for (const i of itens) {
+        const qa = d.a.get(i.produtoId) ?? 0;
+        if (qa > 0) {
+          await tx.ordemProducaoItem.updateMany({
+            where: { opId: id, produtoId: i.produtoId },
+            data: { planejada: qa },
+          });
+        } else {
+          await tx.ordemProducaoItem.deleteMany({ where: { opId: id, produtoId: i.produtoId } });
+        }
+      }
+      // Riscos da OP inteira na fila não servem mais.
+      await tx.encaixeJob.updateMany({
+        where: { opId: id, status: { in: ['PENDENTE', 'RODANDO'] } },
+        data: { status: 'CANCELADO', concluidoEm: new Date() },
+      });
+      // B: OP nova com a outra metade.
+      return tx.ordemProducao.create({
+        data: {
+          empresaId,
+          numero: numeroB,
+          modeloId: op.modeloId,
+          faccaoId: op.faccaoId,
+          prazo: op.prazo,
+          observacoes: `Desmembrada da ${op.numero} (risco acima de 6 m).`,
+          ...(d.riscoB ? { gradeRisco: d.riscoB as unknown as Prisma.InputJsonValue } : {}),
+          usuarioId: user.id,
+          itens: {
+            create: itens
+              .filter((i) => (d.b.get(i.produtoId) ?? 0) > 0)
+              .map((i) => ({
+                produtoId: i.produtoId,
+                modeloLinhaId: i.modeloLinhaId,
+                planejada: d.b.get(i.produtoId)!,
+              })),
+          },
+        },
+        select: { id: true, numero: true },
+      });
+    });
+    this.logger.log(`[op] ${op.numero} dividida: metade B = ${nova.numero} (${pecasB} peças)`);
+    return { a: { id: op.id, numero: op.numero }, b: nova };
   }
 
   /** Rascunho ainda se edita: grade, facção, prazo, observação. */

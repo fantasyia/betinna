@@ -19,7 +19,11 @@ const variacao = (produtoId: string, modeloLinhaId: string) => ({
 
 function montar(opts: { status?: string; ligado?: boolean } = {}) {
   const tx = {
-    ordemProducao: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    ordemProducao: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      create: vi.fn().mockResolvedValue({ id: 'op-b', numero: 'OP-0007' }),
+    },
+    encaixeJob: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     ordemProducaoItem: {
       updateMany: vi.fn().mockResolvedValue({}),
       deleteMany: vi.fn(),
@@ -630,5 +634,55 @@ describe('necessidadesDaGrade — por tamanho', () => {
     ]);
     const m = necessidadesDaGrade(pecas, new Map([['reg', [elastico]]]));
     expect([...m.values()][0].quantidade).toBeCloseTo(7.6 + 8 + 8.4, 6);
+  });
+});
+
+/** Dividir a OP em 2 (Léo, 14/10): risco acima de 6 m. */
+describe('OrdensService.dividir', () => {
+  it('a atual fica com a metade A (volta pro rascunho), nasce a B com a outra metade', async () => {
+    const { svc, prisma, tx } = montar();
+    prisma.ordemProducao.findFirst.mockResolvedValue({
+      id: 'op-1',
+      numero: 'OP-0001',
+      status: 'RASCUNHO',
+      modeloId: 'm-1',
+      faccaoId: null,
+      prazo: null,
+      observacoes: null,
+      gradeRisco: null,
+      itens: [
+        { produtoId: 'p-m', modeloLinhaId: 'ml-reg', planejada: 11 },
+        { produtoId: 'p-g1', modeloLinhaId: 'ml-plus', planejada: 1 },
+      ],
+    });
+    const r = await svc.dividir(user as never, 'op-1');
+    expect(r.b).toEqual({ id: 'op-b', numero: 'OP-0007' });
+    // A: 6 do M (sobra na A) e o único G1 continua na A.
+    expect(tx.ordemProducaoItem.updateMany).toHaveBeenCalledWith({
+      where: { opId: 'op-1', produtoId: 'p-m' },
+      data: { planejada: 6 },
+    });
+    expect(tx.ordemProducaoItem.updateMany).toHaveBeenCalledWith({
+      where: { opId: 'op-1', produtoId: 'p-g1' },
+      data: { planejada: 1 },
+    });
+    // B: só o que sobrou (5 do M), sem o G1 zerado.
+    expect(tx.ordemProducao.create.mock.calls[0][0].data.itens.create).toEqual([
+      { produtoId: 'p-m', modeloLinhaId: 'ml-reg', planejada: 5 },
+    ]);
+    expect(tx.ordemProducao.create.mock.calls[0][0].data.observacoes).toContain('OP-0001');
+    // A volta pro rascunho do kanban e os riscos da OP inteira na fila são cancelados.
+    expect(tx.ordemProducao.updateMany.mock.calls[0][0].data.etapa).toBe('RASCUNHO');
+    expect(tx.encaixeJob.updateMany).toHaveBeenCalled();
+  });
+
+  it('OP já cortada não divide', async () => {
+    const { svc, prisma } = montar();
+    prisma.ordemProducao.findFirst.mockResolvedValue({
+      id: 'op-1',
+      status: 'CORTADA',
+      itens: [],
+    });
+    await expect(svc.dividir(user as never, 'op-1')).rejects.toThrow(/rascunho/);
   });
 });

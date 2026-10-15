@@ -258,6 +258,8 @@ export default function OpDetalhePage() {
                 modeloId={op.modelo.id}
                 itens={op.itens}
                 risco={op.gradeRisco ?? null}
+                podeDividir={op.status === 'RASCUNHO'}
+                onDividiu={() => q.refetch()}
               />
             </div>
           )}

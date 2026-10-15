@@ -5,12 +5,20 @@ import { MemoryRouter } from 'react-router-dom';
 /** Encaixe na OP: grade, peças de cada tamanho no risco, fila e o .plt. */
 
 const estado = vi.hoisted(() => ({ jobs: [] as unknown[], regras: null as unknown }));
+const PREVIA = {
+  a: [{ linha: 'Regular', cor: 'Preto', tamanho: 'M', quantidade: 20 }],
+  b: [{ linha: 'Regular', cor: 'Preto', tamanho: 'M', quantidade: 20 }],
+};
 const apiPost = vi.fn();
 const baixar = vi.fn();
 vi.mock('@/hooks/useApiQuery', () => ({
   // Regras do modelo (tem ribana?) e a lista de riscos da OP.
   useApiQuery: (path: string) => ({
-    data: path.endsWith('/encaixe') ? { regras: estado.regras } : estado.jobs,
+    data: path.endsWith('/encaixe')
+      ? { regras: estado.regras }
+      : path.endsWith('/divisao')
+        ? PREVIA
+        : estado.jobs,
     loading: false,
     error: null,
     refetch: vi.fn(),
@@ -295,5 +303,48 @@ describe('<EncaixeDaOp>', () => {
     expect(screen.getByTestId('encaixe-j-2').textContent).toMatch(/1,984 m/);
     fireEvent.click(screen.getByTestId('encaixe-plt-j-1'));
     expect(baixar).toHaveBeenCalledWith('/erp/encaixes/j-1/arquivos/PLT', 'OP-0001-Regular.plt');
+  });
+});
+
+describe('dividir a OP em 2 (Léo, 14/10)', () => {
+  const longo = {
+    id: 'j-l',
+    status: 'CONCLUIDO',
+    tempoMin: 30,
+    linha: 'Regular',
+    composicao: [{ tamanho: 'M', quantidade: 4 }],
+    codigoMolde: '107',
+    progresso: null,
+    resultado: { comprimentoM: 7.5, aproveitamento: 80 },
+    erro: null,
+    agente: null,
+    pegoEm: null,
+    concluidoEm: null,
+    criadoEm: '2026-10-14T18:00:00Z',
+    atualizadoEm: '2026-10-14T18:00:00Z',
+    arquivos: [],
+  };
+
+  it('risco acima de 6 m em OP rascunho: botão, prévia das metades e confirma', async () => {
+    estado.jobs = [longo];
+    apiPost.mockResolvedValue({ b: { id: 'op-b', numero: 'OP-0002' } });
+    const onDividiu = vi.fn();
+    render(
+      <MemoryRouter>
+        <EncaixeDaOp opId="op-1" numero="OP-0001" modeloId="m-1" itens={itens} podeDividir onDividiu={onDividiu} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('encaixe-dividir-j-l'));
+    expect(screen.getByTestId('dividir-previa').textContent).toContain('20× Preto M');
+    fireEvent.click(screen.getByTestId('dividir-confirmar'));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/erp/ops/op-1/dividir', {}));
+    await waitFor(() => expect(onDividiu).toHaveBeenCalledWith({ id: 'op-b', numero: 'OP-0002' }));
+  });
+
+  it('OP já cortada (sem podeDividir): só o aviso, sem botão', () => {
+    estado.jobs = [longo];
+    montar();
+    expect(screen.getByTestId('encaixe-ideal-j-l')).toBeTruthy();
+    expect(screen.queryByTestId('encaixe-dividir-j-l')).toBeNull();
   });
 });
