@@ -19,8 +19,16 @@ const iniciarSchema = z.object({
   metodo: z.enum(['PIX', 'CARTAO']),
   parcelas: z.number().int().min(1).max(12).optional(),
   cpfCnpj: z.string().trim().min(11).max(20),
-  // Obrigatório no Pix e no cartão (Léo, 15/10): comprovante + correspondência do Meta/Google.
-  email: z.string().trim().toLowerCase().email('Informe um e-mail válido').max(120),
+  // A TELA exige no Pix e no cartão (Léo, 15/10); a API aceita sem: aba aberta
+  // antes de um deploy (tela antiga, sem o campo) não pode travar o pagamento.
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email('Informe um e-mail válido')
+    .max(120)
+    .nullable()
+    .optional(),
 });
 type IniciarDto = z.infer<typeof iniciarSchema>;
 
