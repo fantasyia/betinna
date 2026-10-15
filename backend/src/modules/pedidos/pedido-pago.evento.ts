@@ -1,4 +1,5 @@
 import type { PrismaService } from '@database/prisma.service';
+import { primeiroNome, reais } from '@modules/vitrine/carrinho-recuperador';
 import type { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 
 /** Como o pedido foi pago — vai no contexto do fluxo (`pagamento.*`). */
@@ -61,15 +62,27 @@ export async function dispararPedidoPago(
         contatoTelefone: true,
         representanteId: true,
         cliente: { select: { id: true, nome: true } },
+        itens: { select: { quantidade: true } },
       },
     });
     if (!p) return;
     await bus.disparar(p.empresaId, 'PEDIDO_PAGO', {
       pedidoId: p.id,
-      pedido: { id: p.id, numero: p.numero, total: Number(p.total) },
+      pedido: {
+        id: p.id,
+        numero: p.numero,
+        total: Number(p.total),
+        // Pras mensagens (14/10): "R$ 1.234,50" e o nº de peças.
+        totalFormatado: reais(Number(p.total)),
+        totalPecas: (p.itens ?? []).reduce((s, i) => s + i.quantidade, 0),
+      },
       origem: p.origem,
       clienteId: p.clienteId,
-      cliente: { id: p.cliente.id, nome: p.contatoNome ?? p.cliente.nome },
+      cliente: {
+        id: p.cliente.id,
+        nome: p.contatoNome ?? p.cliente.nome,
+        primeiroNome: primeiroNome(p.contatoNome ?? p.cliente.nome),
+      },
       telefone: p.contatoTelefone ?? null,
       representanteId: p.representanteId,
       pagamento,

@@ -4,6 +4,7 @@ import type { Queue } from 'bullmq';
 import type { FluxoNo, FluxoEdge } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
+import { primeiroNome, refDoLead } from '@modules/vitrine/carrinho-recuperador';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { jidDeTelefone } from '@integrations/evolution/jid.util';
@@ -1582,6 +1583,12 @@ export class FluxoExecutorService {
           ctx.lead = {
             nome: lead.nome,
             contato: lead.contatoNome ?? '',
+            // Mensagens (14/10): "Oi, Maria" — o primeiro nome do contato.
+            primeiro_nome: primeiroNome(lead.contatoNome ?? lead.nome),
+            // Recuperador (14/10): link da vitrine com ?r={{lead.ref_vitrine}} faz
+            // a vitrine salvar o carrinho DESTE lead (ref assinado, não forjável).
+            // Nunca derruba o contexto: sem chave (ex.: teste), sai vazio.
+            ref_vitrine: leadId ? refDoLead(leadId, this.env?.get?.('ENCRYPTION_KEY') || '') : '',
             whatsapp: lead.contatoTelefone ?? '',
             email: lead.contatoEmail ?? '',
             cidade: lead.cidade ?? '',

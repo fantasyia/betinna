@@ -2276,6 +2276,12 @@ enum FluxoTriggerTipo {
   /// manual ou o avanço ENVIADO_ERP → PAGO. Contexto traz `pagamento`
   /// {forma, parcelas, online}.
   PEDIDO_PAGO
+  /// Pedido da vitrine enviado e NÃO pago 20 min depois (recuperador, 14/10).
+  /// Contexto traz `link` (reabre o carrinho), `pedido` e `cliente.primeiroNome`.
+  PEDIDO_NAO_PAGO
+  /// Carrinho de quem veio pelo link do WhatsApp (?r=) parado 20 min sem
+  /// virar pedido (recuperador, 14/10). Contexto traz `leadId`, `link`, `carrinho`.
+  CARRINHO_ABANDONADO
   /// O rastreio PASSOU A EXISTIR (vazio → preenchido). É o momento em que o
   /// cliente quer saber: o despacho, dias antes da entrega. Não dá pra usar
   /// PEDIDO_ENTREGUE pra isso — avisaria o código depois de a encomenda ter
@@ -4951,4 +4957,33 @@ model PedidoPagamento {
 
   @@index([pedidoId, criadoEm])
   @@index([asaasParcelamentoId])
+}
+
+/// Carrinho salvo pro recuperador (Léo, 14/10). origem PEDIDO = pedido enviado
+/// (pra reabrir se não pagar); REF = carrinho de quem veio pelo link do WhatsApp
+/// com ?r= (lead). `token` abre o link ?c=. Avisa UMA vez (notificadoEm).
+model CarrinhoSalvo {
+  id           String    @id @default(cuid())
+  empresaId    String
+  vitrineId    String
+  token        String    @unique
+  /// PEDIDO | REF
+  origem       String
+  pedidoId     String?
+  leadId       String?
+  /// [{ corId, tamanhoId, quantidade }] — o mesmo formato do envio do pedido.
+  itens        Json
+  /// Nome, WhatsApp, documento e endereço (só no PEDIDO).
+  contato      Json?
+  /// Escolha de frete do pedido ({servicoId} | {retirada}).
+  frete        Json?
+  notificadoEm DateTime?
+  /// Virou pedido (REF) ou foi pago/refeito (PEDIDO): não avisa mais.
+  convertidoEm DateTime?
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @default(now()) @updatedAt
+
+  @@index([origem, notificadoEm, atualizadoEm])
+  @@index([vitrineId, leadId])
+  @@index([pedidoId])
 }

@@ -321,7 +321,24 @@ export const simularFreteSchema = z.object({
  * Pedido enviado na vitrine PÚBLICA. Só diz o QUÊ e QUANTO — preço e faixa
  * são recalculados no servidor (ver `VitrinePedidoService`).
  */
+/** Carrinho de quem veio pelo link do WhatsApp (?r=), salvo pelo recuperador (14/10). */
+export const carrinhoRefSchema = z.object({
+  ref: z.string().trim().min(12).max(80),
+  itens: z
+    .array(
+      z.object({
+        corId: z.string().min(1).max(40),
+        tamanhoId: z.string().min(1).max(40),
+        quantidade: z.number().int().min(1).max(100_000),
+      }),
+    )
+    .max(2000),
+});
+export type CarrinhoRefDto = z.infer<typeof carrinhoRefSchema>;
+
 export const pedidoVitrineSchema = z.object({
+  /** Ref do lead (?r= do link do WhatsApp): fecha o carrinho salvo dele (14/10). */
+  ref: z.string().trim().max(80).optional(),
   nome: z.string().trim().min(2, 'Informe seu nome').max(120),
   whatsapp: z
     .string()

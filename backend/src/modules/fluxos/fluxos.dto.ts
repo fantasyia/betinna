@@ -14,6 +14,10 @@ export const fluxoTriggerTipoValues = [
   'PEDIDO_CRIADO',
   // Pedido virou PAGO (Asaas, "Pagamento recebido" manual ou avanço de status).
   'PEDIDO_PAGO',
+  // Recuperador de carrinho (14/10): pedido da vitrine sem pagar 20 min depois,
+  // e carrinho do link do WhatsApp (?r=) parado 20 min. Contexto traz `link`.
+  'PEDIDO_NAO_PAGO',
+  'CARRINHO_ABANDONADO',
   'PEDIDO_RASTREIO_DISPONIVEL',
   'LEAD_REENGAJOU_SITE',
   'OCORRENCIA_ABERTA',

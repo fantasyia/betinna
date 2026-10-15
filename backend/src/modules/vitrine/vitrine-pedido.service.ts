@@ -13,6 +13,8 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { configFrete, retiradaLiberada, type ConfigFrete } from './frete';
 import { FreteIndisponivel, FreteService, type Cotacao } from './frete.service';
+import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
+import { primeiroNome, reais } from './carrinho-recuperador';
 import type { PedidoVitrineDto } from './vitrine.dto';
 import { normalizarAtribuicao } from '@modules/leads/atribuicao.util';
 
@@ -114,6 +116,8 @@ export class VitrinePedidoService {
     @Optional() private readonly checkout?: CheckoutPublicoService,
     // Frete (Melhor Envio): só age com `config.frete.ativo`.
     @Optional() private readonly frete?: FreteService,
+    // Recuperador de carrinho (14/10): guarda o carrinho do pedido pra reabrir.
+    @Optional() private readonly recuperador?: CarrinhoRecuperadorService,
   ) {}
 
   /** Só quem acabou de enviar o pedido recebe o código de pagar. */
@@ -155,6 +159,7 @@ export class VitrinePedidoService {
     const vitrine = await this.prisma.vitrine.findUnique({
       where: { slug },
       select: {
+        id: true,
         ativa: true,
         empresaId: true,
         minimoEntrada: true,
@@ -565,15 +570,34 @@ export class VitrinePedidoService {
         frete: valorFrete,
         totalPecas,
         faixa,
+        totalFormatado: reais(totalComFrete),
       },
       origem: 'VITRINE',
       clienteId: cliente.id,
-      cliente: { id: cliente.id, nome: dto.nome },
+      cliente: { id: cliente.id, nome: dto.nome, primeiroNome: primeiroNome(dto.nome) },
       telefone: whatsapp,
       representanteId: null,
       // Pro WhatsApp de confirmação citar o prazo ("fica reservado por 20 min").
       reservaExpiraEm: reservaExpiraEm?.toISOString() ?? null,
       reservaMinutos: reservaExpiraEm ? RESERVA_MINUTOS : null,
+    });
+
+    // Recuperador (14/10): se não pagar em 20 min, o link remonta este pedido.
+    await this.recuperador?.aoEnviarPedido({
+      empresaId,
+      vitrineId: vitrine.id,
+      pedidoId: pedido.id,
+      itens: dto.itens,
+      contato: {
+        nome: dto.nome,
+        whatsapp: dto.whatsapp,
+        cpfCnpj: dto.cpfCnpj ?? '',
+        cidade: dto.cidade ?? '',
+        uf: dto.uf ?? '',
+        ...(dto.entrega ?? {}),
+      },
+      frete: dto.frete ?? null,
+      ref: dto.ref ?? null,
     });
 
     return {

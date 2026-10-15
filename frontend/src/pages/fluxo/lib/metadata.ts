@@ -35,6 +35,8 @@ export const TRIGGER_LABEL: Record<TriggerTipo, string> = {
   PEDIDO_ENTREGUE: 'Pedido entregue',
   PEDIDO_CRIADO: 'Pedido recebido (vitrine)',
   PEDIDO_PAGO: 'Pedido pago',
+  PEDIDO_NAO_PAGO: 'Pedido não pago (20 min)',
+  CARRINHO_ABANDONADO: 'Carrinho abandonado (20 min)',
   PEDIDO_RASTREIO_DISPONIVEL: 'Rastreio disponível',
   LEAD_REENGAJOU_SITE: 'Lead voltou pelo site',
   OCORRENCIA_ABERTA: 'Ocorrência aberta',
@@ -158,6 +160,18 @@ export const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> 
         triggerTipo: 'PEDIDO_CRIADO',
       },
       { id: 't-pedido-pago', label: 'Pedido pago', tipo: 'TRIGGER', triggerTipo: 'PEDIDO_PAGO' },
+      {
+        id: 't-pedido-nao-pago',
+        label: 'Pedido não pago (20 min)',
+        tipo: 'TRIGGER',
+        triggerTipo: 'PEDIDO_NAO_PAGO',
+      },
+      {
+        id: 't-carrinho-abandonado',
+        label: 'Carrinho abandonado (20 min)',
+        tipo: 'TRIGGER',
+        triggerTipo: 'CARRINHO_ABANDONADO',
+      },
       {
         id: 't-pedido-rastreio',
         label: 'Rastreio disponível',

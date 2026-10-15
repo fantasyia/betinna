@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Header, Headers, HttpCode, Ip, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Headers,
+  HttpCode,
+  Ip,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { z } from 'zod';
@@ -8,7 +19,14 @@ import { VitrinePublicaService } from './vitrine-publica.service';
 import { VitrinePedidoService } from './vitrine-pedido.service';
 import { FreteService } from './frete.service';
 import { PrivacidadeService } from './privacidade.service';
-import { type PedidoVitrineDto, cotarFreteSchema, pedidoVitrineSchema } from './vitrine.dto';
+import {
+  type CarrinhoRefDto,
+  type PedidoVitrineDto,
+  carrinhoRefSchema,
+  cotarFreteSchema,
+  pedidoVitrineSchema,
+} from './vitrine.dto';
+import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
 
 const slugSchema = z
   .string()
@@ -25,6 +43,7 @@ export class VitrinePublicaController {
     private readonly pedidos: VitrinePedidoService,
     private readonly frete: FreteService,
     private readonly privacidade: PrivacidadeService,
+    private readonly recuperador: CarrinhoRecuperadorService,
   ) {}
 
   @Public()
@@ -86,5 +105,31 @@ export class VitrinePublicaController {
   ) {
     // IP e navegador: a API de Conversões do Meta exige pra evento de site.
     return this.pedidos.enviar(slug, dto, { ip, userAgent });
+  }
+
+  @Public()
+  // A vitrine salva o carrinho a cada mudança (com pausa): folga pra navegação.
+  @Throttle({ default: { limit: 60, ttl: seconds(60) } })
+  @Put(':slug/carrinho')
+  @ApiOperation({
+    summary: 'Recuperador: salva o carrinho de quem veio pelo link do WhatsApp (?r=)',
+  })
+  salvarCarrinho(
+    @Param('slug', new ZodValidationPipe(slugSchema)) slug: string,
+    @Body(new ZodValidationPipe(carrinhoRefSchema)) dto: CarrinhoRefDto,
+  ) {
+    return this.recuperador.salvarDoRef(slug, dto.ref, dto.itens);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @Header('Cache-Control', 'no-store')
+  @Get(':slug/carrinho/:token')
+  @ApiOperation({ summary: 'Recuperador: o link ?c= restaura o carrinho e os dados do cliente' })
+  restaurarCarrinho(
+    @Param('slug', new ZodValidationPipe(slugSchema)) slug: string,
+    @Param('token', new ZodValidationPipe(z.string().min(16).max(64))) token: string,
+  ) {
+    return this.recuperador.restaurar(slug, token);
   }
 }

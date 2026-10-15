@@ -58,6 +58,7 @@ import {
 } from './Entrega';
 import { Pagamento, type AcessoPagamento, type EntregaDoPedido } from './Pagamento';
 import { atribuicaoParaEnvio, capturarAtribuicao, evento, iniciarPixel } from './pixel';
+import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
 import './vitrine.css';
 
 /**
@@ -251,6 +252,62 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
     } catch {
       /* modo privado / armazenamento cheio: segue só em memória */
     }
+  }, [carrinho, slug]);
+
+  // Recuperador de carrinho (Léo, 14/10). `?r=` (link do WhatsApp): guarda o
+  // ref. `?c=` (link de recuperar): restaura o carrinho + os dados e abre o pedido.
+  useEffect(() => {
+    const { ref, token } = paramsDoLink(window.location.href);
+    if (ref) guardarRef(slug, ref);
+    if (!token) return;
+    window.history.replaceState(null, '', semToken(window.location.href));
+    api
+      .get<{
+        itens: Array<{ corId: string; tamanhoId: string; quantidade: number }>;
+        contato: Record<string, string> | null;
+      }>(`/public/vitrine/${encodeURIComponent(slug)}/carrinho/${encodeURIComponent(token)}`, {
+        skipAuth: true,
+      })
+      .then((r) => {
+        const c = limparCarrinho(carrinhoDosItens(r.itens ?? [], v.modelos), v);
+        if (!Object.keys(c).length) return;
+        setCarrinho(c);
+        if (r.contato) {
+          try {
+            localStorage.setItem(
+              CHAVE_CONTATO,
+              JSON.stringify({
+                ...lerContato(),
+                ...r.contato,
+                whatsapp: mascararWhatsapp(String(r.contato.whatsapp ?? '')),
+              }),
+            );
+          } catch {
+            /* sem armazenamento: o cliente digita de novo */
+          }
+        }
+        setVerPedido(true);
+      })
+      .catch(() => undefined);
+    // Só na chegada.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Veio pelo link do WhatsApp: o servidor vai sabendo do carrinho (com pausa),
+  // pra lembrar o cliente se parar 20 min sem enviar.
+  useEffect(() => {
+    const ref = lerRef(slug);
+    if (!ref) return;
+    const id = window.setTimeout(() => {
+      void api
+        .put(
+          `/public/vitrine/${encodeURIComponent(slug)}/carrinho`,
+          { ref, itens: itensParaEnvio(carrinho) },
+          { skipAuth: true },
+        )
+        .catch(() => undefined);
+    }, 3000);
+    return () => window.clearTimeout(id);
   }, [carrinho, slug]);
 
   const avisar = useCallback((t: string) => {
@@ -1861,6 +1918,8 @@ function FolhaEnvio({
           site: isca,
           itens,
           atribuicao: atribuicaoParaEnvio(window.location.href),
+          // Veio pelo link do WhatsApp: fecha o carrinho salvo (não lembra mais).
+          ...(lerRef(slug) ? { ref: lerRef(slug) } : {}),
           ...(frete ? freteParaEnvio(f, escolha) : {}),
         },
         { skipAuth: true },

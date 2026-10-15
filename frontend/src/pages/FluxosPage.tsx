@@ -95,6 +95,8 @@ const TRIGGERS: Record<TriggerTipo, string> = {
   PEDIDO_ENTREGUE: 'Pedido entregue',
   PEDIDO_CRIADO: 'Pedido recebido (vitrine)',
   PEDIDO_PAGO: 'Pedido pago',
+  PEDIDO_NAO_PAGO: 'Pedido não pago (20 min)',
+  CARRINHO_ABANDONADO: 'Carrinho abandonado (20 min)',
   PEDIDO_RASTREIO_DISPONIVEL: 'Rastreio disponível',
   LEAD_REENGAJOU_SITE: 'Lead voltou pelo site',
   OCORRENCIA_ABERTA: 'Ocorrência aberta',

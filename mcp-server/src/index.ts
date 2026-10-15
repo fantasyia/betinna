@@ -1617,6 +1617,14 @@ const FLUXO_TRIGGER_TIPO = z.enum([
   // manual ou avanço ENVIADO_ERP → PAGO. Contexto: pedidoId, pedido{numero,total},
   // origem, clienteId, telefone, pagamento{forma: PIX|CARTAO|MANUAL|ERP, parcelas, online}.
   "PEDIDO_PAGO",
+  // Recuperador de carrinho (14/10). PEDIDO_NAO_PAGO: pedido da vitrine sem
+  // pagar 20 min depois — contexto: pedidoId, pedido{numero,total,totalFormatado,
+  // totalPecas}, clienteId, cliente{nome,primeiroNome}, telefone, link (reabre
+  // o carrinho). CARRINHO_ABANDONADO: carrinho de quem veio pelo link do
+  // WhatsApp com ?r={{lead.ref_vitrine}}, parado 20 min sem pedido — contexto:
+  // leadId, carrinho{pecas}, link. Uma mensagem por carrinho; nunca depois de pago.
+  "PEDIDO_NAO_PAGO",
+  "CARRINHO_ABANDONADO",
   // Rastreio PASSOU A EXISTIR (vazio → preenchido) — o despacho, dias antes da
   // entrega. É o momento em que o cliente quer o código; o PEDIDO_ENTREGUE
   // avisaria depois de a encomenda ter chegado.

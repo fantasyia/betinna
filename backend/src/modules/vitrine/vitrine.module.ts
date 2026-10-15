@@ -18,6 +18,8 @@ import { EtiquetaService } from './etiqueta.service';
 import { PrivacidadeService } from './privacidade.service';
 import { MetaPixelService } from './meta-pixel.service';
 import { ContatoService } from './contato.service';
+import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
+import { CarrinhoRecuperadorJob } from './carrinho-recuperador.job';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 
 /**
@@ -53,6 +55,8 @@ import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
     PrivacidadeService,
     MetaPixelService,
     ContatoService,
+    CarrinhoRecuperadorService,
+    CarrinhoRecuperadorJob,
     PrecificacaoService,
   ],
   exports: [VitrineAdminService, VitrineFotosService],
