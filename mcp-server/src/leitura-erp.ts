@@ -204,6 +204,18 @@ export function registrarLeituraErp(server: McpServer, { ok, seguro }: Ajudantes
   );
 
   server.registerTool(
+    "financeiro_categoria_pagar_criar",
+    {
+      description:
+        "Cria uma categoria de DESPESA (ex.: Contas de consumo) — escopo 'financeiro-escrita'. " +
+        "Confira antes com financeiro_categorias_listar (não duplique). Devolve o id pra usar nos lançamentos.",
+      inputSchema: { nome: z.string().min(2).max(60) },
+      annotations: escrita,
+    },
+    seguro(async (a: { nome: string }) => ok(await api.post("/financeiro/categorias", { ...a, tipo: "PAGAR" }))),
+  );
+
+  server.registerTool(
     "financeiro_recorrencia_pagar_criar",
     {
       description:

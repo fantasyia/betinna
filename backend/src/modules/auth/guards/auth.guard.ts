@@ -337,7 +337,7 @@ export class AuthGuard implements CanActivate {
     const lancarCusto =
       moduloRequerido === 'financeiro' &&
       tipoDoCorpo === 'PAGAR' &&
-      ((metodo === 'POST' && /^\/financeiro\/(titulos|recorrencias)\/?$/.test(rel)) ||
+      ((metodo === 'POST' && /^\/financeiro\/(titulos|recorrencias|categorias)\/?$/.test(rel)) ||
         (metodo === 'PUT' && /^\/financeiro\/recorrencias\/[^/]+\/?$/.test(rel)));
 
     if (

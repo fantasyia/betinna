@@ -235,6 +235,9 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
       await expect(pedir('POST', '/financeiro/titulos', conta)).resolves.toBe(true);
       await expect(pedir('POST', '/financeiro/recorrencias', rec)).resolves.toBe(true);
       await expect(pedir('PUT', '/financeiro/recorrencias/rec-1', rec)).resolves.toBe(true);
+      await expect(
+        pedir('POST', '/financeiro/categorias', { tipo: 'PAGAR', nome: 'Contas de consumo' }),
+      ).resolves.toBe(true);
     });
 
     it('só com "financeiro" (leitura) é RECUSADO — lançar pede o escopo à parte', async () => {
@@ -259,6 +262,7 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
         ['PUT', '/financeiro/titulos/t1'],
         ['POST', '/financeiro/baixas-em-massa'],
         ['POST', '/financeiro/contas'],
+        ['PUT', '/financeiro/categorias/c1'],
       ] as const) {
         await expect(pedir(m, path, { tipo: 'PAGAR' })).rejects.toThrow(/Receber, baixa/);
       }

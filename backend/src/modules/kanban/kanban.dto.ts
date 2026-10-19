@@ -266,7 +266,8 @@ export const API_TOKEN_ESCOPOS = [
   // contas). SÓ GET — lançar, baixar, cancelar e pagar ficam na tela.
   'financeiro',
   // financeiro-escrita (Léo, 19/10): o Orquestrador LANÇA custo — cria conta
-  // A PAGAR e cria/edita recorrência A PAGAR. Exige também `financeiro`.
+  // A PAGAR, cria/edita recorrência A PAGAR e cria categoria de despesa.
+  // Exige também `financeiro`.
   // Receber, baixa, estorno, cancelamento e edição de título seguem na tela.
   'financeiro-escrita',
 ] as const;

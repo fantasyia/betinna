@@ -91,7 +91,7 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
   {
     key: 'financeiro-escrita',
     label:
-      'Financeiro — LANÇAR custo (cria conta a pagar e cria/edita recorrência a pagar; não recebe, não baixa, não estorna · junto com Financeiro)',
+      'Financeiro — LANÇAR custo (cria conta a pagar, recorrência a pagar e categoria de despesa; não recebe, não baixa, não estorna · junto com Financeiro)',
     badge: 'Financeiro (lançar)',
   },
 ];
