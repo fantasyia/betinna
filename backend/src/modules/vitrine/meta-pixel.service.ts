@@ -33,6 +33,8 @@ interface AtribuicaoPedido {
   ultimo?: { landingPage?: string };
   meta?: { fbc?: string; fbp?: string; ip?: string; userAgent?: string };
   capi?: { purchase?: string };
+  /** Pedido da equipe (modo interno, 19/10): não vai pro Meta. */
+  interno?: boolean;
 }
 
 const regra = (msg: string) => new BusinessRuleException(msg, ErrorCode.BUSINESS_RULE_VIOLATION);
@@ -144,7 +146,7 @@ export class MetaPixelService implements OnModuleInit {
       const a = (p.atribuicao ?? {}) as AtribuicaoPedido;
       // Evento de site exige o navegador do cliente — pedido sem ele (anterior
       // ao pixel) não vai.
-      if (!a.meta?.userAgent) return;
+      if (!a.meta?.userAgent || a.interno) return;
       const tk = await this.token(p.empresaId);
       if (!tk) {
         this.logger.warn(`[pixel] pedido ${p.numero}: pixel ligado SEM token — compra não enviada`);

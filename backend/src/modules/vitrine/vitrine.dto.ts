@@ -317,6 +317,12 @@ export const googleTagConfigSchema = z
   });
 export type GoogleTagConfigDto = z.infer<typeof googleTagConfigSchema>;
 
+/** Modo interno (19/10): IPs da equipe cadastrados à mão. */
+export const internoConfigSchema = z.object({
+  ips: z.array(z.string().trim().max(64)).max(50),
+});
+export type InternoConfigDto = z.infer<typeof internoConfigSchema>;
+
 const blocoAtribuicao = z
   .object({
     utmSource: z.string().max(2048),
@@ -429,6 +435,8 @@ export const pedidoVitrineSchema = z.object({
       fbp: z.string().max(500).optional(),
       /** Do cookie `_ga` (GA4): a compra pelo servidor cai na mesma visita. */
       gaClientId: z.string().max(100).optional(),
+      /** Código do link "modo interno" guardado no aparelho (pedido da equipe). */
+      interno: z.string().max(64).optional(),
     })
     .optional(),
   /** Isca pra robô: campo invisível na tela. Gente nunca preenche. */

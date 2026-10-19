@@ -13,6 +13,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { configFrete, retiradaLiberada, type ConfigFrete } from './frete';
 import { FreteIndisponivel, FreteService, type Cotacao } from './frete.service';
+import { ModoInternoService } from './modo-interno.service';
 import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
 import { primeiroNome, reais } from './carrinho-recuperador';
 import { ligarLeadDoPedido } from '@modules/pedidos/lead-do-pedido';
@@ -119,6 +120,8 @@ export class VitrinePedidoService {
     @Optional() private readonly frete?: FreteService,
     // Recuperador de carrinho (14/10): guarda o carrinho do pedido pra reabrir.
     @Optional() private readonly recuperador?: CarrinhoRecuperadorService,
+    // Modo interno (19/10): pedido da equipe não manda compra pro Meta/Google.
+    @Optional() private readonly modoInterno?: ModoInternoService,
   ) {}
 
   /** Só quem acabou de enviar o pedido recebe o código de pagar. */
@@ -469,6 +472,9 @@ export class VitrinePedidoService {
     const cliente = await this.acharOuCriarCliente(empresaId, dto, whatsapp);
     const cidade = dto.cidade ?? dto.entrega?.cidade;
     const uf = dto.uf ?? dto.entrega?.uf;
+    const interno = this.modoInterno
+      ? await this.modoInterno.ehInterno(empresaId, req.ip, dto.atribuicao?.interno)
+      : false;
     const seq = await this.sequence.next(empresaId, 'pedido');
     const numero = `PED-${seq.toString().padStart(4, '0')}`;
     const local = [cidade, uf].filter(Boolean).join('/');
@@ -489,7 +495,9 @@ export class VitrinePedidoService {
       frete: new Prisma.Decimal(valorFrete.toFixed(2)),
       total: new Prisma.Decimal(totalComFrete.toFixed(2)),
       ...(frete ? { entrega: frete.entrega } : {}),
-      atribuicao: atribuicaoDoPedido(dto.atribuicao, req),
+      atribuicao: interno
+        ? { ...(atribuicaoDoPedido(dto.atribuicao, req) ?? {}), interno: true }
+        : atribuicaoDoPedido(dto.atribuicao, req),
       comissao: new Prisma.Decimal(0),
       observacoes: [
         `Pedido da vitrine — ${totalPecas} peças, faixa ${ROTULO_FAIXA[faixa]}`,

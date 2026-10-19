@@ -26,6 +26,7 @@ import { FreteConfig } from './FreteConfig';
 import { PrivacidadeConfig } from './PrivacidadeConfig';
 import { PixelConfig } from './PixelConfig';
 import { GoogleTagConfig } from './GoogleTagConfig';
+import { ModoInternoConfig } from './ModoInternoConfig';
 import { ContatoConfig } from './ContatoConfig';
 
 /**
@@ -190,6 +191,7 @@ function Cadastro({ config, onConfigMudou }: { config: VitrineConfig; onConfigMu
           {config && <PrivacidadeConfig slug={config.slug} />}
           {config && <PixelConfig />}
           {config && <GoogleTagConfig />}
+          {config && <ModoInternoConfig />}
         </div>
       )}
 

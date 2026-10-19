@@ -45,6 +45,15 @@ export class VitrinePublicaService {
     @Optional() private readonly estoque?: EstoqueService,
   ) {}
 
+  /** Empresa da vitrine ATIVA deste slug (modo interno, 19/10). null = não existe. */
+  async empresaDoSlug(slug: string): Promise<string | null> {
+    const v = await this.prisma.vitrine.findUnique({
+      where: { slug },
+      select: { empresaId: true },
+    });
+    return v?.empresaId ?? null;
+  }
+
   async carregar(slug: string) {
     const vitrine = await this.prisma.vitrine.findUnique({
       where: { slug },

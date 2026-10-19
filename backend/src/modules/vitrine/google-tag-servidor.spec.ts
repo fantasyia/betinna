@@ -90,6 +90,7 @@ describe('GoogleTagService.enviarCompra', () => {
       { pedido: { empresa: { config: {} } } },
       { pedido: { origem: 'REP' } },
       { trava: 0 },
+      { pedido: { atribuicao: { interno: true } } }, // modo interno (19/10)
     ]) {
       const { svc, http } = montar(o);
       await svc.enviarCompra('ped-9');

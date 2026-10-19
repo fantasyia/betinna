@@ -144,13 +144,15 @@ export class GoogleTagService implements OnModuleInit {
       if (!tag?.ga4Id) return;
       const secret = await this.secret(p.empresaId);
       if (!secret) return;
+      // Pedido da equipe (modo interno, 19/10): não conta como compra.
+      if ((p.atribuicao as { interno?: boolean } | null)?.interno) return;
       const trava = await this.prisma.$executeRaw`
         UPDATE "Pedido"
         SET "atribuicao" = jsonb_set(COALESCE("atribuicao", '{}'::jsonb), '{ga4}', '{"purchase":"enviando"}'::jsonb, true)
         WHERE "id" = ${p.id} AND ("atribuicao" #>> '{ga4,purchase}') IS NULL`;
       if (trava === 0) return;
 
-      const a = (p.atribuicao ?? {}) as { google?: { clientId?: string } };
+      const a = (p.atribuicao ?? {}) as { google?: { clientId?: string }; interno?: boolean };
       const corpo = corpoCompraGa4({
         pedidoId: p.id,
         total: Number(p.total),

@@ -18,6 +18,7 @@ import { EtiquetaService } from './etiqueta.service';
 import { PrivacidadeService } from './privacidade.service';
 import { MetaPixelService } from './meta-pixel.service';
 import { GoogleTagService } from './google-tag.service';
+import { ModoInternoService } from './modo-interno.service';
 import { ContatoService } from './contato.service';
 import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
 import { CarrinhoRecuperadorJob } from './carrinho-recuperador.job';
@@ -56,6 +57,7 @@ import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
     PrivacidadeService,
     MetaPixelService,
     GoogleTagService,
+    ModoInternoService,
     ContatoService,
     CarrinhoRecuperadorService,
     CarrinhoRecuperadorJob,

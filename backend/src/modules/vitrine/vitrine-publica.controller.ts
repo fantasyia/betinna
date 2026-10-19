@@ -9,6 +9,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle, seconds } from '@nestjs/throttler';
@@ -27,6 +28,7 @@ import {
   pedidoVitrineSchema,
 } from './vitrine.dto';
 import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
+import { ModoInternoService } from './modo-interno.service';
 
 const slugSchema = z
   .string()
@@ -44,6 +46,7 @@ export class VitrinePublicaController {
     private readonly frete: FreteService,
     private readonly privacidade: PrivacidadeService,
     private readonly recuperador: CarrinhoRecuperadorService,
+    private readonly modoInterno: ModoInternoService,
   ) {}
 
   @Public()
@@ -89,6 +92,21 @@ export class VitrinePublicaController {
   @ApiOperation({ summary: 'Catálogo publicado da vitrine (só o que pode aparecer)' })
   carregar(@Param('slug', new ZodValidationPipe(slugSchema)) slug: string) {
     return this.svc.carregar(slug);
+  }
+
+  @Public()
+  // Modo interno (19/10): a visita é da equipe? Sem cache — depende do IP/aparelho.
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @Header('Cache-Control', 'no-store')
+  @Get(':slug/interno')
+  @ApiOperation({ summary: 'Esta visita é da equipe? (sem pixel/Ads; GA4 como tráfego interno)' })
+  async interno(
+    @Param('slug', new ZodValidationPipe(slugSchema)) slug: string,
+    @Ip() ip: string,
+    @Query('c') codigo?: string,
+  ) {
+    const empresaId = await this.svc.empresaDoSlug(slug);
+    return { interno: empresaId ? await this.modoInterno.ehInterno(empresaId, ip, codigo) : false };
   }
 
   @Public()

@@ -24,8 +24,13 @@ declare global {
 
 let tag: GoogleTag | null = null;
 
-/** Carrega o gtag.js (uma vez) e configura o GA4 e o Ads. O GA4 manda o page_view sozinho. */
-export function iniciarGoogleTag(t: GoogleTag): void {
+/**
+ * Carrega o gtag.js (uma vez) e configura o GA4 e o Ads. O GA4 manda o
+ * page_view sozinho. `interno` (equipe, 19/10): GA4 com traffic_type=internal
+ * (o filtro descarta) e SEM Google Ads — nem config, nem conversão.
+ */
+export function iniciarGoogleTag(t0: GoogleTag, opts: { interno?: boolean } = {}): void {
+  const t: GoogleTag = opts.interno ? { ...t0, adsId: null, compraSendTo: null } : t0;
   if (typeof window === 'undefined' || tag || (!t.ga4Id && !t.adsId)) return;
   window.dataLayer = window.dataLayer ?? [];
   if (!window.gtag) {
@@ -40,7 +45,10 @@ export function iniciarGoogleTag(t: GoogleTag): void {
     document.head.appendChild(s);
   }
   window.gtag('js', new Date());
-  if (t.ga4Id) window.gtag('config', t.ga4Id);
+  if (t.ga4Id) {
+    if (opts.interno) window.gtag('config', t.ga4Id, { traffic_type: 'internal' });
+    else window.gtag('config', t.ga4Id);
+  }
   if (t.adsId) window.gtag('config', t.adsId, { allow_enhanced_conversions: true });
   tag = t;
 }

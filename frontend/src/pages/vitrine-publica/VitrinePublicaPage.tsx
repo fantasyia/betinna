@@ -67,6 +67,7 @@ import {
   primeiroCheckout,
 } from './pixel';
 import { compraGoogle, iniciarGoogleTag } from './google-tag';
+import { capturarCodigoInterno, codigoInterno, sairDoModoInterno } from './modo-interno';
 import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
 import './vitrine.css';
 
@@ -133,6 +134,8 @@ export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } =
   useFontes();
   const [dados, setDados] = useState<VitrinePub | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Modo interno (19/10): visita da equipe — sem pixel/Ads, GA4 como interno.
+  const [interno, setInterno] = useState(false);
 
   useEffect(() => {
     document.title = 'Vitrine de atacado';
@@ -143,8 +146,21 @@ export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } =
         document.title = `${v.empresa.nome} · Atacado`;
         // De onde o cliente veio (utm/fbclid) — guardado no aparelho pro pedido.
         capturarAtribuicao(window.location.href, document.referrer);
-        if (v.pixel) iniciarPixel(v.pixel);
-        if (v.googleTag) iniciarGoogleTag(v.googleTag);
+        sairDoModoInterno(slug, window.location.href);
+        const codigo = capturarCodigoInterno(slug, window.location.href);
+        // Só mede depois de saber se é a equipe (sem cache; falhou = mede normal).
+        api
+          .get<{ interno: boolean }>(
+            `/public/vitrine/${encodeURIComponent(slug)}/interno${codigo ? `?c=${codigo}` : ''}`,
+            { skipAuth: true },
+          )
+          .then((r) => r.interno)
+          .catch(() => false)
+          .then((eInterno) => {
+            setInterno(eInterno);
+            if (v.pixel && !eInterno) iniciarPixel(v.pixel);
+            if (v.googleTag) iniciarGoogleTag(v.googleTag, { interno: eInterno });
+          });
       })
       .catch((e) =>
         setErro(
@@ -170,7 +186,14 @@ export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } =
             <p className="vt-muted">Carregando a vitrine…</p>
           </div>
         ) : (
-          <Vitrine slug={slug} v={dados} />
+          <>
+            <Vitrine slug={slug} v={dados} />
+            {interno && (
+              <div className="vt-interno" data-testid="vt-interno" title="Visita da equipe: não conta no Meta nem no Google">
+                modo interno
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1930,7 +1953,7 @@ function FolhaEnvio({
           cpfCnpj: f.cpfCnpj.trim(),
           site: isca,
           itens,
-          atribuicao: atribuicaoParaEnvio(window.location.href),
+          atribuicao: atribuicaoParaEnvio(window.location.href, codigoInterno(slug)),
           // Veio pelo link do WhatsApp: fecha o carrinho salvo (não lembra mais).
           ...(lerRef(slug) ? { ref: lerRef(slug) } : {}),
           ...(frete ? freteParaEnvio(f, escolha) : {}),

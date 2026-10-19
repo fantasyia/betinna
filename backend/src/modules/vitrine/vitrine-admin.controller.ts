@@ -35,6 +35,8 @@ import {
   corSchema,
   pixelConfigSchema,
   googleTagConfigSchema,
+  internoConfigSchema,
+  type InternoConfigDto,
   type GoogleTagConfigDto,
   privacidadeConfigSchema,
   freteConfigSchema,
@@ -51,6 +53,7 @@ import { EtiquetaService } from './etiqueta.service';
 import { PrivacidadeService } from './privacidade.service';
 import { MetaPixelService } from './meta-pixel.service';
 import { GoogleTagService } from './google-tag.service';
+import { ModoInternoService } from './modo-interno.service';
 import { ContatoService } from './contato.service';
 
 /**
@@ -72,6 +75,7 @@ export class VitrineAdminController {
     private readonly privacidade: PrivacidadeService,
     private readonly pixel: MetaPixelService,
     private readonly googleTag: GoogleTagService,
+    private readonly modoInterno: ModoInternoService,
     private readonly contato: ContatoService,
   ) {}
 
@@ -105,6 +109,22 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(googleTagConfigSchema)) dto: GoogleTagConfigDto,
   ) {
     return this.googleTag.salvar(user, dto);
+  }
+
+  // ─── Modo interno (visita da equipe não conta) ──────────────────────────
+  @Get('interno')
+  @ApiOperation({ summary: 'Modo interno: link de marcar aparelho e IPs reconhecidos da equipe' })
+  internoStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.modoInterno.status(user);
+  }
+
+  @Put('interno')
+  @ApiOperation({ summary: 'Salva os IPs da equipe cadastrados à mão (escritório, casa…)' })
+  internoSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(internoConfigSchema)) dto: InternoConfigDto,
+  ) {
+    return this.modoInterno.salvarIps(user, dto.ips);
   }
 
   // ─── Política de Privacidade ────────────────────────────────────────────

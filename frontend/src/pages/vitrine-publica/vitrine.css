@@ -468,3 +468,6 @@
   .vt-slide .vt-sim-r { display: none; }
   .vt-slide .vt-hint { display: none; }
 }
+
+/* Modo interno (19/10): selinho discreto pra equipe saber que não está medindo. */
+.vt-interno { position: fixed; left: 8px; bottom: 8px; z-index: 60; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: #201554; color: #fff; opacity: .75; pointer-events: none; }

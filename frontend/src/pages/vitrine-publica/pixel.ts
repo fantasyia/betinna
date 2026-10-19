@@ -194,12 +194,17 @@ function cookie(nome: string): string | undefined {
 }
 
 /** O que vai no pedido: campanha + cookies do Meta (`_fbc`/`_fbp`). */
-export function atribuicaoParaEnvio(paginaAtual: string): {
+export function atribuicaoParaEnvio(
+  paginaAtual: string,
+  /** Código do modo interno guardado no aparelho (19/10): pedido da equipe. */
+  interno?: string | null,
+): {
   primeiro?: Toque;
   ultimo?: Toque;
   fbc?: string;
   fbp?: string;
   gaClientId?: string;
+  interno?: string;
 } {
   const a = ler();
   // Sem toque de campanha, o "último" é a página do pedido (o Meta pede a URL do evento).
@@ -217,6 +222,7 @@ export function atribuicaoParaEnvio(paginaAtual: string): {
     ...(fbc ? { fbc } : {}),
     ...(cookie('_fbp') ? { fbp: cookie('_fbp') } : {}),
     ...(gaClientId() ? { gaClientId: gaClientId() } : {}),
+    ...(interno ? { interno } : {}),
   };
 }
 
