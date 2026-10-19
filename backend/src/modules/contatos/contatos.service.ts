@@ -542,13 +542,22 @@ export class ContatosService {
           ? Prisma.sql`AND cv.canal = 'WHATSAPP' AND cv."proprietarioId" = ${uid}`
           : Prisma.empty;
       const repIdConv = repId ? Prisma.sql`AND cv."atribuidoId" = ${repId}` : Prisma.empty;
+      // Contato da EMPRESA (Léo, 19/10: 65 dos 69 contatos da Ribelt eram o
+      // celular de teste): conversa do WhatsApp PESSOAL de um usuário só entra
+      // se virou lead ou cliente — o resto é a agenda pessoal dele e fica no
+      // inbox dele. Grupo nunca é contato. O REP segue vendo o próprio WhatsApp.
+      const soDaEmpresa =
+        role === 'REP'
+          ? Prisma.empty
+          : Prisma.sql`AND (cv."proprietarioId" IS NULL OR cv."leadId" IS NOT NULL OR cv."clienteId" IS NOT NULL)`;
       blocos.push(Prisma.sql`
         SELECT 'CONVERSA' tipo, NULL::text lead_id, NULL::text cliente_id, cv.id conversa_id,
           COALESCE(${sufixo(telConversa)}, 'conversa:'||cv.id) chave,
           COALESCE(NULLIF(cli.nome,''), NULLIF(cv."peerNome",''), ${telConversa}) nome_cand, ${telConversa} tel_cand, NULL::text email_cand,
           2 ord_nome, 3 ord_tipo, COALESCE(cv."ultimaMsgEm", cv."criadoEm") quando
         FROM "Conversation" cv LEFT JOIN "Cliente" cli ON cli.id = cv."clienteId"
-        WHERE cv."empresaId" = ${empresaId} ${repConv} ${repIdConv}
+        WHERE cv."empresaId" = ${empresaId} ${repConv} ${repIdConv} ${soDaEmpresa}
+          AND cv."peerId" NOT LIKE '%@g.us'
           ${like ? Prisma.sql`AND (cv."peerNome" ILIKE ${like} OR cv."peerId" LIKE ${like} OR cli.nome ILIKE ${like})` : Prisma.empty}`);
     }
     if (blocos.length === 0) return { rows: [], total: 0 };
