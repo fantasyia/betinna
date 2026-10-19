@@ -376,10 +376,21 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
     return null;
   };
 
+  // Trocar de grade (Léo, 19/10): nada de "Este modelo não tem Plus Size" —
+  // vai direto pra um produto DA grade escolhida: o mesmo, se ele tiver; senão
+  // o 1º da mesma categoria; senão o 1º da grade.
+  const [alvo, setAlvo] = useState<string | null>(null);
   const trocarLinha = (id: string) => {
     const atual = modeloNaTela();
     const m = atual ? v.modelos.find((x) => x.id === atual) : undefined;
-    setFixado(m && !temLinha(m, id) ? m.id : null);
+    const naGrade = v.modelos.filter((x) => temLinha(x, id));
+    const destino = !m
+      ? undefined
+      : temLinha(m, id)
+        ? m
+        : naGrade.find((x) => x.categoria?.id && x.categoria.id === m.categoria?.id);
+    setFixado(null);
+    setAlvo(destino?.id ?? null);
     setLinhaId(id);
   };
   const modeloFixado =
@@ -388,7 +399,15 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
       : undefined;
   const slides = modeloFixado ? [modeloFixado, ...lista] : lista;
   useEffect(() => {
-    feed.current?.scrollTo({ top: 0 });
+    const el = alvo ? feed.current?.querySelector<HTMLElement>(`[data-modelo="${alvo}"]`) : null;
+    if (el && feed.current) {
+      const f = feed.current;
+      f.scrollTo({ top: f.scrollTop + el.getBoundingClientRect().top - f.getBoundingClientRect().top });
+    }
+    else feed.current?.scrollTo({ top: 0 });
+    setAlvo(null);
+    // Só na troca de grade/categoria (o alvo é lido no momento da troca).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linhaId, cat]);
 
   const linhaNoModelo = (m: ModeloPub): LinhaPub =>
