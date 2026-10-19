@@ -455,6 +455,15 @@ describe('OrquestracaoLeadEventsService — lead garantido na conversa de anúnc
     expect(m.ordem.indexOf('CRIOU_LEAD')).toBeLessThan(m.ordem.indexOf('MENSAGEM_CANAL'));
   });
 
+  it('anúncio no WhatsApp PESSOAL de um usuário (o "Teste" da Ribelt, 19/10): NÃO cria lead da empresa', async () => {
+    const m = montar({ ctwaEtapa: 'etapa-triagem-novo' });
+    await m.svc.aoReceberMensagem(
+      { ...(msg() as object), proprietarioId: 'usuario-teste' } as never,
+      resultado(),
+    );
+    expect(m.executor.criarLeadDaConversa).not.toHaveBeenCalled();
+  });
+
   it('sem etapa configurada: funil padrão (funilEtapaId vazio)', async () => {
     const m = montar();
     await m.svc.aoReceberMensagem(msg(), resultado());

@@ -165,7 +165,10 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       // Item 10 (29/09): conversa de ANÚNCIO nunca termina sem lead. Garante o
       // lead ANTES do MENSAGEM_CANAL sair — assim o CRIAR_LEAD do T1, quando
       // rodar, acha a conversa já amarrada e só usa o lead (não duplica).
-      if (primeira && veioDeAnuncio && !ehGrupo && !lead) {
+      // SÓ no WhatsApp DA EMPRESA (Léo, 19/10): clique de anúncio que cai no
+      // WhatsApp PESSOAL de um usuário (o "Teste" 11997524483 da Ribelt) não vira
+      // lead no funil da empresa sozinho — era o que enchia "Novo contato".
+      if (primeira && veioDeAnuncio && !ehGrupo && !lead && !params.proprietarioId) {
         await this.garantirLeadDeAnuncio(params.empresaId, resultado.conversationId);
       }
       if (primeira && !ehGrupo) {
