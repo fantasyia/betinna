@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { capturarCodigoInterno, codigoInterno, sairDoModoInterno } from './modo-interno';
 import { _resetarGoogleTag, compraGoogle, iniciarGoogleTag } from './google-tag';
+import { linkInterno } from '@/pages/vitrine/ModoInternoConfig';
 
 /** Modo interno da vitrine (#04/Léo, 19/10). */
 
@@ -46,8 +47,7 @@ describe('Google no modo interno', () => {
 });
 
 describe('link de marcar o aparelho (tela de configuração)', () => {
-  it('no domínio próprio da vitrine; sem domínio, no /v/<slug> do app', async () => {
-    const { linkInterno } = await import('@/pages/vitrine/ModoInternoConfig');
+  it('no domínio próprio da vitrine; sem domínio, no /v/<slug> do app', () => {
     expect(linkInterno({ codigo: COD, dominio: 'atacado.ribelt.com.br', slug: 'atacado-ribelt' }, 'https://app.x')).toBe(
       `https://atacado.ribelt.com.br/?interno=${COD}`,
     );

@@ -145,6 +145,14 @@ const devolucaoInternaSchema = z
   })
   .optional();
 
+/**
+ * Retenção das mídias do WhatsApp (19/10): fotos, áudios e documentos das
+ * conversas com mais de N dias saem do Storage toda madrugada. null = guarda tudo.
+ */
+const whatsappMidiaSchema = z.object({
+  retencaoDias: z.number().int().min(15).max(3650).nullable(),
+});
+
 /** Inbox interna: tipos de canal + SLA (7º consumidor). */
 const inboxInternaSchema = z
   .object({
@@ -627,6 +635,7 @@ export const tenantConfigPatchSchema = z
     materiaisVenda: materiaisTiposSchema.nullable(),
     devolucaoInterna: devolucaoInternaSchema.nullable(),
     inboxInterna: inboxInternaSchema.nullable(),
+    whatsappMidia: whatsappMidiaSchema.nullable().optional(),
     envioWhatsapp: envioWhatsappSchema.nullable(),
     emailTransacional: emailTransacionalSchema.nullable(),
     emailInbound: emailInboundSchema.nullable(),

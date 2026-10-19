@@ -335,7 +335,7 @@ export function EncaixeDaOp({
                 ))}
               </div>
             </Field>
-            <Field label="Tempo da GPU">
+            <Field label="Tempo de encaixe">
               <Select value={String(tempo)} onChange={(e) => setTempo(Number(e.target.value))}>
                 <option value="10">10 min</option>
                 <option value="30">30 min</option>

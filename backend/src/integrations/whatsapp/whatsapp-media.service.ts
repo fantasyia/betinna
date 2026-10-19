@@ -211,6 +211,65 @@ export class WhatsAppMediaService implements OnModuleInit {
     }
   }
 
+  /**
+   * Arquivos da empresa criados ANTES do corte, pasta por pasta (retenção,
+   * 19/10). Olha o Storage, não as mensagens: arquivo de conversa zerada
+   * (mensagem apagada) fica órfão e só aparece aqui. `pular` = pastas protegidas.
+   */
+  async listarAntigos(
+    empresaId: string,
+    corte: Date,
+    pular: readonly string[],
+    teto = 5000,
+  ): Promise<string[]> {
+    const lista = async (prefixo: string, offset: number) =>
+      (await this.storage.storage.from(BUCKET).list(prefixo, { limit: 1000, offset })).data ?? [];
+    const out: string[] = [];
+    const pastas: string[] = [];
+    for (let off = 0; ; off += 1000) {
+      const itens = await lista(empresaId, off);
+      for (const i of itens) if (!i.id && !pular.includes(i.name)) pastas.push(i.name);
+      if (itens.length < 1000) break;
+    }
+    for (const pasta of pastas) {
+      for (let off = 0; out.length < teto; off += 1000) {
+        const itens = await lista(`${empresaId}/${pasta}`, off);
+        for (const i of itens) {
+          if (i.id && i.created_at && new Date(i.created_at) < corte)
+            out.push(`${empresaId}/${pasta}/${i.name}`);
+        }
+        if (itens.length < 1000) break;
+      }
+      if (out.length >= teto) break;
+    }
+    return out.slice(0, teto);
+  }
+
+  /**
+   * Remove vários arquivos de uma vez (retenção, 19/10). Devolve os caminhos
+   * que o Storage confirmou — só esses têm o `mediaUrl` limpo na mensagem.
+   */
+  async removerVarios(paths: string[]): Promise<string[]> {
+    if (paths.length === 0) return [];
+    try {
+      const { data, error } = await this.storage.storage.from(BUCKET).remove(paths);
+      if (error) {
+        this.logger.warn(`Falha ao remover ${paths.length} mídia(s): ${error.message}`);
+        return [];
+      }
+      // Arquivo que já não existia também conta como fora (o Storage não devolve).
+      const voltaram = new Set((data ?? []).map((o) => o.name));
+      const conferidos = paths.filter((p) => voltaram.has(p));
+      // Sem erro e o Storage não devolveu no mesmo formato: o lote saiu inteiro.
+      return conferidos.length ? conferidos : paths;
+    } catch (err) {
+      this.logger.warn(
+        `Erro ao remover mídias: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
+  }
+
   /** Remove a mídia do Storage. Best-effort: loga e segue se falhar (não lança). */
   async remover(storagePath: string): Promise<void> {
     try {

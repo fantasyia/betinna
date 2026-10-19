@@ -17,6 +17,7 @@ import { currentEmpresaId } from '@/lib/auth-store';
 import { maskCNPJ } from '@/lib/masks';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import { cn } from '@/lib/cn';
+import { MidiaRetencaoConfig } from '@/pages/configuracoes/MidiaRetencaoConfig';
 import {
   PEDIDO_STATUSES,
   STATUS_VARIANTS,
@@ -235,6 +236,7 @@ export default function ConfiguracoesPage() {
           <DevolucaoConfig />
           <InboxInternaConfig />
           <EnvioWhatsappConfig />
+          <MidiaRetencaoConfig />
           <AlertaEsquecidaConfig />
         </>
       )}
