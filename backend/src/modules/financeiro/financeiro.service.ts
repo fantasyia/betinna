@@ -750,6 +750,14 @@ export class FinanceiroService {
     if (id) {
       const r = await this.prisma.finRecorrencia.findFirst({ where: { id, empresaId } });
       if (!r) throw new NotFoundException('Recorrente', id);
+      // Pagar não vira receber (nem o contrário) na edição: o token só escreve
+      // recorrência A PAGAR e não pode converter uma de receber (19/10).
+      if (r.tipo !== dto.tipo) {
+        throw new BusinessRuleException(
+          'Não dá pra trocar uma recorrente de pagar para receber (ou o contrário) — crie outra',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
       await this.prisma.finRecorrencia.update({ where: { id }, data });
     } else {
       rid = (

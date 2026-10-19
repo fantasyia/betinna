@@ -330,6 +330,16 @@ export class AuthGuard implements CanActivate {
       }
     }
 
+    // Escrita no Financeiro (Léo, 19/10), e SÓ isto: criar conta A PAGAR e
+    // criar/editar recorrência A PAGAR. Pede o escopo `financeiro-escrita`
+    // (conferido abaixo). Receber, baixa, estorno, cancelar e editar título: tela.
+    const tipoDoCorpo = (request.body as { tipo?: unknown } | undefined)?.tipo;
+    const lancarCusto =
+      moduloRequerido === 'financeiro' &&
+      tipoDoCorpo === 'PAGAR' &&
+      ((metodo === 'POST' && /^\/financeiro\/(titulos|recorrencias)\/?$/.test(rel)) ||
+        (metodo === 'PUT' && /^\/financeiro\/recorrencias\/[^/]+\/?$/.test(rel)));
+
     if (
       (moduloRequerido === 'contatos' ||
         moduloRequerido === 'usuarios' ||
@@ -341,9 +351,14 @@ export class AuthGuard implements CanActivate {
         moduloRequerido === 'financeiro') &&
       (request.method ?? 'GET').toUpperCase() !== 'GET' &&
       !zerarConversa &&
-      !fecharConversa
+      !fecharConversa &&
+      !lancarCusto
     ) {
-      throw new ForbiddenException(`Token de API só faz leitura (GET) em /${moduloRequerido}`);
+      throw new ForbiddenException(
+        moduloRequerido === 'financeiro'
+          ? 'Token de API no Financeiro: só lê, e (com o escopo "financeiro-escrita") cria conta A PAGAR e cria/edita recorrência A PAGAR. Receber, baixa, estorno e cancelamento são pela tela.'
+          : `Token de API só faz leitura (GET) em /${moduloRequerido}`,
+      );
     }
 
     const row = await this.prisma.kanbanApiToken.findUnique({
@@ -357,6 +372,12 @@ export class AuthGuard implements CanActivate {
     if (!row.escopo.includes(moduloRequerido)) {
       throw new ForbiddenException(
         `Token sem escopo "${moduloRequerido}". Gere um token com esse escopo no app (Quadros → Tokens de API).`,
+      );
+    }
+    // Lançar custo pede o escopo PRÓPRIO, além do `financeiro` (leitura).
+    if (lancarCusto && !row.escopo.includes('financeiro-escrita')) {
+      throw new ForbiddenException(
+        'Token sem escopo "financeiro-escrita" (lançar conta a pagar e recorrência). Ajuste o escopo em Quadros → Tokens de API.',
       );
     }
     // Fechar conversa pede o escopo PRÓPRIO, além do `inbox` (leitura).

@@ -214,6 +214,57 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     });
   });
 
+  describe('LANÇAR custo no Financeiro por token (escopo financeiro-escrita, Léo 19/10)', () => {
+    const comEscopos = (escopo: string[]) =>
+      prisma.kanbanApiToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        empresaId: 'emp-1',
+        usuarioId: 'u1',
+        escopo,
+        revogado: false,
+      });
+    const pedir = (method: string, path: string, body?: unknown) =>
+      guard.canActivate(
+        fakeContext({ method, path, headers: { authorization: 'Bearer bkt_abc' }, body }),
+      );
+    const conta = { tipo: 'PAGAR', descricao: 'Railway', valor: 104, vencimento: '2026-11-10' };
+    const rec = { tipo: 'PAGAR', descricao: 'Railway', valor: 104, dia: 10 };
+
+    it('cria conta A PAGAR e cria/edita recorrência A PAGAR com financeiro + financeiro-escrita', async () => {
+      comEscopos(['financeiro', 'financeiro-escrita']);
+      await expect(pedir('POST', '/financeiro/titulos', conta)).resolves.toBe(true);
+      await expect(pedir('POST', '/financeiro/recorrencias', rec)).resolves.toBe(true);
+      await expect(pedir('PUT', '/financeiro/recorrencias/rec-1', rec)).resolves.toBe(true);
+    });
+
+    it('só com "financeiro" (leitura) é RECUSADO — lançar pede o escopo à parte', async () => {
+      comEscopos(['financeiro']);
+      await expect(pedir('POST', '/financeiro/recorrencias', rec)).rejects.toThrow(
+        /financeiro-escrita/,
+      );
+    });
+
+    it('A RECEBER, baixa, estorno, cancelar e editar título CONTINUAM barrados mesmo com o escopo', async () => {
+      comEscopos(['financeiro', 'financeiro-escrita']);
+      await expect(
+        pedir('POST', '/financeiro/titulos', { ...conta, tipo: 'RECEBER' }),
+      ).rejects.toThrow(/Receber, baixa/);
+      await expect(
+        pedir('POST', '/financeiro/recorrencias', { ...rec, tipo: 'RECEBER' }),
+      ).rejects.toThrow(/Receber, baixa/);
+      for (const [m, path] of [
+        ['POST', '/financeiro/titulos/t1/baixas'],
+        ['POST', '/financeiro/baixas/b1/estornar'],
+        ['POST', '/financeiro/titulos/t1/cancelar'],
+        ['PUT', '/financeiro/titulos/t1'],
+        ['POST', '/financeiro/baixas-em-massa'],
+        ['POST', '/financeiro/contas'],
+      ] as const) {
+        await expect(pedir(m, path, { tipo: 'PAGAR' })).rejects.toThrow(/Receber, baixa/);
+      }
+    });
+  });
+
   it('POST em /inbox/:id/responder CONTINUA bloqueado — mandar mensagem não é papel de agente', async () => {
     // A exceção é por ROTA EXATA + verbo, não "escrita liberada em /inbox".
     comEscopoInbox();

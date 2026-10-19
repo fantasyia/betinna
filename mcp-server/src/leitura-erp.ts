@@ -6,7 +6,8 @@
  *   - "financeiro" → /financeiro (títulos a pagar/receber, baixas, fluxo de
  *     caixa, contas). Exige dono ADMIN/DIRECTOR e o financeiro ligado na
  *     empresa (senão a API responde 422).
- * Nada aqui cria, edita, baixa, cancela ou paga — isso é de gente, na tela.
+ * Escrita: só LANÇAR CUSTO (conta e recorrência A PAGAR) com o escopo
+ * "financeiro-escrita" (Léo, 19/10). Baixar, estornar, cancelar e receber: tela.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -153,5 +154,92 @@ export function registrarLeituraErp(server: McpServer, { ok, seguro }: Ajudantes
       annotations: leitura,
     },
     seguro(async () => ok(await api.get("/financeiro/contas"))),
+  );
+
+  server.registerTool(
+    "financeiro_categorias_listar",
+    {
+      description:
+        "Categorias do Financeiro (ex.: Sistemas, Aluguel) com o id e o tipo (PAGAR/RECEBER) — use o id ao lançar. Somente leitura.",
+      inputSchema: {},
+      annotations: leitura,
+    },
+    seguro(async () => ok(await api.get("/financeiro/categorias"))),
+  );
+
+  server.registerTool(
+    "financeiro_recorrencias_listar",
+    {
+      description: "Despesas e receitas RECORRENTES (todo mês, no dia X), com valor, categoria e se estão ativas. Somente leitura.",
+      inputSchema: {},
+      annotations: leitura,
+    },
+    seguro(async () => ok(await api.get("/financeiro/recorrencias"))),
+  );
+
+  // ─── Lançar CUSTO (escopo "financeiro-escrita", Léo 19/10) ─────────────────
+  // Só A PAGAR: o guard da API recusa receber, baixa, estorno, cancelamento e
+  // edição de título — isso é de gente, na tela.
+  const escrita = { readOnlyHint: false, destructiveHint: false, idempotentHint: false } as const;
+  const valor = z.number().positive().max(100_000_000).describe("Em reais (ex.: 104.9)");
+
+  server.registerTool(
+    "financeiro_conta_pagar_criar",
+    {
+      description:
+        "Lança uma conta A PAGAR (escopo 'financeiro-escrita'). parcelas>1 cria N lançamentos mensais com o valor POR parcela. " +
+        "Confira antes com financeiro_titulos_listar se ela já não existe (não duplique).",
+      inputSchema: {
+        descricao: z.string().min(2).max(200),
+        valor,
+        vencimento: data.describe("Vencimento (AAAA-MM-DD)"),
+        categoriaId: z.string().max(40).optional().describe("De financeiro_categorias_listar"),
+        contatoNome: z.string().max(120).optional().describe("Fornecedor"),
+        observacoes: z.string().max(1000).optional(),
+        parcelas: z.number().int().min(1).max(60).optional(),
+      },
+      annotations: escrita,
+    },
+    seguro(async (a: Record<string, unknown>) => ok(await api.post("/financeiro/titulos", { ...a, tipo: "PAGAR" }))),
+  );
+
+  server.registerTool(
+    "financeiro_recorrencia_pagar_criar",
+    {
+      description:
+        "Cria uma despesa RECORRENTE (todo mês no dia X) — escopo 'financeiro-escrita'. Já gera os lançamentos deste mês e do próximo. " +
+        "Confira antes com financeiro_recorrencias_listar se ela já existe (não duplique).",
+      inputSchema: {
+        descricao: z.string().min(2).max(200),
+        valor,
+        dia: z.number().int().min(1).max(31).describe("Dia do mês do vencimento"),
+        categoriaId: z.string().max(40).optional(),
+        contatoNome: z.string().max(120).optional().describe("Fornecedor"),
+      },
+      annotations: escrita,
+    },
+    seguro(async (a: Record<string, unknown>) => ok(await api.post("/financeiro/recorrencias", { ...a, tipo: "PAGAR" }))),
+  );
+
+  server.registerTool(
+    "financeiro_recorrencia_pagar_editar",
+    {
+      description:
+        "Edita uma despesa recorrente A PAGAR (valor, dia, descrição, categoria, fornecedor, ativo=false pausa). " +
+        "Mande TODOS os campos (é substituição). Escopo 'financeiro-escrita'.",
+      inputSchema: {
+        recorrenciaId: z.string().max(40),
+        descricao: z.string().min(2).max(200),
+        valor,
+        dia: z.number().int().min(1).max(31),
+        categoriaId: z.string().max(40).optional(),
+        contatoNome: z.string().max(120).optional(),
+        ativo: z.boolean().optional(),
+      },
+      annotations: { ...escrita, idempotentHint: true },
+    },
+    seguro(async ({ recorrenciaId, ...a }: { recorrenciaId: string } & Record<string, unknown>) =>
+      ok(await api.put(`/financeiro/recorrencias/${seg(recorrenciaId)}`, { ...a, tipo: "PAGAR" })),
+    ),
   );
 }

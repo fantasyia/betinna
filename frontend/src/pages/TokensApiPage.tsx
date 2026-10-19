@@ -88,6 +88,12 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     label: 'Financeiro (somente leitura · títulos, baixas, fluxo de caixa e contas)',
     badge: 'Financeiro (leitura)',
   },
+  {
+    key: 'financeiro-escrita',
+    label:
+      'Financeiro — LANÇAR custo (cria conta a pagar e cria/edita recorrência a pagar; não recebe, não baixa, não estorna · junto com Financeiro)',
+    badge: 'Financeiro (lançar)',
+  },
 ];
 
 const rotuloEscopo = (key: string) =>

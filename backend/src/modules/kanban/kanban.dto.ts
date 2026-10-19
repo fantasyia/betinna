@@ -265,6 +265,10 @@ export const API_TOKEN_ESCOPOS = [
   // financeiro = LEITURA de /financeiro (títulos, baixas, fluxo de caixa,
   // contas). SÓ GET — lançar, baixar, cancelar e pagar ficam na tela.
   'financeiro',
+  // financeiro-escrita (Léo, 19/10): o Orquestrador LANÇA custo — cria conta
+  // A PAGAR e cria/edita recorrência A PAGAR. Exige também `financeiro`.
+  // Receber, baixa, estorno, cancelamento e edição de título seguem na tela.
+  'financeiro-escrita',
 ] as const;
 
 export const createApiTokenSchema = z.object({
