@@ -1,3 +1,6 @@
+/** Marca da reserva vazia — some na limpeza (caractere que não aparece em texto). */
+const RESERVA_VAZIA = '\u0000';
+
 /**
  * Interpolação de variáveis `{{caminho.pontilhado}}` em templates de texto.
  *
@@ -20,21 +23,40 @@ export function interpolate(
   opts: { ausenteVazio?: boolean; escapeHtml?: boolean } = {},
 ): string {
   const ausente = (match: string): string => (opts.ausenteVazio ? '' : match);
-  return template.replace(/\{\{([\w.]+)\}\}/g, (match, key: string) => {
-    const parts = key.split('.');
-    let val: unknown = vars;
-    for (const part of parts) {
-      if (val == null || typeof val !== 'object') return ausente(match);
-      val = (val as Record<string, unknown>)[part];
-    }
-    if (val == null) return ausente(match);
-    // `escapeHtml: true` quando o template é HTML (e-mail): o VALOR vem de
-    // gente de fora (nome digitado no site, cidade capturada pela IA) e ia cru
-    // pro corpo — `Ana</p><a href="https://evil">Regularize</a>` virava HTML
-    // com a marca do tenant (auditoria 13/09/2026, C-2). O template em si é
-    // do autor e fica intacto; só o valor interpolado é escapado.
-    return opts.escapeHtml ? escapeHtml(String(val)) : String(val);
-  });
+  const esc = (v: string) => (opts.escapeHtml ? escapeHtml(v) : v);
+  // RESERVA (Léo, 19/10): `{{caminho|reserva}}` — valor ausente OU vazio usa a
+  // reserva (que pode ser vazia: `{{x|}}`) e NUNCA sobra placeholder. Sem `|`,
+  // segue a regra de sempre. Reserva vazia vira um marcador pra limpar o espaço
+  // que ficaria antes da pontuação ("Oi {{nome|}}!" → "Oi!", não "Oi !").
+  const out = template.replace(
+    /\{\{([\w.]+)(?:\|([^{}]*))?\}\}/g,
+    (match, key: string, reserva?: string) => {
+      const parts = key.split('.');
+      let val: unknown = vars;
+      for (const part of parts) {
+        if (val == null || typeof val !== 'object') {
+          val = undefined;
+          break;
+        }
+        val = (val as Record<string, unknown>)[part];
+      }
+      if (reserva !== undefined && (val == null || String(val).trim() === '')) {
+        return reserva === '' ? RESERVA_VAZIA : esc(reserva);
+      }
+      if (val == null) return ausente(match);
+      // `escapeHtml: true` quando o template é HTML (e-mail): o VALOR vem de
+      // gente de fora (nome digitado no site, cidade capturada pela IA) e ia cru
+      // pro corpo — `Ana</p><a href="https://evil">Regularize</a>` virava HTML
+      // com a marca do tenant (auditoria 13/09/2026, C-2). O template em si é
+      // do autor e fica intacto; só o valor interpolado é escapado.
+      return esc(String(val));
+    },
+  );
+  return out.includes(RESERVA_VAZIA)
+    ? out
+        .replace(new RegExp(`[ \t]*${RESERVA_VAZIA}(?=[!?,.;:])`, 'g'), '')
+        .replace(new RegExp(`${RESERVA_VAZIA}[ \t]*`, 'g'), '')
+    : out;
 }
 
 /** Escapa os 5 caracteres que viram HTML. Pra VALOR dentro de template HTML. */

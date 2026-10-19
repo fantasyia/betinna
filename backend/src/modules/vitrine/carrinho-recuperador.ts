@@ -52,7 +52,11 @@ export function linkDoCarrinho(
 
 /** "Maria Clara Souza" → "Maria". */
 export function primeiroNome(nome: string | null | undefined): string {
-  return (nome ?? '').trim().split(/\s+/)[0] ?? '';
+  const n = (nome ?? '').trim();
+  // SEM nome (19/10): vazio, o placeholder "Contato 123456" que o WhatsApp
+  // cria, ou só telefone/dígitos — senão a mensagem sai "Oi Contato".
+  if (!n || /^contato\s*[\d\s()+-]*$/i.test(n) || /^[\d\s()+.-]+$/.test(n)) return '';
+  return n.split(/\s+/)[0] ?? '';
 }
 
 /** 1234.5 → "R$ 1.234,50" (pra mensagem de WhatsApp). */
