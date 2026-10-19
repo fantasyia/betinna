@@ -35,6 +35,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'melhorenvio',
   'meta_pixel',
   'ga4_mp',
+  'resend',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -54,7 +55,8 @@ type ServicoEmpresa =
   | 'asaas'
   | 'melhorenvio'
   | 'meta_pixel'
-  | 'ga4_mp';
+  | 'ga4_mp'
+  | 'resend';
 
 interface ServicoMeta {
   nome: string;
@@ -283,6 +285,22 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     credentialFields: [{ name: 'apiSecret', label: 'Secret da API do Measurement Protocol', type: 'password' }],
     atalho: { rotulo: 'Configurar a tag →', rota: '/vitrine?aba=config' },
   },
+  resend: {
+    nome: 'E-mail da empresa (Resend)',
+    tipo: 'mensageria',
+    obrigatorio: false,
+    color: '#000000',
+    icon: '✉️',
+    description:
+      'Conta Resend PRÓPRIA da empresa: todos os e-mails dela (fluxos, avisos, convites, recuperação de senha) ' +
+      'saem do domínio dela. O domínio do remetente precisa estar verificado nessa conta. Sem esta conexão, os ' +
+      'e-mails saem pela conta do sistema. Se a conta da empresa recusar um envio, ele sai pela do sistema.',
+    connectMode: 'credentials',
+    credentialFields: [
+      { name: 'apiKey', label: 'Chave de API do Resend (re_…)', type: 'password' },
+      { name: 'fromEmail', label: 'E-mail remetente (ex.: comercial@ribelt.com.br)' },
+    ],
+  },
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
@@ -301,6 +319,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'melhorenvio',
   'meta_pixel',
   'ga4_mp',
+  'resend',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {

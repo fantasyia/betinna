@@ -84,8 +84,13 @@ export class ResendService {
      * confirmação de pedido.
      */
     headers?: Record<string, string>;
+    /**
+     * Chave da conta Resend DA EMPRESA (Integrações → Resend, Léo 19/10).
+     * Sem ela, a conta do sistema (`RESEND_API_KEY`).
+     */
+    apiKey?: string;
   }): Promise<{ id: string | null; status: number }> {
-    const apiKey = this.env.get('RESEND_API_KEY');
+    const apiKey = params.apiKey?.trim() || this.env.get('RESEND_API_KEY');
     const fromEmail = params.fromEmail?.trim() || this.env.get('RESEND_FROM_EMAIL');
     if (!apiKey || !fromEmail) {
       throw new IntegrationException(

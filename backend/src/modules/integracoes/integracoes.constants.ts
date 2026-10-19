@@ -37,6 +37,9 @@ export const SERVICOS_EMPRESA = [
   // GA4 da vitrine: o API secret do Measurement Protocol (a compra paga vai
   // também pelo servidor — o ID G- é público e fica na config da vitrine).
   'ga4_mp',
+  // Conta Resend PRÓPRIA da empresa (Léo, 19/10): os e-mails dela saem do
+  // domínio dela (ex.: comercial@ribelt.com.br). Sem ela, a conta do sistema.
+  'resend',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -203,6 +206,14 @@ export const SERVICO_METADATA: Record<
   meta_pixel: {
     nome: 'Pixel do Meta (API de Conversões)',
     tipo: 'anuncios',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  // Chave da conta Resend da empresa (todo e-mail dela sai por ela): diretoria.
+  resend: {
+    nome: 'E-mail da empresa (Resend)',
+    tipo: 'mensageria',
     escopo: 'empresa',
     obrigatorio: false,
     requerDirector: true,

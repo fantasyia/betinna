@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { ResendService } from '@integrations/resend/resend.service';
+import { CryptoUtil } from '@shared/utils/crypto.util';
 import { DescadastroService } from '@shared/descadastro/descadastro.service';
 import {
   templateAmostraFollowup,
@@ -88,6 +89,37 @@ export class TransactionalEmailService {
       };
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * Conta Resend PRÓPRIA da empresa (Integrações → "E-mail da empresa", Léo
+   * 19/10). Lê direto a conexão cifrada (sem o IntegracoesService, que criaria
+   * ciclo de módulo). null = usa a conta do sistema.
+   */
+  private async contaDaEmpresa(
+    empresaId?: string,
+  ): Promise<{ apiKey: string; fromEmail: string } | null> {
+    if (!empresaId) return null;
+    try {
+      const c = await this.prisma.integracaoConexao.findUnique({
+        where: { empresaId_servico: { empresaId, servico: 'resend' } },
+        select: { ativo: true, credenciais: true },
+      });
+      if (!c?.ativo) return null;
+      const cred = JSON.parse(
+        new CryptoUtil(this.env.get('ENCRYPTION_KEY')).decrypt(c.credenciais as unknown as string),
+      ) as { apiKey?: string; fromEmail?: string };
+      const apiKey = cred.apiKey?.trim();
+      const fromEmail = cred.fromEmail?.trim().toLowerCase();
+      return apiKey && fromEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)
+        ? { apiKey, fromEmail }
+        : null;
+    } catch (err) {
+      this.logger.warn(
+        `[e-mail] conta Resend da empresa ${empresaId} ilegível — usa a do sistema: ${String(err)}`,
+      );
+      return null;
     }
   }
 
@@ -191,7 +223,9 @@ export class TransactionalEmailService {
     // Resend é o ÚNICO provedor transacional do sistema (SendGrid removido).
     const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
 
-    if (!this.resend.isConfigured()) {
+    // Conta Resend da empresa (19/10): todo e-mail dela sai do domínio dela.
+    const propria = await this.contaDaEmpresa(empresaId);
+    if (!propria && !this.resend.isConfigured()) {
       const motivo =
         'Resend não configurado (defina RESEND_API_KEY e RESEND_FROM_EMAIL no Railway)';
       this.logger.error(`E-mail NÃO enviado · ${ctx} · ${motivo}`);
@@ -200,28 +234,47 @@ export class TransactionalEmailService {
 
     // Remetente por-tenant (fromNome/replyTo) quando há empresaId; senão env default.
     const remetente = await this.resolverRemetente(empresaId);
+    const base = {
+      para,
+      assunto,
+      html,
+      attachments,
+      idempotencyKey,
+      fromNome: remetente.fromNome,
+      replyTo: remetente.replyTo,
+      headers,
+    };
+
+    const tentar = async (via: 'empresa' | 'sistema') => {
+      const r = await this.resend.enviar(
+        via === 'empresa' && propria
+          ? { ...base, apiKey: propria.apiKey, fromEmail: remetenteEmail || propria.fromEmail }
+          : { ...base, fromEmail: propria ? undefined : remetenteEmail },
+      );
+      if (r.status < 200 || r.status >= 300) throw new Error(`provedor retornou HTTP ${r.status}`);
+      return r;
+    };
 
     try {
-      const r = await this.resend.enviar({
-        para,
-        assunto,
-        html,
-        attachments,
-        idempotencyKey,
-        fromNome: remetente.fromNome,
-        replyTo: remetente.replyTo,
-        fromEmail: remetenteEmail,
-        headers,
-      });
-      const ok = r.status >= 200 && r.status < 300;
-      if (!ok) {
-        const motivo = `provedor retornou HTTP ${r.status}`;
-        this.logger.error(`E-mail falhou · ${ctx} · ${motivo}`);
-        return { ok: false, motivo };
-      }
+      const r = await tentar(propria ? 'empresa' : 'sistema');
       return { ok: true, id: r.id };
     } catch (err) {
       const motivo = err instanceof Error ? err.message : String(err);
+      // Rede de segurança: a conta da empresa recusou (chave errada, domínio não
+      // verificado…) — o e-mail sai pela conta do sistema em vez de não sair.
+      if (propria && this.resend.isConfigured()) {
+        this.logger.warn(
+          `E-mail pela conta da empresa falhou · ${ctx} · ${motivo} — tentando pela conta do sistema`,
+        );
+        try {
+          const r = await tentar('sistema');
+          return { ok: true, id: r.id };
+        } catch (err2) {
+          const motivo2 = err2 instanceof Error ? err2.message : String(err2);
+          this.logger.error(`E-mail falhou (Resend, as duas contas) · ${ctx} · ${motivo2}`);
+          return { ok: false, motivo: motivo2 };
+        }
+      }
       this.logger.error(`E-mail falhou (Resend) · ${ctx} · ${motivo}`);
       return { ok: false, motivo };
     }
