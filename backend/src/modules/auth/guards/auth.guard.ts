@@ -179,6 +179,7 @@ export class AuthGuard implements CanActivate {
       | 'encaixe'
       | 'pedidos'
       | 'financeiro'
+      | 'erp'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -235,18 +236,25 @@ export class AuthGuard implements CanActivate {
     // nem passa por aqui, e nenhuma outra rota /vitrine entra no escopo.
     else if (/^\/(vitrine\/admin|precificacao)(\/|$)/.test(rel)) moduloRequerido = 'vitrine';
     // /erp/encaixe/agente/* = o agente local do encaixe (GPU). ANCORADO aqui: o
-    // resto de /erp (estoque, OP, financeiro) segue fora do alcance do PAT.
+    // resto de /erp: só a produção (fichas/insumos/facções/acabamento/OPs), logo abaixo.
     else if (/^\/erp\/encaixe\/agente(\/|$)/.test(rel)) moduloRequerido = 'encaixe';
     // /pedidos e /financeiro = LEITURA pro agente (card "MCP: ler pedidos e
     // Financeiro"). SÓ GET (restringido abaixo): pedido mexe com ERP e cliente,
     // título mexe com dinheiro — escrever é de gente, na tela.
     else if (/^\/pedidos(\/|$)/.test(rel)) moduloRequerido = 'pedidos';
     else if (/^\/financeiro(\/|$)/.test(rel)) moduloRequerido = 'financeiro';
+    // /erp de PRODUÇÃO (Léo, 20/10: custo do produto com o Orquestrador) —
+    // ficha técnica, insumos, facções, acabamento e OPs. LEITURA; a escrita é
+    // só ficha e cadastro de insumo, com o escopo `erp-escrita` (abaixo).
+    // Estoque, compra, corte, envio e fechamento de OP seguem na tela.
+    else if (/^\/erp\/(fichas|insumos|faccoes|acabamento|ops)(\/|$)/.test(rel))
+      moduloRequerido = 'erp';
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
           '/conhecimento, /tags, /inbox, /campanhas, /integracoes/email/{status,teste} ' +
-          '/vitrine/admin, /precificacao, /erp/encaixe/agente, /pedidos e /financeiro (leitura) ' +
+          '/vitrine/admin, /precificacao, /erp/encaixe/agente, /pedidos, /financeiro e ' +
+          '/erp/{fichas,insumos,faccoes,acabamento,ops} (leitura) ' +
           'e /mullerbot/prompts|persona',
       );
     }
@@ -340,6 +348,22 @@ export class AuthGuard implements CanActivate {
       ((metodo === 'POST' && /^\/financeiro\/(titulos|recorrencias|categorias)\/?$/.test(rel)) ||
         (metodo === 'PUT' && /^\/financeiro\/recorrencias\/[^/]+\/?$/.test(rel)));
 
+    // ERP por token: simular OP é CONTA (não grava nada) — vale como leitura.
+    // Escrever (escopo `erp-escrita`): a ficha da grade e o cadastro do insumo
+    // (nome, unidade, preço de referência). Compra, movimento e foto: tela.
+    const simularOp = metodo === 'POST' && /^\/erp\/ops\/simular\/?$/.test(rel);
+    const escreverErp =
+      moduloRequerido === 'erp' &&
+      ((metodo === 'PUT' && /^\/erp\/fichas\/[^/]+\/?$/.test(rel)) ||
+        (metodo === 'POST' && /^\/erp\/insumos\/?$/.test(rel)) ||
+        (metodo === 'PUT' && /^\/erp\/insumos\/[^/]+\/?$/.test(rel)));
+    if (moduloRequerido === 'erp' && metodo !== 'GET' && !simularOp && !escreverErp) {
+      throw new ForbiddenException(
+        'Token de API no ERP: lê fichas, insumos, facções, acabamento e OPs (e simula OP); ' +
+          'com o escopo "erp-escrita", grava a ficha técnica e cria/edita insumo. O resto é pela tela.',
+      );
+    }
+
     if (
       (moduloRequerido === 'contatos' ||
         moduloRequerido === 'usuarios' ||
@@ -378,6 +402,11 @@ export class AuthGuard implements CanActivate {
     if (lancarCusto && !row.escopo.includes('financeiro-escrita')) {
       throw new ForbiddenException(
         'Token sem escopo "financeiro-escrita" (lançar conta a pagar e recorrência). Ajuste o escopo em Quadros → Tokens de API.',
+      );
+    }
+    if (escreverErp && !row.escopo.includes('erp-escrita')) {
+      throw new ForbiddenException(
+        'Token sem escopo "erp-escrita" (gravar ficha técnica e insumo). Ajuste o escopo em Quadros → Tokens de API.',
       );
     }
     // Fechar conversa pede o escopo PRÓPRIO, além do `inbox` (leitura).

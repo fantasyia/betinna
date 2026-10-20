@@ -269,6 +269,70 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     });
   });
 
+  describe('ERP de produção por token (escopos erp / erp-escrita, Léo 20/10)', () => {
+    const comEscopos = (escopo: string[]) =>
+      prisma.kanbanApiToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        empresaId: 'emp-1',
+        usuarioId: 'u1',
+        escopo,
+        revogado: false,
+      });
+    const pedir = (method: string, path: string, body?: unknown) =>
+      guard.canActivate(
+        fakeContext({ method, path, headers: { authorization: 'Bearer bkt_abc' }, body }),
+      );
+
+    it('com "erp" LÊ ficha, insumos, facções, acabamento e OPs — e simula OP', async () => {
+      comEscopos(['erp']);
+      for (const path of [
+        '/erp/fichas',
+        '/erp/fichas/ml-1',
+        '/erp/insumos',
+        '/erp/faccoes',
+        '/erp/acabamento',
+        '/erp/ops',
+        '/erp/ops/op-1',
+      ]) {
+        await expect(pedir('GET', path)).resolves.toBe(true);
+      }
+      await expect(pedir('POST', '/erp/ops/simular', { modeloId: 'm1', itens: [] })).resolves.toBe(
+        true,
+      );
+    });
+
+    it('sem o escopo "erp" a leitura é recusada', async () => {
+      comEscopos(['financeiro']);
+      await expect(pedir('GET', '/erp/fichas/ml-1')).rejects.toThrow(/escopo "erp"/);
+    });
+
+    it('gravar ficha e insumo pede "erp-escrita" — só "erp" não basta', async () => {
+      comEscopos(['erp']);
+      await expect(pedir('PUT', '/erp/fichas/ml-1', { itens: [] })).rejects.toThrow(/erp-escrita/);
+      comEscopos(['erp', 'erp-escrita']);
+      await expect(pedir('PUT', '/erp/fichas/ml-1', { itens: [] })).resolves.toBe(true);
+      await expect(pedir('POST', '/erp/insumos', { nome: 'Cordão' })).resolves.toBe(true);
+      await expect(pedir('PUT', '/erp/insumos/i1', { nome: 'Cordão' })).resolves.toBe(true);
+    });
+
+    it('compra, movimento, OP e estoque CONTINUAM barrados mesmo com erp-escrita', async () => {
+      comEscopos(['erp', 'erp-escrita']);
+      for (const [m, path] of [
+        ['POST', '/erp/insumos/i1/compras'],
+        ['POST', '/erp/insumos/i1/movimentos'],
+        ['DELETE', '/erp/insumos/i1'],
+        ['POST', '/erp/ops'],
+        ['POST', '/erp/ops/op-1/corte'],
+        ['POST', '/erp/ops/op-1/fechar'],
+        ['PUT', '/erp/faccoes/f1/precos'],
+        ['PUT', '/erp/acabamento'],
+      ] as const) {
+        await expect(pedir(m, path, {})).rejects.toThrow(/O resto é pela tela/);
+      }
+      await expect(pedir('GET', '/erp/estoque/saldos')).rejects.toThrow(/só acessa rotas/);
+    });
+  });
+
   it('POST em /inbox/:id/responder CONTINUA bloqueado — mandar mensagem não é papel de agente', async () => {
     // A exceção é por ROTA EXATA + verbo, não "escrita liberada em /inbox".
     comEscopoInbox();

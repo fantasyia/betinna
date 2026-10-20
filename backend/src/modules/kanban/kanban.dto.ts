@@ -270,6 +270,13 @@ export const API_TOKEN_ESCOPOS = [
   // Exige também `financeiro`.
   // Receber, baixa, estorno, cancelamento e edição de título seguem na tela.
   'financeiro-escrita',
+  // erp = LEITURA da produção (Léo, 20/10): fichas técnicas, insumos, facções,
+  // acabamento e OPs (+ simular OP, que só calcula). Custo do produto/CPV.
+  'erp',
+  // erp-escrita (Léo, 20/10): grava a ficha técnica da grade e cria/edita o
+  // cadastro do insumo (preço de referência). Exige também `erp`. Compra,
+  // movimento de estoque e etapas da OP seguem na tela.
+  'erp-escrita',
 ] as const;
 
 export const createApiTokenSchema = z.object({

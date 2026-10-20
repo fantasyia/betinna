@@ -94,6 +94,18 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
       'Financeiro — LANÇAR custo (cria conta a pagar, recorrência a pagar e categoria de despesa; não recebe, não baixa, não estorna · junto com Financeiro)',
     badge: 'Financeiro (lançar)',
   },
+  {
+    key: 'erp',
+    label:
+      'Produção (somente leitura · fichas técnicas, insumos, facções, acabamento e OPs — custo do produto)',
+    badge: 'Produção (leitura)',
+  },
+  {
+    key: 'erp-escrita',
+    label:
+      'Produção — GRAVAR ficha técnica e cadastro de insumo (preço de referência; não compra, não mexe em estoque nem em OP · junto com Produção)',
+    badge: 'Produção (gravar)',
+  },
 ];
 
 const rotuloEscopo = (key: string) =>
