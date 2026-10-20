@@ -45,6 +45,8 @@ import {
   modeloSchema,
   tamanhoSchema,
   variacaoPatchSchema,
+  gerarCodigosSchema,
+  type GerarCodigosDto,
   vitrineConfigSchema,
 } from './vitrine.dto';
 import { VitrineAdminService } from './vitrine-admin.service';
@@ -380,6 +382,18 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(modeloSchema)) dto: ModeloDto,
   ) {
     return this.svc.atualizarModelo(user, id, dto);
+  }
+
+  @Post('variacoes/gerar-codigos')
+  @ApiOperation({
+    summary:
+      'Gera SKU e EAN-13 (faixa interna) que faltam nas variações; nunca troca código existente',
+  })
+  gerarCodigos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(gerarCodigosSchema)) dto: GerarCodigosDto,
+  ) {
+    return this.svc.gerarCodigos(user, dto);
   }
 
   @Patch('variacoes/:id')

@@ -307,10 +307,14 @@ export function ModeloEditor({
     }
   }
 
-  async function salvarVariacao(id: string, campo: 'sku' | 'estoque', valor: string) {
+  async function salvarVariacao(id: string, campo: 'sku' | 'ean' | 'estoque', valor: string) {
     const v = valor.trim();
     const corpo =
-      campo === 'sku' ? { sku: v || null } : { estoque: v === '' ? null : Number.parseInt(v, 10) };
+      campo === 'sku'
+        ? { sku: v || null }
+        : campo === 'ean'
+          ? { ean: v || null }
+          : { estoque: v === '' ? null : Number.parseInt(v, 10) };
     if (campo === 'estoque' && corpo.estoque !== null && Number.isNaN(corpo.estoque as number)) {
       return toast.error('Estoque precisa ser um número inteiro');
     }
@@ -319,6 +323,25 @@ export function ModeloEditor({
       if (atual) await recarregar(atual.id);
     } catch (err) {
       toast.error('Não foi possível salvar a variação', apiErrorMessage(err));
+    }
+  }
+
+  /** SKU e EAN que faltam neste modelo (20/10) — nunca troca o que já existe. */
+  async function gerarCodigos() {
+    if (!atual) return;
+    try {
+      const r = await api.post<{ skusGerados: number; eansGerados: number }>(
+        '/vitrine/admin/variacoes/gerar-codigos',
+        { modeloId: atual.id },
+      );
+      toast.success(
+        r.skusGerados + r.eansGerados === 0
+          ? 'Todas as variações já têm SKU e EAN'
+          : `Gerados ${r.skusGerados} SKU e ${r.eansGerados} EAN`,
+      );
+      await recarregar(atual.id);
+    } catch (err) {
+      toast.error('Não foi possível gerar os códigos', apiErrorMessage(err));
     }
   }
 
@@ -755,7 +778,9 @@ export function ModeloEditor({
         />
       )}
 
-      {aba === 'variacoes' && <TabelaVariacoes modelo={atual} onSalvar={salvarVariacao} />}
+      {aba === 'variacoes' && (
+        <TabelaVariacoes modelo={atual} onSalvar={salvarVariacao} onGerar={gerarCodigos} />
+      )}
 
       {aba === 'kit' && (
         <div className="flex flex-col gap-4">
@@ -821,9 +846,11 @@ export function ModeloEditor({
 function TabelaVariacoes({
   modelo,
   onSalvar,
+  onGerar,
 }: {
   modelo: Modelo | null;
-  onSalvar: (id: string, campo: 'sku' | 'estoque', valor: string) => unknown;
+  onSalvar: (id: string, campo: 'sku' | 'ean' | 'estoque', valor: string) => unknown;
+  onGerar: () => unknown;
 }) {
   if (!modelo || modelo.variacoes.length === 0) {
     return (
@@ -852,10 +879,16 @@ function TabelaVariacoes({
     );
   return (
     <div>
-      <p className="mb-2 text-sm text-muted">
-        {modelo.variacoes.length} variações. SKU e estoque são opcionais nesta fase — estoque não
-        bloqueia venda.
-      </p>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <p className="m-0 mr-auto text-sm text-muted">
+          {modelo.variacoes.length} variações. SKU, EAN e estoque são opcionais — estoque não bloqueia
+          venda. O EAN gerado é de uso interno (começa com 2): vale pra etiqueta e estoque, não pra
+          marketplace.
+        </p>
+        <Button size="sm" variant="secondary" onClick={() => void onGerar()} data-testid="gerar-codigos">
+          Gerar SKU e EAN que faltam
+        </Button>
+      </div>
       <div className="max-h-[50vh] overflow-auto rounded-[10px] border border-border">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-surface">
@@ -863,6 +896,7 @@ function TabelaVariacoes({
               <th className="px-3 py-2">Cor</th>
               <th className="px-3 py-2">Linha · tamanho</th>
               <th className="px-3 py-2">SKU</th>
+              <th className="px-3 py-2 w-40">EAN</th>
               <th className="px-3 py-2 w-28">Estoque</th>
             </tr>
           </thead>
@@ -888,6 +922,18 @@ function TabelaVariacoes({
                     className="h-8"
                     onBlur={(e) =>
                       e.target.value !== (v.sku ?? '') && void onSalvar(v.id, 'sku', e.target.value)
+                    }
+                  />
+                </td>
+                <td className="px-3 py-1.5">
+                  <Input
+                    defaultValue={v.ean ?? ''}
+                    maxLength={13}
+                    inputMode="numeric"
+                    className="h-8 tabular-nums"
+                    data-testid={`ean-${v.id}`}
+                    onBlur={(e) =>
+                      e.target.value !== (v.ean ?? '') && void onSalvar(v.id, 'ean', e.target.value)
                     }
                   />
                 </td>

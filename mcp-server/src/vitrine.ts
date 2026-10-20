@@ -418,14 +418,20 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   const variacao = z.object({
     id: z.string().describe("ID da variação (vitrine_modelo_ver → variacoes[].id)"),
     sku: z.string().max(60).nullable().optional(),
+    ean: z
+      .string()
+      .regex(/^\d{13}$/, "EAN-13: 13 dígitos")
+      .nullable()
+      .optional()
+      .describe("EAN-13 com dígito verificador válido; null tira"),
     estoque: z.number().int().min(0).nullable().optional(),
   });
   server.registerTool(
     "vitrine_variacoes_atualizar",
     {
       description:
-        "SKU e/ou estoque de variações (cor × tamanho), uma ou várias. Responde o resultado de cada uma; " +
-        "uma que falha não para as outras.",
+        "SKU, EAN e/ou estoque de variações (cor × tamanho), uma ou várias (até 500 — carga de planilha). " +
+        "Responde o resultado de cada uma; uma que falha (EAN inválido ou repetido, SKU repetido) não para as outras.",
       inputSchema: { variacoes: z.array(variacao).min(1).max(500) },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -441,6 +447,25 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
       }
       return ok({ total: resultado.length, falhas: resultado.filter((r) => !r.ok).length, resultado });
     }),
+  );
+
+  server.registerTool(
+    "vitrine_codigos_gerar",
+    {
+      description:
+        "Gera o SKU (modelo-cor-linha-tamanho) e o EAN-13 que FALTAM nas variações — nunca troca código existente. " +
+        "Sem prefixo GS1, o EAN é da faixa interna (começa com 2): vale pra etiqueta e estoque, não pra marketplace. " +
+        "Sem modeloId = o catálogo todo. sku=false ou ean=false pula aquele código.",
+      inputSchema: {
+        modeloId: z.string().max(40).optional(),
+        sku: z.boolean().optional(),
+        ean: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    seguro(async (a: { modeloId?: string; sku?: boolean; ean?: boolean }) =>
+      ok(await api.post("/vitrine/admin/variacoes/gerar-codigos", a)),
+    ),
   );
 
   // ─── Fotos por cor ────────────────────────────────────────────────────

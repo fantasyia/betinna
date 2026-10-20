@@ -10,9 +10,11 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
+import { proximosEansInternos, skuSugerido } from './codigos-produto';
 import type {
   CategoriaDto,
   CorDto,
+  GerarCodigosDto,
   LinhaDto,
   ModeloDto,
   TamanhoDto,
@@ -54,6 +56,7 @@ const modeloInclude = {
       modeloCorId: true,
       modeloTamanhoId: true,
       sku: true,
+      ean: true,
       estoque: true,
       produtoId: true,
     },
@@ -598,15 +601,104 @@ export class VitrineAdminService {
           where: { id },
           data: {
             ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
+            ...(dto.ean !== undefined ? { ean: dto.ean } : {}),
             ...(dto.estoque !== undefined ? { estoque: dto.estoque } : {}),
           },
         });
       });
     } catch (err) {
-      if (ehUnicidade(err))
-        throw new ConflictException(`O SKU "${dto.sku}" já existe nesta empresa`);
+      if (ehUnicidade(err)) {
+        const qual = String((err as { meta?: { target?: unknown } }).meta?.target ?? '');
+        throw new ConflictException(
+          qual.includes('ean') && dto.ean
+            ? `O EAN "${dto.ean}" já está em outra peça desta empresa`
+            : `O SKU "${dto.sku}" já existe nesta empresa`,
+        );
+      }
       throw err;
     }
+  }
+
+  /**
+   * Gera o que FALTA (20/10): SKU legível modelo-cor-linha-tamanho e EAN-13 da
+   * faixa interna (a Ribelt não tem prefixo GS1). Nunca troca código que já
+   * existe — esse pode estar numa etiqueta colada. Devolve o que gravou.
+   */
+  async gerarCodigos(user: AuthenticatedUser, dto: GerarCodigosDto) {
+    const empresaId = await this.empresaComVitrine(user);
+    const querSku = dto.sku !== false;
+    const querEan = dto.ean !== false;
+    const variacoes = await this.prisma.catalogoVariacao.findMany({
+      where: { empresaId, ativo: true, ...(dto.modeloId ? { modeloId: dto.modeloId } : {}) },
+      select: {
+        id: true,
+        produtoId: true,
+        sku: true,
+        ean: true,
+        modelo: { select: { nome: true, ordem: true } },
+        modeloCor: { select: { cor: { select: { nome: true } } } },
+        modeloLinha: { select: { linha: { select: { nome: true } } } },
+        modeloTamanho: { select: { tamanho: { select: { nome: true, ordem: true } } } },
+      },
+    });
+    if (dto.modeloId && variacoes.length === 0) throw new NotFoundException('Modelo', dto.modeloId);
+    // Ordem estável: modelo, cor, linha, tamanho — a sequência do EAN acompanha.
+    variacoes.sort(
+      (a, b) =>
+        a.modelo.ordem - b.modelo.ordem ||
+        a.modelo.nome.localeCompare(b.modelo.nome) ||
+        a.modeloCor.cor.nome.localeCompare(b.modeloCor.cor.nome) ||
+        a.modeloLinha.linha.nome.localeCompare(b.modeloLinha.linha.nome) ||
+        a.modeloTamanho.tamanho.ordem - b.modeloTamanho.tamanho.ordem,
+    );
+    const [skus, eans] = await Promise.all([
+      this.prisma.produto.findMany({
+        where: { empresaId, sku: { not: null } },
+        select: { sku: true },
+      }),
+      this.prisma.catalogoVariacao.findMany({
+        where: { empresaId, ean: { not: null } },
+        select: { ean: true },
+      }),
+    ]);
+    const skusUsados = new Set(skus.map((p) => p.sku!));
+    const semEan = querEan ? variacoes.filter((v) => !v.ean) : [];
+    const novosEans = proximosEansInternos(
+      eans.map((e) => e.ean!),
+      semEan.length,
+    );
+    const eanDe = new Map(semEan.map((v, i) => [v.id, novosEans[i]!]));
+    const gravados: Array<{ id: string; sku?: string; ean?: string }> = [];
+    for (const v of variacoes) {
+      const sku =
+        querSku && !v.sku
+          ? skuSugerido(
+              {
+                modelo: v.modelo.nome,
+                cor: v.modeloCor.cor.nome,
+                linha: v.modeloLinha.linha.nome,
+                tamanho: v.modeloTamanho.tamanho.nome,
+              },
+              skusUsados,
+            )
+          : undefined;
+      const ean = eanDe.get(v.id);
+      if (!sku && !ean) continue;
+      await this.prisma.$transaction(async (tx) => {
+        if (sku) await tx.produto.update({ where: { id: v.produtoId }, data: { sku } });
+        await tx.catalogoVariacao.update({
+          where: { id: v.id },
+          data: { ...(sku ? { sku } : {}), ...(ean ? { ean } : {}) },
+        });
+      });
+      gravados.push({ id: v.id, ...(sku ? { sku } : {}), ...(ean ? { ean } : {}) });
+    }
+    return {
+      variacoes: variacoes.length,
+      skusGerados: gravados.filter((g) => g.sku).length,
+      eansGerados: gravados.filter((g) => g.ean).length,
+      gravados,
+    };
   }
 
   // ─── Núcleo: grade e variações ──────────────────────────────────────────

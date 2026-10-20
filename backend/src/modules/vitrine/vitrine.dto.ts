@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { eanValido } from './codigos-produto';
 
 /**
  * Vitrine de atacado — Fase 1 (Ribelt Distribuidora Têxtil, 05/10/2026).
@@ -149,9 +150,24 @@ export type ModeloDto = z.infer<typeof modeloSchema>;
 
 export const variacaoPatchSchema = z.object({
   sku: z.string().trim().max(60).nullable().optional(),
+  /** EAN-13 (20/10): 13 dígitos com verificador válido; null tira. */
+  ean: z
+    .string()
+    .trim()
+    .refine(eanValido, 'EAN-13 inválido (13 dígitos, com o dígito verificador certo)')
+    .nullable()
+    .optional(),
   estoque: z.number().int().min(0).max(10_000_000).nullable().optional(),
 });
 export type VariacaoPatchDto = z.infer<typeof variacaoPatchSchema>;
+
+/** Gerar SKU/EAN que faltam (20/10). Sem modeloId = o catálogo todo. */
+export const gerarCodigosSchema = z.object({
+  modeloId: z.string().min(1).max(40).optional(),
+  sku: z.boolean().optional(),
+  ean: z.boolean().optional(),
+});
+export type GerarCodigosDto = z.infer<typeof gerarCodigosSchema>;
 
 /** Texto opcional: string vazia vira "não informado". */
 const opcional = (max: number) =>

@@ -4291,6 +4291,8 @@ model CatalogoVariacao {
   produtoId       String  @unique
   /// Opcional nesta fase.
   sku             String?
+  /// EAN-13 da peça (20/10). Sem prefixo GS1, faixa interna (começa com 2).
+  ean             String?
   /// Opcional nesta fase e NÃO bloqueia venda.
   estoque         Int?
   /// ERP próprio: abaixo disto (disponível) a variação aparece em "Reposição".
@@ -4307,6 +4309,7 @@ model CatalogoVariacao {
   produto       Produto               @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
   @@unique([modeloCorId, modeloTamanhoId])
+  @@unique([empresaId, ean])
   @@index([empresaId, modeloId])
 }
 
