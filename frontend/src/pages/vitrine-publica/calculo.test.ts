@@ -23,6 +23,7 @@ import {
   progressoFaixa,
   proximaFaixa,
   resumoPedido,
+  valorDoModelo,
   somar,
   textoKit,
   totalPecas,
@@ -141,6 +142,16 @@ describe('carrinho', () => {
 });
 
 describe('resumo do pedido', () => {
+  it('20/10: valor de cada modelo no carrinho, na faixa do pedido', () => {
+    let c: Carrinho = {};
+    c = somar(c, 'mod-1', 'mc-preto', 't-p', 30);
+    c = somar(c, 'mod-1', 'mc-bege', 't-m', 20);
+    expect(valorDoModelo(modelo(), c, 'volume')).toBe(2000); // 50 × R$ 40
+    expect(valorDoModelo(modelo(), c, 'entrada')).toBe(2250); // 50 × R$ 45
+    const semPreco = modelo({ linhas: [linha({ precoEntrada: null, precoVolume: null, precoAtacadao: null })] });
+    expect(valorDoModelo(semPreco, c, 'volume')).toBeNull();
+  });
+
   it('soma todas as cores e linhas na faixa do TOTAL', () => {
     let c: Carrinho = {};
     c = somar(c, 'mod-1', 'mc-preto', 't-p', 30);

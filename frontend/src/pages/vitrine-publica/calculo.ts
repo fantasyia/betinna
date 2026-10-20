@@ -247,6 +247,23 @@ export function gradeDoCarrinho(m: ModeloPub, c: Carrinho) {
     .filter((g) => g.total > 0);
 }
 
+/**
+ * Valor de um modelo no carrinho, na faixa do PEDIDO (20/10: o carrinho
+ * mostrava só quantidades). `null` = alguma linha sem preço nessa faixa
+ * (sob consulta).
+ */
+export function valorDoModelo(m: ModeloPub, c: Carrinho, faixa: Faixa): number | null {
+  let total = 0;
+  for (const l of m.linhas) {
+    const n = pecasDoModelo(c, m.id, l);
+    if (!n) continue;
+    const p = precoNaFaixa(l, faixa);
+    if (p === null) return null;
+    total += n * p;
+  }
+  return Math.round(total * 100) / 100;
+}
+
 export function pecasDoModelo(c: Carrinho, modeloId: string, linha?: LinhaPub): number {
   const porCor = c[modeloId] ?? {};
   const ids = linha ? new Set(linha.tamanhos.map((t) => t.id)) : null;

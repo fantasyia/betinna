@@ -32,6 +32,8 @@ import {
   quantidadesDoSimulador,
   simularPedido,
   pecasDoModelo,
+  precoNaFaixa,
+  valorDoModelo,
   proximaFaixa,
   resumoPedido,
   somar,
@@ -1684,24 +1686,40 @@ function SeuPedido({
         ) : (
           itens.map((m) => {
             const capa = m.cores[0] ? corDaBolinha(m.cores[0]).fotos[0] : undefined;
+            const valorModelo = valorDoModelo(m, carrinho, r.faixa);
             return (
               <div key={m.id} className="vt-line" data-testid={`vt-linha-${m.id}`}>
                 <div className="vt-line-head">
                   {capa ? <img src={capa.thumbUrl ?? capa.url} alt="" /> : <span />}
                   <div>
                     <div className="vt-name">{m.nome}</div>
-                    <small>{formatNumero(pecasDoModelo(carrinho, m.id))} peças</small>
+                    <small>
+                      {formatNumero(pecasDoModelo(carrinho, m.id))} peças
+                      {valorModelo !== null && (
+                        <>
+                          {' · '}
+                          <b data-testid={`vt-linha-valor-${m.id}`}>{formatMoeda(valorModelo)}</b>
+                        </>
+                      )}
+                    </small>
                   </div>
                   <button type="button" className="vt-line-edit" onClick={() => onEditar(m)}>
                     editar
                   </button>
                 </div>
                 {/* Uma tabelinha por linha: cor × tamanho, só o que tem peça. */}
-                {gradeDoCarrinho(m, carrinho).map((g) => (
+                {gradeDoCarrinho(m, carrinho).map((g) => {
+                  const unit = precoNaFaixa(g.linha, r.faixa);
+                  return (
                   <div key={g.linha.id} className="vt-tab">
                     <div className="vt-tab-titulo">
                       <span>{g.linha.nome}</span>
-                      <span>{formatNumero(g.total)} pç</span>
+                      <span>
+                        {formatNumero(g.total)} pç
+                        {unit !== null
+                          ? ` × ${formatMoeda(unit)} = ${formatMoeda(Math.round(g.total * unit * 100) / 100)}`
+                          : ' · sob consulta'}
+                      </span>
                     </div>
                     <div
                       className="vt-tab-grade"
@@ -1730,7 +1748,8 @@ function SeuPedido({
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })
