@@ -65,6 +65,8 @@ interface Op {
   custoFaccao: number;
   /** Acabamento da Isabela (14/10), calculado no fechamento. */
   custoAcabamento?: number;
+  /** Corte (20/10): peças cortadas × custo de corte por peça, gravado no corte. */
+  custoCorte?: number;
   cortadaEm: string | null;
   enviadaEm: string | null;
   fechadaEm: string | null;
@@ -215,8 +217,9 @@ export default function OpDetalhePage() {
 
               <Card className="p-4 flex flex-col gap-2" data-testid="op-custos">
                 <h2 className="text-base font-semibold">Custos reais</h2>
-                <div className="grid gap-2 sm:grid-cols-5 text-sm">
+                <div className="grid gap-2 sm:grid-cols-6 text-sm">
                   <Valor rotulo="Tecido (corte)" v={formatMoeda(op.custoTecido)} />
+                  <Valor rotulo="Corte" v={formatMoeda(op.custoCorte ?? 0)} />
                   <Valor rotulo="Aviamentos" v={formatMoeda(op.custoAviamentos)} />
                   <Valor
                     rotulo="Facção"
@@ -230,7 +233,13 @@ export default function OpDetalhePage() {
                   />
                   <Valor
                     rotulo="Total"
-                    v={formatMoeda(op.custoTecido + op.custoAviamentos + op.custoFaccao + (op.custoAcabamento ?? 0))}
+                    v={formatMoeda(
+                      op.custoTecido +
+                        op.custoAviamentos +
+                        op.custoFaccao +
+                        (op.custoCorte ?? 0) +
+                        (op.custoAcabamento ?? 0),
+                    )}
                   />
                 </div>
                 {op.consumoRealPorPeca !== null && (

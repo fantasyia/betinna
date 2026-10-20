@@ -12,14 +12,19 @@ import type {
   PrecosFaccaoDto,
   RegrasEncaixeDto,
 } from './fichas.dto';
-import { acabamentoPorPeca, idDoServico, servicosAcabamento } from './acabamento';
+import {
+  acabamentoPorPeca,
+  idDoServico,
+  servicosAcabamento,
+  custoCortePorPeca,
+} from './acabamento';
 
 const D = (v: number, casas: number) => new Prisma.Decimal(v.toFixed(casas));
 const num = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
 
 /**
  * Custo PREVISTO por peça de uma grade: Σ consumo × custo médio do insumo +
- * facção prevista. É o "previsto pela ficha" da calculadora de precificação e
+ * facção prevista + acabamento + corte. É o "previsto pela ficha" da calculadora de precificação e
  * a base da simulação da OP. Insumo sem custo médio (nunca comprado) conta 0 —
  * e a tela avisa.
  */
@@ -28,10 +33,12 @@ export function custoPrevistoDaFicha(
   custoFaccao: number | null,
   /** Acabamento por peça (serviços da Isabela, 14/10). */
   acabamento = 0,
-): { insumos: number; faccao: number; acabamento: number; total: number } {
+  /** Corte por peça (Léo, 20/10), da config da empresa. */
+  corte = 0,
+): { insumos: number; faccao: number; acabamento: number; corte: number; total: number } {
   const insumos = itens.reduce((s, i) => s + i.consumoPorPeca * i.custoMedio, 0);
   const faccao = custoFaccao ?? 0;
-  return { insumos, faccao, acabamento, total: insumos + faccao + acabamento };
+  return { insumos, faccao, acabamento, corte, total: insumos + faccao + acabamento + corte };
 }
 
 const temTamanhos = (v: Record<string, number> | null | undefined) =>
@@ -169,12 +176,15 @@ export class FichasService {
     });
     const custoFaccaoPrevisto = num(ficha?.custoFaccaoPrevisto ?? null);
     const servicos = await this.servicosDaEmpresa(empresaId);
+    const corte = await this.corteDaEmpresa(empresaId);
     const acabamento = Array.isArray(ficha?.acabamento) ? (ficha!.acabamento as string[]) : [];
     return {
       modeloLinhaId,
       /** Serviços de acabamento marcados nesta grade + a lista da empresa (pra marcar). */
       acabamento,
       servicosAcabamento: servicos,
+      /** Custo de corte por peça da empresa (entra no previsto). */
+      custoCortePorPeca: corte,
       modelo: ml.modelo,
       linha: ml.linha.nome,
       // Tamanhos da grade, na ordem — a tela mostra um campo por tamanho.
@@ -189,6 +199,7 @@ export class FichasService {
         itens.map((i) => ({ consumoPorPeca: i.consumoPorPeca, custoMedio: i.insumo.custoMedio })),
         custoFaccaoPrevisto,
         acabamentoPorPeca(acabamento, servicos),
+        corte,
       ),
       semCusto: itens.filter((i) => i.insumo.custoMedio <= 0).map((i) => i.insumo.nome),
     };
@@ -296,6 +307,7 @@ export class FichasService {
   async custosPrevistos(empresaId: string, modeloLinhaIds: string[]): Promise<Map<string, number>> {
     if (modeloLinhaIds.length === 0) return new Map();
     const servicos = await this.servicosDaEmpresa(empresaId);
+    const corte = await this.corteDaEmpresa(empresaId);
     const fichas = await this.prisma.fichaTecnica.findMany({
       where: { empresaId, modeloLinhaId: { in: modeloLinhaIds } },
       select: {
@@ -321,6 +333,7 @@ export class FichasService {
           })),
           num(f.custoFaccaoPrevisto),
           acabamentoPorPeca(f.acabamento, servicos),
+          corte,
         ).total,
       ]),
     );
@@ -334,6 +347,15 @@ export class FichasService {
       select: { config: true },
     });
     return servicosAcabamento(e?.config);
+  }
+
+  /** Custo de corte por peça da empresa (0 = não configurado). */
+  async corteDaEmpresa(empresaId: string): Promise<number> {
+    const e = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    return custoCortePorPeca(e?.config);
   }
 
   /** R$ de acabamento por peça de cada grade (OP: simulação e fechamento). */
@@ -351,7 +373,10 @@ export class FichasService {
 
   async acabamento(user: AuthenticatedUser) {
     const empresaId = await this.erp.empresaLigada(user);
-    return { servicos: await this.servicosDaEmpresa(empresaId) };
+    return {
+      servicos: await this.servicosDaEmpresa(empresaId),
+      custoCortePorPeca: await this.corteDaEmpresa(empresaId),
+    };
   }
 
   /** Salva a lista; serviço sem id ganha um (estável, pelo nome). */
@@ -363,12 +388,18 @@ export class FichasService {
       nome: s.nome,
       preco: Math.round(s.preco * 100) / 100,
     }));
+    // Corte ausente no corpo = mantém o que estava (a seção é regravada inteira).
+    const custoCortePorPeca =
+      dto.custoCortePorPeca !== undefined
+        ? Math.round(dto.custoCortePorPeca * 10000) / 10000
+        : await this.corteDaEmpresa(empresaId);
+    const secao = { servicos, custoCortePorPeca };
     // jsonb_set atômico: só a seção `acabamento`.
     await this.prisma.$executeRaw`
       UPDATE "Empresa"
-      SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{acabamento}', ${JSON.stringify({ servicos })}::jsonb, true)
+      SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{acabamento}', ${JSON.stringify(secao)}::jsonb, true)
       WHERE "id" = ${empresaId}`;
-    return { servicos };
+    return secao;
   }
 
   // ─── Regras de encaixe (por produto) ────────────────────────────────────

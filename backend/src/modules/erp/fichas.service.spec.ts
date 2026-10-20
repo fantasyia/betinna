@@ -125,8 +125,15 @@ describe('custo previsto pela ficha', () => {
       insumos: expect.closeTo(13.79, 6),
       faccao: 4.5,
       acabamento: 0,
+      corte: 0,
       total: expect.closeTo(18.29, 6),
     });
+  });
+
+  it('20/10: o corte por peça da empresa entra no previsto', () => {
+    const r = custoPrevistoDaFicha([{ consumoPorPeca: 1, custoMedio: 2 }], 3, 0.75, 0.45);
+    expect(r.corte).toBe(0.45);
+    expect(r.total).toBeCloseTo(6.2, 6);
   });
 
   it('14/10: acabamento da Isabela entra no total', () => {

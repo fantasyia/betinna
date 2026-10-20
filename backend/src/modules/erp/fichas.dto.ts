@@ -131,5 +131,7 @@ export const acabamentoSchema = z.object({
       }),
     )
     .max(30),
+  /** R$ de corte por peça cortada (Léo, 20/10). Ausente = não mexe. */
+  custoCortePorPeca: z.number().min(0).max(1000).optional(),
 });
 export type AcabamentoDto = z.infer<typeof acabamentoSchema>;

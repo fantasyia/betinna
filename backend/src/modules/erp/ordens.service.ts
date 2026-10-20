@@ -413,6 +413,8 @@ export class OrdensService {
     // Acabamento (Isabela, 14/10): serviços da ficha de cada grade × peças.
     const acab = await this.fichas.acabamentoPorGrade(empresaId, [...pecasPorLinha.keys()]);
     const custoAcabamento = [...pecasPorLinha].reduce((s, [l, p]) => s + p * (acab.get(l) ?? 0), 0);
+    // Corte (Léo, 20/10): custo por peça da empresa × peças da grade.
+    const custoCorte = pecas * (await this.fichas.corteDaEmpresa(empresaId));
     const precoFaccao = await this.precoFaccao(dto.faccaoId, modelo.id);
     // Sem facção escolhida (ou sem preço na tabela dela): a facção prevista da ficha.
     const custoFaccao =
@@ -434,9 +436,10 @@ export class OrdensService {
       custoInsumos,
       custoFaccao,
       custoAcabamento,
+      custoCorte,
       precoFaccaoTabela: precoFaccao,
-      custoTotal: custoInsumos + custoFaccao + custoAcabamento,
-      custoPorPeca: pecas ? (custoInsumos + custoFaccao + custoAcabamento) / pecas : 0,
+      custoTotal: custoInsumos + custoFaccao + custoAcabamento + custoCorte,
+      custoPorPeca: pecas ? (custoInsumos + custoFaccao + custoAcabamento + custoCorte) / pecas : 0,
       gradesSemFicha: [...pecasPorLinha.keys()].filter((l) => !fichas.has(l)).length,
     };
   }
@@ -565,6 +568,7 @@ export class OrdensService {
       custoTecido: n(op.custoTecido),
       custoAviamentos: n(op.custoAviamentos),
       custoFaccao: n(op.custoFaccao),
+      custoCorte: n(op.custoCorte),
       custoAcabamento: n(op.custoAcabamento),
       cortadaEm: op.cortadaEm,
       enviadaEm: op.enviadaEm,
@@ -918,12 +922,16 @@ export class OrdensService {
     const daOp = new Set(itens.map((i) => i.produtoId));
     if (dto.itens.some((i) => !daOp.has(i.produtoId))) throw regra('Variação que não está na OP');
     if (!dto.itens.some((i) => i.cortada > 0)) throw regra('Nenhuma peça cortada');
+    // Corte (Léo, 20/10): peças CORTADAS × custo de corte por peça da empresa.
+    const cortadas = dto.itens.reduce((s, i) => s + i.cortada, 0);
+    const custoCorte = cortadas * (await this.fichas.corteDaEmpresa(empresaId));
     await this.prisma.$transaction(async (tx) => {
       const custo = await this.consumir(tx, empresaId, op, 'CORTE', dto.tecidos, user.id);
       await this.virar(tx, id, ['RASCUNHO'], {
         status: 'CORTADA',
         cortadaEm: new Date(),
         custoTecido: D(custo, 2),
+        custoCorte: D(custoCorte, 2),
       });
       await this.avancarEtapa(tx, id, 'CORTE');
       for (const i of dto.itens) {
@@ -1078,7 +1086,12 @@ export class OrdensService {
       (s, g) => s + g.recebidas * (acab.get(g.modeloLinhaId) ?? 0),
       0,
     );
-    const total = n(op.custoTecido) + n(op.custoAviamentos) + n(op.custoFaccao) + custoAcabamento;
+    const total =
+      n(op.custoTecido) +
+      n(op.custoAviamentos) +
+      n(op.custoFaccao) +
+      n(op.custoCorte) +
+      custoAcabamento;
     const custos = ratearCusto(total, grades);
     const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
     await this.prisma.$transaction(async (tx) => {

@@ -24,6 +24,8 @@ interface FichaApi {
   /** Serviços de acabamento marcados na grade + a lista da empresa (14/10). */
   acabamento?: string[];
   servicosAcabamento?: ServicoAcabamento[];
+  /** Custo de corte por peça da empresa (20/10) — entra no previsto. */
+  custoCortePorPeca?: number;
   custoFaccaoPrevisto: number | null;
   observacoes: string | null;
   itens: Array<{
@@ -91,21 +93,27 @@ export function FichaTecnicaAba({
  */
 function ServicosAcabamento() {
   const toast = useToast();
-  const q = useApiQuery<{ servicos: ServicoAcabamento[] }>('/erp/acabamento');
+  const q = useApiQuery<{ servicos: ServicoAcabamento[]; custoCortePorPeca?: number }>('/erp/acabamento');
   const [lista, setLista] = useState<Array<{ id?: string; nome: string; preco: string }>>([]);
+  const [corte, setCorte] = useState('');
   const [salvando, setSalvando] = useState(false);
   useEffect(() => {
-    if (q.data) setLista(q.data.servicos.map((s) => ({ id: s.id, nome: s.nome, preco: paraCampo(s.preco) })));
+    if (!q.data) return;
+    setLista(q.data.servicos.map((s) => ({ id: s.id, nome: s.nome, preco: paraCampo(s.preco) })));
+    setCorte(paraCampo(q.data.custoCortePorPeca ?? 0));
   }, [q.data]);
-  const valido = lista.every((s) => s.nome.trim().length >= 2 && (lerNumero(s.preco) ?? -1) >= 0);
+  const valido =
+    lista.every((s) => s.nome.trim().length >= 2 && (lerNumero(s.preco) ?? -1) >= 0) &&
+    (lerNumero(corte) ?? 0) >= 0;
 
   async function salvar() {
     setSalvando(true);
     try {
       await api.put('/erp/acabamento', {
         servicos: lista.map((s) => ({ ...(s.id ? { id: s.id } : {}), nome: s.nome.trim(), preco: lerNumero(s.preco) ?? 0 })),
+        custoCortePorPeca: lerNumero(corte) ?? 0,
       });
-      toast.success('Serviços de acabamento salvos');
+      toast.success('Serviços de acabamento e custo de corte salvos');
       q.refetch();
     } catch (err) {
       toast.error('Não foi possível salvar', apiErrorMessage(err));
@@ -120,6 +128,18 @@ function ServicosAcabamento() {
         <h3 className="text-sm font-semibold mr-auto">Serviços de acabamento (R$ por peça)</h3>
         <span className="text-xs text-muted">Valem pra todos os produtos; cada grade marca os seus abaixo.</span>
       </div>
+      <label className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-2 text-sm">
+        <span>
+          Custo de corte por peça cortada
+          <span className="block text-xs text-muted">Entra no previsto de toda grade e no custo real da OP, no corte.</span>
+        </span>
+        <Input
+          value={corte}
+          onChange={(e) => setCorte(e.target.value)}
+          inputMode="decimal"
+          data-testid="custo-corte"
+        />
+      </label>
       {lista.map((s, idx) => (
         <div key={s.id ?? `novo-${idx}`} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">
           <Input
@@ -205,7 +225,8 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
   const custoInsumos = itens.reduce((s, l) => s + custoItem(l), 0);
   const servicos = q.data?.servicosAcabamento ?? [];
   const custoAcab = servicos.filter((s) => acab.includes(s.id)).reduce((t, s) => t + s.preco, 0);
-  const total = custoInsumos + (lerNumero(faccao) ?? 0) + custoAcab;
+  const custoCorte = q.data?.custoCortePorPeca ?? 0;
+  const total = custoInsumos + (lerNumero(faccao) ?? 0) + custoAcab + custoCorte;
   const usados = new Set(itens.map((l) => l.insumoId));
   const livres = insumos.filter((i) => i.ativo && !usados.has(i.id));
   const valido = itens.every((l) => l.insumoId && consumoDe(l) > 0);

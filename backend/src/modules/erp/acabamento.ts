@@ -19,6 +19,17 @@ export function servicosAcabamento(config: unknown): ServicoAcabamento[] {
   return lista.filter((s) => s && typeof s.id === 'string' && typeof s.preco === 'number');
 }
 
+/**
+ * Custo de CORTE por peça (Léo, 20/10: R$ 0,45 por peça cortada). Mora junto
+ * do acabamento em `Empresa.config.acabamento.custoCortePorPeca`; ausente = 0.
+ * Entra no previsto de toda grade e, no corte da OP, no custo real.
+ */
+export function custoCortePorPeca(config: unknown): number {
+  const v = ((config ?? {}) as { acabamento?: { custoCortePorPeca?: unknown } }).acabamento
+    ?.custoCortePorPeca;
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 /** R$ por peça da grade: soma dos serviços marcados (id que sumiu da lista não conta). */
 export function acabamentoPorPeca(ids: unknown, servicos: ServicoAcabamento[]): number {
   if (!Array.isArray(ids)) return 0;

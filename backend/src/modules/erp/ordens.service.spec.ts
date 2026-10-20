@@ -116,6 +116,7 @@ function montar(opts: { status?: string; ligado?: boolean } = {}) {
   const fichas = {
     custosPrevistos: vi.fn().mockResolvedValue(new Map()),
     acabamentoPorGrade: vi.fn().mockResolvedValue(new Map()),
+    corteDaEmpresa: vi.fn().mockResolvedValue(0),
   };
   const seq = { next: vi.fn().mockResolvedValue(7) };
   const svc = new OrdensService(prisma as never, erp as never, fichas as never, seq as never);
@@ -562,6 +563,36 @@ describe('OrdensService', () => {
     expect(Number(virada.data.custoAcabamento)).toBeCloseTo(6, 2); // 8 recebidas × 0,75
     const custos = tx.ordemProducaoCusto.createMany.mock.calls[0][0].data;
     expect(Number(custos[0].custoTotal)).toBeCloseTo(206, 2); // 200 + 6
+  });
+
+  it('20/10 corte: peças CORTADAS × custo de corte da empresa vão pro custoCorte da OP', async () => {
+    const { svc, tx, fichas } = montar();
+    fichas.corteDaEmpresa.mockResolvedValue(0.45);
+    await svc.cortar(user as never, 'op-1', {
+      tecidos: [{ insumoId: 'tec', quantidade: 3.2 }],
+      itens: [{ produtoId: 'p-m', cortada: 10 }],
+    });
+    const virada = tx.ordemProducao.updateMany.mock.calls[0][0];
+    expect(Number(virada.data.custoCorte)).toBeCloseTo(4.5, 2); // 10 × 0,45
+  });
+
+  it('20/10 fechar: o custo de corte entra no custo real', async () => {
+    const { svc, prisma, tx, fichas } = montar();
+    prisma.ordemProducao.findFirst.mockResolvedValue({
+      id: 'op-1',
+      numero: 'OP-0001',
+      status: 'RECEBENDO',
+      custoTecido: Dc(126),
+      custoAviamentos: Dc(4),
+      custoFaccao: Dc(70),
+      custoCorte: Dc(4.5),
+      itens: [{ produtoId: 'p-m', modeloLinhaId: 'ml-reg', cortada: 10 }],
+      entregas: [{ produtoId: 'p-m', quantidade: 8, defeito: 2 }],
+    });
+    fichas.custosPrevistos.mockResolvedValue(new Map());
+    await svc.fechar(user as never, 'op-1');
+    const custos = tx.ordemProducaoCusto.createMany.mock.calls[0][0].data;
+    expect(Number(custos[0].custoTotal)).toBeCloseTo(204.5, 2); // 200 + 4,50
   });
 
   it('fechar OP que nem recebeu: recusa', async () => {

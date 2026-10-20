@@ -4632,6 +4632,8 @@ model OrdemProducao {
   custoFaccao        Decimal             @default(0) @db.Decimal(14, 2)
   /// Acabamento (Isabela, 14/10): serviços da ficha × peças recebidas, no fechamento.
   custoAcabamento    Decimal             @default(0) @db.Decimal(14, 2)
+  /// Corte (Léo, 20/10): peças cortadas × custo de corte por peça da empresa.
+  custoCorte         Decimal             @default(0) @db.Decimal(14, 2)
   usuarioId          String?
   cortadaEm          DateTime?
   enviadaEm          DateTime?
