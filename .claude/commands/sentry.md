@@ -1,8 +1,8 @@
 ---
-description: Inicia sessão de triagem de erros do Sentry (somatec-web + betinna-api + betinna-front): ler, entender a causa e propor/executar o conserto
+description: Inicia sessão de triagem de erros do Sentry (betinna-backend + betinna-frontend, org betinna): ler, entender a causa e propor/executar o conserto
 ---
 
-Esta sessão é dedicada a **TRIAGEM DE ERROS EM PRODUÇÃO** via Sentry, nos três projetos: `somatec-web`, `betinna-api` e `betinna-front`.
+Esta sessão é dedicada a **TRIAGEM DE ERROS EM PRODUÇÃO** via Sentry, nos dois projetos da org `betinna`: `betinna-backend` (api + worker) e `betinna-frontend`.
 
 Faça o seguinte, nesta ordem:
 
