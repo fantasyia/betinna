@@ -178,6 +178,49 @@ export class IntegracaoStatusService {
     this.logger.log(`[status] alerta de "${nomeServico} ${rotulo}" enviado para ${para}`);
   }
 
+  /**
+   * Aviso de token PERTO DE VENCER (renovação manual). Idempotente por dia:
+   * o cron rodar duas vezes não manda dois e-mails.
+   */
+  async alertarValidade(
+    empresaId: string,
+    servico: string,
+    expiraEm: Date,
+    dias: number,
+  ): Promise<void> {
+    const para = await this.resolverDestinatario(empresaId);
+    if (!para) {
+      this.logger.warn(
+        `[validade] ${servico} vence mas não há destinatário (empresa ${empresaId}).`,
+      );
+      return;
+    }
+    const nomeServico = SERVICO_METADATA[servico as ServicoIntegracao]?.nome ?? servico;
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { nome: true },
+    });
+    const nomeEmpresa = empresa?.nome ?? empresaId;
+    const data = expiraEm.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const quando =
+      dias <= 0 ? 'venceu hoje' : dias === 1 ? 'vence amanhã' : `vence em ${dias} dias`;
+    await this.email.enviarAlertaSistema({
+      para,
+      assunto: `⚠ Token do ${nomeServico} ${quando} (${data}) — ${nomeEmpresa}`,
+      idempotencyKey: `integracao-validade:${empresaId}:${servico}:${new Date()
+        .toISOString()
+        .slice(0, 10)}`,
+      titulo: `Token do ${nomeServico} ${quando}`,
+      mensagem:
+        `O token da integração <strong>${this.escapeHtml(nomeServico)}</strong> da empresa ` +
+        `<strong>${this.escapeHtml(nomeEmpresa)}</strong> ${quando} (<strong>${data}</strong>). ` +
+        `Depois disso a integração para de funcionar.<br><br>` +
+        `Pra renovar: gere um token novo no painel do ${this.escapeHtml(nomeServico)} e cole em ` +
+        `<em>Integrações</em> no app. Depois, apague o token antigo no painel.`,
+    });
+    this.logger.log(`[validade] aviso de "${nomeServico} ${quando}" enviado para ${para}`);
+  }
+
   /** Prioridade: DIRETOR da empresa → ADMIN ativo → BACKUP_ALERT_EMAIL. */
   private async resolverDestinatario(empresaId: string): Promise<string | null> {
     const director = await this.prisma.usuario.findFirst({

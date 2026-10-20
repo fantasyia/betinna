@@ -349,6 +349,46 @@ interface Conexao {
   /** Null quando a conexão vive só no provider (sem linha na tabela). */
   criadoEm: string | null;
   atualizadoEm: string | null;
+  /** Quando o token vence (null = não vence ou data desconhecida). */
+  credencialExpiraEm?: string | null;
+  /** true = o app renova sozinho; false = alguém cola token novo. */
+  credencialRenovaSozinho?: boolean;
+}
+
+/** Dias inteiros até `iso` vencer (negativo = vencido). */
+function diasAte(iso: string, agora = new Date()): number {
+  const dia = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((dia(new Date(iso)) - dia(agora)) / 86_400_000);
+}
+
+/**
+ * Vencimento do token. Renovação MANUAL (Melhor Envio) fica amarela a 30 dias
+ * e vermelha vencida — é quem precisa de alguém colando token novo.
+ */
+function ValidadeToken({ servico, conexao }: { servico: string; conexao: Conexao }) {
+  const iso = conexao.credencialExpiraEm;
+  if (!iso) return null;
+  const data = new Date(iso).toLocaleDateString('pt-BR');
+  if (conexao.credencialRenovaSozinho) {
+    return (
+      <p className="m-0 text-[12px]" data-testid={`validade-${servico}`}>
+        Token vale até {data} · renova sozinho
+      </p>
+    );
+  }
+  const dias = diasAte(iso);
+  const cor = dias < 0 ? 'text-danger' : dias <= 30 ? 'text-warning' : '';
+  const quando =
+    dias < 0
+      ? `venceu em ${data} — gere um token novo e cole aqui`
+      : dias === 0
+        ? `vence HOJE (${data})`
+        : `vence em ${data} (${dias === 1 ? 'amanhã' : `faltam ${dias} dias`})`;
+  return (
+    <p className={`m-0 text-[12px] font-semibold ${cor}`} data-testid={`validade-${servico}`}>
+      Token {quando}
+    </p>
+  );
 }
 
 type StatusValor = 'ATIVA' | 'DEGRADADA' | 'CAIDA' | 'DESCONECTADA';
@@ -703,6 +743,7 @@ function ServicoCard({
         <p className="m-0">{meta.description}</p>
         {servico === 'meta_app' && <UrlWebhookMeta />}
         {servico === 'facebook' && podeOperar && <AssinaturaPaginaMeta />}
+        <ValidadeToken servico={servico} conexao={conexao} />
         {(conexao.externalAccountId || conexao.ultimoSync || conectadoEm) && (
           <p className="m-0 text-[12px]">
             {[

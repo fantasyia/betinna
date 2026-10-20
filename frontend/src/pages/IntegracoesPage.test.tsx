@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
 // Referências ESTÁVEIS por render, como o useApiQuery real.
-let conexoes: Array<{ id: string; servico: string; ativo: boolean; criadoEm: string | null; atualizadoEm: string | null; ultimoSync?: string | null }> = [];
+let conexoes: Array<{ id: string; servico: string; ativo: boolean; criadoEm: string | null; atualizadoEm: string | null; ultimoSync?: string | null; credencialExpiraEm?: string | null; credencialRenovaSozinho?: boolean }> = [];
 const refetch = vi.fn();
 vi.mock('@/hooks/useApiQuery', () => ({
   useApiQuery: (path: string) => ({
@@ -126,5 +126,19 @@ describe('IntegracoesPage', () => {
     expect(getByTestId('bloqueado-shopee')).toBeTruthy();
     expect(queryByTestId('reconectar-whatsapp')).toBeNull();
     expect(queryByTestId('aviso-tiny')).toBeNull();
+  });
+
+  it('token de renovação manual mostra o vencimento — amarelo a menos de 30 dias', () => {
+    const daqui10 = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    conexoes = [
+      { ...conexao('melhorenvio'), credencialExpiraEm: daqui10, credencialRenovaSozinho: false },
+      { ...conexao('asaas'), credencialExpiraEm: null, credencialRenovaSozinho: false },
+    ];
+    const { getByTestId, queryByTestId } = render(<IntegracoesPage />);
+    const linha = getByTestId('validade-melhorenvio');
+    expect(linha.textContent).toMatch(/faltam 10 dias/);
+    expect(linha.className).toContain('text-warning');
+    // Chave que não vence não ganha linha nenhuma.
+    expect(queryByTestId('validade-asaas')).toBeNull();
   });
 });

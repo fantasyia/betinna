@@ -11,6 +11,7 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CryptoUtil } from '@shared/utils/crypto.util';
+import { validadeDaCredencial } from './credencial-validade';
 import { ResendService } from '@integrations/resend/resend.service';
 import type { ConectarDto, ListConexoesDto } from './integracoes.dto';
 import { servicoRequerDirector, type ServicoEmpresa } from './integracoes.constants';
@@ -49,6 +50,10 @@ export interface ConexaoDescriptada {
 export type ConexaoPublica = Omit<IntegracaoConexao, 'credenciais'> & {
   credenciaisConfiguradas: boolean;
   camposCredenciais: string[];
+  /** Quando o token vence (null = não vence, ou a data não é conhecida). */
+  credencialExpiraEm: Date | null;
+  /** true = o app renova sozinho; false = alguém cola token novo. */
+  credencialRenovaSozinho: boolean;
 };
 
 /**
@@ -669,11 +674,14 @@ export class IntegracoesService {
     // Decifra apenas pra contar campos — não devolve valores
     let camposCredenciais: string[] = [];
     let configurado = false;
+    let validade = validadeDaCredencial(c.servico, null);
     try {
       const raw = this.crypto.decrypt(c.credenciais as unknown as string);
       const obj = JSON.parse(raw) as Record<string, unknown>;
       camposCredenciais = Object.keys(obj);
       configurado = camposCredenciais.length > 0;
+      // Só a DATA sai daqui — o token em si nunca deixa o servidor.
+      validade = validadeDaCredencial(c.servico, obj);
     } catch {
       configurado = false;
     }
@@ -691,6 +699,24 @@ export class IntegracoesService {
       atualizadoEm: c.atualizadoEm,
       credenciaisConfiguradas: configurado,
       camposCredenciais,
+      credencialExpiraEm: validade.expiraEm,
+      credencialRenovaSozinho: validade.renovaSozinho,
     } as ConexaoPublica;
+  }
+
+  /**
+   * Conexões ATIVAS de renovação MANUAL com data de vencimento conhecida —
+   * a lista que o aviso diário percorre. Nunca devolve a credencial.
+   */
+  async validadesManuais(): Promise<Array<{ empresaId: string; servico: string; expiraEm: Date }>> {
+    const conexoes = await this.prisma.integracaoConexao.findMany({ where: { ativo: true } });
+    const out: Array<{ empresaId: string; servico: string; expiraEm: Date }> = [];
+    for (const c of conexoes) {
+      const p = this.toPublic(c);
+      if (p.credencialExpiraEm && !p.credencialRenovaSozinho) {
+        out.push({ empresaId: c.empresaId, servico: c.servico, expiraEm: p.credencialExpiraEm });
+      }
+    }
+    return out;
   }
 }
