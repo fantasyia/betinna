@@ -14,6 +14,8 @@ const build = (
     janelaLivre?: boolean;
     doDia?: number;
     tokenEmCache?: string;
+    empresaDoHost?: string;
+    ultimaEmpresa?: string;
   } = {},
 ) => {
   const prisma = {
@@ -23,6 +25,11 @@ const build = (
       ),
     },
   };
+  Object.assign(prisma, {
+    auditLog: {
+      findFirst: vi.fn(async () => (over.ultimaEmpresa ? { empresaId: over.ultimaEmpresa } : null)),
+    },
+  });
   const redis = {
     setNxEx: vi.fn(async () => over.janelaLivre ?? true),
     incr: vi.fn(async () => over.doDia ?? 1),
@@ -46,7 +53,10 @@ const build = (
     env,
     // Domínio do tenant pro link: vazio = cai no FRONTEND_URL, que é o que
     // estes testes assertam.
-    branding: { urlDoApp: vi.fn().mockResolvedValue('') },
+    branding: {
+      urlDoApp: vi.fn().mockResolvedValue(''),
+      empresaIdPorHost: vi.fn(async () => over.empresaDoHost ?? null),
+    },
     supabaseAdmin: { auth: { admin: { generateLink } } },
     logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
   });
@@ -73,6 +83,42 @@ describe('AuthSessionService.esqueciSenha', () => {
         para: 'leandro@betinna.ai',
         resetUrl: 'https://app.betinna.ai/welcome?token_hash=pkce_hash_abc123&type=recovery',
       }),
+    );
+  });
+
+  it('usuário em 2 empresas: o e-mail sai com a marca do domínio onde ele pediu', async () => {
+    const usuario = {
+      nome: 'Léo',
+      status: 'ATIVO',
+      empresas: [{ empresaId: 'assessoria' }, { empresaId: 'distribuidora' }],
+    };
+    const { svc, email } = build({ usuario, empresaDoHost: 'distribuidora' });
+    await svc.esqueciSenha('leo@x.com', 'https://app.ribelt.com.br');
+    expect(email.enviarRecuperacaoSenha).toHaveBeenCalledWith(
+      expect.objectContaining({ empresaId: 'distribuidora' }),
+    );
+  });
+
+  it('domínio de ninguém (app.ribelt): vale a última empresa em que ele trabalhou', async () => {
+    const usuario = {
+      id: 'u1',
+      nome: 'Léo',
+      status: 'ATIVO',
+      empresas: [{ empresaId: 'assessoria' }, { empresaId: 'distribuidora' }],
+    };
+    const { svc, email } = build({ usuario, ultimaEmpresa: 'distribuidora' });
+    await svc.esqueciSenha('leo@x.com', 'https://app.ribelt.com.br');
+    expect(email.enviarRecuperacaoSenha).toHaveBeenCalledWith(
+      expect.objectContaining({ empresaId: 'distribuidora' }),
+    );
+  });
+
+  it('domínio de empresa sem vínculo com o usuário não vale: cai no vínculo dele', async () => {
+    const usuario = { nome: 'Léo', status: 'ATIVO', empresas: [{ empresaId: 'assessoria' }] };
+    const { svc, email } = build({ usuario, empresaDoHost: 'outra' });
+    await svc.esqueciSenha('leo@x.com', 'https://app.outra.com');
+    expect(email.enviarRecuperacaoSenha).toHaveBeenCalledWith(
+      expect.objectContaining({ empresaId: 'assessoria' }),
     );
   });
 

@@ -118,17 +118,8 @@ export class BrandingService {
    * viraria Somatec. Por isso a chave é o domínio, não o token.
    */
   async porHost(host: string | undefined): Promise<Branding> {
-    const dominio = this.normalizarHost(host);
-    if (!dominio) return BRANDING_PADRAO;
     try {
-      // Compara já normalizado no banco: config gravada com "https://app.x/" ou
-      // com maiúscula não pode deixar o tenant sem marca em silêncio.
-      const linhas = await this.prisma.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM "Empresa"
-        WHERE ativo = true
-          AND lower(regexp_replace(COALESCE(config #>> '{branding,dominio}', ''), '^https?://|/$', '', 'g')) = ${dominio}
-        LIMIT 1`;
-      const id = linhas[0]?.id;
+      const id = await this.empresaIdPorHost(host);
       if (!id) return BRANDING_PADRAO;
       return this.doTenant(id);
     } catch (err) {
@@ -137,6 +128,23 @@ export class BrandingService {
       this.logger.warn(`Branding por host falhou (${host}): ${String(err)}`);
       return BRANDING_PADRAO;
     }
+  }
+
+  /**
+   * Empresa dona do domínio — a MESMA que `porHost` veste na tela de login.
+   * Lança se o banco falhar; quem chama decide o que fazer sem ela.
+   */
+  async empresaIdPorHost(host: string | undefined): Promise<string | null> {
+    const dominio = this.normalizarHost(host);
+    if (!dominio) return null;
+    // Compara já normalizado no banco: config gravada com "https://app.x/" ou
+    // com maiúscula não pode deixar o tenant sem marca em silêncio.
+    const linhas = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Empresa"
+      WHERE ativo = true
+        AND lower(regexp_replace(COALESCE(config #>> '{branding,dominio}', ''), '^https?://|/$', '', 'g')) = ${dominio}
+      LIMIT 1`;
+    return linhas[0]?.id ?? null;
   }
 
   /** Marca de um tenant conhecido — e-mails, links, notificações. */

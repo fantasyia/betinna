@@ -174,8 +174,9 @@ export class AuthController {
   })
   async esqueciSenha(
     @Body(new ZodValidationPipe(esqueciSenhaSchema)) dto: EsqueciSenhaDto,
+    @Headers('origin') origin?: string,
   ): Promise<{ enviado: boolean; motivo?: 'limite_diario'; restantes?: number }> {
-    return this.authSession.esqueciSenha(dto.email);
+    return this.authSession.esqueciSenha(dto.email, origin);
   }
 
   /**

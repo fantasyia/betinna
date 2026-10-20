@@ -242,6 +242,8 @@ export class AuthSessionService {
    */
   async esqueciSenha(
     email: string,
+    /** Origin/host de onde o pedido saiu — escolhe a marca do e-mail. */
+    origem?: string,
   ): Promise<{ enviado: boolean; motivo?: 'limite_diario'; restantes?: number }> {
     const alvo = email.trim().toLowerCase();
     // E-mail mascarado no LOG (o Pino só redige por chave, não texto livre). As
@@ -275,7 +277,7 @@ export class AuthSessionService {
         // A empresa entra pro link sair no domínio DO TENANT: com white-label
         // no ar, `FRONTEND_URL` (uma só) mandaria o rep da Somatec pro domínio
         // do outro — com a marca errada, e talvez fora da allowlist do Supabase.
-        select: { nome: true, status: true, empresas: { select: { empresaId: true }, take: 1 } },
+        select: { id: true, nome: true, status: true, empresas: { select: { empresaId: true } } },
       });
       // Desligado não redefine senha — seria porta de volta pra quem saiu.
       if (!usuario || usuario.status === 'INATIVO') {
@@ -318,8 +320,9 @@ export class AuthSessionService {
       } else {
         this.logger.log(`[reset] ${alvoLog}: reenviando o MESMO link (ainda válido)`);
       }
+      const empresaId = await this.empresaDoReset(usuario.id, usuario.empresas ?? [], origem);
       const baseApp = await this.branding
-        .urlDoApp(usuario.empresas?.[0]?.empresaId)
+        .urlDoApp(empresaId)
         .catch(() => this.env.get('FRONTEND_URL') ?? '');
       const resetUrl =
         `${(baseApp || this.env.get('FRONTEND_URL') || '').replace(/\/+$/, '')}/welcome` +
@@ -329,7 +332,7 @@ export class AuthSessionService {
         para: alvo,
         nome: usuario.nome,
         resetUrl,
-        empresaId: usuario.empresas?.[0]?.empresaId,
+        empresaId,
       });
       if (!enviado.ok) {
         this.logger.error(
@@ -347,6 +350,36 @@ export class AuthSessionService {
       );
     }
     return neutro;
+  }
+
+  /**
+   * Empresa cuja marca veste o e-mail de senha, pra quem tem mais de uma.
+   *
+   * 1º a do domínio onde a pessoa pediu (a marca que ela viu no login); 2º a
+   * última em que ela trabalhou (AuditLog). `empresas[0]` era sorteio: o ADMIN
+   * da Distribuidora recebia o e-mail vestido de Assessoria (20/10) — e o
+   * `app.ribelt.com.br` não é domínio de empresa nenhuma, então o 1º sozinho
+   * não resolvia.
+   */
+  private async empresaDoReset(
+    usuarioId: string | undefined,
+    empresas: Array<{ empresaId: string }>,
+    origem: string | undefined,
+  ): Promise<string | undefined> {
+    const vinculos = empresas.map((e) => e.empresaId);
+    if (vinculos.length <= 1) return vinculos[0];
+    const doHost = await this.branding.empresaIdPorHost(origem).catch(() => null);
+    if (doHost && vinculos.includes(doHost)) return doHost;
+    const ultima = usuarioId
+      ? await this.prisma.auditLog
+          .findFirst({
+            where: { usuarioId, empresaId: { in: vinculos } },
+            orderBy: { criadoEm: 'desc' },
+            select: { empresaId: true },
+          })
+          .catch(() => null)
+      : null;
+    return ultima?.empresaId ?? vinculos[0];
   }
 
   /**

@@ -507,6 +507,12 @@ export default function LoginPage() {
       {/* CSS scoped pros estados de focus dos inputs */}
       <style>
         {`
+          /* A seleção global usa a primária a 25% — no fundo escuro do login
+             some. Aqui vai a secundária, com o texto claro por cima. */
+          .login-input::selection {
+            background: ${comAlfa(COLORS.cyan, 0.45)};
+            color: #ffffff;
+          }
           .login-input::placeholder {
             color: ${COLORS.textoFraco};
           }
