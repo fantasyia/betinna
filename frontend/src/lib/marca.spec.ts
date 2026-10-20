@@ -42,7 +42,7 @@ const cssDaMarca = () => document.getElementById('marca-tenant')?.textContent ??
 beforeEach(() => {
   document.head.innerHTML =
     '<meta name="theme-color" content="#bd1fbf">' +
-    '<link rel="icon" type="image/svg+xml" href="/favicon.svg">' +
+    '<link rel="icon" type="image/svg+xml" href="/betinna-symbol.svg">' +
     '<link rel="manifest" href="/manifest.webmanifest">';
   localStorage.clear();
 });
@@ -189,7 +189,7 @@ describe('ícone e título do app', () => {
     await carregarMarca();
 
     expect(document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href).toContain(
-      'favicon.svg',
+      'betinna-symbol.svg',
     );
   });
 });
