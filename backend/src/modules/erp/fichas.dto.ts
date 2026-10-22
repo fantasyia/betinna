@@ -26,8 +26,13 @@ export const fichaSchema = z.object({
          * Quantidade POR TAMANHO (Léo, 14/10: o elástico muda em cada um), na
          * unidade do insumo. Com ela, o consumoPorPeca é recalculado (média).
          */
+        // 0 = o tamanho NÃO leva o insumo (22/10: capuz infantil 2/4/6 sem
+        // cordão nem ilhós, norma de segurança). Precisa de ao menos um > 0.
         porTamanho: z
-          .record(z.string().trim().min(1).max(20), z.number().positive().max(100_000))
+          .record(z.string().trim().min(1).max(20), z.number().nonnegative().max(100_000))
+          .refine((r) => Object.values(r).some((v) => v > 0), {
+            message: 'Por tamanho: algum tamanho precisa de consumo maior que zero',
+          })
           .nullable()
           .optional(),
         /** Ficha da OP impressa (14/10): vai pra facção ou pro acabamento. */

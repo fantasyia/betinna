@@ -666,6 +666,34 @@ describe('necessidadesDaGrade — por tamanho', () => {
     const m = necessidadesDaGrade(pecas, new Map([['reg', [elastico]]]));
     expect([...m.values()][0].quantidade).toBeCloseTo(7.6 + 8 + 8.4, 6);
   });
+
+  it('22/10: tamanho com 0 NÃO puxa o insumo (capuz infantil 2/4/6 sem cordão)', () => {
+    const cordao = {
+      insumoId: 'cordao',
+      consumoPorPeca: 0.5,
+      porTamanho: new Map([
+        ['2', 0],
+        ['8', 1],
+      ]),
+      cores: null,
+    };
+    const pecas = new Map([
+      [
+        'inf',
+        new Map<string | null, Map<string, number>>([
+          [
+            'cor-preto',
+            new Map([
+              ['2', 10],
+              ['8', 4],
+            ]),
+          ],
+        ]),
+      ],
+    ]);
+    const m = necessidadesDaGrade(pecas, new Map([['inf', [cordao]]]));
+    expect([...m.values()][0].quantidade).toBe(4); // só os 4 do tamanho 8
+  });
 });
 
 /** Dividir a OP em 2 (Léo, 14/10): risco acima de 6 m. */

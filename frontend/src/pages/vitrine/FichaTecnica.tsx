@@ -218,7 +218,11 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
   // Por tamanho: o consumo da grade é a média dos tamanhos preenchidos (o servidor confere).
   const consumoDe = (l: Linha) => {
     if (!l.porTamanho) return lerNumero(l.consumo) ?? 0;
-    const vs = Object.values(l.porTamanho).map((v) => lerNumero(v) ?? 0).filter((v) => v > 0);
+    // Campo vazio não conta; "0" conta (tamanho que NÃO leva o insumo, 22/10).
+    const vs = Object.values(l.porTamanho)
+      .filter((v) => v.trim() !== '')
+      .map((v) => lerNumero(v) ?? 0)
+      .filter((v) => v >= 0);
     return vs.length ? vs.reduce((s, v) => s + v, 0) / vs.length : 0;
   };
   const custoItem = (l: Linha) => consumoDe(l) * custoUnit(l);
@@ -242,8 +246,9 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           const porTamanho = l.porTamanho
             ? Object.fromEntries(
                 Object.entries(l.porTamanho)
+                  .filter(([, v]) => v.trim() !== '')
                   .map(([t, v]) => [t, lerNumero(v) ?? 0] as const)
-                  .filter(([, v]) => v > 0),
+                  .filter(([, v]) => v >= 0),
               )
             : null;
           return {

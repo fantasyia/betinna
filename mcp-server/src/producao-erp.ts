@@ -152,10 +152,10 @@ export function registrarProducaoErp(server: McpServer, { ok, seguro }: Ajudante
               insumoId: id,
               consumoPorPeca: z.number().positive().max(100_000).describe("Na unidade do insumo"),
               porTamanho: z
-                .record(z.string().min(1).max(20), z.number().positive().max(100_000))
+                .record(z.string().min(1).max(20), z.number().nonnegative().max(100_000))
                 .nullable()
                 .optional()
-                .describe("Consumo por tamanho da grade; com ele, o consumo vira a média"),
+                .describe("Consumo por tamanho da grade (0 = o tamanho NÃO leva o insumo); com ele, o consumo vira a média"),
               etapa: z.enum(["FACCAO", "ACABAMENTO"]).optional(),
               observacao: z.string().max(200).nullable().optional(),
               corFixaId: id.nullable().optional().describe("Só pra insumo com cores (ex.: cordão sempre Branco)"),
