@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { digitoEan, eanValido, proximosEansInternos, skuSugerido } from './codigos-produto';
+import {
+  digitoEan,
+  eanValido,
+  prefixoGs1,
+  proximosEans,
+  proximosEansInternos,
+  skuSugerido,
+} from './codigos-produto';
 
 describe('EAN-13', () => {
   it('dígito verificador confere com EAN real', () => {
@@ -20,6 +27,28 @@ describe('EAN-13', () => {
       1,
     );
     expect(depois[0]!.slice(0, 12)).toBe('200000000006');
+  });
+});
+
+describe('prefixo GS1 da empresa (22/10)', () => {
+  it('continua do maior EAN do prefixo, sem repetir, ignorando os de outro prefixo', () => {
+    const usados = ['7908700027323', '7908700027590', '2000000000015'];
+    const [a, b] = proximosEans(usados, 2, '7908700');
+    expect(a!.slice(0, 12)).toBe('790870002760');
+    expect(b!.slice(0, 12)).toBe('790870002761');
+    expect(eanValido(a!) && eanValido(b!)).toBe(true);
+  });
+
+  it('lê o prefixo da config; inválido vira null (cai na faixa interna)', () => {
+    expect(prefixoGs1({ codigos: { prefixoGs1: '7908700' } })).toBe('7908700');
+    expect(prefixoGs1({ codigos: { prefixoGs1: '79A' } })).toBeNull();
+    expect(prefixoGs1(null)).toBeNull();
+  });
+
+  it('faixa esgotada estoura em vez de dar a volta', () => {
+    expect(() =>
+      proximosEans(['7908700999990'.slice(0, 12) + digitoEan('790870099999')], 1, '7908700'),
+    ).toThrow(/esgotada/);
   });
 });
 

@@ -418,6 +418,12 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   const variacao = z.object({
     id: z.string().describe("ID da variação (vitrine_modelo_ver → variacoes[].id)"),
     sku: z.string().max(60).nullable().optional(),
+    skuSecundario: z
+      .string()
+      .max(60)
+      .nullable()
+      .optional()
+      .describe("SKU secundário (código do sistema anterior) — só no sistema, não vai na etiqueta"),
     ean: z
       .string()
       .regex(/^\d{13}$/, "EAN-13: 13 dígitos")
@@ -430,7 +436,7 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     "vitrine_variacoes_atualizar",
     {
       description:
-        "SKU, EAN e/ou estoque de variações (cor × tamanho), uma ou várias (até 500 — carga de planilha). " +
+        "SKU, SKU secundário, EAN e/ou estoque de variações (cor × tamanho), uma ou várias (até 500 — carga de planilha). " +
         "Responde o resultado de cada uma; uma que falha (EAN inválido ou repetido, SKU repetido) não para as outras.",
       inputSchema: { variacoes: z.array(variacao).min(1).max(500) },
       annotations: { readOnlyHint: false, destructiveHint: false },
@@ -454,7 +460,8 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     {
       description:
         "Gera o SKU (modelo-cor-linha-tamanho) e o EAN-13 que FALTAM nas variações — nunca troca código existente. " +
-        "Sem prefixo GS1, o EAN é da faixa interna (começa com 2): vale pra etiqueta e estoque, não pra marketplace. " +
+        "O EAN continua a numeração do prefixo GS1 da empresa a partir do MAIOR já cadastrado — carregue a planilha ANTES de gerar, " +
+        "senão um número da planilha pode ser repetido. Sem prefixo configurado, usa a faixa interna (começa com 2). " +
         "Sem modeloId = o catálogo todo. sku=false ou ean=false pula aquele código.",
       inputSchema: {
         modeloId: z.string().max(40).optional(),

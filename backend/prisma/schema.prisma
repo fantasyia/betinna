@@ -4291,7 +4291,9 @@ model CatalogoVariacao {
   produtoId       String  @unique
   /// Opcional nesta fase.
   sku             String?
-  /// EAN-13 da peça (20/10). Sem prefixo GS1, faixa interna (começa com 2).
+  /// SKU secundário (22/10): código do sistema anterior. Só no sistema.
+  skuSecundario   String?
+  /// EAN-13 da peça (20/10). Prefixo GS1 da empresa ou faixa interna (2).
   ean             String?
   /// Opcional nesta fase e NÃO bloqueia venda.
   estoque         Int?

@@ -150,6 +150,8 @@ export type ModeloDto = z.infer<typeof modeloSchema>;
 
 export const variacaoPatchSchema = z.object({
   sku: z.string().trim().max(60).nullable().optional(),
+  /** Código do sistema anterior / fornecedor (22/10). Só no sistema, não na etiqueta. */
+  skuSecundario: z.string().trim().max(60).nullable().optional(),
   /** EAN-13 (20/10): 13 dígitos com verificador válido; null tira. */
   ean: z
     .string()

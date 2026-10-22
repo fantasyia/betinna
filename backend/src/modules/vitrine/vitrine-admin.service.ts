@@ -10,7 +10,7 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
-import { proximosEansInternos, skuSugerido } from './codigos-produto';
+import { prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
 import type {
   CategoriaDto,
   CorDto,
@@ -56,6 +56,7 @@ const modeloInclude = {
       modeloCorId: true,
       modeloTamanhoId: true,
       sku: true,
+      skuSecundario: true,
       ean: true,
       estoque: true,
       produtoId: true,
@@ -602,6 +603,7 @@ export class VitrineAdminService {
           data: {
             ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
             ...(dto.ean !== undefined ? { ean: dto.ean } : {}),
+            ...(dto.skuSecundario !== undefined ? { skuSecundario: dto.skuSecundario } : {}),
             ...(dto.estoque !== undefined ? { estoque: dto.estoque } : {}),
           },
         });
@@ -620,8 +622,9 @@ export class VitrineAdminService {
   }
 
   /**
-   * Gera o que FALTA (20/10): SKU legível modelo-cor-linha-tamanho e EAN-13 da
-   * faixa interna (a Ribelt não tem prefixo GS1). Nunca troca código que já
+   * Gera o que FALTA (20/10): SKU legível modelo-cor-linha-tamanho e EAN-13 —
+   * no prefixo GS1 da empresa (config.codigos.prefixoGs1), continuando do maior
+   * já cadastrado; sem prefixo, na faixa interna 2. Nunca troca código que já
    * existe — esse pode estar numa etiqueta colada. Devolve o que gravou.
    */
   async gerarCodigos(user: AuthenticatedUser, dto: GerarCodigosDto) {
@@ -651,6 +654,11 @@ export class VitrineAdminService {
         a.modeloLinha.linha.nome.localeCompare(b.modeloLinha.linha.nome) ||
         a.modeloTamanho.tamanho.ordem - b.modeloTamanho.tamanho.ordem,
     );
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const prefixo = prefixoGs1(empresa?.config);
     const [skus, eans] = await Promise.all([
       this.prisma.produto.findMany({
         where: { empresaId, sku: { not: null } },
@@ -663,10 +671,16 @@ export class VitrineAdminService {
     ]);
     const skusUsados = new Set(skus.map((p) => p.sku!));
     const semEan = querEan ? variacoes.filter((v) => !v.ean) : [];
-    const novosEans = proximosEansInternos(
-      eans.map((e) => e.ean!),
-      semEan.length,
-    );
+    let novosEans: string[];
+    try {
+      novosEans = proximosEans(
+        eans.map((e) => e.ean!),
+        semEan.length,
+        prefixo,
+      );
+    } catch (err) {
+      throw new BusinessRuleException(err instanceof Error ? err.message : String(err));
+    }
     const eanDe = new Map(semEan.map((v, i) => [v.id, novosEans[i]!]));
     const gravados: Array<{ id: string; sku?: string; ean?: string }> = [];
     for (const v of variacoes) {
@@ -697,6 +711,7 @@ export class VitrineAdminService {
       variacoes: variacoes.length,
       skusGerados: gravados.filter((g) => g.sku).length,
       eansGerados: gravados.filter((g) => g.ean).length,
+      prefixoEan: prefixo ?? '2 (uso interno)',
       gravados,
     };
   }

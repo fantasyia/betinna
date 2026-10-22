@@ -125,6 +125,8 @@ export interface Modelo {
     modeloCorId: string;
     modeloTamanhoId: string;
     sku: string | null;
+    /** Código do sistema anterior (22/10) — só no sistema. */
+    skuSecundario?: string | null;
     /** EAN-13 (20/10); sem prefixo GS1, faixa interna (começa com 2). */
     ean?: string | null;
     estoque: number | null;

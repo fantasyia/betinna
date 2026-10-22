@@ -307,12 +307,18 @@ export function ModeloEditor({
     }
   }
 
-  async function salvarVariacao(id: string, campo: 'sku' | 'ean' | 'estoque', valor: string) {
+  async function salvarVariacao(
+    id: string,
+    campo: 'sku' | 'skuSecundario' | 'ean' | 'estoque',
+    valor: string,
+  ) {
     const v = valor.trim();
     const corpo =
       campo === 'sku'
         ? { sku: v || null }
-        : campo === 'ean'
+        : campo === 'skuSecundario'
+          ? { skuSecundario: v || null }
+          : campo === 'ean'
           ? { ean: v || null }
           : { estoque: v === '' ? null : Number.parseInt(v, 10) };
     if (campo === 'estoque' && corpo.estoque !== null && Number.isNaN(corpo.estoque as number)) {
@@ -849,7 +855,7 @@ function TabelaVariacoes({
   onGerar,
 }: {
   modelo: Modelo | null;
-  onSalvar: (id: string, campo: 'sku' | 'ean' | 'estoque', valor: string) => unknown;
+  onSalvar: (id: string, campo: 'sku' | 'skuSecundario' | 'ean' | 'estoque', valor: string) => unknown;
   onGerar: () => unknown;
 }) {
   if (!modelo || modelo.variacoes.length === 0) {
@@ -882,8 +888,8 @@ function TabelaVariacoes({
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <p className="m-0 mr-auto text-sm text-muted">
           {modelo.variacoes.length} variações. SKU, EAN e estoque são opcionais — estoque não bloqueia
-          venda. O EAN gerado é de uso interno (começa com 2): vale pra etiqueta e estoque, não pra
-          marketplace.
+          venda. O EAN gerado continua a numeração do prefixo GS1 da empresa (sem prefixo, faixa
+          interna começando com 2, que não vale pra marketplace).
         </p>
         <Button size="sm" variant="secondary" onClick={() => void onGerar()} data-testid="gerar-codigos">
           Gerar SKU e EAN que faltam
@@ -896,6 +902,7 @@ function TabelaVariacoes({
               <th className="px-3 py-2">Cor</th>
               <th className="px-3 py-2">Linha · tamanho</th>
               <th className="px-3 py-2">SKU</th>
+              <th className="px-3 py-2">SKU secundário</th>
               <th className="px-3 py-2 w-40">EAN</th>
               <th className="px-3 py-2 w-28">Estoque</th>
             </tr>
@@ -922,6 +929,18 @@ function TabelaVariacoes({
                     className="h-8"
                     onBlur={(e) =>
                       e.target.value !== (v.sku ?? '') && void onSalvar(v.id, 'sku', e.target.value)
+                    }
+                  />
+                </td>
+                <td className="px-3 py-1.5">
+                  <Input
+                    defaultValue={v.skuSecundario ?? ''}
+                    maxLength={60}
+                    className="h-8"
+                    data-testid={`sku2-${v.id}`}
+                    onBlur={(e) =>
+                      e.target.value !== (v.skuSecundario ?? '') &&
+                      void onSalvar(v.id, 'skuSecundario', e.target.value)
                     }
                   />
                 </td>
