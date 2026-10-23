@@ -19,6 +19,8 @@
 // dentro do initSentry. Sem DSN era 469KB de peso morto no caminho crítico (sentry.ts é importado
 // ESTÁTICO por ErrorBoundary + auth-store). `Sentry` fica null até o import dinâmico resolver.
 type SentryModule = typeof import('@sentry/react');
+// Só TIPO — some no build, não puxa o SDK pro caminho crítico.
+type BrowserOptions = import('@sentry/react').BrowserOptions;
 let Sentry: SentryModule | null = null;
 /** user setado antes do SDK carregar (login no bootstrap) — aplicado quando o SDK chega. */
 let pendingUserId: string | null = null;
@@ -123,6 +125,59 @@ export function redact(s: string): string {
   return out;
 }
 
+/**
+ * Query da URL sai INTEIRA de transação e span: é por ela que viaja o que a pessoa
+ * digitou na busca (nome de cliente), e nome não tem forma que o `redact` reconheça.
+ * O caminho fica — é ele que diz qual tela/endpoint foi lento.
+ */
+function semQuery(s: string): string {
+  return s.replace(/\?[^\s#]*/g, '?[filtrado]');
+}
+
+function limparTextoDeTelemetria(s: string): string {
+  return redact(semQuery(s));
+}
+
+/** Atributos que SÃO a query sozinha, sem `?` na frente — saem inteiros. */
+const ATRIBUTOS_SO_QUERY = ['http.query', 'url.query'];
+const ATRIBUTOS_DE_IP = ['client.address', 'http.client_ip'];
+
+function limparAtributos(dados: Record<string, unknown> | undefined): void {
+  if (!dados) return;
+  for (const chave of [...ATRIBUTOS_SO_QUERY, ...ATRIBUTOS_DE_IP]) delete dados[chave];
+  for (const [chave, valor] of Object.entries(dados)) {
+    if (typeof valor === 'string') dados[chave] = limparTextoDeTelemetria(valor);
+  }
+}
+
+type SpanDoSentry = Parameters<NonNullable<BrowserOptions['beforeSendSpan']>>[0];
+type TransacaoDoSentry = Parameters<NonNullable<BrowserOptions['beforeSendTransaction']>>[0];
+
+/** beforeSendSpan — o SDK não deixa descartar span por aqui, só reescrever. */
+function limparSpan(span: SpanDoSentry): SpanDoSentry {
+  if (typeof span.description === 'string') {
+    span.description = limparTextoDeTelemetria(span.description);
+  }
+  limparAtributos(span.data);
+  return span;
+}
+
+/** beforeSendTransaction — transação NÃO passa pelo beforeSend (só erro passa). */
+function limparTransacao(event: TransacaoDoSentry): TransacaoDoSentry {
+  if (event.user) {
+    delete event.user.email;
+    delete event.user.ip_address;
+    delete event.user.username;
+  }
+  if (typeof event.transaction === 'string') {
+    event.transaction = limparTextoDeTelemetria(event.transaction);
+  }
+  if (event.request?.url) event.request.url = limparTextoDeTelemetria(event.request.url);
+  limparAtributos(event.contexts?.trace?.data as Record<string, unknown> | undefined);
+  event.spans?.forEach((s) => limparSpan(s));
+  return event;
+}
+
 interface ErrorContext {
   url: string;
   userAgent: string;
@@ -223,8 +278,19 @@ export function initSentry(): void {
       S.init({
         dsn: DSN,
         environment: ENV,
+        // Medição de desempenho (carregamento de tela, navegação, chamadas à api).
+        // Sem esta integração o `tracesSampleRate` não media nada: o front não gerava
+        // span nenhum, e o canal ficava mudo até alguém ter um erro de JS.
+        integrations: [S.browserTracingIntegration()],
+        // ⛔ NÃO repassar `sentry-trace`/`baggage` pra api. Ela é outra origem e o CORS
+        // dela (backend/src/main.ts) não aceita esses cabeçalhos: o preflight recusaria
+        // e o app pararia de falar com o servidor.
+        tracePropagationTargets: [],
         // Em prod amostramos 10% das transactions pra controlar custo; dev/staging tudo.
         tracesSampleRate: ENV === 'production' ? 0.1 : 1.0,
+        // Transação e span não passam pelo beforeSend — ver limparTransacao.
+        beforeSendTransaction: (event) => limparTransacao(event),
+        beforeSendSpan: (span) => limparSpan(span),
         replaysSessionSampleRate: 0,
         replaysOnErrorSampleRate: 0,
         sendDefaultPii: false,
