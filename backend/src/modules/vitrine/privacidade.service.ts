@@ -9,6 +9,7 @@ import { pixelLigado } from './meta-pixel.service';
 import { googleTagLigada } from './google-tag.service';
 import { politicaDePrivacidade, type Politica } from './privacidade';
 import type { PrivacidadeConfigDto } from './vitrine.dto';
+import { clarityLigado } from './clarity';
 
 /** O que fica em `Empresa.config.privacidade` (sem segredo). */
 export interface ConfigPrivacidade {
@@ -117,6 +118,7 @@ export class PrivacidadeService {
         assistenteIa: e.botWhatsappAtivo,
         pixel: !!pixelLigado(e.config),
         google: !!googleTagLigada(e.config),
+        clarity: !!clarityLigado(e.config),
       },
     });
   }

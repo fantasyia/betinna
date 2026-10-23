@@ -35,6 +35,8 @@ export interface DadosPolitica {
     pixel?: boolean;
     /** Tag do Google (GA4 + Google Ads) ligada na vitrine (15/10). */
     google?: boolean;
+    /** Microsoft Clarity (gravação de sessão) ligado na vitrine (22/10). */
+    clarity?: boolean;
   };
 }
 
@@ -98,6 +100,12 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
     );
   }
 
+  if (x.usa.clarity) {
+    coleta.push(
+      'Uso da vitrine (Microsoft Clarity): cliques, rolagem e movimentos na página, para entendermos onde a navegação trava. Os campos com dados pessoais e de pagamento ficam mascarados e não são gravados.',
+    );
+  }
+
   const finalidades: string[] = [
     'Receber, conferir e atender o seu pedido, inclusive confirmar itens, preços e prazos com você (execução de contrato e procedimentos preliminares).',
     'Responder o seu contato e enviar informações sobre pedidos e produtos que você pediu (legítimo interesse e execução de contrato).',
@@ -120,6 +128,12 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
   if (x.usa.google) {
     finalidades.push(
       'Medir as visitas da vitrine e o resultado dos nossos anúncios no Google (legítimo interesse).',
+    );
+  }
+
+  if (x.usa.clarity) {
+    finalidades.push(
+      'Melhorar a vitrine a partir de como ela é usada, de forma agregada (legítimo interesse).',
     );
   }
 
@@ -149,6 +163,11 @@ export function politicaDePrivacidade(x: DadosPolitica): Politica {
   if (x.usa.google) {
     compartilha.push(
       'Google (Analytics e Ads): recebe os eventos de navegação e de compra. Na compra, e-mail e telefone vão em formato cifrado (hash), só para o Google associar a compra ao anúncio.',
+    );
+  }
+  if (x.usa.clarity) {
+    compartilha.push(
+      'Microsoft (Clarity): recebe os registros de uso da página (cliques, rolagem, movimentos), com os campos de dados pessoais e de pagamento mascarados, conforme a política da Microsoft.',
     );
   }
   compartilha.push(

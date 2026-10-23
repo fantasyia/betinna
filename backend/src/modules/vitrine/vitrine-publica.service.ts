@@ -11,6 +11,7 @@ import { privacidadePublicada } from './privacidade.service';
 import { pixelLigado } from './meta-pixel.service';
 import { googleTagLigada } from './google-tag.service';
 import { whatsappDaVitrine } from './contato.service';
+import { clarityLigado } from './clarity';
 
 /** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
 function freteDaVitrine(config: unknown) {
@@ -242,6 +243,8 @@ export class VitrinePublicaService {
       pixel: pixelLigado(vitrine.empresa.config),
       // Tag do Google (GA4 + Ads) — IDs públicos.
       googleTag: googleTagLigada(vitrine.empresa.config),
+      // Clarity (22/10): só o ID; a página não carrega na visita da equipe.
+      clarity: clarityLigado(vitrine.empresa.config),
       linhas,
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({

@@ -69,6 +69,7 @@ import {
   primeiroCheckout,
 } from './pixel';
 import { compraGoogle, iniciarGoogleTag } from './google-tag';
+import { MASCARA_CLARITY, iniciarClarity } from './clarity';
 import { capturarCodigoInterno, codigoInterno, sairDoModoInterno } from './modo-interno';
 import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
 import './vitrine.css';
@@ -162,6 +163,7 @@ export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } =
             setInterno(eInterno);
             if (v.pixel && !eInterno) iniciarPixel(v.pixel);
             if (v.googleTag) iniciarGoogleTag(v.googleTag, { interno: eInterno });
+            if (v.clarity) iniciarClarity(v.clarity.projetoId, { interno: eInterno });
           });
       })
       .catch((e) =>
@@ -2037,7 +2039,7 @@ function FolhaEnvio({
   return (
     <>
       <div className="vt-scrim" onClick={onFechar} />
-      <form className="vt-sheet vt-envio" onSubmit={enviar} aria-label="Enviar pedido">
+      <form className="vt-sheet vt-envio" onSubmit={enviar} aria-label="Enviar pedido" {...MASCARA_CLARITY}>
         <div className="vt-grab" />
         {/* X pra fechar (Léo, 15/10): puxar a alça no celular recarregava a página. */}
         <button type="button" className="vt-sh-x" onClick={onFechar} aria-label="Fechar" data-testid="vt-envio-fechar">
@@ -2237,7 +2239,7 @@ function PedidoEnviado({
     );
   }, [e.total]);
   return (
-    <section className="vt-cart vt-ok" aria-label="Pedido enviado" data-testid="vt-enviado">
+    <section className="vt-cart vt-ok" aria-label="Pedido enviado" data-testid="vt-enviado" {...MASCARA_CLARITY}>
       <div className="vt-ok-corpo">
         <div className="vt-ok-selo" aria-hidden="true">
           ✓

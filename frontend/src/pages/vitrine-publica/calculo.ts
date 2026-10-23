@@ -95,6 +95,8 @@ export interface VitrinePub {
   pixel?: string | null;
   /** Tag do Google (GA4 + Ads). null = desligada. */
   googleTag?: import('./google-tag').GoogleTag | null;
+  /** Microsoft Clarity (22/10). null = desligado. */
+  clarity?: { projetoId: string } | null;
   /** `selo`: aviso da linha (Plus Size de verdade…); null = sem selo. */
   linhas: Array<{ id: string; nome: string; selo?: string | null }>;
   modelos: ModeloPub[];

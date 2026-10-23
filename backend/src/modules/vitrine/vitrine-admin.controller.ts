@@ -57,6 +57,7 @@ import { MetaPixelService } from './meta-pixel.service';
 import { GoogleTagService } from './google-tag.service';
 import { ModoInternoService } from './modo-interno.service';
 import { ContatoService } from './contato.service';
+import { clarityConfigSchema, type ClarityConfigDto } from './clarity';
 
 /**
  * Vitrine de atacado — cadastro do lado da empresa (Fase 1).
@@ -111,6 +112,22 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(googleTagConfigSchema)) dto: GoogleTagConfigDto,
   ) {
     return this.googleTag.salvar(user, dto);
+  }
+
+  // ─── Microsoft Clarity (gravação de sessão, 22/10) ──────────────────────
+  @Get('clarity')
+  @ApiOperation({ summary: 'Microsoft Clarity: ID do projeto e se está ligado' })
+  clarityStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.clarityStatus(user);
+  }
+
+  @Put('clarity')
+  @ApiOperation({ summary: 'Salva o ID do projeto do Clarity e liga/desliga' })
+  claritySalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(clarityConfigSchema)) dto: ClarityConfigDto,
+  ) {
+    return this.svc.claritySalvar(user, dto);
   }
 
   // ─── Modo interno (visita da equipe não conta) ──────────────────────────

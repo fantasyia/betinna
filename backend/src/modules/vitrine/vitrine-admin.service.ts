@@ -11,6 +11,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
+import { configClarity, type ClarityConfigDto } from './clarity';
 import type {
   CategoriaDto,
   CorDto,
@@ -648,6 +649,27 @@ export class VitrineAdminService {
       }
       throw err;
     }
+  }
+
+  // ─── Microsoft Clarity (22/10) ──────────────────────────────────────────
+
+  async clarityStatus(user: AuthenticatedUser) {
+    const empresaId = await this.empresaComVitrine(user);
+    const e = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    return { config: configClarity(e?.config) };
+  }
+
+  async claritySalvar(user: AuthenticatedUser, dto: ClarityConfigDto) {
+    const empresaId = await this.empresaComVitrine(user);
+    const parte = { ativo: dto.ativo, projetoId: dto.projetoId ?? null };
+    await this.prisma.$executeRaw`
+      UPDATE "Empresa"
+      SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{clarity}', ${JSON.stringify(parte)}::jsonb, true)
+      WHERE "id" = ${empresaId}`;
+    return this.clarityStatus(user);
   }
 
   /**
