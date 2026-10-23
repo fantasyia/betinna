@@ -79,6 +79,12 @@ export class FluxoEventBusService {
     leadId: string,
     motivo: MotivoParar,
     excetoExecucaoId?: string,
+    /**
+     * Só as execuções criadas ANTES disto (23/10). O pagamento move o lead pra
+     * "1ª compra" — o que já ACENDE a régua de pós-compra — e só DEPOIS emite o
+     * PEDIDO_PAGO, cujo "parar quem comprou" cancelava a régua recém-nascida.
+     */
+    criadasAntesDe?: Date | null,
   ): Promise<number> {
     try {
       // Barato e sem efeito colateral: empresa sem fluxo marcado com o motivo
@@ -98,7 +104,8 @@ export class FluxoEventBusService {
           AND e.teste = false
           AND (e.contexto #>> '{leadId}') = ${leadId}
           AND ${motivo} = ANY(f."pararQuando")
-          AND e.id <> ${excetoExecucaoId ?? ''}`;
+          AND e.id <> ${excetoExecucaoId ?? ''}
+          AND (${criadasAntesDe ?? null}::timestamptz IS NULL OR e."criadoEm" < ${criadasAntesDe ?? null}::timestamptz)`;
       if (n > 0)
         this.logger.log(`[régua] ${n} execução(ões) do lead ${leadId} paradas (${motivo})`);
       return n;
@@ -134,7 +141,10 @@ export class FluxoEventBusService {
       funilOrigem = e?.funilId ?? null;
     }
     const motivo = motivoDoEvento(triggerTipo, contexto, funilOrigem);
-    if (motivo) await this.pararReguasDoLead(empresaId, leadId, motivo);
+    // `_eventoEm`: quando o fato aconteceu (antes do que ele mesmo acendeu).
+    const em = typeof contexto['_eventoEm'] === 'string' ? new Date(contexto['_eventoEm']) : null;
+    const antes = em && !Number.isNaN(em.getTime()) ? em : null;
+    if (motivo) await this.pararReguasDoLead(empresaId, leadId, motivo, undefined, antes);
   }
 
   /**

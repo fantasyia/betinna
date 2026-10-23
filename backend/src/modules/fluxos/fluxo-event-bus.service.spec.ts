@@ -130,6 +130,42 @@ describe('FluxoEventBusService', () => {
       expect(queue.add).toHaveBeenCalledOnce();
     });
 
+    it('PEDIDO_PAGO só para as réguas criadas ANTES do pagamento (a de pós-compra recém-nascida fica)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([]);
+      (prisma.fluxo as unknown as { findFirst: unknown }).findFirst = vi
+        .fn()
+        .mockResolvedValue({ id: 'f-regua' });
+      const em = '2026-10-23T20:00:00.000Z';
+
+      await service.disparar('emp-1', 'PEDIDO_PAGO' as FluxoTriggerTipo, {
+        leadId: 'lead-1',
+        _eventoEm: em,
+      });
+
+      const chamada = prisma.$executeRaw.mock.calls.find((c: unknown[]) =>
+        String((c[0] as string[]).join('?')).includes('"pararQuando"'),
+      );
+      expect(chamada).toBeDefined();
+      const sql = (chamada![0] as string[]).join('?');
+      expect(sql).toContain('e."criadoEm" <');
+      expect(chamada!.slice(1)).toContainEqual(new Date(em));
+      expect(chamada!.slice(1)).toContain('COMPROU');
+    });
+
+    it('sem _eventoEm, para como antes (corte nulo)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([]);
+      (prisma.fluxo as unknown as { findFirst: unknown }).findFirst = vi
+        .fn()
+        .mockResolvedValue({ id: 'f-regua' });
+
+      await service.disparar('emp-1', 'PEDIDO_PAGO' as FluxoTriggerTipo, { leadId: 'lead-1' });
+
+      const chamada = prisma.$executeRaw.mock.calls.find((c: unknown[]) =>
+        String((c[0] as string[]).join('?')).includes('"pararQuando"'),
+      );
+      expect(chamada!.slice(1)).not.toContainEqual(expect.any(Date));
+    });
+
     it('lead com a etiqueta `teste` não acende fluxo (card cmvl673p6)', async () => {
       prisma.fluxo.findMany.mockResolvedValue([fakeFluxo()]);
       const lead = { count: vi.fn().mockResolvedValue(1) };

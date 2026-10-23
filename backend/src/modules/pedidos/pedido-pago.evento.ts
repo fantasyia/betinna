@@ -73,8 +73,20 @@ export async function dispararPedidoPago(
     if (!p) return;
     // Funil (14/10): liga ao lead e move pra "Pedido pago" (ou cria na borda) —
     // só com config.funilPedidos. O leadId vai no contexto (parar régua "comprou").
+    // O "parar quem comprou" vale pras réguas de ANTES do pagamento: mover o lead
+    // (logo abaixo) já acende a de pós-compra, e ela não pode ser cancelada.
+    // Relógio do BANCO (o mesmo que carimba a execução): sem desvio de relógio.
+    // Falhou a leitura: sem o corte (comportamento de antes), nunca sem o evento.
+    let eventoEm: Date | null = null;
+    try {
+      const r = await prisma.$queryRaw<Array<{ agora: Date }>>`SELECT now() AS agora`;
+      eventoEm = r[0]?.agora ?? null;
+    } catch {
+      eventoEm = null;
+    }
     const leadId = await ligarLeadDoPedido({ prisma, bus, logger }, p.id, 'PAGO');
     await bus.disparar(p.empresaId, 'PEDIDO_PAGO', {
+      ...(eventoEm ? { _eventoEm: new Date(eventoEm).toISOString() } : {}),
       pedidoId: p.id,
       ...(leadId ? { leadId } : {}),
       pedido: {
