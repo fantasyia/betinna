@@ -99,8 +99,21 @@ export const corteSchema = z.object({
     .array(z.object({ produtoId: id, cortada: z.number().int().min(0).max(100_000) }))
     .min(1)
     .refine(semRepetir, 'Variação repetida'),
+  /** Custo do corte DE FATO (Léo, 20/10). Ausente = peças cortadas × valor da empresa. */
+  custoCorte: z.number().nonnegative().max(1_000_000).optional(),
+  /** Frete da facção desta OP. Ausente = o padrão da empresa. */
+  custoFrete: z.number().nonnegative().max(1_000_000).optional(),
 });
 export type CorteDto = z.infer<typeof corteSchema>;
+
+/** Corrigir custo de corte/frete depois do corte (até fechar a OP). */
+export const custosOpSchema = z
+  .object({
+    custoCorte: z.number().nonnegative().max(1_000_000).optional(),
+    custoFrete: z.number().nonnegative().max(1_000_000).optional(),
+  })
+  .refine((d) => d.custoCorte !== undefined || d.custoFrete !== undefined, 'Nada pra mudar');
+export type CustosOpDto = z.infer<typeof custosOpSchema>;
 
 /** Envio pra facção: peças enviadas, aviamentos que saíram e o preço por peça. */
 export const envioSchema = z.object({

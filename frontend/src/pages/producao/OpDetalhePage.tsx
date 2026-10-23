@@ -68,6 +68,20 @@ interface Op {
   custoAcabamento?: number;
   /** Corte (20/10): peças cortadas × custo de corte por peça, gravado no corte. */
   custoCorte?: number;
+  /** Frete da facção da OP (20/10), rateado nas peças no fechamento. */
+  custoFrete?: number;
+  /** Tecido estimado (ficha × grade cortada) × real do corte (20/10). */
+  tecidoComparativo?: Array<{
+    insumoId: string;
+    insumoCorId: string | null;
+    nome: string;
+    cor: string | null;
+    unidade: Unidade;
+    estimado: number;
+    real: number;
+    diferenca: number;
+    diferencaReais: number;
+  }>;
   cortadaEm: string | null;
   enviadaEm: string | null;
   fechadaEm: string | null;
@@ -92,6 +106,7 @@ export default function OpDetalhePage() {
   const q = useApiQuery<Op>(gestor && id ? `/erp/ops/${id}` : null);
   const [etapa, setEtapa] = useState<Etapa | null>(null);
   const [etiquetas, setEtiquetas] = useState(false);
+  const [editarCustos, setEditarCustos] = useState(false);
   const op = q.data;
   // A grade da OP pras etiquetas: o cortado quando já houve corte, senão o planejado.
   // Memo: objeto novo a cada render zeraria o que o usuário digitou no diálogo.
@@ -235,9 +250,18 @@ export default function OpDetalhePage() {
 
               <Card className="p-4 flex flex-col gap-2" data-testid="op-custos">
                 <h2 className="text-base font-semibold">Custos reais</h2>
-                <div className="grid gap-2 sm:grid-cols-6 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="mr-auto" />
+                  {gestor && op.cortadaEm && op.status !== 'FECHADA' && op.status !== 'CANCELADA' && (
+                    <Button size="sm" variant="secondary" onClick={() => setEditarCustos(true)} data-testid="op-editar-custos">
+                      Corrigir corte e frete
+                    </Button>
+                  )}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-7 text-sm">
                   <Valor rotulo="Tecido (corte)" v={formatMoeda(op.custoTecido)} />
                   <Valor rotulo="Corte" v={formatMoeda(op.custoCorte ?? 0)} />
+                  <Valor rotulo="Frete da facção" v={formatMoeda(op.custoFrete ?? 0)} />
                   <Valor rotulo="Aviamentos" v={formatMoeda(op.custoAviamentos)} />
                   <Valor
                     rotulo="Facção"
@@ -256,10 +280,44 @@ export default function OpDetalhePage() {
                         op.custoAviamentos +
                         op.custoFaccao +
                         (op.custoCorte ?? 0) +
+                        (op.custoFrete ?? 0) +
                         (op.custoAcabamento ?? 0),
                     )}
                   />
                 </div>
+                {(op.tecidoComparativo ?? []).length > 0 && (
+                  <table className="w-full text-sm tabular-nums" data-testid="op-tecido-comparativo">
+                    <thead className="text-[11px] uppercase tracking-wide text-muted">
+                      <tr>
+                        <th className="py-1 text-left font-semibold">Tecido</th>
+                        <th className="py-1 text-right font-semibold">Estimado</th>
+                        <th className="py-1 text-right font-semibold">Real</th>
+                        <th className="py-1 text-right font-semibold">Diferença</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {op.tecidoComparativo!.map((t) => (
+                        <tr key={`${t.insumoId}|${t.insumoCorId ?? ''}`} className="border-t border-border">
+                          <td className="py-1">
+                            {t.nome}
+                            {t.cor ? ` · ${t.cor}` : ''}
+                          </td>
+                          <td className="py-1 text-right text-muted">
+                            {formatNumero(t.estimado)} {SIGLA[t.unidade]}
+                          </td>
+                          <td className="py-1 text-right">
+                            {formatNumero(Math.round(t.real * 1000) / 1000)} {SIGLA[t.unidade]}
+                          </td>
+                          <td className={cn('py-1 text-right font-semibold', t.diferenca > 0 ? 'text-danger' : t.diferenca < 0 ? 'text-success' : 'text-muted')}>
+                            {t.diferenca > 0 ? '+' : ''}
+                            {formatNumero(t.diferenca)} {SIGLA[t.unidade]}
+                            {t.diferencaReais !== 0 && ` (${t.diferencaReais > 0 ? '+' : ''}${formatMoeda(t.diferencaReais)})`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
                 {op.consumoRealPorPeca !== null && (
                   <p className="text-sm text-muted">
                     Consumo real de tecido:{' '}
@@ -311,6 +369,9 @@ export default function OpDetalhePage() {
       {op && etapa === 'entrega' && <EntregaDialog op={op} onClose={() => setEtapa(null)} onPronto={pronto} />}
       {op && (etapa === 'fechar' || etapa === 'cancelar') && (
         <ConfirmaDialog op={op} tipo={etapa} onClose={() => setEtapa(null)} onPronto={pronto} />
+      )}
+      {op && editarCustos && (
+        <CustosDialog op={op} onClose={() => setEditarCustos(false)} onPronto={() => { setEditarCustos(false); q.refetch(); }} />
       )}
       {op && (
         <EtiquetasDialog
@@ -465,6 +526,13 @@ function CorteDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; o
   const [tecidos, setTecidos] = useState(() => deSugestao(op.sugestoes.tecidos));
   const [grade, setGrade] = useState<ValoresGrade>(() => gradeDe(op, 'planejada'));
   const { salvando, enviar } = useEtapa(onPronto, 'Corte registrado — tecido baixado do estoque');
+  // Regras da empresa (20/10): corte por peça e frete por OP — sugeridos, editáveis.
+  const regras = useApiQuery<{ custoCortePorPeca?: number; fretePorOp?: number }>('/erp/acabamento');
+  const [corte, setCorte] = useState<string | null>(null);
+  const [frete, setFrete] = useState<string | null>(null);
+  const corteSugerido = totalGrade(grade) * (regras.data?.custoCortePorPeca ?? 0);
+  const corteCampo = corte ?? paraCampo(Math.round(corteSugerido * 100) / 100);
+  const freteCampo = frete ?? paraCampo(regras.data?.fretePorOp ?? 0);
   return (
     <Dialog
       open
@@ -487,6 +555,8 @@ function CorteDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; o
                 api.post(`/erp/ops/${op.id}/corte`, {
                   tecidos: paraEnvio(tecidos),
                   itens: op.itens.map((i) => ({ produtoId: i.produtoId, cortada: inteiro(grade[i.produtoId]) })),
+                  custoCorte: lerNumero(corteCampo) ?? 0,
+                  custoFrete: lerNumero(freteCampo) ?? 0,
                 }),
               )
             }
@@ -504,9 +574,64 @@ function CorteDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; o
           opcoes={(insumos.data ?? []).filter((i) => i.tipo === 'TECIDO')}
         />
         <div className="flex flex-col gap-2">
-          <span className="text-sm font-semibold">Peças cortadas</span>
+          <span className="text-sm font-semibold">Peças cortadas (o que de fato saiu da mesa — segue pra facção e pro estoque)</span>
           <GradeEditor celulas={op.itens} valores={grade} onChange={setGrade} testid="corte-grade" />
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Custo do corte (R$)"
+            hint={`Sugerido: ${formatNumero(totalGrade(grade))} peças × ${formatMoeda(regras.data?.custoCortePorPeca ?? 0)}`}
+          >
+            <Input value={corteCampo} onChange={(e) => setCorte(e.target.value)} inputMode="decimal" data-testid="corte-custo" />
+          </Field>
+          <Field label="Frete da facção (R$, por OP)" hint="Rateado nas peças no fechamento da OP.">
+            <Input value={freteCampo} onChange={(e) => setFrete(e.target.value)} inputMode="decimal" data-testid="corte-frete" />
+          </Field>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Corrige custo do corte e frete depois do corte (até fechar a OP). */
+function CustosDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; onPronto: () => void }) {
+  const [corte, setCorte] = useState(paraCampo(op.custoCorte ?? 0));
+  const [frete, setFrete] = useState(paraCampo(op.custoFrete ?? 0));
+  const { salvando, enviar } = useEtapa(onPronto, 'Custos da OP corrigidos');
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Custo do corte e frete · ${op.numero}`}
+      footer={
+        <div className="flex w-full justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            loading={salvando}
+            data-testid="custos-salvar"
+            onClick={() =>
+              enviar(() =>
+                api.put(`/erp/ops/${op.id}/custos`, {
+                  custoCorte: lerNumero(corte) ?? 0,
+                  custoFrete: lerNumero(frete) ?? 0,
+                }),
+              )
+            }
+          >
+            Salvar
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Custo do corte (R$)">
+          <Input value={corte} onChange={(e) => setCorte(e.target.value)} inputMode="decimal" data-testid="custos-corte" />
+        </Field>
+        <Field label="Frete da facção (R$)">
+          <Input value={frete} onChange={(e) => setFrete(e.target.value)} inputMode="decimal" data-testid="custos-frete" />
+        </Field>
       </div>
     </Dialog>
   );

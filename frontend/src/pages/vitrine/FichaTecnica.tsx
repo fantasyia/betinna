@@ -91,16 +91,18 @@ export function FichaTecnicaAba({
  * Serviços de ACABAMENTO da empresa (Léo, 14/10): a Isabela cobra por tarefa —
  * passar cordão, dobrar e embalar, ilhós. Lista única; cada grade marca os seus.
  */
-function ServicosAcabamento() {
+export function ServicosAcabamento() {
   const toast = useToast();
-  const q = useApiQuery<{ servicos: ServicoAcabamento[]; custoCortePorPeca?: number }>('/erp/acabamento');
+  const q = useApiQuery<{ servicos: ServicoAcabamento[]; custoCortePorPeca?: number; fretePorOp?: number }>('/erp/acabamento');
   const [lista, setLista] = useState<Array<{ id?: string; nome: string; preco: string }>>([]);
   const [corte, setCorte] = useState('');
+  const [frete, setFrete] = useState('');
   const [salvando, setSalvando] = useState(false);
   useEffect(() => {
     if (!q.data) return;
     setLista(q.data.servicos.map((s) => ({ id: s.id, nome: s.nome, preco: paraCampo(s.preco) })));
     setCorte(paraCampo(q.data.custoCortePorPeca ?? 0));
+    setFrete(paraCampo(q.data.fretePorOp ?? 0));
   }, [q.data]);
   const valido =
     lista.every((s) => s.nome.trim().length >= 2 && (lerNumero(s.preco) ?? -1) >= 0) &&
@@ -112,8 +114,9 @@ function ServicosAcabamento() {
       await api.put('/erp/acabamento', {
         servicos: lista.map((s) => ({ ...(s.id ? { id: s.id } : {}), nome: s.nome.trim(), preco: lerNumero(s.preco) ?? 0 })),
         custoCortePorPeca: lerNumero(corte) ?? 0,
+        fretePorOp: lerNumero(frete) ?? 0,
       });
-      toast.success('Serviços de acabamento e custo de corte salvos');
+      toast.success('Regras de produção salvas');
       q.refetch();
     } catch (err) {
       toast.error('Não foi possível salvar', apiErrorMessage(err));
@@ -139,6 +142,13 @@ function ServicosAcabamento() {
           inputMode="decimal"
           data-testid="custo-corte"
         />
+      </label>
+      <label className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-2 text-sm">
+        <span>
+          Frete da facção por OP
+          <span className="block text-xs text-muted">Sugerido no corte e rateado nas peças no fechamento.</span>
+        </span>
+        <Input value={frete} onChange={(e) => setFrete(e.target.value)} inputMode="decimal" data-testid="frete-op" />
       </label>
       {lista.map((s, idx) => (
         <div key={s.id ?? `novo-${idx}`} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">

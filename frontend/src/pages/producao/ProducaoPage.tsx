@@ -95,6 +95,9 @@ export default function ProducaoPage() {
       actions={
         gestor ? (
           <div className="flex gap-2">
+            <Link to="/producao/regras" className="inline-flex items-center px-3 text-sm text-primary hover:underline" data-testid="regras-producao">
+              Regras de produção
+            </Link>
             <Button variant="secondary" onClick={() => setEtiquetas(true)} data-testid="etiquetas-abrir">
               Etiquetas
             </Button>
@@ -212,6 +215,8 @@ interface Simulacao {
   custoAcabamento?: number;
   /** Corte (20/10): peças × custo de corte por peça da empresa. */
   custoCorte?: number;
+  /** Frete da facção (20/10): um por OP. */
+  custoFrete?: number;
   precoFaccaoTabela: number | null;
   custoPorPeca: number;
   gradesSemFicha: number;
@@ -581,7 +586,7 @@ function SimulacaoCard({ s }: { s: Simulacao }) {
         <span className="text-sm">
           Custo previsto: <b className="tabular-nums">{formatMoeda(s.custoPorPeca)}</b>/peça ·{' '}
           <span className="text-muted">
-            {formatMoeda(s.custoInsumos + s.custoFaccao + (s.custoAcabamento ?? 0) + (s.custoCorte ?? 0))} no total
+            {formatMoeda(s.custoInsumos + s.custoFaccao + (s.custoAcabamento ?? 0) + (s.custoCorte ?? 0) + (s.custoFrete ?? 0))} no total
           </span>
         </span>
       </div>
@@ -627,6 +632,7 @@ function SimulacaoCard({ s }: { s: Simulacao }) {
         {s.precoFaccaoTabela !== null ? ` (${formatMoeda(s.precoFaccaoTabela)}/peça na tabela da facção)` : ' (prevista na ficha técnica)'}.
         {(s.custoAcabamento ?? 0) > 0 && ` Acabamento: ${formatMoeda(s.custoAcabamento ?? 0)}.`}
         {(s.custoCorte ?? 0) > 0 && ` Corte: ${formatMoeda(s.custoCorte ?? 0)}.`}
+        {(s.custoFrete ?? 0) > 0 && ` Frete da facção: ${formatMoeda(s.custoFrete ?? 0)}.`}
       </p>
     </Card>
   );

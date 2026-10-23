@@ -12,6 +12,8 @@ import {
   type RecebimentoDto,
   type SimularOpDto,
   corteSchema,
+  custosOpSchema,
+  type CustosOpDto,
   criarOpSchema,
   envioSchema,
   etapaOpSchema,
@@ -99,6 +101,16 @@ export class OrdensController {
     @Body(new ZodValidationPipe(corteSchema)) dto: CorteDto,
   ) {
     return this.svc.cortar(user, id, dto);
+  }
+
+  @Put(':id/custos')
+  @ApiOperation({ summary: 'Corrige custo de corte e frete da facção (até fechar a OP)' })
+  ajustarCustos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(custosOpSchema)) dto: CustosOpDto,
+  ) {
+    return this.svc.ajustarCustos(user, id, dto);
   }
 
   @Post(':id/envio')

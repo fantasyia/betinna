@@ -58,6 +58,7 @@ const InsumosPage = lazyComRetry(() => import("@/pages/insumos/InsumosPage"));
 const FaccoesPage = lazyComRetry(() => import("@/pages/faccoes/FaccoesPage"));
 const ProducaoPage = lazyComRetry(() => import("@/pages/producao/ProducaoPage"));
 const OpDetalhePage = lazyComRetry(() => import("@/pages/producao/OpDetalhePage"));
+const RegrasProducaoPage = lazyComRetry(() => import("@/pages/producao/RegrasProducaoPage"));
 const FichaOpImpressaoPage = lazyComRetry(() => import("@/pages/producao/FichaOpImpressaoPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
@@ -506,6 +507,19 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <ProducaoPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // Regras de produção (20/10): corte, frete, acabamento e facção num lugar só.
+    path: "/producao/regras",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <RegrasProducaoPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

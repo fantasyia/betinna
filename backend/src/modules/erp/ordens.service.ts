@@ -13,6 +13,7 @@ import { dividirOp, type GradeRiscoOp } from './dividir-op';
 import {
   ETAPAS_OP,
   type CorteDto,
+  type CustosOpDto,
   type CriarOpDto,
   type EnvioDto,
   type EtapaOp,
@@ -415,6 +416,8 @@ export class OrdensService {
     const custoAcabamento = [...pecasPorLinha].reduce((s, [l, p]) => s + p * (acab.get(l) ?? 0), 0);
     // Corte (Léo, 20/10): custo por peça da empresa × peças da grade.
     const custoCorte = pecas * (await this.fichas.corteDaEmpresa(empresaId));
+    // Frete da facção: um por OP, rateado nas peças.
+    const custoFrete = pecas > 0 ? await this.fichas.freteDaEmpresa(empresaId) : 0;
     const precoFaccao = await this.precoFaccao(dto.faccaoId, modelo.id);
     // Sem facção escolhida (ou sem preço na tabela dela): a facção prevista da ficha.
     const custoFaccao =
@@ -437,9 +440,12 @@ export class OrdensService {
       custoFaccao,
       custoAcabamento,
       custoCorte,
+      custoFrete,
       precoFaccaoTabela: precoFaccao,
-      custoTotal: custoInsumos + custoFaccao + custoAcabamento + custoCorte,
-      custoPorPeca: pecas ? (custoInsumos + custoFaccao + custoAcabamento + custoCorte) / pecas : 0,
+      custoTotal: custoInsumos + custoFaccao + custoAcabamento + custoCorte + custoFrete,
+      custoPorPeca: pecas
+        ? (custoInsumos + custoFaccao + custoAcabamento + custoCorte + custoFrete) / pecas
+        : 0,
       gradesSemFicha: [...pecasPorLinha.keys()].filter((l) => !fichas.has(l)).length,
     };
   }
@@ -553,6 +559,34 @@ export class OrdensService {
     const tecidoReal = op.consumos
       .filter((c) => c.etapa === 'CORTE')
       .reduce((s, c) => s + Number(c.quantidade), 0);
+    // Tecido ESTIMADO (ficha × grade CORTADA) × REAL do corte, por tecido e cor
+    // (Léo, 20/10). A diferença em R$ usa o custo da hora do corte.
+    const realPor = new Map<string, { quantidade: number; custo: number }>();
+    for (const c of op.consumos.filter((x) => x.etapa === 'CORTE')) {
+      const k = `${c.insumoId}|${c.insumoCorId ?? ''}`;
+      const a = realPor.get(k) ?? { quantidade: 0, custo: 0 };
+      a.quantidade += Number(c.quantidade);
+      a.custo += Number(c.quantidade) * Number(c.custoUnitario);
+      realPor.set(k, a);
+    }
+    const tecidoComparativo =
+      op.cortadaEm === null
+        ? []
+        : sugestao(
+            necessidadesDaGrade(pecasPorLinha('cortada'), this.itensParaConta(fichas, 'TECIDO')),
+          ).map((e) => {
+            const r = realPor.get(`${e.insumoId}|${e.insumoCorId ?? ''}`);
+            const real = r?.quantidade ?? 0;
+            const unit = r && r.quantidade > 0 ? r.custo / r.quantidade : 0;
+            const diferenca = Math.round((real - e.quantidade) * 1000) / 1000;
+            return {
+              ...e,
+              estimado: e.quantidade,
+              real,
+              diferenca,
+              diferencaReais: Math.round(diferenca * unit * 100) / 100,
+            };
+          });
     const cortadas = itens.reduce((s, i) => s + (i.cortada ?? 0), 0);
 
     return {
@@ -569,6 +603,7 @@ export class OrdensService {
       custoAviamentos: n(op.custoAviamentos),
       custoFaccao: n(op.custoFaccao),
       custoCorte: n(op.custoCorte),
+      custoFrete: n(op.custoFrete),
       custoAcabamento: n(op.custoAcabamento),
       cortadaEm: op.cortadaEm,
       enviadaEm: op.enviadaEm,
@@ -599,6 +634,7 @@ export class OrdensService {
         custoTotal: Number(c.custoTotal),
         custoPorPeca: Number(c.custoPorPeca),
       })),
+      tecidoComparativo,
       /** Tecido gasto no corte ÷ peças cortadas — o "consumo médio real" da OP. */
       consumoRealPorPeca: cortadas > 0 && tecidoReal > 0 ? tecidoReal / cortadas : null,
       sugestoes: {
@@ -922,9 +958,11 @@ export class OrdensService {
     const daOp = new Set(itens.map((i) => i.produtoId));
     if (dto.itens.some((i) => !daOp.has(i.produtoId))) throw regra('Variação que não está na OP');
     if (!dto.itens.some((i) => i.cortada > 0)) throw regra('Nenhuma peça cortada');
-    // Corte (Léo, 20/10): peças CORTADAS × custo de corte por peça da empresa.
+    // Corte (Léo, 20/10): o informado; sem ele, peças CORTADAS × valor da empresa.
     const cortadas = dto.itens.reduce((s, i) => s + i.cortada, 0);
-    const custoCorte = cortadas * (await this.fichas.corteDaEmpresa(empresaId));
+    const custoCorte = dto.custoCorte ?? cortadas * (await this.fichas.corteDaEmpresa(empresaId));
+    // Frete da facção (por OP): o informado; sem ele, o padrão da empresa.
+    const custoFrete = dto.custoFrete ?? (await this.fichas.freteDaEmpresa(empresaId));
     await this.prisma.$transaction(async (tx) => {
       const custo = await this.consumir(tx, empresaId, op, 'CORTE', dto.tecidos, user.id);
       await this.virar(tx, id, ['RASCUNHO'], {
@@ -932,6 +970,7 @@ export class OrdensService {
         cortadaEm: new Date(),
         custoTecido: D(custo, 2),
         custoCorte: D(custoCorte, 2),
+        custoFrete: D(custoFrete, 2),
       });
       await this.avancarEtapa(tx, id, 'CORTE');
       for (const i of dto.itens) {
@@ -1091,6 +1130,7 @@ export class OrdensService {
       n(op.custoAviamentos) +
       n(op.custoFaccao) +
       n(op.custoCorte) +
+      n(op.custoFrete) +
       custoAcabamento;
     const custos = ratearCusto(total, grades);
     const comFinanceiro = this.fin ? await this.fin.preparar(empresaId) : false;
@@ -1116,6 +1156,26 @@ export class OrdensService {
       }
     });
     this.logger.log(`[op] ${op.numero} fechada — R$ ${total.toFixed(2)}`);
+    return this.obter(user, id);
+  }
+
+  /**
+   * Corrige custo de corte e frete da OP depois do corte (Léo, 20/10: o valor
+   * é editável). Só até fechar: OP fechada já gravou o custo por grade.
+   */
+  async ajustarCustos(user: AuthenticatedUser, id: string, dto: CustosOpDto) {
+    const empresaId = await this.erp.empresaLigada(user);
+    const op = await this.opDaEmpresa(empresaId, id);
+    if (op.status === 'FECHADA' || op.status === 'CANCELADA') {
+      throw regra('OP fechada ou cancelada: o custo já foi gravado');
+    }
+    await this.prisma.ordemProducao.update({
+      where: { id },
+      data: {
+        ...(dto.custoCorte !== undefined ? { custoCorte: D(dto.custoCorte, 2) } : {}),
+        ...(dto.custoFrete !== undefined ? { custoFrete: D(dto.custoFrete, 2) } : {}),
+      },
+    });
     return this.obter(user, id);
   }
 
