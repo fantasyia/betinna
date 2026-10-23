@@ -411,9 +411,12 @@ export class OrdensService {
     });
     const pecas = dto.itens.reduce((s, i) => s + i.quantidade, 0);
     const custoInsumos = insumos.reduce((s, i) => s + i.custo, 0);
-    // Acabamento (Isabela, 14/10): serviços da ficha de cada grade × peças.
+    // Acabamento (Isabela, 14/10): serviços da ficha × peças, por tamanho (23/10).
     const acab = await this.fichas.acabamentoPorGrade(empresaId, [...pecasPorLinha.keys()]);
-    const custoAcabamento = [...pecasPorLinha].reduce((s, [l, p]) => s + p * (acab.get(l) ?? 0), 0);
+    const custoAcabamento = dto.itens.reduce((s, i) => {
+      const v = vs.get(i.produtoId)!;
+      return s + i.quantidade * (acab.get(v.modeloLinhaId)?.(v.modeloTamanho.tamanho.nome) ?? 0);
+    }, 0);
     // Corte (Léo, 20/10): custo por peça da empresa × peças da grade.
     const custoCorte = pecas * (await this.fichas.corteDaEmpresa(empresaId));
     // Frete de produção (23/10): por peça, como o corte.
@@ -1119,12 +1122,18 @@ export class OrdensService {
         .reduce((s, e) => s + e.quantidade, 0),
       previstoPorPeca: previsto.get(l) ?? null,
     }));
-    // Acabamento (Isabela, 14/10): serviços da ficha × peças RECEBIDAS de cada grade.
+    // Acabamento (Isabela, 14/10): serviços da ficha × peças RECEBIDAS, por tamanho (23/10).
     const acab = await this.fichas.acabamentoPorGrade(empresaId, linhas);
-    const custoAcabamento = grades.reduce(
-      (s, g) => s + g.recebidas * (acab.get(g.modeloLinhaId) ?? 0),
-      0,
+    const vsOp = await this.variacoesDoModelo(
+      empresaId,
+      op.modeloId,
+      op.itens.map((i) => i.produtoId),
     );
+    const custoAcabamento = op.entregas.reduce((s, e) => {
+      const l = linhaDo.get(e.produtoId);
+      const tam = vsOp.get(e.produtoId)?.modeloTamanho.tamanho.nome ?? '';
+      return s + e.quantidade * ((l && acab.get(l)?.(tam)) || 0);
+    }, 0);
     const total =
       n(op.custoTecido) +
       n(op.custoAviamentos) +

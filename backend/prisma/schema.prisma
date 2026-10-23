@@ -4519,6 +4519,9 @@ model FichaTecnica {
   custoFaccaoPrevisto Decimal? @db.Decimal(14, 2)
   /// Serviços de acabamento da grade (ids de Empresa.config.acabamento.servicos), 14/10.
   acabamento          Json?
+  /// Tamanhos onde cada serviço vale (23/10: capuz infantil 2/4/6 sem cordão nem
+  /// ilhós). { servicoId: ["8","10",…] }; serviço ausente = vale em todos.
+  acabamentoTamanhos  Json?
   observacoes         String?
   criadoEm            DateTime @default(now())
   atualizadoEm        DateTime @updatedAt

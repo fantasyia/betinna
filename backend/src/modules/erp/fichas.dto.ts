@@ -17,6 +17,14 @@ export const fichaSchema = z.object({
   observacoes: textoOpcional(1000),
   /** Serviços de acabamento que a grade leva (ids da lista da empresa), 14/10. */
   acabamento: z.array(z.string().min(1).max(60)).max(30).optional(),
+  /**
+   * Tamanhos onde cada serviço vale (23/10). Serviço ausente = todos os
+   * tamanhos. Ausente no corpo = não mexe; null = tira as restrições.
+   */
+  acabamentoTamanhos: z
+    .record(z.string().min(1).max(60), z.array(z.string().trim().min(1).max(20)).max(40))
+    .nullable()
+    .optional(),
   itens: z
     .array(
       z.object({

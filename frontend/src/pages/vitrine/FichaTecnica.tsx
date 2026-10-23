@@ -23,6 +23,8 @@ interface FichaApi {
   existe: boolean;
   /** Serviços de acabamento marcados na grade + a lista da empresa (14/10). */
   acabamento?: string[];
+  /** Tamanhos onde cada serviço vale (23/10); serviço ausente = todos. */
+  acabamentoTamanhos?: Record<string, string[]>;
   servicosAcabamento?: ServicoAcabamento[];
   /** Custo de corte por peça da empresa (20/10) — entra no previsto. */
   custoCortePorPeca?: number;
@@ -196,11 +198,13 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
   const [faccao, setFaccao] = useState('');
   const [obs, setObs] = useState('');
   const [acab, setAcab] = useState<string[]>([]);
+  const [acabTam, setAcabTam] = useState<Record<string, string[]>>({});
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     if (!q.data) return;
     setAcab(q.data.acabamento ?? []);
+    setAcabTam(q.data.acabamentoTamanhos ?? {});
     setItens(
       q.data.itens.map((i) => ({
         insumoId: i.insumoId,
@@ -238,7 +242,14 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
   const custoItem = (l: Linha) => consumoDe(l) * custoUnit(l);
   const custoInsumos = itens.reduce((s, l) => s + custoItem(l), 0);
   const servicos = q.data?.servicosAcabamento ?? [];
-  const custoAcab = servicos.filter((s) => acab.includes(s.id)).reduce((t, s) => t + s.preco, 0);
+  // Serviço restrito a alguns tamanhos (23/10) entra na proporção deles (média por tamanho).
+  const custoAcab = servicos
+    .filter((s) => acab.includes(s.id))
+    .reduce((t, s) => {
+      const so = acabTam[s.id];
+      const fracao = so && tamanhos.length ? tamanhos.filter((x) => so.includes(x)).length / tamanhos.length : 1;
+      return t + s.preco * fracao;
+    }, 0);
   const custoCorte = q.data?.custoCortePorPeca ?? 0;
   const total = custoInsumos + (lerNumero(faccao) ?? 0) + custoAcab + custoCorte;
   const usados = new Set(itens.map((l) => l.insumoId));
@@ -252,6 +263,10 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
         custoFaccaoPrevisto: lerNumero(faccao),
         observacoes: obs,
         acabamento: acab,
+        // Só dos serviços marcados; "todos os tamanhos" não precisa ir.
+        acabamentoTamanhos: Object.fromEntries(
+          Object.entries(acabTam).filter(([id, xs]) => acab.includes(id) && xs.length < tamanhos.length),
+        ),
         itens: itens.map((l) => {
           const porTamanho = l.porTamanho
             ? Object.fromEntries(
@@ -458,6 +473,39 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           ))}
         </div>
       )}
+      {/* Tamanhos de cada serviço marcado (23/10): ex. capuz infantil 2/4/6 sem cordão nem ilhós. */}
+      {tamanhos.length > 1 &&
+        servicos
+          .filter((s) => acab.includes(s.id))
+          .map((s) => {
+            const so = acabTam[s.id] ?? tamanhos;
+            return (
+              <div key={s.id} className="flex flex-wrap items-center gap-1.5 text-xs" data-testid={`ficha-acab-tam-${modeloLinhaId}-${s.id}`}>
+                <span className="text-muted">{s.nome} nos tamanhos:</span>
+                {tamanhos.map((t) => {
+                  const on = so.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() =>
+                        setAcabTam((m) => {
+                          const atual = m[s.id] ?? tamanhos;
+                          const novo = on ? atual.filter((x) => x !== t) : [...atual, t];
+                          return { ...m, [s.id]: tamanhos.filter((x) => novo.includes(x)) };
+                        })
+                      }
+                      className={`rounded-[10px] border px-2 py-0.5 tabular-nums ${on ? 'border-primary bg-primary text-white' : 'border-border text-muted line-through'}`}
+                      data-testid={`ficha-acab-tam-${modeloLinhaId}-${s.id}-${t}`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
 
       <div className="grid gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
         <Field label="Facção prevista (R$/peça)" hint="Até escolher a facção da OP">

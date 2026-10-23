@@ -13,7 +13,9 @@ import type {
   RegrasEncaixeDto,
 } from './fichas.dto';
 import {
+  acabamentoNoTamanho,
   acabamentoPorPeca,
+  lerTamanhosServico,
   idDoServico,
   servicosAcabamento,
   custoCortePorPeca,
@@ -180,10 +182,14 @@ export class FichasService {
     // Corte e frete de produção, ambos por peça (20/10 e 23/10).
     const corte = (await this.corteDaEmpresa(empresaId)) + (await this.freteDaEmpresa(empresaId));
     const acabamento = Array.isArray(ficha?.acabamento) ? (ficha!.acabamento as string[]) : [];
+    const acabamentoTamanhos = lerTamanhosServico(ficha?.acabamentoTamanhos);
+    const tamanhosDaGrade = ml.tamanhos.map((t) => t.tamanho.nome);
     return {
       modeloLinhaId,
       /** Serviços de acabamento marcados nesta grade + a lista da empresa (pra marcar). */
       acabamento,
+      /** Tamanhos onde cada serviço vale (23/10); serviço ausente = todos. */
+      acabamentoTamanhos: acabamentoTamanhos ?? {},
       servicosAcabamento: servicos,
       /** Custo de corte por peça da empresa (entra no previsto). */
       custoCortePorPeca: corte,
@@ -200,7 +206,7 @@ export class FichasService {
       custoPrevisto: custoPrevistoDaFicha(
         itens.map((i) => ({ consumoPorPeca: i.consumoPorPeca, custoMedio: i.insumo.custoMedio })),
         custoFaccaoPrevisto,
-        acabamentoPorPeca(acabamento, servicos),
+        acabamentoPorPeca(acabamento, servicos, acabamentoTamanhos, tamanhosDaGrade),
         corte,
       ),
       semCusto: itens.filter((i) => i.insumo.custoMedio <= 0).map((i) => i.insumo.nome),
@@ -221,6 +227,15 @@ export class FichasService {
       }
     }
     const daGrade = new Set(ml.tamanhos.map((t) => t.tamanho.nome));
+    for (const [servico, tams] of Object.entries(dto.acabamentoTamanhos ?? {})) {
+      const fora = tams.filter((t) => !daGrade.has(t));
+      if (fora.length) {
+        throw new BusinessRuleException(
+          `Acabamento "${servico}": tamanho fora da grade ${ml.linha.nome}: ${fora.join(', ')}`,
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+    }
     for (const i of dto.itens) {
       const fora = Object.keys(i.porTamanho ?? {}).filter((t) => !daGrade.has(t));
       if (fora.length) {
@@ -264,6 +279,14 @@ export class FichasService {
       const dados = {
         custoFaccaoPrevisto: dto.custoFaccaoPrevisto == null ? null : D(dto.custoFaccaoPrevisto, 2),
         observacoes: dto.observacoes ?? null,
+        ...(dto.acabamentoTamanhos !== undefined
+          ? {
+              acabamentoTamanhos:
+                dto.acabamentoTamanhos && Object.keys(dto.acabamentoTamanhos).length
+                  ? (dto.acabamentoTamanhos as unknown as Prisma.InputJsonValue)
+                  : Prisma.DbNull,
+            }
+          : {}),
         // Sem o campo (tela antiga): não mexe no que estava marcado.
         ...(dto.acabamento !== undefined
           ? {
@@ -317,6 +340,8 @@ export class FichasService {
         modeloLinhaId: true,
         custoFaccaoPrevisto: true,
         acabamento: true,
+        acabamentoTamanhos: true,
+        modeloLinha: { select: { tamanhos: { select: { tamanho: { select: { nome: true } } } } } },
         itens: {
           select: {
             consumoPorPeca: true,
@@ -335,7 +360,12 @@ export class FichasService {
             custoMedio: custoDoItem(i),
           })),
           num(f.custoFaccaoPrevisto),
-          acabamentoPorPeca(f.acabamento, servicos),
+          acabamentoPorPeca(
+            f.acabamento,
+            servicos,
+            lerTamanhosServico(f.acabamentoTamanhos),
+            f.modeloLinha.tamanhos.map((t) => t.tamanho.nome),
+          ),
           corte,
         ).total,
       ]),
@@ -370,17 +400,31 @@ export class FichasService {
     return fretePorPeca(e?.config);
   }
 
-  /** R$ de acabamento por peça de cada grade (OP: simulação e fechamento). */
-  async acabamentoPorGrade(empresaId: string, modeloLinhaIds: string[]) {
-    if (!modeloLinhaIds.length) return new Map<string, number>();
+  /**
+   * R$ de acabamento de UMA peça, por grade e tamanho (OP: simulação e
+   * fechamento). Serviço restrito a alguns tamanhos (23/10) só conta neles.
+   */
+  async acabamentoPorGrade(
+    empresaId: string,
+    modeloLinhaIds: string[],
+  ): Promise<Map<string, (tamanho: string) => number>> {
+    if (!modeloLinhaIds.length) return new Map();
     const [servicos, fichas] = await Promise.all([
       this.servicosDaEmpresa(empresaId),
       this.prisma.fichaTecnica.findMany({
         where: { empresaId, modeloLinhaId: { in: modeloLinhaIds } },
-        select: { modeloLinhaId: true, acabamento: true },
+        select: { modeloLinhaId: true, acabamento: true, acabamentoTamanhos: true },
       }),
     ]);
-    return new Map(fichas.map((f) => [f.modeloLinhaId, acabamentoPorPeca(f.acabamento, servicos)]));
+    return new Map(
+      fichas.map((f) => {
+        const tams = lerTamanhosServico(f.acabamentoTamanhos);
+        return [
+          f.modeloLinhaId,
+          (tamanho: string) => acabamentoNoTamanho(f.acabamento, servicos, tams, tamanho),
+        ];
+      }),
+    );
   }
 
   async acabamento(user: AuthenticatedUser) {

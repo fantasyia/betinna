@@ -556,7 +556,7 @@ describe('OrdensService', () => {
       entregas: [{ produtoId: 'p-m', quantidade: 8, defeito: 2 }],
     });
     fichas.custosPrevistos.mockResolvedValue(new Map());
-    fichas.acabamentoPorGrade.mockResolvedValue(new Map([['ml-reg', 0.75]]));
+    fichas.acabamentoPorGrade.mockResolvedValue(new Map([['ml-reg', () => 0.75]]));
     await svc.fechar(user as never, 'op-1');
     const virada = tx.ordemProducao.updateMany.mock.calls.find(
       (c: Array<{ data: { status?: string } }>) => c[0].data.status === 'FECHADA',

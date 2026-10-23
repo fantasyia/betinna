@@ -41,11 +41,55 @@ export function fretePorPeca(config: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
 }
 
-/** R$ por peça da grade: soma dos serviços marcados (id que sumiu da lista não conta). */
-export function acabamentoPorPeca(ids: unknown, servicos: ServicoAcabamento[]): number {
+/** Tamanhos onde cada serviço vale: { servicoId: ["8","10"] }. Ausente = todos. */
+export type TamanhosServico = Record<string, string[]>;
+
+/** Lê o JSON gravado; formato estranho vira "vale em todos" (null). PURO. */
+export function lerTamanhosServico(v: unknown): TamanhosServico | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const out: TamanhosServico = {};
+  for (const [k, xs] of Object.entries(v as Record<string, unknown>)) {
+    if (Array.isArray(xs)) out[k] = xs.map(String);
+  }
+  return out;
+}
+
+/** R$ de acabamento de UMA peça de um tamanho (serviço restrito a outros tamanhos não conta). */
+export function acabamentoNoTamanho(
+  ids: unknown,
+  servicos: ServicoAcabamento[],
+  tamanhos: TamanhosServico | null,
+  tamanho: string,
+): number {
   if (!Array.isArray(ids)) return 0;
   const preco = new Map(servicos.map((s) => [s.id, s.preco]));
-  return ids.reduce((s: number, id) => s + (preco.get(String(id)) ?? 0), 0);
+  return ids.reduce((s: number, id) => {
+    const so = tamanhos?.[String(id)];
+    if (so && !so.includes(tamanho)) return s;
+    return s + (preco.get(String(id)) ?? 0);
+  }, 0);
+}
+
+/**
+ * R$ por peça da grade: soma dos serviços marcados (id que sumiu da lista não
+ * conta). Serviço restrito a alguns tamanhos entra na proporção deles na grade
+ * (média por tamanho, como o consumo do insumo).
+ */
+export function acabamentoPorPeca(
+  ids: unknown,
+  servicos: ServicoAcabamento[],
+  tamanhos: TamanhosServico | null = null,
+  tamanhosDaGrade: string[] = [],
+): number {
+  if (!Array.isArray(ids)) return 0;
+  if (!tamanhos || tamanhosDaGrade.length === 0) {
+    const preco = new Map(servicos.map((s) => [s.id, s.preco]));
+    return ids.reduce((s: number, id) => s + (preco.get(String(id)) ?? 0), 0);
+  }
+  return (
+    tamanhosDaGrade.reduce((s, t) => s + acabamentoNoTamanho(ids, servicos, tamanhos, t), 0) /
+    tamanhosDaGrade.length
+  );
 }
 
 /** Id estável a partir do nome ("Passar cordão" → "passar-cordao"), sem repetir. */

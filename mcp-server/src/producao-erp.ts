@@ -146,6 +146,13 @@ export function registrarProducaoErp(server: McpServer, { ok, seguro }: Ajudante
         custoFaccaoPrevisto: z.number().nonnegative().max(100_000).nullable().optional(),
         observacoes: z.string().max(1000).nullable().optional(),
         acabamento: z.array(z.string().min(1).max(60)).max(30).optional(),
+        acabamentoTamanhos: z
+          .record(z.string().min(1).max(60), z.array(z.string().min(1).max(20)).max(40))
+          .nullable()
+          .optional()
+          .describe(
+            "Tamanhos onde cada serviço vale, ex.: {\"passar-cordao\":[\"8\",\"10\",\"12\",\"14\"]}. Serviço ausente = todos; ausente = não mexe; null = tira as restrições.",
+          ),
         itens: z
           .array(
             z.object({
