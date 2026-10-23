@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Höfe — prévia da home</title>
+<style>
+  :root{
+    --ink:#21302E; --porcelain:#EFEEE8; --card:#FFFFFF; --muted:#6A736E; --hair:#DDDCD3;
+    --sage:#6E8B7D; --botanic:#3C5A4E; --sand:#C9A98C; --lilac:#B3A6D4; --lilac-d:#8677AD;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--porcelain);color:var(--ink);
+    font-family:ui-sans-serif,"Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .serif{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  a{color:inherit}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:30;background:rgba(239,238,232,.85);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--hair)}
+  .navin{max-width:1120px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:26px}
+  .navlogo{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-weight:600;font-size:24px}
+  .navlogo .u{color:var(--sage)}
+  .navlinks{margin-left:auto;display:flex;gap:22px;font-size:13.5px;color:var(--muted)}
+  .navlinks a{text-decoration:none}
+  .navlinks a:hover{color:var(--ink)}
+  .cta{background:var(--botanic);color:#fff;border:none;font:inherit;font-size:13.5px;
+    padding:9px 18px;border-radius:99px;cursor:pointer}
+  .cta:hover{background:#2e463d}
+
+  /* hero */
+  .hero{position:relative;min-height:88vh;display:flex;align-items:center;overflow:hidden;
+    background:linear-gradient(165deg,#F2F1EB 0%,#E7EBE4 55%,#DCE5DE 100%)}
+  #hero3d{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .heroin{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:80px 24px;width:100%}
+  .kicker{font-family:ui-monospace,monospace;font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--botanic)}
+  h1{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-weight:600;
+    font-size:clamp(38px,6.2vw,68px);line-height:1.04;letter-spacing:-.015em;margin:14px 0 18px;max-width:13ch}
+  h1 .u{color:var(--sage)}
+  .sub{font-size:17.5px;color:var(--muted);max-width:46ch;margin:0 0 30px}
+  .heroctas{display:flex;gap:12px;flex-wrap:wrap}
+  .ghost{background:transparent;border:1px solid var(--ink);color:var(--ink);font:inherit;
+    font-size:14px;padding:11px 22px;border-radius:99px;cursor:pointer}
+  .cta.big{font-size:14px;padding:11px 24px}
+  .videonote{position:absolute;right:22px;bottom:18px;z-index:2;font-family:ui-monospace,monospace;
+    font-size:10.5px;letter-spacing:.08em;color:var(--muted);background:rgba(255,255,255,.65);
+    padding:6px 11px;border-radius:8px;border:1px dashed var(--hair)}
+
+  /* sections base */
+  section{padding:88px 0}
+  .eyebrow{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--sage);margin:0 0 12px}
+  h2{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-weight:600;font-size:clamp(26px,3.6vw,38px);
+    letter-spacing:-.01em;line-height:1.12;margin:0 0 12px;max-width:24ch}
+  .lede{color:var(--muted);font-size:16px;max-width:60ch}
+
+  /* products */
+  .lines{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px;margin-top:44px}
+  .line{background:var(--card);border:1px solid var(--hair);border-radius:18px;padding:28px 26px 26px;
+    box-shadow:0 1px 2px rgba(33,48,46,.04),0 14px 40px rgba(33,48,46,.06);
+    transition:transform .25s ease}
+  .line:hover{transform:translateY(-4px)}
+  .shelf{height:190px;display:flex;align-items:flex-end;justify-content:center;gap:14px;
+    padding-bottom:6px;border-bottom:1px solid var(--hair);margin-bottom:18px}
+  .linetag{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase}
+  .line h3{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:22px;margin:6px 0 6px}
+  .line p{font-size:14px;color:var(--muted);margin:0}
+  .ph{font-family:ui-monospace,monospace;font-size:9.5px;color:#9aa39b;letter-spacing:.1em;margin-top:12px}
+
+  /* CSS product bottles */
+  .b{position:relative;border-radius:7px 7px 9px 9px;box-shadow:inset 0 -14px 22px rgba(0,0,0,.07), 0 6px 14px rgba(33,48,46,.12)}
+  .b::before{content:"";position:absolute;left:50%;transform:translateX(-50%);top:-14px;width:46%;height:14px;
+    border-radius:4px 4px 0 0;background:var(--ink)}
+  .b::after{content:"Höfe";position:absolute;left:50%;top:42%;transform:translateX(-50%);
+    font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:11px;letter-spacing:.02em;
+    background:rgba(255,255,255,.92);padding:6px 8px;border-radius:3px;color:#21302E}
+  .pump::before{width:16%;height:26px;top:-26px;border-radius:3px}
+  .tube{border-radius:9px 9px 16px 16px}
+  .tube::before{width:56%;height:10px;top:-10px}
+
+  /* plan section */
+  .plan{background:var(--ink);color:#EDEFEA}
+  .plan .eyebrow{color:var(--sand)}
+  .plan h2{color:#F3F4EF}
+  .plan .lede{color:#AEB6AF}
+  .plangrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:40px}
+  .pcard{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:20px}
+  .pcard .n{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--sand);letter-spacing:.14em}
+  .pcard h3{font-size:16px;margin:8px 0 6px;color:#F3F4EF}
+  .pcard p{font-size:13.5px;color:#AEB6AF;margin:0}
+
+  /* pediatra + comunidade */
+  .split{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:40px;align-items:center}
+  .selo{background:var(--card);border:1px solid var(--hair);border-radius:18px;padding:34px;text-align:center;
+    box-shadow:0 14px 40px rgba(33,48,46,.06)}
+  .selo .ring{width:110px;height:110px;border-radius:50%;border:2px solid var(--lilac-d);margin:0 auto 16px;
+    display:flex;align-items:center;justify-content:center;font-family:"Iowan Old Style",Palatino,Georgia,serif;
+    font-size:44px;color:var(--lilac-d)}
+  .selo b{display:block;font-size:16px}
+  .selo span{font-size:13px;color:var(--muted)}
+  ul.checks{list-style:none;padding:0;margin:18px 0 0;font-size:15px}
+  ul.checks li{padding-left:28px;position:relative;margin:10px 0;color:var(--muted)}
+  ul.checks li::before{content:"✓";position:absolute;left:0;color:var(--sage);font-weight:700}
+  ul.checks b{color:var(--ink)}
+
+  footer{border-top:1px solid var(--hair);padding:34px 0 60px;font-size:13px;color:var(--muted)}
+  .foot{display:flex;flex-wrap:wrap;gap:18px;justify-content:space-between;align-items:baseline}
+  .badge{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.12em;border:1px dashed var(--hair);
+    padding:5px 10px;border-radius:8px}
+  @media (prefers-reduced-motion:reduce){ #hero3d{display:none} .line:hover{transform:none} }
+</style>
+
+<nav><div class="navin">
+  <div class="navlogo">H<span class="u">ö</span>fe</div>
+  <div class="navlinks">
+    <a href="#linhas">Linhas</a><a href="#plano">O plano</a><a href="#selo">Selo pediátrico</a><a href="#tribo">Comunidade</a>
+  </div>
+  <button class="cta" type="button">Entrar na lista</button>
+</div></nav>
+
+<header class="hero">
+  <canvas id="hero3d"></canvas>
+  <div class="heroin">
+    <p class="kicker">Dermocosméticos · herança alemã · em construção</p>
+    <h1>Seguro para um bebê,<br>eficaz para <span class="u">você</span>.</h1>
+    <p class="sub">A Höfe é a derma da família toda: fórmulas para pele e fio sensível com respaldo
+      pediátrico — do sérum da mãe ao banho do bebê, uma só confiança.</p>
+    <div class="heroctas">
+      <button class="cta big" type="button">Quero ser avisado do lançamento</button>
+      <button class="ghost" type="button" onclick="document.getElementById('plano').scrollIntoView()">Ver o plano ↓</button>
+    </div>
+  </div>
+  <div class="videonote">SLOT DE VÍDEO · aqui entra o filme 3D (Higgsfield) quando conectado — por ora, cena 3D nativa</div>
+</header>
+
+<section id="linhas">
+  <div class="wrap">
+    <p class="eyebrow">Fase 1 · três linhas, um DNA</p>
+    <h2>Uma árvore, poucos frascos, nenhum excesso.</h2>
+    <p class="lede">Cada linha tem no máximo 3–4 produtos. Largura por famílias, não por catálogo inflado —
+      só entra o que carrega o DNA: sensível, seguro, com respaldo técnico.</p>
+    <div class="lines">
+      <div class="line">
+        <div class="shelf">
+          <div class="b pump" style="width:44px;height:120px;background:linear-gradient(180deg,#dfe7e1,#c5d4c9)"></div>
+          <div class="b" style="width:52px;height:88px;background:linear-gradient(180deg,#e9ede8,#d2ddd4)"></div>
+          <div class="b tube" style="width:40px;height:66px;background:linear-gradient(180deg,#f0f2ee,#dde5de)"></div>
+        </div>
+        <span class="linetag" style="color:var(--sage)">● Höfe Rosto</span>
+        <h3>Tratamento diário</h3>
+        <p>Limpeza, sérum-herói e hidratação para pele sensível que quer resultado.</p>
+        <p class="ph">imagens placeholder — serão geradas por IA (ComfyUI)</p>
+      </div>
+      <div class="line">
+        <div class="shelf">
+          <div class="b pump" style="width:48px;height:128px;background:linear-gradient(180deg,#48645a,#31473f)"></div>
+          <div class="b" style="width:54px;height:92px;background:linear-gradient(180deg,#55726706,#3c5a4e);background-color:#4a675c"></div>
+          <div class="b tube" style="width:42px;height:70px;background:linear-gradient(180deg,#5d7a6e,#42605427)"></div>
+        </div>
+        <span class="linetag" style="color:var(--botanic)">● Höfe Cabelo</span>
+        <h3>Cuidado &amp; reconstrução</h3>
+        <p>Do shampoo diário à reconstrução profunda — sem agressão ao couro sensível.</p>
+        <p class="ph">imagens placeholder — serão geradas por IA (ComfyUI)</p>
+      </div>
+      <div class="line">
+        <div class="shelf">
+          <div class="b pump" style="width:44px;height:112px;background:linear-gradient(180deg,#e6e0f2,#cfc4e6)"></div>
+          <div class="b tube" style="width:46px;height:78px;background:linear-gradient(180deg,#efeafa,#d9cfec)"></div>
+          <div class="b" style="width:50px;height:64px;background:linear-gradient(180deg,#f3f0fa,#e0d8f0)"></div>
+        </div>
+        <span class="linetag" style="color:var(--lilac-d)">● Höfe Baby</span>
+        <h3>Essenciais do bebê</h3>
+        <p>Hidratante, banho e proteção de barreira. Sem fragrância. Com pediatra.</p>
+        <p class="ph">imagens placeholder — serão geradas por IA (ComfyUI)</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="plan" id="plano">
+  <div class="wrap">
+    <p class="eyebrow">Transparência total</p>
+    <h2>O que estamos construindo — em público.</h2>
+    <p class="lede">A Höfe está sendo desenhada agora, e este é o plano aberto: cada pilar do projeto,
+      como está sendo decidido.</p>
+    <div class="plangrid">
+      <div class="pcard"><div class="n">01 · REGULATÓRIO</div><h3>Feito do jeito certo</h3><p>ANVISA primeiro: notificação de cada fórmula, fabricação terceirizada em fábrica certificada (BPF).</p></div>
+      <div class="pcard"><div class="n">02 · PRODUTO</div><h3>Linha enxuta</h3><p>Teto de 3–4 produtos por linha. Só entra o que carrega o DNA sensível + eficaz.</p></div>
+      <div class="pcard"><div class="n">03 · SELO</div><h3>Respaldo pediátrico</h3><p>Linha Baby curada por pediatra — o selo de confiança que a marca inteira herda.</p></div>
+      <div class="pcard"><div class="n">04 · CANAIS</div><h3>Onde você encontra</h3><p>Site próprio, marketplaces (ML, Amazon, Shopee, Beleza na Web) e rede de representantes.</p></div>
+      <div class="pcard"><div class="n">05 · COMUNIDADE</div><h3>Tribo, não audiência</h3><p>Co-criação de produtos, níveis, drops exclusivos e diário de pele entre membros.</p></div>
+      <div class="pcard"><div class="n">06 · CASHBACK</div><h3>Moeda da marca</h3><p>Cashback em reais que volta pra sua rotina — simples, sem pegadinha, direto na loja.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="selo">
+  <div class="wrap split">
+    <div>
+      <p class="eyebrow">Höfe Baby</p>
+      <h2>O padrão de segurança é um bebê.</h2>
+      <p class="lede">Se uma fórmula não é segura o bastante para a pele de um recém-nascido, ela não
+        carrega o nosso nome. É esse o filtro — para o baby e para todo o resto.</p>
+      <ul class="checks">
+        <li><b>Sem fragrância</b> na linha Baby — declarado no rótulo</li>
+        <li><b>Curadoria pediátrica</b> real, de médica, não de marketing</li>
+        <li><b>Hipoalergênico</b> e testado dermatologicamente</li>
+        <li>Fórmulas <b>notificadas na ANVISA</b>, uma a uma</li>
+      </ul>
+    </div>
+    <div class="selo">
+      <div class="ring">H</div>
+      <b>Selo Höfe de curadoria pediátrica</b>
+      <span>cada fórmula da linha Baby revisada por pediatra parceira</span>
+    </div>
+  </div>
+</section>
+
+<section id="tribo" style="padding-top:0">
+  <div class="wrap">
+    <p class="eyebrow">Comunidade</p>
+    <h2>Uma marca que você ajuda a criar.</h2>
+    <p class="lede">Os primeiros membros votam no próximo produto, testam antes do lançamento e acumulam
+      cashback da marca. Entre na lista e construa a Höfe com a gente.</p>
+    <div class="heroctas" style="margin-top:26px">
+      <button class="cta big" type="button">Entrar na lista de fundadores</button>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap foot">
+  <div class="navlogo" style="font-size:20px">H<span class="u" style="color:var(--sage)">ö</span>fe</div>
+  <div>Höfe · dermocosméticos em construção · Brasil</div>
+  <div class="badge">PRÉVIA INTERNA — não publicada</div>
+</div></footer>
+
+<script>
+// ===== Hero 3D nativa (canvas): frascos flutuando em pseudo-3D com parallax =====
+(function(){
+  var cv = document.getElementById('hero3d');
+  if (!cv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var ctx = cv.getContext('2d'), W, H, t = 0, mx = 0, my = 0;
+  function size(){ W = cv.width = cv.offsetWidth * devicePixelRatio; H = cv.height = cv.offsetHeight * devicePixelRatio; }
+  size(); addEventListener('resize', size);
+  addEventListener('mousemove', function(e){
+    mx = (e.clientX / innerWidth - .5); my = (e.clientY / innerHeight - .5);
+  });
+  // partículas "botânicas" + frascos
+  var orbs = [], N = 26;
+  for (var i = 0; i < N; i++) orbs.push({
+    x: Math.random(), y: Math.random(), z: .3 + Math.random() * .7,
+    r: 14 + Math.random() * 60, s: .15 + Math.random() * .5, o: Math.random() * 6.28
+  });
+  var bottles = [
+    {x:.72, y:.42, z:.9,  w:64, h:170, hue:'#6E8B7D'},
+    {x:.84, y:.58, z:.65, w:46, h:120, hue:'#C9A98C'},
+    {x:.62, y:.66, z:.5,  w:38, h:96,  hue:'#B3A6D4'}
+  ];
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  function draw(){
+    t += .008;
+    ctx.clearRect(0,0,W,H);
+    var dpr = devicePixelRatio;
+    // orbs
+    for (var i=0;i<N;i++){ var o=orbs[i];
+      var px=(o.x + Math.sin(t*o.s+o.o)*.02 + mx*.03*o.z)*W;
+      var py=(o.y + Math.cos(t*o.s*1.3+o.o)*.025 + my*.03*o.z)*H;
+      var g=ctx.createRadialGradient(px,py,0,px,py,o.r*dpr);
+      g.addColorStop(0,'rgba(110,139,125,'+(0.10*o.z)+')'); g.addColorStop(1,'rgba(110,139,125,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,o.r*dpr,0,6.28); ctx.fill();
+    }
+    // bottles (pseudo-3D: flutuação + parallax + sombra)
+    for (var b=0;b<bottles.length;b++){ var s=bottles[b];
+      var bob=Math.sin(t*1.1+b*2)* (8*s.z);
+      var px=(s.x + mx*.06*s.z)*W, py=(s.y + my*.06*s.z)*H + bob*dpr;
+      var w=s.w*s.z*dpr, h=s.h*s.z*dpr;
+      ctx.save(); ctx.translate(px,py); ctx.rotate(Math.sin(t*.7+b)*.04);
+      // sombra
+      ctx.fillStyle='rgba(33,48,46,.10)';
+      ctx.beginPath(); ctx.ellipse(0,h*.62,w*.7,h*.06,0,0,6.28); ctx.fill();
+      // corpo
+      var grad=ctx.createLinearGradient(-w/2,0,w/2,0);
+      grad.addColorStop(0,s.hue); grad.addColorStop(.45,'#ffffffcc'); grad.addColorStop(.55,s.hue+'dd'); grad.addColorStop(1,s.hue);
+      ctx.fillStyle=grad; rr(-w/2,-h/2,w,h,w*.16); ctx.fill();
+      // tampa
+      ctx.fillStyle='#21302E'; rr(-w*.24,-h/2-h*.10,w*.48,h*.10,w*.06); ctx.fill();
+      // rótulo
+      ctx.fillStyle='rgba(255,255,255,.94)'; rr(-w*.34,-h*.08,w*.68,h*.26,w*.05); ctx.fill();
+      ctx.fillStyle='#21302E'; ctx.font='600 '+(w*.30)+'px Georgia,serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('Höfe',0,h*.052);
+      ctx.restore();
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+
+</body>
+</html>
