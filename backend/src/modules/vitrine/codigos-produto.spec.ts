@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   digitoEan,
+  eanUsadosAte,
   eanValido,
   prefixoGs1,
   proximosEans,
@@ -43,6 +44,14 @@ describe('prefixo GS1 da empresa (22/10)', () => {
     expect(prefixoGs1({ codigos: { prefixoGs1: '7908700' } })).toBe('7908700');
     expect(prefixoGs1({ codigos: { prefixoGs1: '79A' } })).toBeNull();
     expect(prefixoGs1(null)).toBeNull();
+  });
+
+  it('o maior EAN usado FORA do app (planilha) também conta — o gerador começa depois', () => {
+    const fora = eanUsadosAte({ codigos: { eanUsadosAte: '7908700027590' } });
+    expect(fora).toBe('7908700027590');
+    const [a] = proximosEans(['7908700026258', fora!], 1, '7908700');
+    expect(a!.slice(0, 12)).toBe('790870002760');
+    expect(eanUsadosAte({ codigos: { eanUsadosAte: '7908700027591' } })).toBeNull(); // verificador errado
   });
 
   it('faixa esgotada estoura em vez de dar a volta', () => {

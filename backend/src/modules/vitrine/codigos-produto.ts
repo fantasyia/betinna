@@ -28,6 +28,16 @@ export function prefixoGs1(config: unknown): string | null {
 }
 
 /**
+ * EANs já usados FORA do app (22/10): a planilha da empresa tem códigos de
+ * produto que não está no catálogo. `codigos.eanUsadosAte` = o maior deles —
+ * o gerador começa depois, senão repetiria um EAN que existe no físico.
+ */
+export function eanUsadosAte(config: unknown): string | null {
+  const v = ((config ?? {}) as { codigos?: { eanUsadosAte?: unknown } }).codigos?.eanUsadosAte;
+  return typeof v === 'string' && eanValido(v) ? v : null;
+}
+
+/**
  * Próximos `n` EANs livres na base (prefixo GS1 da empresa, ou a faixa
  * interna 2), continuando do MAIOR já usado nela — não reaproveita buraco:
  * um EAN que já esteve numa etiqueta não volta. Estoura se a faixa acabar.

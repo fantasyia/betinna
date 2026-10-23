@@ -10,7 +10,7 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
-import { prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
+import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
 import type {
   CategoriaDto,
   CorDto,
@@ -673,8 +673,10 @@ export class VitrineAdminService {
     const semEan = querEan ? variacoes.filter((v) => !v.ean) : [];
     let novosEans: string[];
     try {
+      // O maior EAN usado fora do app conta como usado (planilha, 22/10).
+      const foraDoApp = eanUsadosAte(empresa?.config);
       novosEans = proximosEans(
-        eans.map((e) => e.ean!),
+        [...eans.map((e) => e.ean!), ...(foraDoApp ? [foraDoApp] : [])],
         semEan.length,
         prefixo,
       );
