@@ -40,6 +40,7 @@ import {
 import { instrucaoDadosJaInformados } from './dados-ja-informados.util';
 import { conviteDaPergunta, extrairDeterministico } from './extracao-deterministica';
 import { ehNaoSei } from './normalizar-valor.util';
+import { prazoDoLead } from './lead-acelerado';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -1786,10 +1787,12 @@ export class ConversarIaService implements OnModuleDestroy {
   }): Promise<void> {
     const { execucaoId, ctx, empresaId, leadId } = p;
     const horas = p.horas;
+    // Lead de teste acelerado (23/10): o prazo de resposta encolhe junto.
+    const esperaResposta = await prazoDoLead(this.prisma, empresaId, leadId, horas * 3_600_000);
     const vivaParaEsperar = await this.atualizarSeViva(execucaoId, {
       status: 'AGUARDANDO',
       aguardandoNoId: p.noId,
-      timeoutEm: new Date(Date.now() + horas * 3_600_000),
+      timeoutEm: new Date(Date.now() + esperaResposta),
       // Memória da conversa da IA (no contexto da execução): guarda a abertura
       // pra a IA NÃO se reapresentar quando o lead responder. O fluxo manda via
       // whatsapp.enviarTexto (sem gravar na conversa do inbox), então sem isto
@@ -2768,7 +2771,17 @@ export class ConversarIaService implements OnModuleDestroy {
         await this.prisma.fluxoExecucao
           .update({
             where: { id: execucaoId },
-            data: { timeoutEm: new Date(Date.now() + (cfg.timeoutHoras ?? 24) * 3_600_000) },
+            data: {
+              timeoutEm: new Date(
+                Date.now() +
+                  (await prazoDoLead(
+                    this.prisma,
+                    empresaId,
+                    leadId,
+                    (cfg.timeoutHoras ?? 24) * 3_600_000,
+                  )),
+              ),
+            },
           })
           .catch(() => undefined);
         return;
@@ -3278,7 +3291,12 @@ export class ConversarIaService implements OnModuleDestroy {
         perguntaAnterior: ultimaFalaDoBot(historico),
         execucaoId,
       });
-      const renovaMs = jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000;
+      const renovaMs = await prazoDoLead(
+        this.prisma,
+        empresaId,
+        leadId,
+        jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000,
+      );
       const continua = await this.atualizarSeViva(execucaoId, {
         timeoutEm: new Date(Date.now() + renovaMs),
         // _iaTurno++ persiste pro PRÓXIMO turno ganhar uma chave de idempotência nova

@@ -47,6 +47,7 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ehNaoSei, normalizarValor } from './normalizar-valor.util';
 import { ACOES_PROIBIDAS_PESSOAL } from './fluxo-pessoal.constants';
 import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
+import { leadAcelerado, prazoAcelerado } from './lead-acelerado';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -1172,6 +1173,21 @@ export class FluxoExecutorService {
       if (temMarcaDeTeste && delayMs > TESTE_DELAY_MAX_MS) {
         this.logger.debug(`[teste] DELAY encurtado de ${delayMs}ms para ${TESTE_DELAY_MAX_MS}ms`);
         delayMs = TESTE_DELAY_MAX_MS;
+      }
+      // LEAD DE TESTE ACELERADO (23/10): produção de verdade, relógio curto —
+      // 1 dia vira 1 minuto, só pro lead com a etiqueta `teste-acelerado`.
+      if (!temMarcaDeTeste && delayMs > 0) {
+        const leadIdDelay = (execucao.contexto as { leadId?: unknown } | null)?.leadId;
+        if (
+          typeof leadIdDelay === 'string' &&
+          (await leadAcelerado(this.prisma, execucao.empresaId, leadIdDelay))
+        ) {
+          const curto = prazoAcelerado(delayMs);
+          this.logger.log(
+            `[teste-acelerado] DELAY de ${delayMs}ms → ${curto}ms (lead ${leadIdDelay})`,
+          );
+          delayMs = curto;
+        }
       }
     }
     const alvoEm = delayMs > 0 ? Date.now() + delayMs : null;
