@@ -215,7 +215,7 @@ interface Simulacao {
   custoAcabamento?: number;
   /** Corte (20/10): peças × custo de corte por peça da empresa. */
   custoCorte?: number;
-  /** Frete da facção (20/10): um por OP. */
+  /** Frete de produção (23/10): peças × frete por peça. */
   custoFrete?: number;
   precoFaccaoTabela: number | null;
   custoPorPeca: number;
@@ -632,7 +632,7 @@ function SimulacaoCard({ s }: { s: Simulacao }) {
         {s.precoFaccaoTabela !== null ? ` (${formatMoeda(s.precoFaccaoTabela)}/peça na tabela da facção)` : ' (prevista na ficha técnica)'}.
         {(s.custoAcabamento ?? 0) > 0 && ` Acabamento: ${formatMoeda(s.custoAcabamento ?? 0)}.`}
         {(s.custoCorte ?? 0) > 0 && ` Corte: ${formatMoeda(s.custoCorte ?? 0)}.`}
-        {(s.custoFrete ?? 0) > 0 && ` Frete da facção: ${formatMoeda(s.custoFrete ?? 0)}.`}
+        {(s.custoFrete ?? 0) > 0 && ` Frete de produção: ${formatMoeda(s.custoFrete ?? 0)}.`}
       </p>
     </Card>
   );

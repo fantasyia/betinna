@@ -68,7 +68,7 @@ interface Op {
   custoAcabamento?: number;
   /** Corte (20/10): peças cortadas × custo de corte por peça, gravado no corte. */
   custoCorte?: number;
-  /** Frete da facção da OP (20/10), rateado nas peças no fechamento. */
+  /** Frete de produção da OP (23/10): peças cortadas × frete por peça. */
   custoFrete?: number;
   /** Tecido estimado (ficha × grade cortada) × real do corte (20/10). */
   tecidoComparativo?: Array<{
@@ -261,7 +261,7 @@ export default function OpDetalhePage() {
                 <div className="grid gap-2 sm:grid-cols-7 text-sm">
                   <Valor rotulo="Tecido (corte)" v={formatMoeda(op.custoTecido)} />
                   <Valor rotulo="Corte" v={formatMoeda(op.custoCorte ?? 0)} />
-                  <Valor rotulo="Frete da facção" v={formatMoeda(op.custoFrete ?? 0)} />
+                  <Valor rotulo="Frete de produção" v={formatMoeda(op.custoFrete ?? 0)} />
                   <Valor rotulo="Aviamentos" v={formatMoeda(op.custoAviamentos)} />
                   <Valor
                     rotulo="Facção"
@@ -526,13 +526,14 @@ function CorteDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; o
   const [tecidos, setTecidos] = useState(() => deSugestao(op.sugestoes.tecidos));
   const [grade, setGrade] = useState<ValoresGrade>(() => gradeDe(op, 'planejada'));
   const { salvando, enviar } = useEtapa(onPronto, 'Corte registrado — tecido baixado do estoque');
-  // Regras da empresa (20/10): corte por peça e frete por OP — sugeridos, editáveis.
-  const regras = useApiQuery<{ custoCortePorPeca?: number; fretePorOp?: number }>('/erp/acabamento');
+  // Regras da empresa (20/10): corte e frete de produção, ambos por peça — sugeridos, editáveis.
+  const regras = useApiQuery<{ custoCortePorPeca?: number; fretePorPeca?: number }>('/erp/acabamento');
   const [corte, setCorte] = useState<string | null>(null);
   const [frete, setFrete] = useState<string | null>(null);
   const corteSugerido = totalGrade(grade) * (regras.data?.custoCortePorPeca ?? 0);
   const corteCampo = corte ?? paraCampo(Math.round(corteSugerido * 100) / 100);
-  const freteCampo = frete ?? paraCampo(regras.data?.fretePorOp ?? 0);
+  const freteSugerido = totalGrade(grade) * (regras.data?.fretePorPeca ?? 0);
+  const freteCampo = frete ?? paraCampo(Math.round(freteSugerido * 100) / 100);
   return (
     <Dialog
       open
@@ -584,7 +585,10 @@ function CorteDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; o
           >
             <Input value={corteCampo} onChange={(e) => setCorte(e.target.value)} inputMode="decimal" data-testid="corte-custo" />
           </Field>
-          <Field label="Frete da facção (R$, por OP)" hint="Rateado nas peças no fechamento da OP.">
+          <Field
+            label="Frete de produção (R$)"
+            hint={`Sugerido: ${formatNumero(totalGrade(grade))} peças × ${formatMoeda(regras.data?.fretePorPeca ?? 0)}`}
+          >
             <Input value={freteCampo} onChange={(e) => setFrete(e.target.value)} inputMode="decimal" data-testid="corte-frete" />
           </Field>
         </div>
@@ -629,7 +633,7 @@ function CustosDialog({ op, onClose, onPronto }: { op: Op; onClose: () => void; 
         <Field label="Custo do corte (R$)">
           <Input value={corte} onChange={(e) => setCorte(e.target.value)} inputMode="decimal" data-testid="custos-corte" />
         </Field>
-        <Field label="Frete da facção (R$)">
+        <Field label="Frete de produção (R$)">
           <Input value={frete} onChange={(e) => setFrete(e.target.value)} inputMode="decimal" data-testid="custos-frete" />
         </Field>
       </div>

@@ -138,7 +138,7 @@ export const acabamentoSchema = z.object({
     .max(30),
   /** R$ de corte por peça cortada (Léo, 20/10). Ausente = não mexe. */
   custoCortePorPeca: z.number().min(0).max(1000).optional(),
-  /** R$ de frete da facção por OP (Léo, 20/10). Ausente = não mexe. */
-  fretePorOp: z.number().min(0).max(100_000).optional(),
+  /** R$ de frete de produção por peça (Léo, 23/10). Ausente = não mexe. */
+  fretePorPeca: z.number().min(0).max(1000).optional(),
 });
 export type AcabamentoDto = z.infer<typeof acabamentoSchema>;

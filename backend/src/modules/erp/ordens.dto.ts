@@ -101,7 +101,7 @@ export const corteSchema = z.object({
     .refine(semRepetir, 'Variação repetida'),
   /** Custo do corte DE FATO (Léo, 20/10). Ausente = peças cortadas × valor da empresa. */
   custoCorte: z.number().nonnegative().max(1_000_000).optional(),
-  /** Frete da facção desta OP. Ausente = o padrão da empresa. */
+  /** Frete de produção desta OP. Ausente = peças cortadas × valor por peça da empresa. */
   custoFrete: z.number().nonnegative().max(1_000_000).optional(),
 });
 export type CorteDto = z.infer<typeof corteSchema>;

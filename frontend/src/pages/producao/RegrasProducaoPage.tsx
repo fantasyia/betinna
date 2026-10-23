@@ -17,7 +17,7 @@ interface Faccao {
 
 /**
  * Regras de produção (Léo, 20/10): o que entra no custo da peça, num lugar só
- * — corte por peça, frete da facção por OP, serviços de acabamento e o preço
+ * — corte e frete de produção por peça, serviços de acabamento e o preço
  * de cada facção por produto. Só diretoria.
  */
 export default function RegrasProducaoPage() {
@@ -28,7 +28,7 @@ export default function RegrasProducaoPage() {
   return (
     <PageLayout
       title="Regras de produção"
-      description="O que entra no custo de cada peça: corte, frete da facção, acabamento e facção por produto."
+      description="O que entra no custo de cada peça: corte, frete de produção, acabamento e facção por produto."
       actions={
         <Link to="/producao" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text">
           <ArrowLeft className="h-4 w-4" /> Produção

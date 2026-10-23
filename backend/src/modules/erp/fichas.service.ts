@@ -17,7 +17,7 @@ import {
   idDoServico,
   servicosAcabamento,
   custoCortePorPeca,
-  fretePorOp,
+  fretePorPeca,
 } from './acabamento';
 
 const D = (v: number, casas: number) => new Prisma.Decimal(v.toFixed(casas));
@@ -177,7 +177,8 @@ export class FichasService {
     });
     const custoFaccaoPrevisto = num(ficha?.custoFaccaoPrevisto ?? null);
     const servicos = await this.servicosDaEmpresa(empresaId);
-    const corte = await this.corteDaEmpresa(empresaId);
+    // Corte e frete de produção, ambos por peça (20/10 e 23/10).
+    const corte = (await this.corteDaEmpresa(empresaId)) + (await this.freteDaEmpresa(empresaId));
     const acabamento = Array.isArray(ficha?.acabamento) ? (ficha!.acabamento as string[]) : [];
     return {
       modeloLinhaId,
@@ -308,7 +309,8 @@ export class FichasService {
   async custosPrevistos(empresaId: string, modeloLinhaIds: string[]): Promise<Map<string, number>> {
     if (modeloLinhaIds.length === 0) return new Map();
     const servicos = await this.servicosDaEmpresa(empresaId);
-    const corte = await this.corteDaEmpresa(empresaId);
+    // Corte e frete de produção, ambos por peça (20/10 e 23/10).
+    const corte = (await this.corteDaEmpresa(empresaId)) + (await this.freteDaEmpresa(empresaId));
     const fichas = await this.prisma.fichaTecnica.findMany({
       where: { empresaId, modeloLinhaId: { in: modeloLinhaIds } },
       select: {
@@ -359,13 +361,13 @@ export class FichasService {
     return custoCortePorPeca(e?.config);
   }
 
-  /** Frete da facção por OP da empresa (0 = não configurado). */
+  /** Frete de produção por peça da empresa (0 = não configurado). */
   async freteDaEmpresa(empresaId: string): Promise<number> {
     const e = await this.prisma.empresa.findUnique({
       where: { id: empresaId },
       select: { config: true },
     });
-    return fretePorOp(e?.config);
+    return fretePorPeca(e?.config);
   }
 
   /** R$ de acabamento por peça de cada grade (OP: simulação e fechamento). */
@@ -386,7 +388,7 @@ export class FichasService {
     return {
       servicos: await this.servicosDaEmpresa(empresaId),
       custoCortePorPeca: await this.corteDaEmpresa(empresaId),
-      fretePorOp: await this.freteDaEmpresa(empresaId),
+      fretePorPeca: await this.freteDaEmpresa(empresaId),
     };
   }
 
@@ -406,10 +408,10 @@ export class FichasService {
         : await this.corteDaEmpresa(empresaId);
     // Frete idem: ausente = mantém.
     const frete =
-      dto.fretePorOp !== undefined
-        ? Math.round(dto.fretePorOp * 100) / 100
+      dto.fretePorPeca !== undefined
+        ? Math.round(dto.fretePorPeca * 10000) / 10000
         : await this.freteDaEmpresa(empresaId);
-    const secao = { servicos, custoCortePorPeca, fretePorOp: frete };
+    const secao = { servicos, custoCortePorPeca, fretePorPeca: frete };
     // jsonb_set atômico: só a seção `acabamento`.
     await this.prisma.$executeRaw`
       UPDATE "Empresa"

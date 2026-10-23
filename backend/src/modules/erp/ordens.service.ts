@@ -416,8 +416,8 @@ export class OrdensService {
     const custoAcabamento = [...pecasPorLinha].reduce((s, [l, p]) => s + p * (acab.get(l) ?? 0), 0);
     // Corte (Léo, 20/10): custo por peça da empresa × peças da grade.
     const custoCorte = pecas * (await this.fichas.corteDaEmpresa(empresaId));
-    // Frete da facção: um por OP, rateado nas peças.
-    const custoFrete = pecas > 0 ? await this.fichas.freteDaEmpresa(empresaId) : 0;
+    // Frete de produção (23/10): por peça, como o corte.
+    const custoFrete = pecas * (await this.fichas.freteDaEmpresa(empresaId));
     const precoFaccao = await this.precoFaccao(dto.faccaoId, modelo.id);
     // Sem facção escolhida (ou sem preço na tabela dela): a facção prevista da ficha.
     const custoFaccao =
@@ -961,8 +961,8 @@ export class OrdensService {
     // Corte (Léo, 20/10): o informado; sem ele, peças CORTADAS × valor da empresa.
     const cortadas = dto.itens.reduce((s, i) => s + i.cortada, 0);
     const custoCorte = dto.custoCorte ?? cortadas * (await this.fichas.corteDaEmpresa(empresaId));
-    // Frete da facção (por OP): o informado; sem ele, o padrão da empresa.
-    const custoFrete = dto.custoFrete ?? (await this.fichas.freteDaEmpresa(empresaId));
+    // Frete de produção (23/10): o informado; sem ele, peças cortadas × valor por peça.
+    const custoFrete = dto.custoFrete ?? cortadas * (await this.fichas.freteDaEmpresa(empresaId));
     await this.prisma.$transaction(async (tx) => {
       const custo = await this.consumir(tx, empresaId, op, 'CORTE', dto.tecidos, user.id);
       await this.virar(tx, id, ['RASCUNHO'], {

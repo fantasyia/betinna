@@ -31,12 +31,13 @@ export function custoCortePorPeca(config: unknown): number {
 }
 
 /**
- * Frete da facção POR OP (Léo, 20/10: R$ 150 por corte, a gasolina — ele faz
- * o transporte). Em `config.acabamento.fretePorOp`; ausente = 0. Entra no custo
- * real da OP (rateado pelas peças), editável na OP.
+ * Frete de produção POR PEÇA (Léo, 23/10: R$ 0,15 por peça — no lugar dos
+ * R$ 150 por corte). Em `config.acabamento.fretePorPeca`; ausente = 0. Entra no
+ * previsto de toda grade e, no corte da OP, no custo real (editável na OP).
  */
-export function fretePorOp(config: unknown): number {
-  const v = ((config ?? {}) as { acabamento?: { fretePorOp?: unknown } }).acabamento?.fretePorOp;
+export function fretePorPeca(config: unknown): number {
+  const v = ((config ?? {}) as { acabamento?: { fretePorPeca?: unknown } }).acabamento
+    ?.fretePorPeca;
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
 }
 

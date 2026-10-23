@@ -580,7 +580,7 @@ describe('OrdensService', () => {
   it('20/10 corte: custo do corte e frete INFORMADOS valem; sem eles, o padrão da empresa', async () => {
     const { svc, tx, fichas } = montar();
     fichas.corteDaEmpresa.mockResolvedValue(0.45);
-    fichas.freteDaEmpresa.mockResolvedValue(150);
+    fichas.freteDaEmpresa.mockResolvedValue(0.15);
     await svc.cortar(user as never, 'op-1', {
       tecidos: [{ insumoId: 'tec', quantidade: 3.2 }],
       itens: [{ produtoId: 'p-m', cortada: 10 }],
@@ -588,10 +588,10 @@ describe('OrdensService', () => {
     });
     const virada = tx.ordemProducao.updateMany.mock.calls[0][0];
     expect(Number(virada.data.custoCorte)).toBe(5); // o informado, não 10 × 0,45
-    expect(Number(virada.data.custoFrete)).toBe(150); // padrão da empresa
+    expect(Number(virada.data.custoFrete)).toBeCloseTo(1.5, 2); // 10 peças × 0,15
   });
 
-  it('20/10 fechar: o frete da facção entra no custo real', async () => {
+  it('23/10 fechar: o frete de produção entra no custo real', async () => {
     const { svc, prisma, tx, fichas } = montar();
     prisma.ordemProducao.findFirst.mockResolvedValue({
       id: 'op-1',
