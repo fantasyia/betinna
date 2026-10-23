@@ -17,7 +17,7 @@ import { normalizarValor } from './normalizar-valor.util';
 import { decidirEntrada, postoNaDisputa, resolveNutricao } from './nutricao-porta-unica.util';
 import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
 import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
-import { leadDeTeste } from './lead-acelerado';
+import { etiquetarSeTelefoneDeTeste, leadDeTeste } from './lead-acelerado';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
@@ -295,6 +295,11 @@ export class FluxoEventBusService {
     await this.pararReguasDoEvento(empresaId, triggerTipo, contexto).catch((err) =>
       this.logger.warn(`[régua] falha ao avaliar parada (${triggerTipo}): ${String(err)}`),
     );
+    // Telefone de teste (23/10): o lead que ACABOU de nascer com um número da
+    // lista ganha `teste-acelerado` antes de qualquer fluxo acender.
+    if (triggerTipo === 'LEAD_CRIADO') {
+      await etiquetarSeTelefoneDeTeste(this.prisma, empresaId, contexto['leadId'], this.logger);
+    }
     // LEAD DE TESTE (card cmvl673p6, 23/10): lead com a etiqueta `teste` (o da
     // ferramenta de teste do Meta) não acende fluxo — nenhuma mensagem sai pra
     // ele. `teste-acelerado` é OUTRA etiqueta: aquele roda de verdade.

@@ -1,4 +1,5 @@
 import type { PrismaService } from '@database/prisma.service';
+import type { Logger } from '@nestjs/common';
 
 /**
  * LEAD DE TESTE ACELERADO (Léo, 23/10): a bateria F01–F12 roda em PRODUÇÃO de
@@ -73,4 +74,68 @@ export async function prazoDoLead(
   ms: number,
 ): Promise<number> {
   return (await leadAcelerado(prisma, empresaId, leadId)) ? prazoAcelerado(ms) : ms;
+}
+
+// ─── Telefones de teste (Léo, 23/10) ─────────────────────────────────
+
+/**
+ * `Empresa.config.testeAcelerado.telefones`: lead NOVO com um desses números
+ * nasce com a etiqueta `teste-acelerado`. Sem isto não dá pra acelerar o lead
+ * que entra pelo formulário do Meta ou pelo WhatsApp — o fluxo dispara no
+ * LEAD_CRIADO, antes de alguém conseguir etiquetar. Compara pelos 8 últimos
+ * dígitos (regra D18 do resto do app). PURO.
+ */
+export function telefonesDeTeste(config: unknown): string[] {
+  const t = ((config ?? {}) as { testeAcelerado?: { telefones?: unknown } }).testeAcelerado
+    ?.telefones;
+  if (!Array.isArray(t)) return [];
+  return t
+    .filter((x): x is string => typeof x === 'string')
+    .map((x) => x.replace(/\D/g, ''))
+    .filter((x) => x.length >= 8);
+}
+
+export function ehTelefoneDeTeste(telefone: string | null | undefined, lista: string[]): boolean {
+  const d = (telefone ?? '').replace(/\D/g, '');
+  if (d.length < 8) return false;
+  return lista.some((t) => t.slice(-8) === d.slice(-8));
+}
+
+/**
+ * Lead recém-criado com telefone de teste → etiqueta `teste-acelerado` (antes
+ * de qualquer fluxo acender). Melhor esforço: erro vira log, o evento segue.
+ */
+export async function etiquetarSeTelefoneDeTeste(
+  prisma: Pick<PrismaService, 'lead' | 'empresa' | 'tag' | 'leadTag'>,
+  empresaId: string,
+  leadId: unknown,
+  logger?: Pick<Logger, 'log' | 'warn'>,
+): Promise<void> {
+  if (typeof leadId !== 'string' || !leadId) return;
+  try {
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const lista = telefonesDeTeste(empresa?.config);
+    if (lista.length === 0) return;
+    const lead = await prisma.lead.findFirst({
+      where: { id: leadId, empresaId },
+      select: { contatoTelefone: true },
+    });
+    if (!ehTelefoneDeTeste(lead?.contatoTelefone, lista)) return;
+    const tag = await prisma.tag.upsert({
+      where: { empresaId_nome: { empresaId, nome: TAG_TESTE_ACELERADO } },
+      create: { empresaId, nome: TAG_TESTE_ACELERADO, categoria: 'sistema' },
+      update: {},
+    });
+    await prisma.leadTag.upsert({
+      where: { leadId_tagId: { leadId, tagId: tag.id } },
+      create: { leadId, tagId: tag.id, origem: 'ia' },
+      update: {},
+    });
+    logger?.log(`[teste-acelerado] lead ${leadId} nasceu com telefone de teste — etiquetado`);
+  } catch (err) {
+    logger?.warn(`[teste-acelerado] não etiquetou o lead ${leadId}: ${String(err)}`);
+  }
 }
