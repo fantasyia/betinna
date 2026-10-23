@@ -471,3 +471,13 @@
 
 /* Modo interno (19/10): selinho discreto pra equipe saber que não está medindo. */
 .vt-interno { position: fixed; left: 8px; bottom: 8px; z-index: 60; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: #201554; color: #fff; opacity: .75; pointer-events: none; }
+
+/* Modo ghost (23/10): esqueleto enquanto carrega ou sem internet — blocos no formato
+   da tela, sem texto. O brilho para sozinho com prefers-reduced-motion (regra geral acima). */
+.vt-esq { position: absolute; inset: 0; }
+.vt-esq .vt-slide { position: absolute; inset: 0; }
+.vt-esq-cats { display: flex; gap: 18px; padding: 12px 2px 4px; }
+.vt-osso { display: inline-block; flex: none; border-radius: 6px; background: linear-gradient(90deg, var(--linho) 25%, #f6eedd 50%, var(--linho) 75%); background-size: 200% 100%; animation: vt-brilho 1.4s ease-in-out infinite; }
+.vt-osso-stage { background: linear-gradient(90deg, #ebdfc6 25%, #f3e9d4 50%, #ebdfc6 75%); background-size: 200% 100%; animation: vt-brilho 1.4s ease-in-out infinite; }
+@keyframes vt-brilho { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.vt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

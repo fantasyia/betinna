@@ -74,6 +74,8 @@ import { MASCARA_CLARITY, iniciarClarity } from './clarity';
 import { capturarCodigoInterno, codigoInterno, sairDoModoInterno } from './modo-interno';
 import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
 import './vitrine.css';
+import { useCarregarVitrine } from './carregar-vitrine';
+import { EsqueletoVitrine } from './Esqueleto';
 
 /**
  * Vitrine pública de atacado (Fase 1) — o link que o cliente abre no celular:
@@ -141,17 +143,22 @@ export default function VitrinePublicaPage({
   // Link do produto (/p/<slug>, 23/10): abre a vitrine JÁ nele.
   const produto = produtoFixo ?? produtoDaUrl;
   useFontes();
-  const [dados, setDados] = useState<VitrinePub | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
+  // Modo ghost (23/10): sem internet fica no esqueleto e tenta de novo sozinho.
+  const estado = useCarregarVitrine(
+    () => api.get<VitrinePub>(`/public/vitrine/${encodeURIComponent(slug)}`, { skipAuth: true }),
+    slug,
+  );
+  const dados = estado.fase === 'pronta' ? estado.dados : null;
   // Modo interno (19/10): visita da equipe — sem pixel/Ads, GA4 como interno.
   const [interno, setInterno] = useState(false);
 
   useEffect(() => {
     document.title = 'Vitrine de atacado';
-    api
-      .get<VitrinePub>(`/public/vitrine/${encodeURIComponent(slug)}`, { skipAuth: true })
-      .then((v) => {
-        setDados(v);
+  }, [slug]);
+
+  useEffect(() => {
+    if (!dados) return;
+    const v = dados;
         document.title = `${v.empresa.nome} · Atacado`;
         // De onde o cliente veio (utm/fbclid) — guardado no aparelho pro pedido.
         capturarAtribuicao(window.location.href, document.referrer);
@@ -171,30 +178,20 @@ export default function VitrinePublicaPage({
             if (v.googleTag) iniciarGoogleTag(v.googleTag, { interno: eInterno });
             if (v.clarity) iniciarClarity(v.clarity.projetoId, { interno: eInterno });
           });
-      })
-      .catch((e) =>
-        setErro(
-          e instanceof ApiError && e.status === 404
-            ? 'Esta vitrine não está disponível.'
-            : 'Não foi possível carregar a vitrine. Tente de novo em instantes.',
-        ),
-      );
-  }, [slug]);
+  }, [dados, slug]);
 
   return (
     <div className="vt-app">
       <div className="vt-tela">
-        {erro ? (
+        {estado.fase === 'indisponivel' ? (
           <div className="vt-centro">
             <div>
               <h2>Vitrine indisponível</h2>
-              <p className="vt-muted">{erro}</p>
+              <p className="vt-muted">Esta vitrine não está disponível.</p>
             </div>
           </div>
         ) : !dados ? (
-          <div className="vt-centro">
-            <p className="vt-muted">Carregando a vitrine…</p>
-          </div>
+          <EsqueletoVitrine />
         ) : (
           <>
             <Vitrine
