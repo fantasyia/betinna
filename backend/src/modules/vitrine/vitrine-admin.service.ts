@@ -33,6 +33,35 @@ function ehEmUso(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003';
 }
 
+type DadosProdutoVariacao = {
+  nome: string;
+  linha: string;
+  categoria: string | null;
+  precoTabela: Prisma.Decimal;
+  ativo: boolean;
+};
+
+/**
+ * O produto da variação precisa ser regravado? Sem esta checagem, salvar o preço
+ * de UMA linha reescrevia o produto de TODAS as variações do modelo (BETINNA-API-F,
+ * ~180 UPDATEs em série numa transação, disputando lock com o sync do ERP).
+ * Preço compara como Decimal: 39.9 e 39.90 são o mesmo preço. Sem o produto em
+ * mãos, regrava — na dúvida, escreve.
+ */
+function produtoMudou(
+  atual: (Omit<DadosProdutoVariacao, 'linha'> & { linha: string | null }) | null | undefined,
+  novo: DadosProdutoVariacao,
+): boolean {
+  if (!atual) return true;
+  return (
+    atual.nome !== novo.nome ||
+    atual.linha !== novo.linha ||
+    atual.categoria !== novo.categoria ||
+    atual.ativo !== novo.ativo ||
+    !new Prisma.Decimal(atual.precoTabela).equals(novo.precoTabela)
+  );
+}
+
 const modeloInclude = {
   categoria: true,
   cores: {
@@ -876,7 +905,14 @@ export class VitrineAdminService {
         categoria: true,
         cores: { include: { cor: true } },
         linhas: { include: { linha: true, tamanhos: { include: { tamanho: true } } } },
-        variacoes: true,
+        // O produto atual vem junto (um join) pra só regravar o que mudou — ver produtoMudou.
+        variacoes: {
+          include: {
+            produto: {
+              select: { nome: true, linha: true, categoria: true, precoTabela: true, ativo: true },
+            },
+          },
+        },
       },
     });
     const existentes = new Map(
@@ -895,7 +931,9 @@ export class VitrineAdminService {
           };
           const v = existentes.get(`${mc.id}|${mt.id}`);
           if (v) {
-            await tx.produto.update({ where: { id: v.produtoId }, data: dadosProduto });
+            if (produtoMudou(v.produto, dadosProduto)) {
+              await tx.produto.update({ where: { id: v.produtoId }, data: dadosProduto });
+            }
             if (!v.ativo) {
               await tx.catalogoVariacao.update({ where: { id: v.id }, data: { ativo: true } });
             }

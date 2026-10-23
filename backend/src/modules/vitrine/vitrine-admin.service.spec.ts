@@ -302,6 +302,116 @@ describe('VitrineAdminService', () => {
       });
     });
 
+    // BETINNA-API-F (07-09/10): salvar o preço de UMA linha reescrevia o produto de
+    // TODAS as variações do modelo — ~180 UPDATEs em série dentro de uma transação de
+    // escrita, disputando lock com a sincronização do ERP. Só regrava o que mudou.
+    describe('só regrava o produto que de fato mudou', () => {
+      function variacao(id: string, mc: string, mt: string, produto: object) {
+        return {
+          id,
+          modeloCorId: mc,
+          modeloTamanhoId: mt,
+          produtoId: `prod-${id}`,
+          ativo: true,
+          produto,
+        };
+      }
+      const igual = (nome: string, preco: number) => ({
+        nome,
+        linha: 'Regular',
+        categoria: null,
+        precoTabela: new Prisma.Decimal(preco),
+        ativo: true,
+      });
+
+      it('nada mudou → nenhum UPDATE em Produto', async () => {
+        prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(
+          modeloParaSync([
+            variacao('1', 'mc-preto', 'mt-p', igual('Moletom · Preto · Regular P', 39.9)),
+            variacao('2', 'mc-preto', 'mt-m', igual('Moletom · Preto · Regular M', 39.9)),
+            variacao('3', 'mc-cinza', 'mt-p', igual('Moletom · Cinza · Regular P', 39.9)),
+            variacao('4', 'mc-cinza', 'mt-m', igual('Moletom · Cinza · Regular M', 39.9)),
+          ]),
+        );
+
+        await svc.ressincronizarModelo('emp-1', 'mod-1');
+
+        expect(prisma.produto.update).not.toHaveBeenCalled();
+        expect(prisma.produto.create).not.toHaveBeenCalled();
+      });
+
+      it('preço de UMA linha mudou → só os produtos dessa linha são regravados', async () => {
+        const m = modeloParaSync([
+          variacao('1', 'mc-preto', 'mt-p', igual('Moletom · Preto · Regular P', 39.9)),
+          variacao('2', 'mc-preto', 'mt-g', {
+            ...igual('Moletom · Preto · Plus G', 44.9),
+            linha: 'Plus',
+          }),
+        ]);
+        m.cores = [m.cores[0]];
+        m.linhas[0].tamanhos = [m.linhas[0].tamanhos[0]];
+        m.linhas.push({
+          id: 'ml-2',
+          precoEntrada: new Prisma.Decimal(49.9), // era 44,90
+          linha: { nome: 'Plus', ativo: true },
+          tamanhos: [{ id: 'mt-g', tamanho: { nome: 'G', ativo: true } }],
+        });
+        prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(m);
+
+        await svc.ressincronizarModelo('emp-1', 'mod-1');
+
+        expect(prisma.produto.update).toHaveBeenCalledTimes(1);
+        expect(prisma.produto.update).toHaveBeenCalledWith({
+          where: { id: 'prod-2' },
+          data: expect.objectContaining({ precoTabela: new Prisma.Decimal(49.9) }),
+        });
+      });
+
+      it('mesmo preço escrito diferente (39.9 vs 39.90) NÃO conta como mudança', async () => {
+        prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(
+          modeloParaSync([
+            variacao('1', 'mc-preto', 'mt-p', {
+              ...igual('Moletom · Preto · Regular P', 0),
+              precoTabela: new Prisma.Decimal('39.90'),
+            }),
+          ]),
+        );
+        await svc.ressincronizarModelo('emp-1', 'mod-1');
+        expect(prisma.produto.update).not.toHaveBeenCalled();
+      });
+
+      it('renomear o modelo regrava o nome — o caminho de renomear segue funcionando', async () => {
+        const m = modeloParaSync([
+          variacao('1', 'mc-preto', 'mt-p', igual('Moletom · Preto · Regular P', 39.9)),
+        ]);
+        m.nome = 'Moletom Flanelado';
+        prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(m);
+
+        await svc.ressincronizarModelo('emp-1', 'mod-1');
+
+        expect(prisma.produto.update).toHaveBeenCalledWith({
+          where: { id: 'prod-1' },
+          data: expect.objectContaining({ nome: 'Moletom Flanelado · Preto · Regular P' }),
+        });
+      });
+
+      it('produto desativado à mão com o modelo ativo → reativa (ativo também é comparado)', async () => {
+        prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(
+          modeloParaSync([
+            variacao('1', 'mc-preto', 'mt-p', {
+              ...igual('Moletom · Preto · Regular P', 39.9),
+              ativo: false,
+            }),
+          ]),
+        );
+        await svc.ressincronizarModelo('emp-1', 'mod-1');
+        expect(prisma.produto.update).toHaveBeenCalledWith({
+          where: { id: 'prod-1' },
+          data: expect.objectContaining({ ativo: true }),
+        });
+      });
+    });
+
     it('preço vazio ("sob consulta") vira precoTabela 0, nunca null', async () => {
       const m = modeloParaSync();
       m.linhas[0].precoEntrada = null as never;
