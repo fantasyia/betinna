@@ -12,6 +12,9 @@ import { registrarTransicaoEtapa } from '@modules/leads/lead-etapa-historico.uti
  *   na etapa `criadoEtapaId`; liga lead ↔ cliente; move pra `criadoEtapaId`.
  * - Pedido PAGO: lead no MESMO funil de `pagoEtapaId` → move pra lá; sem lead
  *   nenhum (borda) → cria em `pagoSemLeadEtapaId` (ex.: Recompra · 1ª compra).
+ * - Pedido PAGO de quem JÁ está no funil de `pagoRecompraEtapaId` (cliente que
+ *   recompra, 23/10): volta pra essa etapa e o LEAD_ETAPA_MUDOU sai SEMPRE
+ *   (reacende), mesmo se já estava nela — a pós-compra recomeça a cada compra.
  *
  * Lead criado aqui NÃO dispara LEAD_CRIADO (o fluxo do formulário do Meta não
  * fala com quem comprou na vitrine); quem conduz é o PEDIDO_CRIADO/PEDIDO_PAGO.
@@ -23,11 +26,15 @@ export interface FunilPedidos {
   criadoEtapaId?: string;
   pagoEtapaId?: string;
   pagoSemLeadEtapaId?: string;
+  /** Cliente que recompra (já no funil desta etapa): volta pra ela e reacende (23/10). */
+  pagoRecompraEtapaId?: string;
 }
 
 export function funilPedidos(config: unknown): FunilPedidos | null {
   const f = ((config ?? {}) as { funilPedidos?: FunilPedidos }).funilPedidos;
-  return f && (f.criadoEtapaId || f.pagoEtapaId || f.pagoSemLeadEtapaId) ? f : null;
+  return f && (f.criadoEtapaId || f.pagoEtapaId || f.pagoSemLeadEtapaId || f.pagoRecompraEtapaId)
+    ? f
+    : null;
 }
 
 type Deps = {
@@ -124,6 +131,41 @@ export async function ligarLeadDoPedido(
         where: { id: lead.id, clienteId: null },
         data: { clienteId: p.clienteId },
       });
+    }
+
+    // 4a) Recompra (23/10): PAGO de quem já está no funil de pós-venda volta pra
+    // etapa da compra e REACENDE — o evento sai mesmo se ele já estava nela.
+    if (momento === 'PAGO' && cfg.pagoRecompraEtapaId) {
+      const recompra = await etapaDaEmpresa(d, p.empresaId, cfg.pagoRecompraEtapaId);
+      if (recompra && lead.funilId === recompra.funilId) {
+        if (lead.funilEtapaId !== recompra.id) {
+          await d.prisma.lead.updateMany({
+            where: { id: lead.id, empresaId: p.empresaId },
+            data: {
+              funilEtapaId: recompra.id,
+              etapa: enumDa(recompra.tipo),
+              etapaDesde: new Date(),
+            },
+          });
+          await registrarTransicaoEtapa(d.prisma, d.logger as Logger, {
+            empresaId: p.empresaId,
+            leadId: lead.id,
+            funilId: recompra.funilId,
+            etapaOrigem: lead.funilEtapaId ?? null,
+            etapaDestino: recompra.id,
+            origemMudanca: 'api',
+          });
+        }
+        await d.bus?.disparar(p.empresaId, 'LEAD_ETAPA_MUDOU', {
+          leadId: lead.id,
+          funilId: recompra.funilId,
+          deFunilEtapaId: lead.funilEtapaId ?? undefined,
+          paraFunilEtapaId: recompra.id,
+          _hops: 1,
+        });
+        d.logger.log(`[funil] ${p.numero}: lead ${lead.id} recomprou → ${recompra.id} (reacende)`);
+        return lead.id;
+      }
     }
 
     // 4) Move.

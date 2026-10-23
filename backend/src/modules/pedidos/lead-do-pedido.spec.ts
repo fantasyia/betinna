@@ -14,6 +14,7 @@ const ETAPAS: Record<string, { id: string; funilId: string; tipo: string }> = {
   'et-montado': { id: 'et-montado', funilId: 'f-vendas', tipo: 'ATIVA' },
   'et-pago': { id: 'et-pago', funilId: 'f-vendas', tipo: 'ATIVA' },
   'et-1a-compra': { id: 'et-1a-compra', funilId: 'f-recompra', tipo: 'ATIVA' },
+  'et-hora-recomprar': { id: 'et-hora-recomprar', funilId: 'f-recompra', tipo: 'ATIVA' },
 };
 
 function montar(o: { config?: unknown; leadDoCliente?: unknown; leadDoTelefone?: unknown } = {}) {
@@ -128,6 +129,63 @@ describe('ligarLeadDoPedido', () => {
       funilEtapaId: 'et-1a-compra',
       funilId: 'f-recompra',
     });
+  });
+
+  it('23/10 PAGO de quem já está na Recompra: volta pra "1ª compra" e reacende', async () => {
+    const config = { funilPedidos: { ...CFG.funilPedidos, pagoRecompraEtapaId: 'et-1a-compra' } };
+    const { d, prisma, bus } = montar({
+      config,
+      leadDoCliente: {
+        id: 'lead-1',
+        funilId: 'f-recompra',
+        funilEtapaId: 'et-hora-recomprar',
+        clienteId: 'cli-1',
+      },
+    });
+    expect(await ligarLeadDoPedido(d, 'ped-1', 'PAGO')).toBe('lead-1');
+    expect(prisma.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ funilEtapaId: 'et-1a-compra' }) }),
+    );
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'LEAD_ETAPA_MUDOU',
+      expect.objectContaining({ leadId: 'lead-1', paraFunilEtapaId: 'et-1a-compra' }),
+    );
+  });
+
+  it('23/10 recompra de quem JÁ está na "1ª compra": não move, mas o evento sai (reacende)', async () => {
+    const config = { funilPedidos: { ...CFG.funilPedidos, pagoRecompraEtapaId: 'et-1a-compra' } };
+    const { d, prisma, bus } = montar({
+      config,
+      leadDoCliente: {
+        id: 'lead-1',
+        funilId: 'f-recompra',
+        funilEtapaId: 'et-1a-compra',
+        clienteId: 'cli-1',
+      },
+    });
+    await ligarLeadDoPedido(d, 'ped-1', 'PAGO');
+    expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+    expect(bus.disparar).toHaveBeenCalledTimes(1);
+  });
+
+  it('23/10 lead no funil de VENDAS segue indo pra "Pedido pago" (a recompra não pega)', async () => {
+    const config = { funilPedidos: { ...CFG.funilPedidos, pagoRecompraEtapaId: 'et-1a-compra' } };
+    const { d, bus } = montar({
+      config,
+      leadDoCliente: {
+        id: 'lead-1',
+        funilId: 'f-vendas',
+        funilEtapaId: 'et-montado',
+        clienteId: 'cli-1',
+      },
+    });
+    await ligarLeadDoPedido(d, 'ped-1', 'PAGO');
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'LEAD_ETAPA_MUDOU',
+      expect.objectContaining({ paraFunilEtapaId: 'et-pago' }),
+    );
   });
 
   it('erro no meio não derruba o pedido: vira log e devolve null', async () => {
