@@ -4120,6 +4120,8 @@ model CatalogoModelo {
   id          String   @id @default(cuid())
   empresaId   String
   nome        String
+  /// Endereço próprio na vitrine (/p/<slug>, 23/10). Nasce do nome e não muda.
+  slug        String?
   categoriaId String?
   descricao   String?  @db.Text
   /// Chips do cartão (ex.: "Gramatura 280", "Capuz").
@@ -4162,6 +4164,8 @@ model CatalogoModelo {
   ordensProducao OrdemProducao[]
 
   @@index([empresaId, ativo, ordem])
+
+  @@unique([empresaId, slug])
 }
 
 /// Cor marcada num modelo, com as fotos daquela cor.

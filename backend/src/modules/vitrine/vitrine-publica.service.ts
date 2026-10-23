@@ -12,6 +12,7 @@ import { pixelLigado } from './meta-pixel.service';
 import { googleTagLigada } from './google-tag.service';
 import { whatsappDaVitrine } from './contato.service';
 import { clarityLigado } from './clarity';
+import { slugDoNome } from './slug-modelo';
 
 /** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
 function freteDaVitrine(config: unknown) {
@@ -112,6 +113,9 @@ export class VitrinePublicaService {
       .map((m) => ({
         id: m.id,
         nome: m.nome,
+        // Endereço próprio (/p/<slug>, 23/10) e quando mudou (lastmod do sitemap).
+        slug: m.slug ?? slugDoNome(m.nome),
+        atualizadoEm: m.atualizadoEm,
         categoria:
           m.categoria && m.categoria.ativo ? { id: m.categoria.id, nome: m.categoria.nome } : null,
         descricao: m.descricao,

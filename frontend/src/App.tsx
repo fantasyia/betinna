@@ -131,6 +131,8 @@ function RedirectOcorrencia() {
  */
 function RaizDoApp() {
   const host = window.location.host;
+  // /p/<slug> no domínio próprio (23/10): a vitrine abre já no produto.
+  const { produto } = useParams<{ produto: string }>();
   const [destino, setDestino] = useState<string | null>(() => {
     const d = destinoDaRaiz(marca(), host);
     return d === "/login" ? null : d;
@@ -153,7 +155,7 @@ function RaizDoApp() {
     return (
       <ErrorBoundary>
         <PageSuspense>
-          <VitrinePublicaPage slugFixo={decodeURIComponent(destino.slice(3))} />
+          <VitrinePublicaPage slugFixo={decodeURIComponent(destino.slice(3))} produtoFixo={produto} />
         </PageSuspense>
       </ErrorBoundary>
     );
@@ -164,6 +166,11 @@ function RaizDoApp() {
 const router = createBrowserRouter([
   {
     path: "/",
+    element: <RaizDoApp />,
+  },
+  {
+    // Página do produto no domínio da vitrine (card cmvkaagey, 23/10).
+    path: "/p/:produto",
     element: <RaizDoApp />,
   },
   {
@@ -190,6 +197,16 @@ const router = createBrowserRouter([
   {
     // Vitrine pública de atacado (sem login): o link que o cliente abre no celular.
     path: "/v/:slug",
+    element: (
+      <ErrorBoundary>
+        <PageSuspense>
+          <VitrinePublicaPage />
+        </PageSuspense>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/v/:slug/p/:produto",
     element: (
       <ErrorBoundary>
         <PageSuspense>

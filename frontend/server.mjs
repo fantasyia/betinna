@@ -18,6 +18,11 @@
  *  - Política de Privacidade (`/privacidade` no domínio da vitrine, ou
  *    `/v/<slug>/privacidade`) em HTML PRONTO: o Meta confere a URL com robô,
  *    que não roda o app (09/10 — sem ela, nada de formulário de anúncio).
+ *  - Página do PRODUTO (`/p/<slug>` no domínio da vitrine, ou
+ *    `/v/<vitrine>/p/<slug>`, 23/10): o index.html com título, descrição,
+ *    imagem, canonical e JSON-LD `Product` DAQUELE modelo — o Google e o
+ *    WhatsApp leem o HTML cru. O app abre já no produto.
+ *  - `/sitemap.xml` e `/robots.txt` próprios do domínio da vitrine.
  *
  * Sem dependência nenhuma (node:http/fs). Exporta `criarServidor` pros testes.
  */
@@ -173,9 +178,167 @@ const PAGINA_AVISO = (titulo, texto) => `<!doctype html>
 <title>${escapar(titulo)}</title><meta name="robots" content="noindex" /><style>${ESTILO_PAGINA}</style></head>
 <body><main><h1>${escapar(titulo)}</h1><p>${escapar(texto)}</p></main></body></html>`;
 
+/** Qual produto a URL pede. null = não é página de produto. PURO. */
+export function produtoDaRota(caminho, marca, doTenant) {
+  const m = /^\/v\/([a-z0-9-]{3,40})\/p\/([a-z0-9-]{1,90})\/?$/.exec(caminho);
+  if (m) return { vitrine: m[1], produto: m[2] };
+  const t = /^\/p\/([a-z0-9-]{1,90})\/?$/.exec(caminho);
+  if (t && doTenant && marca?.vitrineSlug) return { vitrine: marca.vitrineSlug, produto: t[1] };
+  return null;
+}
+
+/** Menor e maior preço por peça do modelo (atacadão → entrada). PURO. */
+export function faixaDePreco(modelo) {
+  const precos = [];
+  for (const l of modelo.linhas ?? []) {
+    for (const v of [l.precoAtacadao, l.precoVolume, l.precoEntrada]) {
+      if (typeof v === 'number' && v > 0) precos.push(v);
+    }
+  }
+  return precos.length ? { min: Math.min(...precos), max: Math.max(...precos) } : null;
+}
+
+const reais = (v) => `R$ ${v.toFixed(2).replace('.', ',')}`;
+
+/** Capa do produto (1ª foto da 1ª cor) e as demais, absolutas. */
+function fotosDo(modelo, base) {
+  const out = [];
+  for (const c of modelo.cores ?? []) {
+    const f = c.fotos?.[0];
+    if (f?.url) out.push(new URL(f.url, base).toString());
+  }
+  return out;
+}
+
+/** Os dados de SEO do produto, prontos pro HTML. PURO. */
+export function seoDoProduto(modelo, vitrine, { base, caminho }) {
+  const marca = vitrine?.empresa?.nome || 'Atacado';
+  const faixa = faixaDePreco(modelo);
+  const cores = (modelo.cores ?? []).map((c) => c.nome);
+  const tamanhos = [...new Set((modelo.linhas ?? []).flatMap((l) => (l.tamanhos ?? []).map((t) => t.nome)))];
+  const partes = [
+    'Atacado direto da confecção',
+    faixa ? `a partir de ${reais(faixa.min)}/peça` : null,
+    cores.length ? `${cores.length} ${cores.length === 1 ? 'cor' : 'cores'}` : null,
+    tamanhos.length ? `tamanhos ${tamanhos[0]} a ${tamanhos[tamanhos.length - 1]}` : null,
+  ].filter(Boolean);
+  const descricao = `${modelo.nome}: ${partes.join(' · ')}.`;
+  const url = new URL(caminho, base).toString();
+  const fotos = fotosDo(modelo, base);
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: modelo.nome,
+    description: modelo.descricao || descricao,
+    url,
+    ...(fotos.length ? { image: fotos } : {}),
+    brand: { '@type': 'Brand', name: marca },
+    ...(modelo.composicao ? { material: modelo.composicao } : {}),
+    ...(cores.length ? { color: cores.join(', ') } : {}),
+    ...(faixa
+      ? {
+          offers: {
+            '@type': 'AggregateOffer',
+            priceCurrency: 'BRL',
+            lowPrice: faixa.min.toFixed(2),
+            highPrice: faixa.max.toFixed(2),
+            availability: 'https://schema.org/InStock',
+            url,
+          },
+        }
+      : {}),
+  };
+  return { titulo: `${modelo.nome} · ${marca}`, descricao, url, imagem: fotos[0] ?? null, jsonLd };
+}
+
+/** index.html vestido com o produto (título, descrição, OG, canonical, JSON-LD). */
+export function aplicarProduto(html, seo) {
+  // `</` dentro do JSON fecharia o <script>: escapa a barra.
+  const ld = JSON.stringify(seo.jsonLd).replace(/<\//g, '<\\/');
+  let out = html
+    .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapar(seo.titulo)}</title>`)
+    .replace(/(<meta name="description" content=")[^"]*(")/, `$1${escapar(seo.descricao)}$2`)
+    .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${escapar(seo.titulo)}$2`)
+    .replace(/(<meta property="og:description" content=")[^"]*(")/, `$1${escapar(seo.descricao)}$2`)
+    .replace(/(<meta name="twitter:title" content=")[^"]*(")/, `$1${escapar(seo.titulo)}$2`)
+    .replace(/(<meta name="twitter:description" content=")[^"]*(")/, `$1${escapar(seo.descricao)}$2`)
+    // A marca já pôs og:url da raiz: o do produto manda.
+    .replace(/\s*<meta property="og:url" content="[^"]*" \/>/g, '');
+  if (seo.imagem) {
+    out = /<meta property="og:image" content="/.test(out)
+      ? out.replace(/(<meta property="og:image" content=")[^"]*(")/, `$1${escapar(seo.imagem)}$2`)
+      : out.replace('</head>', `  <meta property="og:image" content="${escapar(seo.imagem)}" />\n  </head>`);
+    out = out.replace(/(<meta name="twitter:card" content=")[^"]*(")/, '$1summary_large_image$2');
+  }
+  const extra = [
+    `<link rel="canonical" href="${escapar(seo.url)}" />`,
+    `<meta property="og:url" content="${escapar(seo.url)}" />`,
+    `<meta property="og:type" content="product" />`,
+    `<script type="application/ld+json">${ld}</script>`,
+  ].join('\n    ');
+  return out.replace('</head>', `    ${extra}\n  </head>`);
+}
+
+const xml = (s) =>
+  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** sitemap.xml: a raiz + 1 URL por produto ATIVO (a vitrine pública só traz ativos). PURO. */
+export function sitemapXml(vitrine, base) {
+  const urls = [
+    `<url><loc>${xml(new URL('/', base).toString())}</loc></url>`,
+    ...(vitrine?.modelos ?? [])
+      .filter((m) => m.slug)
+      .map((m) => {
+        const lastmod = m.atualizadoEm ? `<lastmod>${xml(String(m.atualizadoEm).slice(0, 10))}</lastmod>` : '';
+        return `<url><loc>${xml(new URL(`/p/${m.slug}`, base).toString())}</loc>${lastmod}</url>`;
+      }),
+  ];
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
+}
+
+/** robots.txt do domínio da vitrine: tudo aberto, menos o link do modo interno. PURO. */
+export function robotsDaVitrine(base) {
+  return [
+    'User-agent: *',
+    'Allow: /',
+    // Link que marca o aparelho da equipe (modo interno) e o de sair dele.
+    'Disallow: /*?interno=',
+    'Disallow: /*&interno=',
+    '',
+    `Sitemap: ${new URL('/sitemap.xml', base).toString()}`,
+    '',
+  ].join('\n');
+}
+
 export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_000 }) {
   const raiz = resolve(dist);
   const cacheMarca = new Map();
+  const cacheVitrine = new Map();
+
+  /** Vitrine pública (produtos, preços, fotos) — cache de 5 min; API fora = null. */
+  async function vitrineDo(slug) {
+    if (!apiUrl) return null;
+    const c = cacheVitrine.get(slug);
+    if (c && c.exp > Date.now()) return c.v;
+    try {
+      const r = await fetchFn(
+        `${apiUrl.replace(/\/+$/, '')}/api/v1/public/vitrine/${encodeURIComponent(slug)}`,
+        { signal: AbortSignal.timeout(3000) },
+      );
+      const v = r.ok ? ((await r.json())?.data ?? null) : null;
+      cacheVitrine.set(slug, { v, exp: Date.now() + (v ? ttlMs : 15_000) });
+      return v;
+    } catch {
+      cacheVitrine.set(slug, { v: null, exp: Date.now() + 15_000 });
+      return null;
+    }
+  }
+
+  function texto(res, req, status, tipo, conteudo, cache) {
+    const corpo = Buffer.from(conteudo, 'utf8');
+    res.writeHead(status, { 'Content-Type': tipo, 'Content-Length': corpo.length, 'Cache-Control': cache, ...SEGURANCA });
+    return res.end(req.method === 'HEAD' ? undefined : corpo);
+  }
   let modelo = null;
 
   async function indexHtml() {
@@ -232,6 +395,21 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       }
       const rel = caminho.replace(/^\/+/, '');
       const host = req.headers['x-forwarded-host'] || req.headers.host;
+
+      // robots.txt e sitemap.xml DO DOMÍNIO DA VITRINE (o arquivo do dist é o do app).
+      if (caminho === '/robots.txt' || caminho === '/sitemap.xml') {
+        const m = await marcaDo(host);
+        const daVitrine = m?.dominio && normalizarHost(m.dominio) === normalizarHost(host) && m.vitrineSlug;
+        if (daVitrine) {
+          const base = `https://${normalizarHost(host)}`;
+          if (caminho === '/robots.txt') {
+            return texto(res, req, 200, MIME['.txt'], robotsDaVitrine(base), 'public, max-age=3600');
+          }
+          const v = await vitrineDo(m.vitrineSlug);
+          if (!v) return texto(res, req, 503, MIME['.txt'], 'indisponível', SEM_CACHE);
+          return texto(res, req, 200, 'application/xml; charset=utf-8', sitemapXml(v, base), 'public, max-age=3600');
+        }
+      }
 
       // Arquivo de verdade (assets, ícones, sw…): serve como está.
       const alvo = rel && rel !== 'index.html' ? await arquivo(rel) : null;
@@ -294,9 +472,26 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
         });
         return res.end();
       }
-      const html = aplicarMarca(await indexHtml(), marca, { host, caminho });
+      let html = aplicarMarca(await indexHtml(), marca, { host, caminho });
+      let status = 200;
+      // Página do produto: o HTML já sai com os dados DELE (robô não roda o app).
+      const prod = produtoDaRota(caminho, marca, doTenant);
+      if (prod) {
+        const v = await vitrineDo(prod.vitrine);
+        const modelo = v?.modelos?.find((x) => x.slug === prod.produto);
+        if (modelo) {
+          const base = `https://${normalizarHost(host)}`;
+          const canonico = doTenant ? `/p/${modelo.slug}` : `/v/${prod.vitrine}/p/${modelo.slug}`;
+          html = aplicarProduto(html, seoDoProduto(modelo, v, { base, caminho: canonico }));
+        } else if (v) {
+          // Produto que não existe (ou saiu da vitrine): o app abre a vitrine,
+          // mas o Google não indexa essa URL.
+          status = 404;
+          html = html.replace('</head>', '  <meta name="robots" content="noindex" />\n  </head>');
+        }
+      }
       const corpo = Buffer.from(html, 'utf8');
-      res.writeHead(200, {
+      res.writeHead(status, {
         'Content-Type': MIME['.html'],
         'Content-Length': corpo.length,
         'Cache-Control': SEM_CACHE,

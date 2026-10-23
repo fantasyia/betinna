@@ -132,3 +132,12 @@ export function compraGoogle(c: {
 export function _resetarGoogleTag(): void {
   tag = null;
 }
+
+/**
+ * Trocou de produto no feed e a URL virou /p/<outro> (23/10): page_view do
+ * GA4 com o endereço novo. O view_item continua sendo o da ficha/grade aberta.
+ */
+export function paginaVista(url: string, titulo: string): void {
+  if (!tag?.ga4Id) return;
+  gtag('event', 'page_view', { page_location: url, page_title: titulo, send_to: tag.ga4Id });
+}

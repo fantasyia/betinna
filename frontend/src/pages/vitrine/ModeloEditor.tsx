@@ -229,6 +229,9 @@ export function ModeloEditor({
   onListasMudaram: () => void;
 }) {
   const toast = useToast();
+  // Domínio da vitrine (atacado.…): o app roda em outro (app.…), então vem da config.
+  const cfgVitrine = useApiQuery<{ dominio?: string | null } | null>('/vitrine/admin/config');
+  const dominioVitrine = cfgVitrine.data?.dominio ?? null;
   const precificacao = useApiQuery<{ ativa: boolean }>('/precificacao/status');
   // ERP próprio ligado: aba de ficha técnica (só com o modelo já salvo).
   const erp = useApiQuery<{ ativo: boolean }>('/erp/estoque/status');
@@ -416,6 +419,31 @@ export function ModeloEditor({
         </ul>
       )}
 
+      {/* Link do produto (23/10): é o que vai no anúncio — abre a vitrine já nele. */}
+      {atual?.slug && dominioVitrine && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm" data-testid="modelo-link">
+          <span className="text-muted">Link do produto:</span>
+          <a
+            href={`https://${dominioVitrine}/p/${atual.slug}`}
+            target="_blank"
+            rel="noopener"
+            className="text-primary hover:underline break-all"
+          >
+            {`${dominioVitrine}/p/${atual.slug}`}
+          </a>
+          <Button
+            size="sm"
+            variant="secondary"
+            leftIcon={<Copy className="h-3.5 w-3.5" />}
+            onClick={() => {
+              void navigator.clipboard?.writeText(`https://${dominioVitrine}/p/${atual.slug}`);
+              toast.success('Link copiado');
+            }}
+          >
+            Copiar
+          </Button>
+        </div>
+      )}
       <Tabs
         value={aba}
         onChange={(v) => setAba(v as Aba)}

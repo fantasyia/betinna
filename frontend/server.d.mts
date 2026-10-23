@@ -30,6 +30,22 @@ export function slugDaPrivacidade(
   doTenant: boolean,
 ): string | null;
 export function paginaPrivacidade(p: PoliticaPrivacidade, opts: { voltar: string }): string;
+export function produtoDaRota(
+  caminho: string,
+  marca: MarcaPreview | null,
+  doTenant: boolean,
+): { vitrine: string; produto: string } | null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ModeloPub = any;
+export function faixaDePreco(modelo: ModeloPub): { min: number; max: number } | null;
+export function seoDoProduto(
+  modelo: ModeloPub,
+  vitrine: ModeloPub,
+  ctx: { base: string; caminho: string },
+): { titulo: string; descricao: string; url: string; imagem: string | null; jsonLd: Record<string, unknown> };
+export function aplicarProduto(html: string, seo: ReturnType<typeof seoDoProduto>): string;
+export function sitemapXml(vitrine: ModeloPub, base: string): string;
+export function robotsDaVitrine(base: string): string;
 export function criarServidor(opts: {
   dist: string;
   apiUrl: string;

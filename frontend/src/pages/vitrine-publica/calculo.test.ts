@@ -24,6 +24,8 @@ import {
   proximaFaixa,
   resumoPedido,
   valorDoModelo,
+  inicioPeloProduto,
+  slugTexto,
   somar,
   textoKit,
   totalPecas,
@@ -138,6 +140,29 @@ describe('carrinho', () => {
       'mod-sumiu': { x: { y: 9 } },
     };
     expect(limparCarrinho(salvo, vitrine())).toEqual({ 'mod-1': { 'mc-preto': { 't-p': 3 } } });
+  });
+});
+
+describe('link do produto (/p/<slug>, 23/10)', () => {
+  const v = { linhas: [], modelos: [modelo({ slug: 'bermuda-moletom-summer' } as Partial<ModeloPub>)] } as unknown as VitrinePub;
+  it('abre no modelo, na linha e na cor pedidas (sem acento/maiúscula importar)', () => {
+    const r = inicioPeloProduto(v, 'bermuda-moletom-summer', '?linha=regular&cor=BEGE&utm_source=meta');
+    expect(r?.modelo.id).toBe('mod-1');
+    expect(r?.linhaId).toBe('lin-reg');
+    expect(r?.corId).toBe('mc-bege');
+  });
+  it('linha que o modelo não tem: a 1ª dele; cor desconhecida: nenhuma', () => {
+    const r = inicioPeloProduto(v, 'bermuda-moletom-summer', '?linha=plus-size&cor=roxo');
+    expect(r?.linhaId).toBe('lin-reg');
+    expect(r?.corId).toBeNull();
+  });
+  it('produto que não existe: vitrine normal', () => {
+    expect(inicioPeloProduto(v, 'nao-existe', '')).toBeNull();
+    expect(inicioPeloProduto(v, undefined, '')).toBeNull();
+  });
+  it('slugTexto', () => {
+    expect(slugTexto('Plus Size')).toBe('plus-size');
+    expect(slugTexto('Verde-Militar')).toBe('verde-militar');
   });
 });
 

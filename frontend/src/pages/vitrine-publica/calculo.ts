@@ -46,6 +46,8 @@ export interface CorPub {
 export interface ModeloPub {
   id: string;
   nome: string;
+  /** Endereço próprio (/p/<slug>, 23/10). */
+  slug?: string;
   categoria: { id: string; nome: string } | null;
   descricao: string | null;
   etiquetas: string[];
@@ -264,6 +266,37 @@ export function valorDoModelo(m: ModeloPub, c: Carrinho, faixa: Faixa): number |
     total += n * p;
   }
   return Math.round(total * 100) / 100;
+}
+
+/** "Plus Size" → "plus-size" (pra casar ?linha= e ?cor= da URL). PURO. */
+export function slugTexto(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Onde a vitrine abre pelo link do produto (/p/<slug>?linha=&cor=, 23/10):
+ * o modelo, a linha (a pedida, se ele tiver; senão a 1ª dele) e a cor. PURO.
+ */
+export function inicioPeloProduto(
+  v: Pick<VitrinePub, 'modelos' | 'linhas'>,
+  produto: string | undefined,
+  busca: string,
+): { modelo: ModeloPub; linhaId: string; corId: string | null } | null {
+  if (!produto) return null;
+  const m = v.modelos.find((x) => x.slug === produto);
+  if (!m || m.linhas.length === 0) return null;
+  const q = new URLSearchParams(busca);
+  const pedida = q.get('linha');
+  const linha =
+    (pedida && m.linhas.find((l) => slugTexto(l.nome) === slugTexto(pedida))) || m.linhas[0];
+  const corPedida = q.get('cor');
+  const cor = corPedida ? m.cores.find((c) => slugTexto(c.nome) === slugTexto(corPedida)) : undefined;
+  return { modelo: m, linhaId: linha.linhaId, corId: cor?.id ?? null };
 }
 
 export function pecasDoModelo(c: Carrinho, modeloId: string, linha?: LinhaPub): number {

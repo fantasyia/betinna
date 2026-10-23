@@ -10,6 +10,7 @@ import {
   cacheDe,
   criarServidor,
   paginaPrivacidade,
+  produtoDaRota,
   slugDaPrivacidade,
 } from '../server.mjs';
 
@@ -55,7 +56,27 @@ const POLITICA = {
     { titulo: 'Seus direitos', paragrafos: ['Você pode pedir:'], itens: ['acesso', 'correção'] },
   ],
 };
+const VITRINE = {
+  empresa: { nome: 'Ribelt Têxtil' },
+  modelos: [
+    {
+      id: 'm1',
+      slug: 'bermuda-moletom-summer',
+      nome: 'Bermuda Moletom Summer',
+      descricao: null,
+      composicao: '65% poliéster, 35% algodão',
+      atualizadoEm: '2026-10-22T10:00:00.000Z',
+      cores: [{ nome: 'Preto', fotos: [{ url: 'https://cdn.test/b.jpg' }] }, { nome: 'Bege', fotos: [] }],
+      linhas: [
+        { precoEntrada: 19.99, precoVolume: 17.99, precoAtacadao: 16.99, tamanhos: [{ nome: 'P' }, { nome: 'GG' }] },
+      ],
+    },
+  ],
+};
 const fetchFn = vi.fn(async (url: string) => {
+  if (/\/public\/vitrine\/atacado-ribelt$/.test(new URL(url).pathname)) {
+    return new Response(JSON.stringify({ success: true, data: VITRINE }), { status: 200 });
+  }
   const priv = /\/public\/vitrine\/([^/]+)\/privacidade$/.exec(new URL(url).pathname);
   if (priv) {
     if (priv[1] === 'api-fora') throw new Error('timeout');
@@ -227,5 +248,49 @@ describe('Política de Privacidade (o Meta confere a URL com robô, sem rodar o 
 
   it('paginaPrivacidade não roda script nenhum', () => {
     expect(paginaPrivacidade(POLITICA, { voltar: '/' })).not.toMatch(/<script/i);
+  });
+});
+
+describe('página do produto, sitemap e robots (card cmvkaagey, 23/10)', () => {
+  it('/p/<slug> no domínio da vitrine: título, preço, foto, canonical e JSON-LD do produto', async () => {
+    const r = await get('/p/bermuda-moletom-summer?utm_source=meta', 'atacado.ribelt.com.br');
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('<title>Bermuda Moletom Summer · Ribelt Têxtil</title>');
+    expect(html).toContain('a partir de R$ 16,99/peça');
+    expect(html).toContain('<link rel="canonical" href="https://atacado.ribelt.com.br/p/bermuda-moletom-summer" />');
+    expect(html).toContain('<meta property="og:image" content="https://cdn.test/b.jpg" />');
+    const ld = JSON.parse(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)![1]);
+    expect(ld['@type']).toBe('Product');
+    expect(ld.offers).toMatchObject({ priceCurrency: 'BRL', lowPrice: '16.99', highPrice: '19.99' });
+    // Só um og:url (o do produto), não o da raiz.
+    expect(html.match(/property="og:url"/g)).toHaveLength(1);
+  });
+
+  it('produto que não existe: 404 com noindex (o app ainda abre)', async () => {
+    const r = await get('/p/nao-existe', 'atacado.ribelt.com.br');
+    expect(r.status).toBe(404);
+    expect(await r.text()).toContain('<meta name="robots" content="noindex" />');
+  });
+
+  it('/p/<slug> fora do domínio de uma vitrine não é produto', () => {
+    expect(produtoDaRota('/p/x', null, false)).toBeNull();
+    expect(produtoDaRota('/v/atacado-ribelt/p/x', null, false)).toEqual({ vitrine: 'atacado-ribelt', produto: 'x' });
+  });
+
+  it('sitemap.xml: a raiz + 1 URL por produto, com lastmod', async () => {
+    const r = await get('/sitemap.xml', 'atacado.ribelt.com.br');
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toContain('application/xml');
+    const x = await r.text();
+    expect(x).toContain('<loc>https://atacado.ribelt.com.br/</loc>');
+    expect(x).toContain('<loc>https://atacado.ribelt.com.br/p/bermuda-moletom-summer</loc><lastmod>2026-10-22</lastmod>');
+  });
+
+  it('robots.txt da vitrine: aberto, sem o link do modo interno, com o sitemap', async () => {
+    const t = await (await get('/robots.txt', 'atacado.ribelt.com.br')).text();
+    expect(t).toContain('Allow: /');
+    expect(t).toContain('Disallow: /*?interno=');
+    expect(t).toContain('Sitemap: https://atacado.ribelt.com.br/sitemap.xml');
   });
 });

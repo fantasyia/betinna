@@ -32,6 +32,7 @@ import {
   quantidadesDoSimulador,
   simularPedido,
   pecasDoModelo,
+  inicioPeloProduto,
   precoNaFaixa,
   valorDoModelo,
   proximaFaixa,
@@ -68,7 +69,7 @@ import {
   primeiraCompra,
   primeiroCheckout,
 } from './pixel';
-import { compraGoogle, iniciarGoogleTag } from './google-tag';
+import { compraGoogle, iniciarGoogleTag, paginaVista } from './google-tag';
 import { MASCARA_CLARITY, iniciarClarity } from './clarity';
 import { capturarCodigoInterno, codigoInterno, sairDoModoInterno } from './modo-interno';
 import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './recuperar';
@@ -131,9 +132,14 @@ function lerCarrinho(slug: string): Carrinho {
 }
 
 /** `slugFixo`: a vitrine na RAIZ do domínio próprio (sem /v/<slug> na URL). */
-export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } = {}) {
-  const { slug: slugDaUrl = '' } = useParams<{ slug: string }>();
+export default function VitrinePublicaPage({
+  slugFixo,
+  produtoFixo,
+}: { slugFixo?: string; produtoFixo?: string } = {}) {
+  const { slug: slugDaUrl = '', produto: produtoDaUrl } = useParams<{ slug: string; produto: string }>();
   const slug = slugFixo ?? slugDaUrl;
+  // Link do produto (/p/<slug>, 23/10): abre a vitrine JÁ nele.
+  const produto = produtoFixo ?? produtoDaUrl;
   useFontes();
   const [dados, setDados] = useState<VitrinePub | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -191,7 +197,13 @@ export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } =
           </div>
         ) : (
           <>
-            <Vitrine slug={slug} v={dados} />
+            <Vitrine
+              slug={slug}
+              v={dados}
+              produto={produto}
+              // Na raiz do domínio próprio a URL é /p/<slug>; no domínio do app, /v/<vitrine>/p/<slug>.
+              baseUrl={slugFixo ? '' : `/v/${encodeURIComponent(slug)}`}
+            />
             {interno && (
               <div className="vt-interno" data-testid="vt-interno" title="Visita da equipe: não conta no Meta nem no Google">
                 modo interno
@@ -204,10 +216,24 @@ export default function VitrinePublicaPage({ slugFixo }: { slugFixo?: string } =
   );
 }
 
-function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
-  const [linhaId, setLinhaId] = useState(v.linhas[0]?.id ?? '');
+function Vitrine({
+  slug,
+  v,
+  produto,
+  baseUrl = '',
+}: {
+  slug: string;
+  v: VitrinePub;
+  produto?: string;
+  baseUrl?: string;
+}) {
+  // Veio pelo link do produto: a linha e a cor dele (?linha=&cor=), e o feed já nele.
+  const [inicio] = useState(() => inicioPeloProduto(v, produto, window.location.search));
+  const [linhaId, setLinhaId] = useState(inicio?.linhaId ?? v.linhas[0]?.id ?? '');
   const [cat, setCat] = useState<string>('todos');
-  const [corDe, setCorDe] = useState<Record<string, string>>({});
+  const [corDe, setCorDe] = useState<Record<string, string>>(() =>
+    inicio?.corId ? { [inicio.modelo.id]: inicio.corId } : {},
+  );
   const [carrinho, setCarrinho] = useState<Carrinho>(() => limparCarrinho(lerCarrinho(slug), v));
   const [pdp, setPdp] = useState<ModeloPub | null>(null);
   const [grade, setGrade] = useState<ModeloPub | null>(null);
@@ -384,6 +410,47 @@ function Vitrine({ slug, v }: { slug: string; v: VitrinePub }) {
   // vai direto pra um produto DA grade escolhida: o mesmo, se ele tiver; senão
   // o 1º da mesma categoria; senão o 1º da grade.
   const [alvo, setAlvo] = useState<string | null>(null);
+  // Link do produto: rola o feed até ele uma vez, assim que o feed existe.
+  useEffect(() => {
+    if (!inicio) return;
+    const el = feed.current?.querySelector<HTMLElement>(`[data-modelo="${inicio.modelo.id}"]`);
+    if (el && feed.current) {
+      const f = feed.current;
+      f.scrollTo({ top: f.scrollTop + el.getBoundingClientRect().top - f.getBoundingClientRect().top });
+    }
+    // Só na abertura.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A URL acompanha o produto na tela (/p/<slug>, 23/10): replaceState pra o
+  // "voltar" não virar uma fila de produtos; utm/gclid seguem na query.
+  const ultimoNaUrl = useRef<string | null>(inicio?.modelo.id ?? null);
+  useEffect(() => {
+    const f = feed.current;
+    if (!f) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const ao = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const id = modeloNaTela();
+        const m = id ? v.modelos.find((x) => x.id === id) : undefined;
+        if (!m?.slug || ultimoNaUrl.current === m.id) return;
+        ultimoNaUrl.current = m.id;
+        const caminho = `${baseUrl}/p/${m.slug}${window.location.search}`;
+        window.history.replaceState(window.history.state, '', caminho);
+        const titulo = `${m.nome} · ${v.empresa.nome}`;
+        document.title = titulo;
+        paginaVista(window.location.href, titulo);
+      }, 500);
+    };
+    f.addEventListener('scroll', ao, { passive: true });
+    return () => {
+      clearTimeout(t);
+      f.removeEventListener('scroll', ao);
+    };
+     
+  }, [baseUrl, v]);
+
   const trocarLinha = (id: string) => {
     const atual = modeloNaTela();
     const m = atual ? v.modelos.find((x) => x.id === atual) : undefined;

@@ -12,6 +12,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
 import { configClarity, type ClarityConfigDto } from './clarity';
+import { slugLivre } from './slug-modelo';
 import type {
   CategoriaDto,
   CorDto,
@@ -504,10 +505,20 @@ export class VitrineAdminService {
     await this.validarReferencias(empresaId, dto);
     const id = await this.prisma.$transaction(
       async (tx) => {
+        // Endereço próprio (/p/<slug>): livre na empresa, fixo dali em diante.
+        const usados = new Set(
+          (
+            await tx.catalogoModelo.findMany({
+              where: { empresaId, slug: { not: null } },
+              select: { slug: true },
+            })
+          ).map((x) => x.slug!),
+        );
         const m = await tx.catalogoModelo.create({
           data: {
             empresaId,
             nome: dto.nome,
+            slug: slugLivre(dto.nome, usados),
             categoriaId: dto.categoriaId ?? null,
             descricao: dto.descricao ?? null,
             etiquetas: dto.etiquetas ?? [],

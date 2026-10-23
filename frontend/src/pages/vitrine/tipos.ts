@@ -106,6 +106,8 @@ export interface ModeloCor {
 export interface Modelo {
   id: string;
   nome: string;
+  /** Endereço próprio na vitrine (/p/<slug>, 23/10). Fixo depois de criado. */
+  slug?: string | null;
   categoriaId: string | null;
   categoria: { id: string; nome: string } | null;
   descricao: string | null;
