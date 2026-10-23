@@ -1,3 +1,5 @@
+import { agendarChecagemDeVersao } from './pwa-checagem';
+
 /**
  * PWA — registro do service worker via vite-plugin-pwa.
  *
@@ -38,6 +40,9 @@ export async function registerPwa(args: RegisterPwaArgs): Promise<void> {
       },
       onOfflineReady() {
         args.onOfflineReady?.();
+      },
+      onRegisteredSW(_url: string, reg: ServiceWorkerRegistration | undefined) {
+        if (reg) agendarChecagemDeVersao(reg);
       },
       onRegisterError(err: unknown) {
         args.onError?.(err);

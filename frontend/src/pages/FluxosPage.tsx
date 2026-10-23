@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
+import { lazyComRetry } from '@/lib/lazy-com-retry';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -46,7 +47,9 @@ import {
 import { cn } from '@/lib/cn';
 // PERF: lazy — o editor arrasta @xyflow/react (~200KB + CSS). Import estático baixava o chunk
 // ao abrir /fluxos só pra VER a lista; agora só baixa ao clicar Editar.
-const FluxoEditor = lazy(() => import('./FluxoEditor').then((m) => ({ default: m.FluxoEditor })));
+const FluxoEditor = lazyComRetry(() =>
+  import('./FluxoEditor').then((m) => ({ default: m.FluxoEditor })),
+);
 import type { TriggerTipo as EditorTriggerTipo } from '@/pages/fluxo/lib/types';
 
 /**

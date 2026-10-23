@@ -1,4 +1,5 @@
-import { lazy, Suspense, type CSSProperties } from 'react';
+import { Suspense, type CSSProperties } from 'react';
+import { lazyComRetry } from '@/lib/lazy-com-retry';
 import { colors } from './styles';
 
 /**
@@ -20,7 +21,8 @@ import { colors } from './styles';
  *  - Autolinks
  */
 
-const ReactMarkdownLazy = lazy(async () => {
+// lazyComRetry: o chunk do react-markdown também some no deploy (22/10).
+const ReactMarkdownLazy = lazyComRetry(async () => {
   const [{ default: ReactMarkdown }, { default: remarkGfm }] = await Promise.all([
     import('react-markdown'),
     import('remark-gfm'),

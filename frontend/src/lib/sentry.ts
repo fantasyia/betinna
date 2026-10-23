@@ -203,11 +203,20 @@ function redactObject(obj: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-export function captureError(err: unknown, extra?: Record<string, unknown>): void {
+/**
+ * `nivel: 'warning'` é pra condição TRATADA e explicada na tela (ex.: versão nova
+ * com a aba aberta) — continua visível no Sentry, mas não se mistura com defeito.
+ */
+export function captureError(
+  err: unknown,
+  extra?: Record<string, unknown>,
+  opcoes?: { nivel?: 'error' | 'warning'; tags?: Record<string, string> },
+): void {
   const message = err instanceof Error ? err.message : String(err);
   const stack = err instanceof Error ? err.stack : undefined;
+  const nivel = opcoes?.nivel ?? 'error';
   const payload = {
-    level: 'error' as const,
+    level: nivel,
     message: redact(message),
     stack: stack ? redact(stack) : undefined,
     extra: extra ? redactObject(extra) : undefined,
@@ -221,6 +230,8 @@ export function captureError(err: unknown, extra?: Record<string, unknown>): voi
   // só recebe após o import lazy resolver. Trade-off aceitável pra tirar 469KB do caminho crítico.
   if (ENABLED && Sentry) {
     Sentry.captureException(err instanceof Error ? err : new Error(message), {
+      level: nivel,
+      tags: opcoes?.tags,
       extra: extra ? redactObject(extra) : undefined,
     });
   }

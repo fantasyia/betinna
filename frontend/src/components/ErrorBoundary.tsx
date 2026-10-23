@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { captureError } from '@/lib/sentry';
-import { ehErroDeChunk, jaRecarregouPorChunk } from '@/lib/lazy-com-retry';
+import { ehErroDeChunk, jaRecarregouPorChunk, motivoDoErroDeChunk } from '@/lib/lazy-com-retry';
 
 /**
  * ErrorBoundary — captura erros de render em sub-tree React.
@@ -33,10 +33,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    captureError(error, {
-      source: 'react-error-boundary',
-      componentStack: errorInfo.componentStack,
-    });
+    const extra = { source: 'react-error-boundary', componentStack: errorInfo.componentStack };
+    // Versão nova com a aba aberta é condição TRATADA (a tela explica e tem botão):
+    // vai como warning, com o caminho que trouxe até aqui. Sem o caminho, toda volta
+    // da BETINNA-FRONT-8 parecia conserto falhando (já-recarregou × rascunho ×
+    // sem-storage chegavam iguais).
+    if (ehErroDeChunk(error) || jaRecarregouPorChunk()) {
+      const caminho = motivoDoErroDeChunk() ?? 'desconhecido';
+      captureError(error, { ...extra, caminho }, { nivel: 'warning', tags: { caminho } });
+      return;
+    }
+    captureError(error, extra);
   }
 
   retry = (): void => {

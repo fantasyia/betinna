@@ -25,16 +25,33 @@ import { temAlteracaoNaoSalva } from './dirty';
 /** Marca de "já recarreguei por causa disto nesta aba". */
 const CHAVE = 'betinna:recarregou-por-chunk';
 
+/**
+ * Por que a tela de "versão nova" apareceu. Vai pro Sentry: sem isto os três
+ * caminhos chegam iguais, e toda volta da BETINNA-FRONT-8 parecia conserto
+ * falhando — que é como um defeito real se esconde atrás de um ruído conhecido.
+ */
+export type MotivoErroDeChunk = 'ja-recarregou' | 'rascunho' | 'sem-storage';
+let ultimoMotivo: MotivoErroDeChunk | null = null;
+
+/** O ErrorBoundary pergunta isto na hora de reportar. */
+export function motivoDoErroDeChunk(): MotivoErroDeChunk | null {
+  return ultimoMotivo;
+}
+
 /** `sessionStorage` joga em aba anônima / storage bloqueado. Nunca derruba o app por isso. */
-function lerMarca(): boolean {
+function estadoDaMarca(): 'posta' | 'livre' | 'sem-storage' {
   try {
-    return sessionStorage.getItem(CHAVE) === '1';
+    return sessionStorage.getItem(CHAVE) === '1' ? 'posta' : 'livre';
   } catch {
     // Sem storage não dá pra garantir "uma vez só" — e reload sem freio é
-    // laço infinito na cara do usuário. Mentir que JÁ recarregou é o lado
+    // laço infinito na cara do usuário. Tratar como JÁ recarregou é o lado
     // seguro de errar: perde-se o conserto, não a página.
-    return true;
+    return 'sem-storage';
   }
+}
+
+function lerMarca(): boolean {
+  return estadoDaMarca() !== 'livre';
 }
 
 function porMarca(): void {
@@ -65,6 +82,42 @@ export function ehErroDeChunk(erro: unknown): boolean {
   return /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed/i.test(
     msg,
   );
+}
+
+/**
+ * Pede a versão nova do service worker ANTES de recarregar, e espera ela assumir.
+ *
+ * O `index.html` está no precache do SW. Recarregar com o SW VELHO no controle
+ * devolve o MESMO index velho, com os mesmos hashes mortos: o import falha de
+ * novo, a marca já está posta, e a pessoa cai na tela de erro (BETINNA-FRONT-8,
+ * 07/10). E o SW novo não descobre o deploy sozinho: o navegador só confere
+ * atualização em page load, que SPA não tem.
+ *
+ * Com teto: se o SW travar, recarrega assim mesmo — é o comportamento de antes,
+ * não pior que ele.
+ */
+export async function trazerVersaoNova(limiteMs = 4000): Promise<void> {
+  const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+  if (!sw) return;
+  const assumir = async (): Promise<void> => {
+    const reg = await sw.getRegistration();
+    if (!reg) return;
+    await reg.update();
+    const novo = reg.installing ?? reg.waiting;
+    if (!novo) return;
+    await new Promise<void>((pronto) => {
+      const olhar = () => {
+        if (novo.state === 'installed') novo.postMessage({ type: 'SKIP_WAITING' });
+        if (novo.state === 'activated' || novo.state === 'redundant') pronto();
+      };
+      novo.addEventListener('statechange', olhar);
+      olhar();
+    });
+  };
+  await Promise.race([
+    assumir().catch(() => undefined),
+    new Promise<void>((r) => setTimeout(r, limiteMs)),
+  ]);
 }
 
 /** O ErrorBoundary usa pra saber que já houve uma tentativa de recarga. */
@@ -98,17 +151,23 @@ export function lazyComRetry<T extends ComponentType<any>>(
       limparMarca();
       return modulo;
     } catch (erro) {
-      if (lerMarca()) throw erro;
+      const marca = estadoDaMarca();
+      if (marca !== 'livre') {
+        ultimoMotivo = marca === 'sem-storage' ? 'sem-storage' : 'ja-recarregou';
+        throw erro;
+      }
 
       // Alteração não salva vale mais que a comodidade de recarregar sozinho:
       // a recarga levaria o rascunho junto, calada. Cai no ErrorBoundary, que
       // explica o que houve e deixa a pessoa decidir a hora.
       if (temAlteracaoNaoSalva()) {
         porMarca();
+        ultimoMotivo = 'rascunho';
         throw erro;
       }
 
       porMarca();
+      await trazerVersaoNova();
       window.location.reload();
       // Promessa que nunca resolve, de propósito: a página está indo embora.
       // Resolver ou rejeitar aqui faria a tela de erro PISCAR durante a
