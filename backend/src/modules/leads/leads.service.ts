@@ -22,6 +22,7 @@ import type {
 import { PROBABILIDADE_POR_ETAPA, SLA_DIAS_POR_ETAPA, TRANSICOES_ETAPA } from './leads.constants';
 import { registrarTransicaoEtapa } from './lead-etapa-historico.util';
 import { normalizarOrigemCadastro } from './atribuicao.util';
+import { filtroForaDoPipeline } from '@modules/funis/fora-do-pipeline';
 
 const leadInclude = {
   representante: { select: { id: true, nome: true, email: true } },
@@ -1037,22 +1038,35 @@ export class LeadsService {
     pipelinePonderado: number;
     aging: number;
   }> {
-    const where = await this.baseWhere(user);
+    const base = await this.baseWhere(user);
+    // Carteira de clientes (funil foraDoPipeline, 23/10) não é venda em andamento:
+    // fica fora das etapas ATIVAS e do aging; o GANHO dela continua contando.
+    const fora = await filtroForaDoPipeline(this.prisma, base.empresaId as string);
+    const where = base;
     const grouped = await this.prisma.lead.groupBy({
       by: ['etapa'],
       where,
       _count: { _all: true },
       _sum: { valorEstimado: true },
     });
+    const ativosForaDoPipeline = fora.length
+      ? await this.prisma.lead.groupBy({
+          by: ['etapa'],
+          where: { ...where, NOT: { AND: fora }, etapa: { notIn: ['GANHO', 'PERDIDO'] } },
+          _count: { _all: true },
+          _sum: { valorEstimado: true },
+        })
+      : [];
     const porEtapa = (
       ['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO', 'GANHO', 'PERDIDO'] as LeadEtapa[]
     ).map((etapa) => {
       const g = grouped.find((x) => x.etapa === etapa);
-      const valorTotal = Number(g?._sum.valorEstimado ?? 0);
+      const f = ativosForaDoPipeline.find((x) => x.etapa === etapa);
+      const valorTotal = Number(g?._sum.valorEstimado ?? 0) - Number(f?._sum.valorEstimado ?? 0);
       const probabilidade = PROBABILIDADE_POR_ETAPA[etapa];
       return {
         etapa,
-        quantidade: g?._count._all ?? 0,
+        quantidade: (g?._count._all ?? 0) - (f?._count._all ?? 0),
         valorTotal,
         probabilidade,
         ponderado: Math.round(valorTotal * (probabilidade / 100) * 100) / 100,
@@ -1073,7 +1087,7 @@ export class LeadsService {
       },
     }));
     const aging = await this.prisma.lead.count({
-      where: { ...where, AND: [{ OR: agingConds }] },
+      where: { ...where, AND: [{ OR: agingConds }, ...fora] },
     });
 
     return { porEtapa, pipelineTotal, pipelinePonderado, aging };

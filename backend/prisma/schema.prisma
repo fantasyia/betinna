@@ -1746,6 +1746,10 @@ model Funil {
   /// (senão "Leads ativos" infla com lixo e perde o significado). Ligado pelo
   /// ADMIN/DIRETOR na config do funil.
   triagem        Boolean @default(false)
+  /// Carteira de CLIENTES, não venda em andamento (23/10: "Clientes · Recompra").
+  /// Lead aqui não conta como "em aberto", parado nem envelhecendo no pipeline;
+  /// o GANHO dele continua contando.
+  foraDoPipeline Boolean @default(false)
   /// O REPRESENTANTE enxerga este funil? Default `false` — o rep só vê o que for
   /// marcado aqui. Sem isso ele via TODOS os funis da empresa, incluindo a
   /// triagem bruta do SAC, a nutrição de e-mail marketing e o funil de

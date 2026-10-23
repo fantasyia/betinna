@@ -8,6 +8,7 @@ import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { PeriodoDto } from './relatorios.dto';
+import { filtroForaDoPipeline } from '@modules/funis/fora-do-pipeline';
 
 // ─── Helpers internos ────────────────────────────────────────────────────────
 
@@ -345,7 +346,13 @@ export class RelatoriosService {
       }),
       // Aging: soma dos dias na etapa atual (etapaDesde)
       this.prisma.lead.findMany({
-        where: { ...baseFilter, etapa: { notIn: ['GANHO', 'PERDIDO'] } },
+        // Carteira de clientes (funil foraDoPipeline, 23/10) não envelhece no pipeline.
+        where: {
+          ...baseFilter,
+          etapa: { notIn: ['GANHO', 'PERDIDO'] },
+          // Só na visão GLOBAL: com o funil selecionado, ele aparece como é.
+          AND: funilCustom ? [] : await filtroForaDoPipeline(this.prisma, empresaId),
+        },
         select: { etapa: true, etapaDesde: true },
       }),
       this.prisma.lead.groupBy({

@@ -22,7 +22,7 @@ const makePrismaMock = () => ({
   usuario: { findFirst: vi.fn() },
   // Funil/FunilEtapa (multi-funnel feature) — default = empresa sem funis,
   // service cai pro enum legado. Override por teste quando precisar de funil.
-  funil: { findFirst: vi.fn().mockResolvedValue(null) },
+  funil: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
   funilEtapa: {
     findFirst: vi.fn().mockResolvedValue(null),
     findUnique: vi.fn().mockResolvedValue(null),
@@ -116,6 +116,32 @@ describe('LeadsService', () => {
   });
 
   describe('resumoPipeline — dinheiro Prisma.Decimal (#17 Fase 5)', () => {
+    it('23/10: lead ATIVO em funil de carteira (foraDoPipeline) sai do pipeline', async () => {
+      prisma.funil.findMany.mockResolvedValueOnce([{ id: 'f-recompra' }]);
+      prisma.lead.groupBy
+        // total da empresa
+        .mockResolvedValueOnce([
+          {
+            etapa: 'NOVO',
+            _count: { _all: 5 },
+            _sum: { valorEstimado: new Prisma.Decimal('500') },
+          },
+        ])
+        // só os ativos do funil de carteira
+        .mockResolvedValueOnce([
+          {
+            etapa: 'NOVO',
+            _count: { _all: 2 },
+            _sum: { valorEstimado: new Prisma.Decimal('200') },
+          },
+        ]);
+      prisma.lead.count.mockResolvedValue(0);
+      const r = await svc.resumoPipeline(fakeUser({ role: 'ADMIN' as UserRole }));
+      const novo = r.porEtapa.find((p) => p.etapa === 'NOVO')!;
+      expect(novo.quantidade).toBe(3);
+      expect(r.pipelineTotal).toBe(300);
+    });
+
     it('soma valorEstimado Decimal e devolve number (não Decimal)', async () => {
       prisma.lead.groupBy.mockResolvedValue([
         {

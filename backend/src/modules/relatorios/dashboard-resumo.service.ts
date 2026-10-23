@@ -89,15 +89,20 @@ export class DashboardResumoService {
       scope !== null ? { representanteId: { in: scope.length ? scope : ['__none__'] } } : {};
 
     // Funis de TRIAGEM ficam fora das contagens comerciais (mesma regra da home).
-    const triagemIds = (
-      await this.prisma.funil.findMany({
-        where: { empresaId, triagem: true },
-        select: { id: true },
-      })
-    ).map((f) => f.id);
+    // Na MESMA consulta, os de carteira de clientes (foraDoPipeline, 23/10): esses
+    // só saem de "parados" — o resto das contagens segue com eles.
+    const funisEspeciais = await this.prisma.funil.findMany({
+      where: { empresaId, OR: [{ triagem: true }, { foraDoPipeline: true }] },
+      select: { id: true, foraDoPipeline: true },
+    });
+    const triagemIds = funisEspeciais.filter((f) => !f.foraDoPipeline).map((f) => f.id);
+    const carteiraIds = funisEspeciais.filter((f) => f.foraDoPipeline).map((f) => f.id);
     const foraDaTriagem: Prisma.LeadWhereInput = triagemIds.length
       ? { OR: [{ funilId: null }, { funilId: { notIn: triagemIds } }] }
       : {};
+    const foraDoPipe: Prisma.LeadWhereInput[] = carteiraIds.length
+      ? [{ OR: [{ funilId: null }, { funilId: { notIn: carteiraIds } }] }]
+      : [];
 
     const [
       leadsNovos7d,
@@ -208,6 +213,7 @@ export class DashboardResumoService {
                 { ultimaMensagemEm: { not: null } },
               ],
             },
+            ...foraDoPipe,
           ],
         },
         orderBy: { etapaDesde: 'asc' },

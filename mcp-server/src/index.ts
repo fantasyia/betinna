@@ -2403,6 +2403,12 @@ server.registerTool(
         .boolean()
         .optional()
         .describe("true = fora dos KPIs globais do dashboard"),
+      foraDoPipeline: z
+        .boolean()
+        .optional()
+        .describe(
+          "true = carteira de CLIENTES (ex.: Recompra): lead daqui não conta como em aberto/parado/aging; o ganho continua contando",
+        ),
       visivelParaRep: z
         .boolean()
         .optional()

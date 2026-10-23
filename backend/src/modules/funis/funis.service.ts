@@ -625,6 +625,9 @@ export class FunisService {
     if (dto.triagem !== undefined && !this.ehAdminOuDiretor(user)) {
       delete dto.triagem;
     }
+    if (dto.foraDoPipeline !== undefined && !this.ehAdminOuDiretor(user)) {
+      delete dto.foraDoPipeline;
+    }
 
     // tagsPermitidas é Json nullable — null explícito precisa de Prisma.JsonNull.
     const { tagsPermitidas, ...rest } = dto;
