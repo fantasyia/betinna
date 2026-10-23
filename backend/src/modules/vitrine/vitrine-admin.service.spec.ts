@@ -58,6 +58,8 @@ function makePrisma() {
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue({ id: 'mod-1', cores: [], videos: [] }),
       findUniqueOrThrow: vi.fn(),
+      // Slug atual (23/10): sem renomear, o endereço não muda.
+      findUnique: vi.fn().mockResolvedValue(null),
       count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockResolvedValue({ id: 'mod-1' }),
       update: vi.fn().mockResolvedValue({ id: 'mod-1' }),

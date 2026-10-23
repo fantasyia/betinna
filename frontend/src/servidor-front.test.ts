@@ -10,7 +10,9 @@ import {
   cacheDe,
   criarServidor,
   paginaPrivacidade,
+  aplicarProduto,
   produtoDaRota,
+  seoDoProduto,
   slugDaPrivacidade,
 } from '../server.mjs';
 
@@ -62,6 +64,7 @@ const VITRINE = {
     {
       id: 'm1',
       slug: 'bermuda-moletom-summer',
+      slugsAntigos: ['bermuda-velha'],
       nome: 'Bermuda Moletom Summer',
       descricao: null,
       composicao: '65% poliéster, 35% algodão',
@@ -292,5 +295,27 @@ describe('página do produto, sitemap e robots (card cmvkaagey, 23/10)', () => {
     expect(t).toContain('Allow: /');
     expect(t).toContain('Disallow: /*?interno=');
     expect(t).toContain('Sitemap: https://atacado.ribelt.com.br/sitemap.xml');
+  });
+});
+
+describe('título pro Google, palavras SEO e endereço antigo (23/10)', () => {
+  it('endereço antigo (o nome mudou): 301 pro atual, levando a query', async () => {
+    const r = await get('/p/bermuda-velha?utm_source=meta', 'atacado.ribelt.com.br');
+    expect(r.status).toBe(301);
+    expect(r.headers.get('location')).toBe('/p/bermuda-moletom-summer?utm_source=meta');
+  });
+
+  it('tituloSeo manda no <title> e no JSON-LD; palavras viram keywords', () => {
+    const modelo = {
+      ...VITRINE.modelos[0],
+      tituloSeo: 'Bermuda de Moletom Masculina no Atacado',
+      palavrasSeo: ['bermuda moletom atacado', 'revenda'],
+    };
+    const seo = seoDoProduto(modelo, VITRINE, { base: 'https://atacado.ribelt.com.br', caminho: '/p/x' });
+    expect(seo.titulo).toBe('Bermuda de Moletom Masculina no Atacado · Ribelt Têxtil');
+    expect(seo.jsonLd.name).toBe('Bermuda de Moletom Masculina no Atacado');
+    expect(seo.jsonLd.keywords).toBe('bermuda moletom atacado, revenda');
+    const html = aplicarProduto('<html><head><title>x</title></head></html>', seo);
+    expect(html).toContain('<meta name="keywords" content="bermuda moletom atacado, revenda" />');
   });
 });

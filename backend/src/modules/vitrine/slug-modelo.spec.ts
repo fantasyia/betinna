@@ -17,3 +17,20 @@ describe('slug do produto (/p/<slug>, 23/10)', () => {
     expect(slugLivre('Camiseta UV', usados)).toBe('camiseta-uv-3');
   });
 });
+
+describe('renomear muda o endereço e guarda o antigo (Léo, 23/10)', () => {
+  it('slugAoRenomear: novo do nome, antigo vai pra slugsAntigos, sem pegar o de outro modelo', async () => {
+    const { VitrineAdminService } = await import('./vitrine-admin.service');
+    const svc = Object.create(VitrineAdminService.prototype) as { slugAoRenomear: Function };
+    const tx = {
+      catalogoModelo: {
+        findUnique: async () => ({ slug: 'bermuda-moletom-summer', slugsAntigos: [] }),
+        findMany: async () => [{ slug: 'bermuda-de-moletom', slugsAntigos: [] }],
+      },
+    };
+    const r = await svc.slugAoRenomear(tx, 'e1', 'm1', 'Bermuda de Moletom');
+    expect(r).toEqual({ slug: 'bermuda-de-moletom-2', slugsAntigos: ['bermuda-moletom-summer'] });
+    const igual = await svc.slugAoRenomear(tx, 'e1', 'm1', 'Bermuda Moletom Summer');
+    expect(igual).toEqual({});
+  });
+});

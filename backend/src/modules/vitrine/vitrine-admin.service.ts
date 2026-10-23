@@ -12,7 +12,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
 import { configClarity, type ClarityConfigDto } from './clarity';
-import { slugLivre } from './slug-modelo';
+import { slugDoNome, slugLivre } from './slug-modelo';
 import type {
   CategoriaDto,
   CorDto,
@@ -509,10 +509,10 @@ export class VitrineAdminService {
         const usados = new Set(
           (
             await tx.catalogoModelo.findMany({
-              where: { empresaId, slug: { not: null } },
-              select: { slug: true },
+              where: { empresaId },
+              select: { slug: true, slugsAntigos: true },
             })
-          ).map((x) => x.slug!),
+          ).flatMap((x) => [x.slug, ...x.slugsAntigos].filter((s): s is string => !!s)),
         );
         const m = await tx.catalogoModelo.create({
           data: {
@@ -528,6 +528,8 @@ export class VitrineAdminService {
             tituloMarketplace: dto.tituloMarketplace ?? null,
             descricaoMarketplace: dto.descricaoMarketplace ?? null,
             composicao: dto.composicao ?? null,
+            tituloSeo: dto.tituloSeo || null,
+            palavrasSeo: [...new Set(dto.palavrasSeo ?? [])],
           },
           select: { id: true },
         });
@@ -540,16 +542,52 @@ export class VitrineAdminService {
     return this.obterModelo(user, id);
   }
 
+  /**
+   * Endereço do produto quando o NOME muda (Léo, 23/10): slug novo a partir do
+   * nome, e o anterior vai pra `slugsAntigos` (o servidor redireciona 301, então
+   * link em anúncio/WhatsApp não quebra). Nome igual (ou que dá o mesmo slug):
+   * nada muda. Nenhum slug — atual ou antigo — de OUTRO modelo é reaproveitado.
+   */
+  private async slugAoRenomear(tx: Tx, empresaId: string, id: string, nome: string) {
+    const atual = await tx.catalogoModelo.findUnique({
+      where: { id },
+      select: { slug: true, slugsAntigos: true },
+    });
+    if (!atual) return {};
+    const desejado = slugDoNome(nome);
+    if (atual.slug === desejado) return {};
+    const outros = await tx.catalogoModelo.findMany({
+      where: { empresaId, id: { not: id } },
+      select: { slug: true, slugsAntigos: true },
+    });
+    const usados = new Set(
+      outros.flatMap((o) => [o.slug, ...o.slugsAntigos].filter((x): x is string => !!x)),
+    );
+    const novo = slugLivre(nome, usados);
+    if (novo === atual.slug) return {};
+    const antigos = new Set(atual.slugsAntigos);
+    if (atual.slug) antigos.add(atual.slug);
+    antigos.delete(novo); // voltou a um nome antigo: ele volta a ser o atual
+    return { slug: novo, slugsAntigos: [...antigos] };
+  }
+
   async atualizarModelo(user: AuthenticatedUser, id: string, dto: ModeloDto) {
     const empresaId = await this.empresaComVitrine(user);
     await this.garantirDaEmpresa('catalogoModelo', id, empresaId);
     await this.validarReferencias(empresaId, dto);
     await this.prisma.$transaction(
       async (tx) => {
+        // Nome mudou → endereço novo (Léo, 23/10); o antigo fica e redireciona.
+        const novoSlug = await this.slugAoRenomear(tx, empresaId, id, dto.nome);
         await tx.catalogoModelo.update({
           where: { id },
           data: {
             nome: dto.nome,
+            ...novoSlug,
+            ...(dto.tituloSeo !== undefined ? { tituloSeo: dto.tituloSeo || null } : {}),
+            ...(dto.palavrasSeo !== undefined
+              ? { palavrasSeo: [...new Set(dto.palavrasSeo)] }
+              : {}),
             ...(dto.categoriaId !== undefined ? { categoriaId: dto.categoriaId } : {}),
             descricao: dto.descricao ?? null,
             ...(dto.etiquetas !== undefined ? { etiquetas: dto.etiquetas } : {}),

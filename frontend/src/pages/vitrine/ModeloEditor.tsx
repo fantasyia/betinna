@@ -69,6 +69,9 @@ export interface Rascunho {
   tituloMarketplace: string;
   descricaoMarketplace: string;
   composicao: string;
+  /** Título pro Google/IAs e palavras SEO (23/10). */
+  tituloSeo: string;
+  palavrasSeo: string;
   corIds: string[];
   /** Modelos que combinam (conjunto): blusa ↔ calça. */
   combinaCom: string[];
@@ -103,6 +106,8 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
     tituloMarketplace: m?.tituloMarketplace ?? '',
     descricaoMarketplace: m?.descricaoMarketplace ?? '',
     composicao: m?.composicao ?? '',
+    tituloSeo: m?.tituloSeo ?? '',
+    palavrasSeo: (m?.palavrasSeo ?? []).join(', '),
     corIds: m?.cores.map((c) => c.corId) ?? [],
     combinaCom: m?.combinaCom ?? [],
     linhas: porLinha,
@@ -184,6 +189,8 @@ export function montarCorpo(
       tituloMarketplace: r.tituloMarketplace.trim() || null,
       descricaoMarketplace: r.descricaoMarketplace.trim() || null,
       composicao: r.composicao.trim() || null,
+      tituloSeo: (r.tituloSeo ?? '').trim() || null,
+      palavrasSeo: separar(r.palavrasSeo ?? '').filter((p) => p.length >= 2),
       corIds: r.corIds,
       combinaCom: r.combinaCom,
       linhas: linhasCorpo,
@@ -466,6 +473,27 @@ export function ModeloEditor({
               maxLength={120}
               onChange={(e) => set('nome', e.target.value)}
               data-testid="vitrine-modelo-nome"
+            />
+          </Field>
+          <Field
+            label="Título pro Google"
+            hint="O que aparece no Google, nas IAs e no link do WhatsApp. Vazio = o nome."
+            className="sm:col-span-2"
+          >
+            <Input
+              value={r.tituloSeo}
+              maxLength={120}
+              onChange={(e) => set('tituloSeo', e.target.value)}
+              placeholder="Ex.: Bermuda de Moletom Masculina no Atacado"
+              data-testid="vitrine-modelo-titulo-seo"
+            />
+          </Field>
+          <Field label="Palavras SEO" hint="Separadas por vírgula" className="sm:col-span-2">
+            <Input
+              value={r.palavrasSeo}
+              onChange={(e) => set('palavrasSeo', e.target.value)}
+              placeholder="Ex.: bermuda moletom atacado, bermuda masculina, revenda"
+              data-testid="vitrine-modelo-palavras-seo"
             />
           </Field>
           <Field label="Categoria">

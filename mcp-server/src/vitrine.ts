@@ -70,6 +70,17 @@ const camposModelo = {
   tituloMarketplace: z.string().max(60).nullable().optional().describe("Material de divulgação (marketplace)"),
   descricaoMarketplace: z.string().max(8000).nullable().optional().describe("Material de divulgação (marketplace)"),
   composicao: z.string().max(200).nullable().optional().describe('Ex.: "100% poliamida"'),
+  tituloSeo: z
+    .string()
+    .max(120)
+    .nullable()
+    .optional()
+    .describe("Título pro Google/IAs (<title> e JSON-LD da página do produto). Vazio = o nome"),
+  palavrasSeo: z
+    .array(z.string().min(2).max(60))
+    .max(30)
+    .optional()
+    .describe("Palavras SEO do produto (meta keywords e JSON-LD). Substitui a lista"),
   corIds: z
     .array(z.string())
     .max(40)

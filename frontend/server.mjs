@@ -222,14 +222,17 @@ export function seoDoProduto(modelo, vitrine, { base, caminho }) {
     cores.length ? `${cores.length} ${cores.length === 1 ? 'cor' : 'cores'}` : null,
     tamanhos.length ? `tamanhos ${tamanhos[0]} a ${tamanhos[tamanhos.length - 1]}` : null,
   ].filter(Boolean);
-  const descricao = `${modelo.nome}: ${partes.join(' · ')}.`;
+  const nomeSeo = modelo.tituloSeo || modelo.nome;
+  const descricao = `${nomeSeo}: ${partes.join(' · ')}.`;
+  const palavras = Array.isArray(modelo.palavrasSeo) ? modelo.palavrasSeo.filter(Boolean) : [];
   const url = new URL(caminho, base).toString();
   const fotos = fotosDo(modelo, base);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
-    name: modelo.nome,
+    name: nomeSeo,
     description: modelo.descricao || descricao,
+    ...(palavras.length ? { keywords: palavras.join(', ') } : {}),
     url,
     ...(fotos.length ? { image: fotos } : {}),
     brand: { '@type': 'Brand', name: marca },
@@ -248,7 +251,7 @@ export function seoDoProduto(modelo, vitrine, { base, caminho }) {
         }
       : {}),
   };
-  return { titulo: `${modelo.nome} · ${marca}`, descricao, url, imagem: fotos[0] ?? null, jsonLd };
+  return { titulo: `${nomeSeo} · ${marca}`, descricao, url, imagem: fotos[0] ?? null, jsonLd, palavras };
 }
 
 /** index.html vestido com o produto (título, descrição, OG, canonical, JSON-LD). */
@@ -272,6 +275,7 @@ export function aplicarProduto(html, seo) {
   }
   const extra = [
     `<link rel="canonical" href="${escapar(seo.url)}" />`,
+    ...(seo.palavras?.length ? [`<meta name="keywords" content="${escapar(seo.palavras.join(', '))}" />`] : []),
     `<meta property="og:url" content="${escapar(seo.url)}" />`,
     `<meta property="og:type" content="product" />`,
     `<script type="application/ld+json">${ld}</script>`,
@@ -479,6 +483,13 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       if (prod) {
         const v = await vitrineDo(prod.vitrine);
         const modelo = v?.modelos?.find((x) => x.slug === prod.produto);
+        // Endereço antigo (o nome mudou): 301 pro atual, levando a query.
+        const renomeado = !modelo && v?.modelos?.find((x) => (x.slugsAntigos ?? []).includes(prod.produto));
+        if (renomeado) {
+          const destino = doTenant ? `/p/${renomeado.slug}` : `/v/${prod.vitrine}/p/${renomeado.slug}`;
+          res.writeHead(301, { Location: `${destino}${url.search}`, 'Cache-Control': 'public, max-age=3600', ...SEGURANCA });
+          return res.end();
+        }
         if (modelo) {
           const base = `https://${normalizarHost(host)}`;
           const canonico = doTenant ? `/p/${modelo.slug}` : `/v/${prod.vitrine}/p/${modelo.slug}`;

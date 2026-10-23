@@ -117,6 +117,10 @@ export interface Modelo {
   tituloMarketplace: string | null;
   descricaoMarketplace: string | null;
   composicao: string | null;
+  /** Título pro Google/IAs (23/10); null = o nome. */
+  tituloSeo?: string | null;
+  /** Palavras SEO (23/10). */
+  palavrasSeo?: string[];
   /** Modelos que combinam (conjunto) — ligados a partir DESTE modelo. */
   combinaCom?: string[];
   cores: ModeloCor[];

@@ -115,6 +115,11 @@ export class VitrinePublicaService {
         nome: m.nome,
         // Endereço próprio (/p/<slug>, 23/10) e quando mudou (lastmod do sitemap).
         slug: m.slug ?? slugDoNome(m.nome),
+        // Endereços anteriores (o servidor do front redireciona 301 pro atual).
+        slugsAntigos: m.slugsAntigos,
+        // Título e palavras pro Google/IAs (23/10).
+        tituloSeo: m.tituloSeo,
+        palavrasSeo: m.palavrasSeo,
         atualizadoEm: m.atualizadoEm,
         categoria:
           m.categoria && m.categoria.ativo ? { id: m.categoria.id, nome: m.categoria.nome } : null,

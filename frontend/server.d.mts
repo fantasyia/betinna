@@ -42,7 +42,14 @@ export function seoDoProduto(
   modelo: ModeloPub,
   vitrine: ModeloPub,
   ctx: { base: string; caminho: string },
-): { titulo: string; descricao: string; url: string; imagem: string | null; jsonLd: Record<string, unknown> };
+): {
+  titulo: string;
+  descricao: string;
+  url: string;
+  imagem: string | null;
+  jsonLd: Record<string, unknown>;
+  palavras: string[];
+};
 export function aplicarProduto(html: string, seo: ReturnType<typeof seoDoProduto>): string;
 export function sitemapXml(vitrine: ModeloPub, base: string): string;
 export function robotsDaVitrine(base: string): string;

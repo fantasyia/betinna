@@ -130,6 +130,10 @@ export const modeloSchema = z
     tituloMarketplace: z.string().trim().max(60).nullable().optional(),
     descricaoMarketplace: z.string().trim().max(8000).nullable().optional(),
     composicao: z.string().trim().max(200).nullable().optional(),
+    /** Título pro Google/IAs (23/10). Vazio = usa o nome. */
+    tituloSeo: z.string().trim().max(120).nullable().optional(),
+    /** Palavras SEO (23/10), sem repetir. */
+    palavrasSeo: z.array(z.string().trim().min(2).max(60)).max(30).optional(),
     /** Cores marcadas, na ordem em que aparecem na vitrine. */
     corIds: z.array(z.string().min(1)).max(40).optional(),
     linhas: z.array(modeloLinhaSchema).max(10).optional(),

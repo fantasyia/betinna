@@ -48,6 +48,8 @@ export interface ModeloPub {
   nome: string;
   /** Endereço próprio (/p/<slug>, 23/10). */
   slug?: string;
+  /** Endereços anteriores (o nome mudou) — ainda abrem o produto. */
+  slugsAntigos?: string[];
   categoria: { id: string; nome: string } | null;
   descricao: string | null;
   etiquetas: string[];
@@ -288,7 +290,9 @@ export function inicioPeloProduto(
   busca: string,
 ): { modelo: ModeloPub; linhaId: string; corId: string | null } | null {
   if (!produto) return null;
-  const m = v.modelos.find((x) => x.slug === produto);
+  const m =
+    v.modelos.find((x) => x.slug === produto) ??
+    v.modelos.find((x) => (x.slugsAntigos ?? []).includes(produto));
   if (!m || m.linhas.length === 0) return null;
   const q = new URLSearchParams(busca);
   const pedida = q.get('linha');
