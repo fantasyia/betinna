@@ -21,25 +21,48 @@ export function prazoAcelerado(ms: number): number {
   return Math.max(MIN_ACELERADO_MS, Math.round(ms / FATOR_ACELERADO));
 }
 
-/** O lead tem a etiqueta `teste-acelerado`? Falha de consulta = não (prazo normal). */
-export async function leadAcelerado(
+/** O lead tem esta etiqueta? Falha de consulta = não. */
+async function temEtiqueta(
   prisma: Pick<PrismaService, 'lead'>,
   empresaId: string,
-  leadId: string | null | undefined,
+  leadId: unknown,
+  nome: string,
 ): Promise<boolean> {
-  if (!leadId) return false;
+  if (typeof leadId !== 'string' || !leadId) return false;
   try {
     const n = await prisma.lead.count({
       where: {
         id: leadId,
         empresaId,
-        tags: { some: { tag: { nome: { equals: TAG_TESTE_ACELERADO, mode: 'insensitive' } } } },
+        tags: { some: { tag: { nome: { equals: nome, mode: 'insensitive' } } } },
       },
     });
     return n > 0;
   } catch {
     return false;
   }
+}
+
+/** O lead tem a etiqueta `teste-acelerado`? Falha de consulta = não (prazo normal). */
+export function leadAcelerado(
+  prisma: Pick<PrismaService, 'lead'>,
+  empresaId: string,
+  leadId: string | null | undefined,
+): Promise<boolean> {
+  return temEtiqueta(prisma, empresaId, leadId, TAG_TESTE_ACELERADO);
+}
+
+/**
+ * Etiqueta `teste` (card cmvl673p6, 23/10): lead de teste do Meta. O barramento
+ * não acende fluxo pra ele. Falha de consulta = não (o fluxo roda como sempre).
+ */
+export const TAG_LEAD_TESTE = 'teste';
+export function leadDeTeste(
+  prisma: Pick<PrismaService, 'lead'>,
+  empresaId: string,
+  leadId: unknown,
+): Promise<boolean> {
+  return temEtiqueta(prisma, empresaId, leadId, TAG_LEAD_TESTE);
 }
 
 /** Prazo do lead: o normal, ou o encurtado se ele é de teste acelerado. */

@@ -72,10 +72,15 @@ export class LeadsController {
   @Get('kanban')
   @RequirePermissions({ module: 'kanban', action: 'view' })
   @ApiOperation({
-    summary: 'Leads agrupados por etapa. Aceita ?funilId pra escolher funil específico.',
+    summary:
+      'Leads agrupados por etapa. Aceita ?funilId pra escolher funil específico e ?campanha pra só os leads daquela campanha do Meta.',
   })
-  kanban(@CurrentUser() user: AuthenticatedUser, @Query('funilId') funilId?: string) {
-    return this.leads.kanban(user, funilId);
+  kanban(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('funilId') funilId?: string,
+    @Query('campanha') campanha?: string,
+  ) {
+    return this.leads.kanban(user, funilId, campanha?.trim().slice(0, 200) || undefined);
   }
 
   @Get()

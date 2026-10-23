@@ -31,6 +31,8 @@ const build = (
     conexao?: unknown;
     dadosLead?: unknown;
     anuncioLanca?: boolean;
+    origemDoLead?: unknown;
+    modelos?: Array<{ slug: string; slugsAntigos?: string[] }>;
   } = {},
 ) => {
   const prisma = {
@@ -45,6 +47,13 @@ const build = (
     $executeRaw: vi.fn().mockResolvedValue(1),
     // Item 6: etapa de entrada configurável (Empresa.config.entradaAnuncios).
     empresa: { findUnique: vi.fn().mockResolvedValue({ config: opts.config ?? null }) },
+    catalogoModelo: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue(
+          (opts.modelos ?? []).map((m) => ({ slug: m.slug, slugsAntigos: m.slugsAntigos ?? [] })),
+        ),
+    },
     funilEtapa: {
       findFirst: vi.fn(async (a: { where: { id: string } }) =>
         a.where.id.startsWith('etapa-') ? { id: a.where.id } : null,
@@ -75,9 +84,17 @@ const build = (
           id: 'ad-42',
           name: 'Criativo A',
           campaign: { id: 'c-1', name: 'MB-Industria-Agosto' },
+          adset: { id: 'adset-7', name: 'Conjunto SP' },
         }),
+    obterOrigemDoLead:
+      opts.origemDoLead === undefined
+        ? vi.fn().mockRejectedValue(new Error('(#100) campo não disponível'))
+        : vi.fn().mockResolvedValue(opts.origemDoLead),
   };
-  const leads = { createPublico: vi.fn().mockResolvedValue({ id: 'lead-novo' }) };
+  const leads = {
+    createPublico: vi.fn().mockResolvedValue({ id: 'lead-novo' }),
+    aplicarTagPorNome: vi.fn().mockResolvedValue(undefined),
+  };
   const svc = new MetaLeadgenService(
     queue as never,
     prisma as never,
@@ -311,6 +328,112 @@ describe('MetaLeadgenService', () => {
       await svc.processar(JOB);
 
       expect(dto(leads)).toMatchObject({ utmSource: 'meta', utmCampaign: 'ad-42' });
+    });
+
+    describe('origem do lead (card cmvl673p6)', () => {
+      const meta = (leads: { createPublico: ReturnType<typeof vi.fn> }) =>
+        (dto(leads).variaveis as Record<string, unknown>).meta as Record<string, unknown>;
+
+      it('grava campanha, conjunto e anúncio em variaveis.meta', async () => {
+        const { svc, leads } = build();
+        await svc.processar(JOB);
+        expect(meta(leads)).toMatchObject({
+          campaign_id: 'c-1',
+          campaign_name: 'MB-Industria-Agosto',
+          adset_id: 'adset-7',
+          adset_name: 'Conjunto SP',
+          ad_id: 'ad-42',
+          ad_name: 'Criativo A',
+          form_id: 'form-9',
+        });
+      });
+
+      it('slug do produto no nome da campanha → link do produto com UTM no domínio da vitrine', async () => {
+        const { svc, leads, graph } = build({
+          config: { branding: { dominio: 'atacado.ribelt.com.br' } },
+          modelos: [{ slug: 'camiseta-uv' }, { slug: 'camiseta-uv-raglan-manga-longa' }],
+        });
+        graph.obterAnuncio.mockResolvedValue({
+          id: 'ad-42',
+          name: 'Criativo 1',
+          campaign: { id: 'c-9', name: 'UV adulto · camiseta-uv-raglan-manga-longa' },
+        });
+        await svc.processar(JOB);
+        expect(meta(leads).produto_slug).toBe('camiseta-uv-raglan-manga-longa');
+        expect(meta(leads).link).toBe(
+          'https://atacado.ribelt.com.br/p/camiseta-uv-raglan-manga-longa?utm_source=meta&utm_medium=lead&utm_campaign=UV+adulto+%C2%B7+camiseta-uv-raglan-manga-longa',
+        );
+      });
+
+      it('campanha sem produto → link geral da vitrine', async () => {
+        const { svc, leads } = build({
+          config: { branding: { dominio: 'atacado.ribelt.com.br' } },
+        });
+        await svc.processar(JOB);
+        expect(meta(leads).produto_slug).toBeUndefined();
+        expect(String(meta(leads).link)).toMatch(
+          /^https:\/\/atacado\.ribelt\.com\.br\/\?utm_source=meta/,
+        );
+      });
+
+      it('sem ads_read, os nomes vêm do próprio lead (reserva)', async () => {
+        const { svc, leads } = build({
+          anuncioLanca: true,
+          origemDoLead: {
+            campaign_id: 'c-2',
+            campaign_name: 'Moletom inverno',
+            ad_name: 'Vídeo 1',
+          },
+        });
+        await svc.processar(JOB);
+        expect(meta(leads)).toMatchObject({ campaign_name: 'Moletom inverno', ad_name: 'Vídeo 1' });
+        expect(dto(leads)).toMatchObject({ utmCampaign: 'moletom inverno' });
+      });
+
+      it('Graph fora nas duas consultas e banco fora no produto: o lead ENTRA igual', async () => {
+        const { svc, leads, prisma } = build({ anuncioLanca: true });
+        prisma.catalogoModelo.findMany.mockRejectedValue(new Error('db fora'));
+        await svc.processar(JOB);
+        expect(leads.createPublico).toHaveBeenCalledTimes(1);
+        expect(meta(leads)).toMatchObject({ ad_id: 'ad-42' });
+      });
+
+      it('lead da ferramenta de teste do Meta ganha a etiqueta `teste` ANTES de nascer', async () => {
+        const { svc, leads } = build({
+          dadosLead: {
+            id: 'lg-777',
+            field_data: [
+              { name: 'full_name', values: ['<test lead: dummy data for full_name>'] },
+              { name: 'phone_number', values: ['<test lead: dummy data for phone_number>'] },
+            ],
+          },
+        });
+        await svc.processar(JOB);
+        expect(dto(leads).tags).toEqual(['teste']);
+      });
+
+      it('lead de verdade não ganha etiqueta', async () => {
+        const { svc, leads } = build();
+        await svc.processar(JOB);
+        expect(dto(leads).tags).toBeUndefined();
+      });
+
+      it('lead que já existia: o último anúncio vai pro variaveis.meta e o teste etiqueta', async () => {
+        const { svc, leads, prisma } = build({
+          dedup: 'lead-velho',
+          dadosLead: {
+            id: 'lg-777',
+            field_data: [
+              { name: 'email', values: ['ana@padaria.com.br'] },
+              { name: 'full_name', values: ['<test lead: dummy data for full_name>'] },
+            ],
+          },
+        });
+        await svc.processar(JOB);
+        expect(leads.aplicarTagPorNome).toHaveBeenCalledWith('emp-1', 'lead-velho', 'teste');
+        const sql = prisma.$executeRaw.mock.calls[0];
+        expect(String(sql.slice(1).join(' '))).toContain('"campaign_name":"MB-Industria-Agosto"');
+      });
     });
 
     it('grava o leadgen_id no lead — é a guarda durável de idempotência', async () => {

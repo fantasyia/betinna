@@ -152,6 +152,8 @@ interface KanbanResponse {
   totaisPorEtapa?: Record<string, number>;
   /** true quando alguma coluna bateu o teto por etapa — a UI avisa que há mais. */
   truncado?: boolean;
+  /** Campanhas do Meta com lead neste funil — opções do filtro. */
+  campanhas?: string[];
 }
 
 /** Teto POR ETAPA no backend (KANBAN_CAP_POR_ETAPA). Só pra mensagem. */
@@ -511,8 +513,10 @@ function FunilBoard({
   onTotals: (t: { totalLeads: number; totalAtivos: number }) => void;
 }) {
   const toast = useToast();
+  // Filtro por campanha do Meta (card cmvl673p6): de qual anúncio o lead veio.
+  const [campanha, setCampanha] = useState('');
   const { data, loading, error, refetch } = useApiQuery<KanbanResponse>(
-    `/leads/kanban?funilId=${funilId}`,
+    `/leads/kanban?funilId=${funilId}${campanha ? `&campanha=${encodeURIComponent(campanha)}` : ''}`,
   );
   const [selected, setSelected] = useState<Lead | null>(null);
 
@@ -705,6 +709,30 @@ function FunilBoard({
               ? `${Object.values(optimistic.grupos).reduce((s, g) => s + g.length, 0)} leads`
               : '—'}
           </span>
+        </div>
+      )}
+      {(campanha || (optimistic?.campanhas?.length ?? 0) > 0) && (
+        <div className="flex items-center gap-2 mb-2">
+          <label className="text-[11px] text-muted" htmlFor={`filtro-campanha-${funilId}`}>
+            Campanha do Meta
+          </label>
+          <Select
+            id={`filtro-campanha-${funilId}`}
+            data-testid={`kanban-filtro-campanha-${funilId}`}
+            className="max-w-xs"
+            value={campanha}
+            onChange={(e) => setCampanha(e.target.value)}
+          >
+            <option value="">Todas</option>
+            {/* A escolhida fica na lista mesmo se a resposta filtrada não a trouxer. */}
+            {[...new Set([...(optimistic?.campanhas ?? []), ...(campanha ? [campanha] : [])])].map(
+              (c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ),
+            )}
+          </Select>
         </div>
       )}
       <StateView loading={loading && !optimistic} error={error} onRetry={refetch}>
@@ -1391,6 +1419,7 @@ function LeadDetailDrawer({
           </div>
         </section>
 
+        <AnuncioOrigemSection variaveis={lead.variaveis} />
         <DadosCapturaSection variaveis={lead.variaveis} />
 
         {actionError && (
@@ -1432,6 +1461,57 @@ function InfoCell({
  * cargo, região, experiência, página de origem, origem e consentimento LGPD.
  * Só renderiza quando há ao menos um campo de captura.
  */
+/**
+ * De qual anúncio do Meta o lead veio (card cmvl673p6): campanha, conjunto,
+ * anúncio e o produto/link que o F02 manda. Gravado pelo Lead Ads em
+ * `variaveis.meta`; lead de outra porta não mostra nada.
+ */
+function AnuncioOrigemSection({ variaveis }: { variaveis?: Record<string, unknown> | null }) {
+  const m = (variaveis?.meta ?? null) as Record<string, unknown> | null;
+  if (!m || typeof m !== 'object') return null;
+  const s = (k: string): string | null =>
+    typeof m[k] === 'string' && (m[k] as string).trim() ? (m[k] as string) : null;
+  const campos = [
+    { label: 'Campanha', valor: s('campaign_name') ?? s('campaign_id') },
+    { label: 'Conjunto', valor: s('adset_name') ?? s('adset_id') },
+    { label: 'Anúncio', valor: s('ad_name') ?? s('ad_id') },
+    {
+      label: 'Onde',
+      valor: s('platform') === 'ig' ? 'Instagram' : s('platform') === 'fb' ? 'Facebook' : null,
+    },
+    { label: 'Produto', valor: s('produto_slug') },
+  ].filter((c) => c.valor);
+  const link = s('link');
+  if (campos.length === 0 && !link) return null;
+  return (
+    <section data-testid="lead-anuncio-origem">
+      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+        Anúncio de origem (Meta)
+      </h4>
+      <div className="grid grid-cols-2 gap-2.5 text-sm">
+        {campos.map((c) => (
+          <InfoCell key={c.label} icon={<Target />} label={c.label}>
+            <span className="break-words">{c.valor}</span>
+          </InfoCell>
+        ))}
+        {link && (
+          <InfoCell icon={<TrendingUp />} label="Link enviado">
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline break-all"
+              data-testid="lead-anuncio-link"
+            >
+              {link.replace(/^https?:\/\//, '').replace(/\?.*$/, '')}
+            </a>
+          </InfoCell>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function DadosCapturaSection({ variaveis }: { variaveis?: Record<string, unknown> | null }) {
   const v = variaveis ?? {};
   const str = (k: string): string | null => (typeof v[k] === 'string' ? (v[k] as string) : null);

@@ -134,6 +134,8 @@ export class LeadsService {
   async kanban(
     user: AuthenticatedUser,
     funilId?: string,
+    /** Só os leads desta campanha do Meta (nome da campanha, card cmvl673p6). */
+    campanha?: string,
   ): Promise<{
     funil: {
       id: string | null;
@@ -157,9 +159,27 @@ export class LeadsService {
     totaisPorEtapa?: Record<string, number>;
     /** true quando alguma coluna bateu o teto — a UI deve avisar. */
     truncado: boolean;
+    /** Campanhas do Meta com lead neste funil — opções do filtro. */
+    campanhas?: string[];
   }> {
     const empresaId = this.requireEmpresa(user);
-    const where = await this.baseWhere(user);
+    const base = await this.baseWhere(user);
+    // Filtro por campanha: o nome gravado pelo Lead Ads (variaveis.meta) ou o
+    // utm_campaign (que é o mesmo nome em minúsculas) — AND pra não brigar com
+    // o escopo de rep do baseWhere.
+    const where: Prisma.LeadWhereInput = campanha
+      ? {
+          AND: [
+            base,
+            {
+              OR: [
+                { variaveis: { path: ['meta', 'campaign_name'], equals: campanha } },
+                { utmCampaign: { equals: campanha, mode: 'insensitive' } },
+              ],
+            },
+          ],
+        }
+      : base;
 
     // Resolve o funil-alvo: explícito > padrão da empresa
     let funil = funilId
@@ -227,8 +247,23 @@ export class LeadsService {
           `Kanban truncado em ${KANBAN_CAP_POR_ETAPA} leads por etapa (funil ${funil.id}) — UI deve avisar.`,
         );
       }
+      // Opções do filtro: nunca derruba o kanban.
+      let campanhas: string[] = [];
+      try {
+        const r = await this.prisma.$queryRaw<Array<{ nome: string }>>`
+          SELECT DISTINCT variaveis->'meta'->>'campaign_name' AS nome
+          FROM "Lead"
+          WHERE "empresaId" = ${empresaId} AND "funilId" = ${funil.id}
+            AND variaveis->'meta'->>'campaign_name' IS NOT NULL
+          ORDER BY 1
+          LIMIT 100`;
+        campanhas = r.map((x) => x.nome);
+      } catch {
+        campanhas = [];
+      }
       return {
         totaisPorEtapa,
+        campanhas,
         funil: {
           id: funil.id,
           nome: funil.nome,
@@ -402,6 +437,8 @@ export class LeadsService {
       formularioOrigem?: string | null;
       /** Default SITE (o formulário do site é quem mais chama). Lead Ads manda FACEBOOK/INSTAGRAM. */
       canalOrigem?: CanalOrigem;
+      /** Etiquetas aplicadas ANTES do LEAD_CRIADO (ex.: `teste` tira o lead dos fluxos). */
+      tags?: string[];
     },
   ): Promise<{ id: string }> {
     const { funilId, funilEtapaId } = await this.resolverFunilInicial(
@@ -448,6 +485,9 @@ export class LeadsService {
       quem: null,
       origemMudanca: 'criacao',
     });
+
+    // Antes do evento: o bus decide pela etiqueta se acende fluxo pro lead.
+    for (const t of dto.tags ?? []) await this.aplicarTagPorNome(empresaId, lead.id, t);
 
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,

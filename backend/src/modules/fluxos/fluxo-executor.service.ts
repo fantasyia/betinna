@@ -124,6 +124,20 @@ const SAIDAS_RESERVADAS_IA = new Set(['classificou', 'timeout', 'erro']);
 // bifurcações — não chega perto disto; um ciclo de ações (A→B→A sem DELAY) estouraria em segundos.
 const MAX_PASSOS_POR_EXECUCAO = 500;
 
+/** `{{lead.meta.*}}` de lead que não veio do Lead Ads. */
+const META_VAZIO = {
+  campaign_id: '',
+  campaign_name: '',
+  adset_id: '',
+  adset_name: '',
+  ad_id: '',
+  ad_name: '',
+  form_id: '',
+  platform: '',
+  produto_slug: '',
+  link: '',
+};
+
 /**
  * Interpola variáveis no formato {{caminho.ponto}} dentro de strings.
  * Exemplo: "Olá {{cliente.nome}}!" com { cliente: { nome: "João" } } → "Olá João!"
@@ -1646,6 +1660,15 @@ export class FluxoExecutorService {
             ),
             tags: lead.tags.map((t) => t.tag.nome).join(', '),
             empresa: (leadVars.empresa as string | undefined) ?? lead.nome,
+            // Origem do Lead Ads (card cmvl673p6): {{lead.meta.campaign_name}},
+            // {{lead.meta.link}}… Chaves sempre presentes — lead sem Meta vira
+            // texto vazio, não `{{lead.meta.link}}` cru na mensagem.
+            meta: {
+              ...META_VAZIO,
+              ...(leadVars.meta && typeof leadVars.meta === 'object'
+                ? (leadVars.meta as Record<string, unknown>)
+                : {}),
+            },
           };
         }
       } catch {

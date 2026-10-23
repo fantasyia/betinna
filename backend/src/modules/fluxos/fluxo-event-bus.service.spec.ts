@@ -130,6 +130,35 @@ describe('FluxoEventBusService', () => {
       expect(queue.add).toHaveBeenCalledOnce();
     });
 
+    it('lead com a etiqueta `teste` não acende fluxo (card cmvl673p6)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fakeFluxo()]);
+      const lead = { count: vi.fn().mockResolvedValue(1) };
+      (prisma as unknown as { lead: typeof lead }).lead = lead;
+
+      await service.disparar('emp-1', 'LEAD_CRIADO' as FluxoTriggerTipo, { leadId: 'lead-t' });
+
+      expect(lead.count).toHaveBeenCalledWith({
+        where: {
+          id: 'lead-t',
+          empresaId: 'emp-1',
+          tags: { some: { tag: { nome: { equals: 'teste', mode: 'insensitive' } } } },
+        },
+      });
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('lead sem a etiqueta `teste` segue normal', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fakeFluxo()]);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+      (prisma as unknown as { lead: unknown }).lead = { count: vi.fn().mockResolvedValue(0) };
+
+      await service.disparar('emp-1', 'LEAD_CRIADO' as FluxoTriggerTipo, { leadId: 'lead-ok' });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+
     it('salva jobId na execução após enfileirar', async () => {
       prisma.fluxo.findMany.mockResolvedValue([fakeFluxo()]);
       prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao({ id: 'exec-42' }));

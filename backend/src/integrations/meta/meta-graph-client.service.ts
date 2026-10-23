@@ -5,6 +5,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
 import type { MetaAnuncio, MetaLeadgenDados } from './meta-leadgen.types';
+import type { DadosOrigem } from './origem-meta';
 import type {
   MetaInstagramBusinessAccount,
   MetaPage,
@@ -214,6 +215,19 @@ export class MetaGraphClientService {
       fields: 'id,name,campaign{id,name},adset{id,name}',
     });
     return this.callExpect<MetaAnuncio>('GET', `/${encodeURIComponent(adId)}?${qs}`);
+  }
+
+  /**
+   * Reserva do `obterAnuncio`: o próprio lead traz os nomes de campanha, conjunto
+   * e anúncio. Chamada SEPARADA do `obterLead` de propósito — se o Meta recusar
+   * estes campos, o lead já foi buscado e entra igual (card cmvl673p6).
+   */
+  async obterOrigemDoLead(leadgenId: string, pageAccessToken: string): Promise<DadosOrigem> {
+    const qs = new URLSearchParams({
+      access_token: pageAccessToken,
+      fields: 'ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,platform',
+    });
+    return this.callExpect<DadosOrigem>('GET', `/${encodeURIComponent(leadgenId)}?${qs}`);
   }
 
   // ─── Internos ────────────────────────────────────────────────────────

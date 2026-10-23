@@ -9,6 +9,7 @@ import {
   Post,
   Put,
   Res,
+  Query,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -59,6 +60,7 @@ import { ModoInternoService } from './modo-interno.service';
 import { ContatoService } from './contato.service';
 import { clarityConfigSchema, type ClarityConfigDto } from './clarity';
 import { geoConfigSchema, type GeoConfigDto } from './geo';
+import { campanhasMetaSchema, type CampanhasMetaDto } from '@integrations/meta/origem-meta';
 
 /**
  * Vitrine de atacado — cadastro do lado da empresa (Fase 1).
@@ -129,6 +131,25 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(geoConfigSchema)) dto: GeoConfigDto,
   ) {
     return this.svc.geoSalvar(user, dto);
+  }
+
+  // ─── Lead do Meta: campanha → produto (card cmvl673p6, 23/10) ────────────
+  @Get('campanhas-meta')
+  @ApiOperation({
+    summary:
+      'Mapa campanha do Meta → produto da vitrine; com ?campanha=<nome> mostra o produto e o link que o lead receberia',
+  })
+  campanhasMetaVer(@CurrentUser() user: AuthenticatedUser, @Query('campanha') campanha?: string) {
+    return this.svc.campanhasMetaVer(user, campanha);
+  }
+
+  @Put('campanhas-meta')
+  @ApiOperation({ summary: 'Substitui o mapa campanha → produto (lista inteira)' })
+  campanhasMetaSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(campanhasMetaSchema)) dto: CampanhasMetaDto,
+  ) {
+    return this.svc.campanhasMetaSalvar(user, dto);
   }
 
   // ─── Microsoft Clarity (gravação de sessão, 22/10) ──────────────────────

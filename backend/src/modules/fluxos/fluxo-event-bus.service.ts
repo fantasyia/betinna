@@ -17,6 +17,7 @@ import { normalizarValor } from './normalizar-valor.util';
 import { decidirEntrada, postoNaDisputa, resolveNutricao } from './nutricao-porta-unica.util';
 import { iaAFrente, turnoDeIaAberto } from './turno-ia-aberto.util';
 import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
+import { leadDeTeste } from './lead-acelerado';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
@@ -294,6 +295,15 @@ export class FluxoEventBusService {
     await this.pararReguasDoEvento(empresaId, triggerTipo, contexto).catch((err) =>
       this.logger.warn(`[régua] falha ao avaliar parada (${triggerTipo}): ${String(err)}`),
     );
+    // LEAD DE TESTE (card cmvl673p6, 23/10): lead com a etiqueta `teste` (o da
+    // ferramenta de teste do Meta) não acende fluxo — nenhuma mensagem sai pra
+    // ele. `teste-acelerado` é OUTRA etiqueta: aquele roda de verdade.
+    if (await leadDeTeste(this.prisma, empresaId, contexto['leadId'])) {
+      this.logger.log(
+        `[lead-teste] ${triggerTipo} ignorado — lead ${String(contexto['leadId'])} tem a etiqueta "teste"`,
+      );
+      return;
+    }
     try {
       // Busca fluxos ATIVOS para este triggerTipo
       const fluxos = await this.prisma.fluxo.findMany({

@@ -12,7 +12,18 @@ import { MetaGraphClientService } from './meta-graph-client.service';
 import { MetaOAuthService } from './meta-oauth.service';
 import type { FacebookCredenciais } from './meta.types';
 import {
+  campanhasMeta,
+  ehLeadDeTesteMeta,
+  linkDaOrigem,
+  origemMeta,
+  produtoDaCampanha,
+  TAG_TESTE,
+  type DadosOrigem,
+  type OrigemMeta,
+} from './origem-meta';
+import {
   META_LEADGEN_QUEUE,
+  type MetaAnuncio,
   type MetaLeadgenDados,
   type MetaLeadgenJobData,
 } from './meta-leadgen.types';
@@ -111,7 +122,16 @@ export class MetaLeadgenService {
       );
     }
 
-    const atribuicao = await this.montarAtribuicao(data, cred.pageAccessToken);
+    const { atribuicao, origem } = await this.montarAtribuicao(data, dados, cred.pageAccessToken);
+    // Produto da campanha e o link que o F02 manda (card cmvl673p6). Nunca trava
+    // a entrada do lead: sem produto, vai o link geral.
+    try {
+      await this.completarOrigem(resolved.empresaId, origem);
+    } catch (err) {
+      this.logger.warn(`Lead Ads ${data.leadgenId}: origem sem produto/link: ${String(err)}`);
+    }
+    // Lead da ferramenta de teste do Meta: etiqueta `teste`, nenhum fluxo fala com ele.
+    const deTeste = ehLeadDeTesteMeta(campos);
     const empresaNome = this.primeiro(campos, EMPRESA);
     const canalOrigem: CanalOrigem = dados.platform === 'ig' ? 'INSTAGRAM' : 'FACEBOOK';
     const formId = data.formId ?? dados.form_id;
@@ -128,6 +148,8 @@ export class MetaLeadgenService {
         pageId: data.pageId,
         campos,
         atribuicao,
+        origem,
+        deTeste,
         contatoNome: nome,
         contatoEmail: email,
         contatoTelefone: telefone,
@@ -171,7 +193,10 @@ export class MetaLeadgenService {
         // formulário) não pode sumir — é onde vive a qualificação.
         respostasFormulario: campos,
         atribuicao,
+        // Campanha, conjunto e anúncio de origem + link do produto ({{lead.meta.*}}).
+        meta: origem,
       },
+      ...(deTeste ? { tags: [TAG_TESTE] } : {}),
       utmSource: atribuicao.primeiro?.utmSource ?? null,
       utmMedium: atribuicao.primeiro?.utmMedium ?? null,
       utmCampaign: atribuicao.primeiro?.utmCampaign ?? null,
@@ -205,6 +230,8 @@ export class MetaLeadgenService {
       pageId: string;
       campos: Record<string, string>;
       atribuicao: Atribuicao;
+      origem: OrigemMeta;
+      deTeste: boolean;
       contatoNome?: string;
       contatoEmail?: string;
       contatoTelefone?: string;
@@ -239,11 +266,14 @@ export class MetaLeadgenService {
     dados.observacoes = atual.observacoes ? `${atual.observacoes}\n${carimbo}` : carimbo;
     await this.prisma.lead.update({ where: { id: leadId }, data: dados });
 
+    if (t.deTeste) await this.leads.aplicarTagPorNome(empresaId, leadId, TAG_TESTE);
     const merge = {
       metaLeadgenId: t.leadgenId,
       metaFormId: t.formId,
       metaPageId: t.pageId,
       respostasFormulario: t.campos,
+      // Último anúncio que trouxe o lead (o 1º toque fica na atribuição).
+      meta: t.origem,
     };
     await this.prisma.$executeRaw`
       UPDATE "Lead"
@@ -278,31 +308,63 @@ export class MetaLeadgenService {
    */
   private async montarAtribuicao(
     data: MetaLeadgenJobData,
+    dados: MetaLeadgenDados,
     accessToken: string,
-  ): Promise<Atribuicao> {
-    let campanha: string | undefined;
-    let anuncio: string | undefined;
-    if (data.adId) {
+  ): Promise<{ atribuicao: Atribuicao; origem: OrigemMeta }> {
+    // O webhook nem sempre traz `ad_id` (lead de teste, reentrega) — o lead traz.
+    const adId = data.adId ?? dados.ad_id;
+    let anuncio: MetaAnuncio | null = null;
+    let doLead: DadosOrigem | null = null;
+    if (adId) {
       try {
-        const ad = await this.graph.obterAnuncio(data.adId, accessToken);
-        campanha = ad.campaign?.name;
-        anuncio = ad.name;
+        anuncio = await this.graph.obterAnuncio(adId, accessToken);
       } catch (err) {
         this.logger.warn(
-          `Lead Ads ${data.leadgenId}: não resolveu ad_id=${data.adId} (falta ads_read?) — ` +
-            `lead entra sem nome de campanha: ${err instanceof Error ? err.message : String(err)}`,
+          `Lead Ads ${data.leadgenId}: não resolveu ad_id=${adId} (falta ads_read?) — ` +
+            `tentando pelos campos do próprio lead: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
+    if (!anuncio?.campaign?.name) {
+      // Reserva: o lead também sabe o nome da campanha, do conjunto e do anúncio.
+      try {
+        doLead = await this.graph.obterOrigemDoLead(data.leadgenId, accessToken);
+      } catch (err) {
+        this.logger.warn(
+          `Lead Ads ${data.leadgenId}: lead entra sem nome de campanha: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    const origem = origemMeta(
+      anuncio
+        ? {
+            ad_id: anuncio.id,
+            ad_name: anuncio.name,
+            adset_id: anuncio.adset?.id,
+            adset_name: anuncio.adset?.name,
+            campaign_id: anuncio.campaign?.id,
+            campaign_name: anuncio.campaign?.name,
+          }
+        : null,
+      doLead,
+      {
+        ad_id: adId,
+        adset_id: data.adgroupId,
+        form_id: data.formId ?? dados.form_id,
+        platform: dados.platform,
+      },
+    );
     const bloco = {
       utmSource: 'meta',
       utmMedium: 'lead_ads',
       // Nome da campanha = utm_campaign = slug do conteúdo (mesma regra dos
       // outros canais). Sem `ads_read` o ad_id serve de identificador cru — é
       // rastreável na mão, ao contrário de campo vazio.
-      utmCampaign: campanha ?? data.adId,
-      utmContent: anuncio ?? data.adId,
-      utmTerm: data.adgroupId,
+      utmCampaign: origem.campaign_name ?? adId,
+      utmContent: origem.ad_name ?? adId,
+      utmTerm: data.adgroupId ?? origem.adset_id,
       capturadoEm: data.createdTime
         ? new Date(data.createdTime * 1000).toISOString()
         : new Date().toISOString(),
@@ -312,7 +374,36 @@ export class MetaLeadgenService {
     // `normalizarAtribuicao` devolve undefined quando os dois blocos ficam
     // vazios — o que aqui não acontece (utmSource/utmMedium são fixos), mas o
     // tipo obriga o fallback.
-    return normalizarAtribuicao({ primeiro: bloco, ultimo: bloco }) ?? {};
+    return {
+      atribuicao: normalizarAtribuicao({ primeiro: bloco, ultimo: bloco }) ?? {},
+      origem,
+    };
+  }
+
+  /**
+   * Produto da campanha (mapa `config.metaCampanhas`, senão o slug no nome) e o
+   * link com UTM no domínio da vitrine. Muta `origem`.
+   */
+  private async completarOrigem(empresaId: string, origem: OrigemMeta): Promise<void> {
+    const [empresa, modelos] = await Promise.all([
+      this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
+      this.prisma.catalogoModelo.findMany({
+        where: { empresaId, ativo: true, slug: { not: null } },
+        select: { slug: true, slugsAntigos: true },
+      }),
+    ]);
+    const slugs = new Map<string, string>();
+    for (const m of modelos) {
+      if (!m.slug) continue;
+      for (const antigo of m.slugsAntigos) if (!slugs.has(antigo)) slugs.set(antigo, m.slug);
+      slugs.set(m.slug, m.slug);
+    }
+    const slug = produtoDaCampanha(origem, campanhasMeta(empresa?.config), slugs);
+    if (slug) origem.produto_slug = slug;
+    const dominio = ((empresa?.config ?? {}) as { branding?: { dominio?: string | null } }).branding
+      ?.dominio;
+    const link = linkDaOrigem(dominio, slug, origem.campaign_name);
+    if (link) origem.link = link;
   }
 
   /** `field_data` → mapa nome→primeiro valor (o Meta manda array por campo). */

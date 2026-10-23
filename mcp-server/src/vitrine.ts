@@ -498,6 +498,49 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   );
 
   server.registerTool(
+    "meta_campanhas_ver",
+    {
+      description:
+        "Lead do Meta (formulário instantâneo): mapa campanha → produto da vitrine. Cada linha mostra o produto e o link que o lead recebe ({{lead.meta.link}} no F02). " +
+        "Com 'campanha' (nome), SIMULA: qual produto e link um lead dessa campanha receberia. " +
+        "Sem linha no mapa vale a regra do nome: o slug do produto escrito no nome da campanha (ex.: 'UV adulto · camiseta-uv-raglan-manga-longa').",
+      inputSchema: { campanha: z.string().max(200).optional() },
+      annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    seguro(async (a: { campanha?: string }) =>
+      ok(
+        await api.get(
+          `/vitrine/admin/campanhas-meta${a.campanha ? `?campanha=${encodeURIComponent(a.campanha)}` : ""}`,
+        ),
+      ),
+    ),
+  );
+
+  server.registerTool(
+    "meta_campanhas_salvar",
+    {
+      description:
+        "Substitui o mapa INTEIRO campanha → produto (mande a lista toda; o que ficar de fora sai). " +
+        "campanha = ID ou nome EXATO da campanha no Meta; slug = slug do produto (vitrine_modelos_listar), ou '' pra campanha geral (link da vitrine). " +
+        "Só precisa de linha quando o nome da campanha NÃO traz o slug do produto. Devolve o mapa conferido (aviso em slug que não é produto ativo).",
+      inputSchema: {
+        campanhas: z
+          .array(
+            z.object({
+              campanha: z.string().min(1).max(200),
+              slug: z.string().max(80).regex(/^[a-z0-9-]*$/),
+            }),
+          )
+          .max(200),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    seguro(async (a: { campanhas: Array<{ campanha: string; slug: string }> }) =>
+      ok(await api.put("/vitrine/admin/campanhas-meta", a)),
+    ),
+  );
+
+  server.registerTool(
     "vitrine_codigos_gerar",
     {
       description:

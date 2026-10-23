@@ -14,6 +14,13 @@ import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-p
 import { configClarity, type ClarityConfigDto } from './clarity';
 import { slugDoNome, slugLivre } from './slug-modelo';
 import { configGeo, type GeoConfigDto } from './geo';
+import {
+  campanhasMeta,
+  linkDaOrigem,
+  produtoDaCampanha,
+  type CampanhaProduto,
+  type CampanhasMetaDto,
+} from '@integrations/meta/origem-meta';
 import type {
   CategoriaDto,
   CorDto,
@@ -727,6 +734,73 @@ export class VitrineAdminService {
       SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{geo}', ${JSON.stringify(novo)}::jsonb, true)
       WHERE "id" = ${empresaId}`;
     return novo;
+  }
+
+  // ─── Lead do Meta: campanha → produto (card cmvl673p6, 23/10) ────────────
+
+  /**
+   * O mapa, cada linha conferida (o slug é produto ATIVO? qual link sai?) e,
+   * com `campanha`, a simulação: o que um lead dessa campanha receberia — pelo
+   * mapa ou pela regra do slug no nome.
+   */
+  async campanhasMetaVer(user: AuthenticatedUser, campanha?: string) {
+    const empresaId = await this.empresaComVitrine(user);
+    const [e, modelos] = await Promise.all([
+      this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
+      this.prisma.catalogoModelo.findMany({
+        where: { empresaId, ativo: true, slug: { not: null } },
+        select: { nome: true, slug: true, slugsAntigos: true },
+      }),
+    ]);
+    const slugs = new Map<string, string>();
+    const nomes = new Map<string, string>();
+    for (const m of modelos) {
+      if (!m.slug) continue;
+      for (const a of m.slugsAntigos) if (!slugs.has(a)) slugs.set(a, m.slug);
+      slugs.set(m.slug, m.slug);
+      nomes.set(m.slug, m.nome);
+    }
+    const dominio =
+      ((e?.config ?? {}) as { branding?: { dominio?: string | null } }).branding?.dominio ?? null;
+    const mapa = campanhasMeta(e?.config);
+    const linha = (c: CampanhaProduto) => {
+      const atual = c.slug ? (slugs.get(c.slug) ?? null) : null;
+      return {
+        ...c,
+        produto: atual ? (nomes.get(atual) ?? null) : null,
+        aviso:
+          c.slug && !atual
+            ? 'slug não é produto ativo da vitrine — o lead recebe o link geral'
+            : null,
+        link: linkDaOrigem(dominio, atual, c.campanha),
+      };
+    };
+    const simulacao = campanha?.trim()
+      ? (() => {
+          const s = produtoDaCampanha({ campaign_name: campanha.trim() }, mapa, slugs);
+          return {
+            campanha: campanha.trim(),
+            produto: s ? (nomes.get(s) ?? null) : null,
+            slug: s,
+            link: linkDaOrigem(dominio, s, campanha.trim()),
+          };
+        })()
+      : undefined;
+    return {
+      campanhas: mapa.map(linha),
+      ...(simulacao ? { simulacao } : {}),
+      regra:
+        'Sem linha no mapa, vale o slug do produto escrito no nome da campanha (ou do conjunto/anúncio); nada achado = link geral da vitrine.',
+    };
+  }
+
+  async campanhasMetaSalvar(user: AuthenticatedUser, dto: CampanhasMetaDto) {
+    const empresaId = await this.empresaComVitrine(user);
+    await this.prisma.$executeRaw`
+      UPDATE "Empresa"
+      SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{metaCampanhas}', ${JSON.stringify(dto.campanhas)}::jsonb, true)
+      WHERE "id" = ${empresaId}`;
+    return this.campanhasMetaVer(user);
   }
 
   // ─── Microsoft Clarity (22/10) ──────────────────────────────────────────
