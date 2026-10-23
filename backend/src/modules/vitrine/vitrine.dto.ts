@@ -438,6 +438,19 @@ export const pedidoVitrineSchema = z.object({
     const d = v.replace(/\D/g, '');
     return d.length === 11 || d.length === 14;
   }, 'CPF ou CNPJ incompleto'),
+  /**
+   * E-mail do comprador (réguas de e-mail, 23/10). A TELA exige; a API aceita
+   * sem — aba aberta antes do deploy (tela antiga, sem o campo) não pode travar
+   * o pedido. Mesma regra do e-mail do pagamento.
+   */
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email('Informe um e-mail válido')
+    .max(160)
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   observacoes: opcional(500),
   /** Endereço de entrega — obrigatório quando a empresa cobra frete (exceto retirada). */
   entrega: enderecoEntregaSchema.optional(),

@@ -2474,6 +2474,11 @@ export class FluxoExecutorService {
     this.assertEmpresaId(empresaId, 'ENVIAR_EMAIL');
     let emails = await this.resolverDestinatarios(cfg, ctx, empresaId);
     if (emails.length === 0) {
+      // Opção EXPLÍCITA do nó: lead sem e-mail segue a régua (o passo fica no
+      // log como pulado). Sem ela, falha — e-mail que nunca sai tem que aparecer.
+      if (cfg.semEmail === 'pular') {
+        return { pulado: 'sem e-mail', enviado: false };
+      }
       throw new Error('Nenhum destinatário resolvido para ENVIAR_EMAIL');
     }
 

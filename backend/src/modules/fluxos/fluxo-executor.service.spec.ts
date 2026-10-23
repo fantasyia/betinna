@@ -2127,6 +2127,34 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    // 23/10: régua de e-mail com lead sem e-mail — falha por padrão, pula com a opção.
+    it.each([
+      ['sem a opção, FALHA (e-mail que nunca sai tem que aparecer)', undefined, true],
+      ["com semEmail: 'pular', o passo fecha e o fluxo segue", 'pular', false],
+    ])('sem destinatário: %s', async (_t, semEmail, falha) => {
+      const acaoNo = fakeNo({
+        id: 'no-email',
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_EMAIL',
+        config: {
+          destinatarios: ['{{lead.email}}'],
+          assunto: 'Oi',
+          corpo: 'Oi',
+          ...(semEmail ? { semEmail } : {}),
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { lead: { email: '' } } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+
+      const passo = service.executarPasso('exec-1', 'no-email', 'job-test');
+      if (falha) await expect(passo).rejects.toThrow('Nenhum destinatário');
+      else await expect(passo).resolves.not.toThrow();
+      expect(emailSvc.enviarHtmlLivre).not.toHaveBeenCalled();
+    });
+
     /**
      * Em fluxo, variável ausente MANTÉM o literal (`ausenteVazio: false`, pra
      * debug). Em 24/08 isso virou uma mensagem entregue com `{{texto_teste}}`

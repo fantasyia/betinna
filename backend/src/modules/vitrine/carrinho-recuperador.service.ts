@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { NotFoundException } from '@shared/errors/app-exception';
 import { pagamentoOnlineLigado } from '@modules/checkout/checkout.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { leadDoPedidoSemMover } from '@modules/pedidos/email-do-comprador';
 import {
   ESPERA_MIN,
   VALIDADE_HORAS,
@@ -169,8 +170,9 @@ export class CarrinhoRecuperadorService {
           entrega: true,
           contatoNome: true,
           contatoTelefone: true,
+          contatoEmail: true,
           clienteId: true,
-          cliente: { select: { nome: true } },
+          cliente: { select: { nome: true, email: true } },
           empresa: { select: { config: true } },
           itens: { select: { quantidade: true, precoUnitario: true } },
         },
@@ -219,8 +221,16 @@ export class CarrinhoRecuperadorService {
       if (!(await this.marcar(c.id, agora))) continue;
       const nome = p.contatoNome ?? p.cliente?.nome ?? '';
       const total = Number(p.total);
+      // Lead do pedido (sem mexer no funil) — pra régua usar {{lead.*}} e parar.
+      const leadId = await leadDoPedidoSemMover(
+        this.prisma,
+        c.empresaId,
+        p.clienteId,
+        p.contatoTelefone,
+      );
       await this.bus.disparar(c.empresaId, 'PEDIDO_NAO_PAGO', {
         pedidoId: p.id,
+        ...(leadId ? { leadId } : {}),
         pedido: {
           id: p.id,
           numero: p.numero,
@@ -230,7 +240,12 @@ export class CarrinhoRecuperadorService {
         },
         origem: 'VITRINE',
         clienteId: p.clienteId,
-        cliente: { id: p.clienteId, nome, primeiroNome: primeiroNome(nome) },
+        cliente: {
+          id: p.clienteId,
+          nome,
+          primeiroNome: primeiroNome(nome),
+          email: p.contatoEmail ?? p.cliente?.email ?? '',
+        },
         telefone: p.contatoTelefone ?? null,
         link: await this.link(c.vitrineId, c.token),
       });

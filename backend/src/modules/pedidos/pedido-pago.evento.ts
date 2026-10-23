@@ -64,8 +64,9 @@ export async function dispararPedidoPago(
         clienteId: true,
         contatoNome: true,
         contatoTelefone: true,
+        contatoEmail: true,
         representanteId: true,
-        cliente: { select: { id: true, nome: true } },
+        cliente: { select: { id: true, nome: true, email: true } },
         itens: { select: { quantidade: true } },
       },
     });
@@ -90,6 +91,7 @@ export async function dispararPedidoPago(
         id: p.cliente.id,
         nome: p.contatoNome ?? p.cliente.nome,
         primeiroNome: primeiroNome(p.contatoNome ?? p.cliente.nome),
+        email: p.contatoEmail ?? p.cliente.email ?? '',
       },
       telefone: p.contatoTelefone ?? null,
       representanteId: p.representanteId,

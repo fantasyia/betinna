@@ -59,7 +59,7 @@ import {
   type EscolhaFrete,
   type FretePub,
 } from './Entrega';
-import { Pagamento, type AcessoPagamento, type EntregaDoPedido } from './Pagamento';
+import { Pagamento, emailOk, type AcessoPagamento, type EntregaDoPedido } from './Pagamento';
 import {
   atribuicaoParaEnvio,
   capturarAtribuicao,
@@ -1969,14 +1969,19 @@ interface Enviado {
 interface Contato extends Endereco {
   nome: string;
   whatsapp: string;
+  /** Réguas de e-mail (23/10): obrigatório no envio do pedido. */
+  email: string;
   cpfCnpj: string;
 }
 
 // Quem compra de novo não digita tudo outra vez (fica só neste aparelho).
 const CHAVE_CONTATO = 'vitrine:contato';
+/** A mesma chave do Pagamento: o e-mail digitado aqui já vem preenchido lá. */
+const CHAVE_EMAIL_PAGAMENTO = 'vitrine:email';
 const CONTATO_VAZIO: Contato = {
   nome: '',
   whatsapp: '',
+  email: '',
   cidade: '',
   uf: '',
   cpfCnpj: '',
@@ -1991,7 +1996,9 @@ const CONTATO_VAZIO: Contato = {
 function lerContato(): Contato {
   try {
     const raw = localStorage.getItem(CHAVE_CONTATO);
-    return raw ? { ...CONTATO_VAZIO, ...(JSON.parse(raw) as Partial<Contato>) } : CONTATO_VAZIO;
+    const c = raw ? { ...CONTATO_VAZIO, ...(JSON.parse(raw) as Partial<Contato>) } : CONTATO_VAZIO;
+    // Quem já pagou antes digitou o e-mail no pagamento: aproveita.
+    return c.email ? c : { ...c, email: localStorage.getItem(CHAVE_EMAIL_PAGAMENTO) ?? '' };
   } catch {
     return CONTATO_VAZIO;
   }
@@ -2032,6 +2039,7 @@ function FolhaEnvio({
   const pronto =
     f.nome.trim().length >= 2 &&
     f.whatsapp.replace(/\D/g, '').length >= 10 &&
+    emailOk(f.email) &&
     (!frete || freteResolvido(f, escolha));
   const valorFrete = escolha?.tipo === 'servico' ? escolha.preco : 0;
 
@@ -2052,6 +2060,7 @@ function FolhaEnvio({
         {
           nome: f.nome.trim(),
           whatsapp: f.whatsapp,
+          email: f.email.trim().toLowerCase(),
           cidade: f.cidade.trim(),
           uf: f.uf.trim(),
           cpfCnpj: f.cpfCnpj.trim(),
@@ -2068,6 +2077,7 @@ function FolhaEnvio({
       dadosDoCliente({ whatsapp: f.whatsapp });
       try {
         localStorage.setItem(CHAVE_CONTATO, JSON.stringify(f));
+        localStorage.setItem(CHAVE_EMAIL_PAGAMENTO, f.email.trim().toLowerCase());
       } catch {
         /* sem armazenamento: só não lembra da próxima vez */
       }
@@ -2145,6 +2155,20 @@ function FolhaEnvio({
               placeholder="(47) 99999-1234"
               required
               data-testid="vt-f-whatsapp"
+            />
+          </label>
+          <label>
+            E-mail
+            <input
+              type="email"
+              value={f.email}
+              onChange={(e) => mudar('email', e.target.value)}
+              inputMode="email"
+              autoComplete="email"
+              placeholder="voce@loja.com.br"
+              maxLength={160}
+              required
+              data-testid="vt-f-email"
             />
           </label>
           {/* Com frete, cidade e UF vêm no endereço de entrega (o CEP preenche). */}

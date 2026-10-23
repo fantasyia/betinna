@@ -123,6 +123,12 @@ export interface EnviarEmailConfig {
   destinatarios?: string[];
   assunto: string;
   corpo: string; // HTML ou texto
+  /**
+   * Sem e-mail resolvido (23/10): 'pular' fecha o passo CONCLUIDO com
+   * `{ pulado: 'sem e-mail' }` e o fluxo segue. Ausente = FALHA (padrão seguro:
+   * régua de e-mail que nunca envia tem que aparecer).
+   */
+  semEmail?: 'pular';
 }
 
 /** Config da ação CRIAR_TAREFA. */

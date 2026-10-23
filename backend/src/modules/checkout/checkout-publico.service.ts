@@ -9,6 +9,7 @@ import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { dispararPedidoPago } from '@modules/pedidos/pedido-pago.evento';
+import { gravarEmailDoComprador, leadDoPedidoSemMover } from '@modules/pedidos/email-do-comprador';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import {
@@ -309,6 +310,20 @@ export class CheckoutPublicoService {
       await this.prisma.pedido
         .update({ where: { id: p.id }, data: { contatoEmail: email.slice(0, 160) } })
         .catch(() => undefined);
+    }
+    // ...e no cliente e no lead, se estavam sem (réguas de e-mail, 23/10).
+    if (email) {
+      await gravarEmailDoComprador(this.prisma, this.logger, {
+        empresaId: p.empresaId,
+        email,
+        clienteId: p.clienteId,
+        leadId: await leadDoPedidoSemMover(
+          this.prisma,
+          p.empresaId,
+          p.clienteId,
+          p.contatoTelefone,
+        ),
+      });
     }
     // O cadastro do cliente só ganha o documento se estava vazio.
     if (!p.cliente?.cnpj) {

@@ -17,6 +17,7 @@ import { ModoInternoService } from './modo-interno.service';
 import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
 import { primeiroNome, reais } from './carrinho-recuperador';
 import { ligarLeadDoPedido } from '@modules/pedidos/lead-do-pedido';
+import { gravarEmailDoComprador } from '@modules/pedidos/email-do-comprador';
 import type { PedidoVitrineDto } from './vitrine.dto';
 import { normalizarAtribuicao } from '@modules/leads/atribuicao.util';
 
@@ -485,6 +486,7 @@ export class VitrinePedidoService {
       clienteId: cliente.id,
       contatoNome: dto.nome,
       contatoTelefone: whatsapp,
+      ...(dto.email ? { contatoEmail: dto.email } : {}),
       // Venda de canal: sem representante (não gera comissão de rep).
       representanteId: null,
       origem: 'VITRINE',
@@ -577,6 +579,13 @@ export class VitrinePedidoService {
       pedido.id,
       'CRIADO',
     );
+    // E-mail do comprador também no cliente e no lead (réguas de e-mail, 23/10).
+    await gravarEmailDoComprador(this.prisma, this.logger, {
+      empresaId,
+      email: dto.email,
+      clienteId: cliente.id,
+      leadId,
+    });
     void this.bus.disparar(empresaId, 'PEDIDO_CRIADO', {
       pedidoId: pedido.id,
       ...(leadId ? { leadId } : {}),
@@ -591,7 +600,12 @@ export class VitrinePedidoService {
       },
       origem: 'VITRINE',
       clienteId: cliente.id,
-      cliente: { id: cliente.id, nome: dto.nome, primeiroNome: primeiroNome(dto.nome) },
+      cliente: {
+        id: cliente.id,
+        nome: dto.nome,
+        primeiroNome: primeiroNome(dto.nome),
+        email: dto.email ?? '',
+      },
       telefone: whatsapp,
       representanteId: null,
       // Pro WhatsApp de confirmação citar o prazo ("fica reservado por 20 min").
