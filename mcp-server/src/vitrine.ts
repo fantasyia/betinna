@@ -467,6 +467,37 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   );
 
   server.registerTool(
+    "vitrine_geo_ver",
+    {
+      description:
+        "Conteúdo da vitrine pros robôs das IAs e do Google: título da página inicial, 'quem somos', perguntas frequentes (FAQ) e redes oficiais.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    seguro(async () => ok(await api.get("/vitrine/admin/geo"))),
+  );
+
+  server.registerTool(
+    "vitrine_geo_salvar",
+    {
+      description:
+        "Salva o conteúdo pros robôs das IAs/Google: titulo (<title> da home), sobre (quem somos), faq (lista INTEIRA, na ordem: substitui) e redes (URLs). " +
+        "Campo ausente = não mexe. Vira a página /faq, o JSON-LD Organization/FAQPage e o /llms.txt. Texto aprovado pelo Léo.",
+      inputSchema: {
+        titulo: z.string().max(120).nullable().optional(),
+        sobre: z.string().max(2000).nullable().optional(),
+        faq: z
+          .array(z.object({ pergunta: z.string().min(3).max(200), resposta: z.string().min(1).max(2000) }))
+          .max(40)
+          .optional(),
+        redes: z.array(z.string().url().max(200)).max(10).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    seguro(async (a: Record<string, unknown>) => ok(await api.put("/vitrine/admin/geo", a))),
+  );
+
+  server.registerTool(
     "vitrine_codigos_gerar",
     {
       description:

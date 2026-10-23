@@ -13,6 +13,7 @@ import { googleTagLigada } from './google-tag.service';
 import { whatsappDaVitrine } from './contato.service';
 import { clarityLigado } from './clarity';
 import { slugDoNome } from './slug-modelo';
+import { configGeo } from './geo';
 
 /** O que a vitrine pública precisa saber do frete (sem CEP de origem nem caixas). */
 function freteDaVitrine(config: unknown) {
@@ -254,6 +255,8 @@ export class VitrinePublicaService {
       googleTag: googleTagLigada(vitrine.empresa.config),
       // Clarity (22/10): só o ID; a página não carrega na visita da equipe.
       clarity: clarityLigado(vitrine.empresa.config),
+      // Conteúdo pros robôs das IAs/Google (título, quem somos, FAQ, redes), 23/10.
+      geo: configGeo(vitrine.empresa.config),
       linhas,
       respeitaEstoque: respeita,
       modelos: publicos.map((m) => ({

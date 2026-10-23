@@ -59,7 +59,17 @@ const POLITICA = {
   ],
 };
 const VITRINE = {
-  empresa: { nome: 'Ribelt Têxtil' },
+  empresa: { nome: 'Ribelt Têxtil', whatsapp: '5511933809738', logoUrl: 'https://atacado.ribelt.com.br/marcas/x.png' },
+  faixas: { minimoVolume: 200, minimoAtacadao: 1000 },
+  pedidoMinimo: { valorMin: 600, quantidadeMin: 50, modo: 'OU' },
+  pagamentoOnline: true,
+  linhas: [{ nome: 'Regular', selo: null }, { nome: 'Plus Size', selo: 'veste até 150 kg' }],
+  geo: {
+    titulo: 'Ribelt Têxtil · Atacado de roupa masculina',
+    sobre: 'Roupa masculina no atacado, direto da confecção.',
+    faq: [{ pergunta: 'Qual o pedido mínimo?', resposta: '50 peças ou R$ 600, o que bater primeiro.' }],
+    redes: ['https://www.instagram.com/_ribelt'],
+  },
   modelos: [
     {
       id: 'm1',
@@ -164,8 +174,9 @@ describe('servidor do front — preview do link com a marca do domínio', () => 
   it('domínio do tenant: título, descrição e imagem DELE (absolutas, escapadas)', async () => {
     const r = await get('/', 'atacado.ribelt.com.br');
     const html = await r.text();
-    expect(html).toContain('<title>Ribelt Atacado</title>');
-    expect(html).toContain('<meta property="og:title" content="Ribelt Atacado" />');
+    // 23/10 (GEO): a raiz da vitrine usa o título da vitrine (config.geo), não o do app.
+    expect(html).toContain('<title>Ribelt Têxtil · Atacado de roupa masculina</title>');
+    expect(html).toContain('<meta property="og:title" content="Ribelt Têxtil · Atacado de roupa masculina" />');
     expect(html).toContain('content="Moda masculina no atacado &quot;direto&quot; da produção"');
     expect(html).toContain('<meta property="og:image" content="https://atacado.ribelt.com.br/marcas/ribelt-og.png" />');
     expect(html).toContain('<meta property="og:url" content="https://atacado.ribelt.com.br/" />');
@@ -176,7 +187,7 @@ describe('servidor do front — preview do link com a marca do domínio', () => 
   it('14/10: a vitrine mora na RAIZ do domínio — sem redirecionar', async () => {
     const r = await get('/?utm_source=whatsapp', 'atacado.ribelt.com.br');
     expect(r.status).toBe(200);
-    expect(await r.text()).toContain('<title>Ribelt Atacado</title>');
+    expect(await r.text()).toContain('<title>Ribelt Têxtil · Atacado de roupa masculina</title>');
   });
 
   it('link antigo /v/<slug> no domínio da vitrine → raiz (302), mantendo a query', async () => {
@@ -317,5 +328,55 @@ describe('título pro Google, palavras SEO e endereço antigo (23/10)', () => {
     expect(seo.jsonLd.keywords).toBe('bermuda moletom atacado, revenda');
     const html = aplicarProduto('<html><head><title>x</title></head></html>', seo);
     expect(html).toContain('<meta name="keywords" content="bermuda moletom atacado, revenda" />');
+  });
+});
+
+describe('GEO: robôs das IAs leem o conteúdo sem rodar o app (card cmvkab9gl, 23/10)', () => {
+  it('raiz da vitrine: título da vitrine, conteúdo em texto, JSON-LD da loja e da FAQ', async () => {
+    const html = await (await get('/', 'atacado.ribelt.com.br')).text();
+    expect(html).toContain('<title>Ribelt Têxtil · Atacado de roupa masculina</title>');
+    expect(html).toContain('Pedido mínimo: 50 peças ou R$ 600, o que bater primeiro.');
+    expect(html).toContain('href="https://atacado.ribelt.com.br/p/bermuda-moletom-summer"');
+    expect(html).toContain('"@type":"OnlineStore"');
+    expect(html).toContain('"@type":"FAQPage"');
+    // O cliente (com JS) não vê o texto cru piscando.
+    expect(html).toContain('.js .seo-conteudo{display:none}');
+  });
+
+  it('produto: preços por faixa e medidas em texto', async () => {
+    const html = await (await get('/p/bermuda-moletom-summer', 'atacado.ribelt.com.br')).text();
+    expect(html).toContain('Atacadão (a partir de 1.000 peças): R$ 16,99');
+    expect(html).toContain('Composição: 65% poliéster, 35% algodão.');
+  });
+
+  it('/faq em HTML pronto com FAQPage', async () => {
+    const r = await get('/faq', 'atacado.ribelt.com.br');
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('<h2>Qual o pedido mínimo?</h2>');
+    expect(html).toContain('"@type":"FAQPage"');
+    expect(html).not.toContain('<div id="root">');
+  });
+
+  it('/llms.txt é texto de verdade, com produtos e FAQ', async () => {
+    const r = await get('/llms.txt', 'atacado.ribelt.com.br');
+    expect(r.headers.get('content-type')).toContain('text/markdown');
+    const t = await r.text();
+    expect(t.startsWith('# Ribelt Têxtil · Atacado de roupa masculina')).toBe(true);
+    expect(t).toContain('(https://atacado.ribelt.com.br/p/bermuda-moletom-summer)');
+    expect(t).toContain('**Qual o pedido mínimo?**');
+  });
+
+  it('robots libera os robôs das IAs pelo nome', async () => {
+    const t = await (await get('/robots.txt', 'atacado.ribelt.com.br')).text();
+    for (const b of ['GPTBot', 'ClaudeBot', 'PerplexityBot', 'Google-Extended', 'OAI-SearchBot']) {
+      expect(t).toContain(`User-agent: ${b}
+Allow: /`);
+    }
+  });
+
+  it('/faq e /llms.txt no domínio do APP seguem o app (não são da vitrine)', async () => {
+    const r = await get('/llms.txt', 'app.betinna.ai');
+    expect(r.headers.get('content-type')).toContain('text/html');
   });
 });

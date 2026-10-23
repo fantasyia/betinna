@@ -23,6 +23,10 @@
  *    imagem, canonical e JSON-LD `Product` DAQUELE modelo — o Google e o
  *    WhatsApp leem o HTML cru. O app abre já no produto.
  *  - `/sitemap.xml` e `/robots.txt` próprios do domínio da vitrine.
+ *  - GEO (23/10): os robôs das IAs NÃO rodam JavaScript. A raiz e cada
+ *    produto saem com o CONTEÚDO em texto dentro do #root (o app substitui ao
+ *    carregar), JSON-LD OnlineStore + FAQPage na raiz; `/faq` em HTML pronto;
+ *    `/llms.txt` de verdade; robots liberando os robôs das IAs.
  *
  * Sem dependência nenhuma (node:http/fs). Exporta `criarServidor` pros testes.
  */
@@ -123,6 +127,11 @@ export function aplicarMarca(html, marca, { host, caminho }) {
     .join('\n    ');
   out = out.replace('</head>', `    ${extra}\n  </head>`);
   if (imagem) out = out.replace(/(<meta name="twitter:card" content=")[^"]*(")/, '$1summary_large_image$2');
+  // Cor da barra do navegador = a da marca (não o magenta do Betinna).
+  const cor = marca.cores?.primaria;
+  if (cor && /^#[0-9a-fA-F]{6}$/.test(cor)) {
+    out = out.replace(/(<meta name="theme-color" content=")[^"]*(")/, `$1${cor}$2`);
+  }
   return out;
 }
 
@@ -283,6 +292,190 @@ export function aplicarProduto(html, seo) {
   return out.replace('</head>', `    ${extra}\n  </head>`);
 }
 
+// ─── GEO: conteúdo em texto pros robôs das IAs (23/10) ─────────────────────
+
+const NOME_FAIXA = { entrada: 'Entrada', volume: 'Volume', atacadao: 'Atacadão' };
+
+/** "até 199 peças / a partir de 200 / a partir de 1.000" pela regra da vitrine. PURO. */
+export function faixasEmTexto(faixas) {
+  const fmt = (n) => Number(n).toLocaleString('pt-BR');
+  const out = [];
+  const vol = faixas?.minimoVolume;
+  const ata = faixas?.minimoAtacadao;
+  out.push({ chave: 'entrada', rotulo: vol ? `até ${fmt(vol - 1)} peças` : 'qualquer quantidade' });
+  if (vol) out.push({ chave: 'volume', rotulo: `a partir de ${fmt(vol)} peças` });
+  if (ata) out.push({ chave: 'atacadao', rotulo: `a partir de ${fmt(ata)} peças` });
+  return out;
+}
+
+const PRECO_DA = { entrada: 'precoEntrada', volume: 'precoVolume', atacadao: 'precoAtacadao' };
+
+/** Texto do pedido mínimo ("50 peças ou R$ 600, o que bater primeiro"). PURO. */
+export function minimoEmTexto(m) {
+  if (!m) return null;
+  const partes = [];
+  if (m.quantidadeMin) partes.push(`${m.quantidadeMin} peças`);
+  // R$ 600 (sem ,00) — é como o Léo escreve o mínimo.
+  if (m.valorMin) partes.push(Number.isInteger(m.valorMin) ? `R$ ${m.valorMin.toLocaleString('pt-BR')}` : reais(m.valorMin));
+  if (!partes.length) return null;
+  return partes.length === 2
+    ? `${partes[0]} ${m.modo === 'E' ? 'e' : 'ou'} ${partes[1]}${m.modo === 'E' ? '' : ', o que bater primeiro'}`
+    : partes[0];
+}
+
+const h = (s) => escapar(s ?? '');
+
+/** Conteúdo da RAIZ em HTML puro (vai dentro do #root; o app troca ao carregar). PURO. */
+export function conteudoDaHome(v, { base }) {
+  const nome = v?.empresa?.nome || 'Atacado';
+  const geo = v?.geo ?? {};
+  const linhas = (v?.linhas ?? []).map((l) => (l.selo ? `${l.nome} (${l.selo})` : l.nome));
+  const minimo = minimoEmTexto(v?.pedidoMinimo);
+  const produtos = (v?.modelos ?? []).map((m) => {
+    const f = faixaDePreco(m);
+    const nomeP = m.tituloSeo || m.nome;
+    return `<li><a href="${h(new URL(`/p/${m.slug}`, base).toString())}">${h(nomeP)}</a>${f ? ` · a partir de ${h(reais(f.min))}/peça` : ''}</li>`;
+  });
+  const faixas = faixasEmTexto(v?.faixas).map((x) => `<li>${h(NOME_FAIXA[x.chave])}: ${h(x.rotulo)}</li>`);
+  const contato = v?.empresa?.whatsapp ? `WhatsApp +${h(v.empresa.whatsapp)}` : '';
+  return `<main class="seo-conteudo">
+<h1>${h(geo.titulo || `${nome} · Atacado`)}</h1>
+${geo.sobre ? `<p>${h(geo.sobre)}</p>` : ''}
+${linhas.length ? `<p>Linhas: ${h(linhas.join(' · '))}.</p>` : ''}
+${minimo ? `<p>Pedido mínimo: ${h(minimo)}.</p>` : ''}
+${faixas.length ? `<h2>Preço por quantidade</h2><ul>${faixas.join('')}</ul>` : ''}
+${produtos.length ? `<h2>Produtos</h2><ul>${produtos.join('')}</ul>` : ''}
+${v?.pagamentoOnline ? '<p>Pagamento pelo site: Pix ou cartão de crédito.</p>' : ''}
+<p><a href="/faq">Perguntas frequentes</a>${contato ? ` · ${contato}` : ''}</p>
+</main>`;
+}
+
+/** Conteúdo do PRODUTO em HTML puro: preços por linha e faixa, cores, tamanhos, composição e medidas. PURO. */
+export function conteudoDoProduto(m, v) {
+  const faixas = faixasEmTexto(v?.faixas);
+  const linhas = (m.linhas ?? []).map((l) => {
+    const precos = faixas
+      .map((f) => (typeof l[PRECO_DA[f.chave]] === 'number' ? `${NOME_FAIXA[f.chave]} (${f.rotulo}): ${reais(l[PRECO_DA[f.chave]])}` : null))
+      .filter(Boolean);
+    const tams = (l.tamanhos ?? []).map((t) => t.nome).join(', ');
+    const tab = l.tabelaMedidas?.linhas?.length
+      ? `<table><caption>Medidas · ${h(l.nome)}</caption><tr><th>Tamanho</th>${(l.tabelaMedidas.colunas ?? []).map((c) => `<th>${h(c)}</th>`).join('')}</tr>${l.tabelaMedidas.linhas
+          .map((r) => `<tr><td>${h(r.tamanho)}</td>${(r.valores ?? []).map((x) => `<td>${h(x)}</td>`).join('')}</tr>`)
+          .join('')}</table>`
+      : '';
+    return `<section><h2>${h(l.nome)}</h2>${tams ? `<p>Tamanhos: ${h(tams)}.</p>` : ''}${precos.length ? `<ul>${precos.map((p) => `<li>${h(p)}</li>`).join('')}</ul>` : ''}${typeof l.precoSugerido === 'number' ? `<p>Preço sugerido de revenda: ${h(reais(l.precoSugerido))}.</p>` : ''}${tab}</section>`;
+  });
+  const cores = (m.cores ?? []).map((c) => c.nome).join(', ');
+  return `<main class="seo-conteudo">
+<h1>${h(m.tituloSeo || m.nome)}</h1>
+${m.descricao ? `<p>${h(m.descricao)}</p>` : ''}
+${cores ? `<p>Cores: ${h(cores)}.</p>` : ''}
+${m.composicao ? `<p>Composição: ${h(m.composicao)}.</p>` : ''}
+${linhas.join('\n')}
+<p><a href="/">Ver todos os produtos</a> · <a href="/faq">Perguntas frequentes</a></p>
+</main>`;
+}
+
+/** Coloca o conteúdo dentro do #root (o React substitui ao montar). */
+export function comConteudo(html, conteudo) {
+  // Pra quem RODA JavaScript (o cliente) o bloco fica escondido até o app
+  // montar no lugar — sem piscar texto cru; robô sem JS lê normal.
+  const esconde =
+    '<script>document.documentElement.className+=" js"</script>' +
+    '<style>.js .seo-conteudo{display:none}</style>';
+  return html
+    .replace('</head>', `    ${esconde}
+  </head>`)
+    .replace('<div id="root"></div>', `<div id="root">${conteudo}</div>`);
+}
+
+/** JSON-LD da RAIZ: a loja (OnlineStore) e, havendo, a FAQ. PURO. */
+export function jsonLdDaHome(v, { base }) {
+  const geo = v?.geo ?? {};
+  const loja = {
+    '@context': 'https://schema.org',
+    '@type': 'OnlineStore',
+    name: v?.empresa?.nome,
+    url: new URL('/', base).toString(),
+    ...(v?.empresa?.logoUrl ? { logo: v.empresa.logoUrl } : {}),
+    ...(geo.sobre ? { description: geo.sobre } : {}),
+    ...(geo.redes?.length ? { sameAs: geo.redes } : {}),
+    ...(v?.empresa?.whatsapp ? { telephone: `+${v.empresa.whatsapp}` } : {}),
+  };
+  const out = [loja];
+  if (geo.faq?.length) out.push(jsonLdFaq(geo.faq));
+  return out;
+}
+
+export function jsonLdFaq(faq) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map((x) => ({
+      '@type': 'Question',
+      name: x.pergunta,
+      acceptedAnswer: { '@type': 'Answer', text: x.resposta },
+    })),
+  };
+}
+
+const scriptLd = (obj) => `<script type="application/ld+json">${JSON.stringify(obj).replace(/<\//g, '<\\/')}</script>`;
+
+/** Página /faq em HTML pronto (sem JavaScript). PURO. */
+export function paginaFaq(v, { base }) {
+  const nome = v?.empresa?.nome || 'Atacado';
+  const faq = v?.geo?.faq ?? [];
+  const itens = faq.map((x) => `<section><h2>${h(x.pergunta)}</h2><p>${h(x.resposta)}</p></section>`).join('\n');
+  return `<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${h(`Perguntas frequentes · ${nome}`)}</title>
+<meta name="description" content="${h(`Pedido mínimo, pagamento, frete, prazo e trocas no atacado da ${nome}.`)}" />
+<link rel="canonical" href="${h(new URL('/faq', base).toString())}" />
+<meta name="robots" content="index,follow" />
+${faq.length ? scriptLd(jsonLdFaq(faq)) : ''}
+<style>${ESTILO_PAGINA}</style>
+</head><body><main>
+<a class="voltar" href="/">← Ver os produtos</a>
+<h1>${h(`Perguntas frequentes · ${nome}`)}</h1>
+${itens || '<p>Em breve.</p>'}
+</main></body></html>`;
+}
+
+/** /llms.txt: resumo em markdown pra quem lê com IA. PURO. */
+export function llmsTxt(v, { base }) {
+  const nome = v?.empresa?.nome || 'Atacado';
+  const geo = v?.geo ?? {};
+  const u = (p) => new URL(p, base).toString();
+  const minimo = minimoEmTexto(v?.pedidoMinimo);
+  const linhas = [
+    `# ${geo.titulo || nome}`,
+    '',
+    `> ${geo.sobre || `${nome}: loja de atacado.`}`,
+    '',
+    ...(minimo ? [`- Pedido mínimo: ${minimo}.`] : []),
+    ...faixasEmTexto(v?.faixas).map((f) => `- Preço ${NOME_FAIXA[f.chave]}: ${f.rotulo}.`),
+    ...(v?.pagamentoOnline ? ['- Pagamento pelo site: Pix ou cartão de crédito.'] : []),
+    ...(v?.empresa?.whatsapp ? [`- WhatsApp: +${v.empresa.whatsapp}`] : []),
+    ...(geo.redes ?? []).map((r) => `- ${r}`),
+    '',
+    '## Produtos',
+    '',
+    ...(v?.modelos ?? []).map((m) => {
+      const f = faixaDePreco(m);
+      return `- [${m.tituloSeo || m.nome}](${u(`/p/${m.slug}`)})${f ? `: a partir de ${reais(f.min)}/peça` : ''}`;
+    }),
+    '',
+    '## Perguntas frequentes',
+    '',
+    `- [Todas as perguntas](${u('/faq')})`,
+    ...(geo.faq ?? []).map((x) => `- **${x.pergunta}** ${x.resposta}`),
+    '',
+  ];
+  return linhas.join('\n');
+}
+
 const xml = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -302,7 +495,10 @@ export function sitemapXml(vitrine, base) {
 
 /** robots.txt do domínio da vitrine: tudo aberto, menos o link do modo interno. PURO. */
 export function robotsDaVitrine(base) {
+  // Robôs das IAs liberados com nome (GEO, 23/10) — além do `*`.
+  const ias = ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-SearchBot', 'PerplexityBot', 'Google-Extended', 'Applebot-Extended'];
   return [
+    ...ias.flatMap((b) => [`User-agent: ${b}`, 'Allow: /', 'Disallow: /*?interno=', '']),
     'User-agent: *',
     'Allow: /',
     // Link que marca o aparelho da equipe (modo interno) e o de sair dele.
@@ -401,7 +597,7 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       const host = req.headers['x-forwarded-host'] || req.headers.host;
 
       // robots.txt e sitemap.xml DO DOMÍNIO DA VITRINE (o arquivo do dist é o do app).
-      if (caminho === '/robots.txt' || caminho === '/sitemap.xml') {
+      if (caminho === '/robots.txt' || caminho === '/sitemap.xml' || caminho === '/llms.txt' || caminho === '/faq' || caminho === '/faq/') {
         const m = await marcaDo(host);
         const daVitrine = m?.dominio && normalizarHost(m.dominio) === normalizarHost(host) && m.vitrineSlug;
         if (daVitrine) {
@@ -411,6 +607,12 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
           }
           const v = await vitrineDo(m.vitrineSlug);
           if (!v) return texto(res, req, 503, MIME['.txt'], 'indisponível', SEM_CACHE);
+          if (caminho === '/llms.txt') {
+            return texto(res, req, 200, 'text/markdown; charset=utf-8', llmsTxt(v, { base }), 'public, max-age=3600');
+          }
+          if (caminho.startsWith('/faq')) {
+            return texto(res, req, 200, MIME['.html'], paginaFaq(v, { base }), 'public, max-age=300');
+          }
           return texto(res, req, 200, 'application/xml; charset=utf-8', sitemapXml(v, base), 'public, max-age=3600');
         }
       }
@@ -494,11 +696,29 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
           const base = `https://${normalizarHost(host)}`;
           const canonico = doTenant ? `/p/${modelo.slug}` : `/v/${prod.vitrine}/p/${modelo.slug}`;
           html = aplicarProduto(html, seoDoProduto(modelo, v, { base, caminho: canonico }));
+          html = comConteudo(html, conteudoDoProduto(modelo, v));
         } else if (v) {
           // Produto que não existe (ou saiu da vitrine): o app abre a vitrine,
           // mas o Google não indexa essa URL.
           status = 404;
           html = html.replace('</head>', '  <meta name="robots" content="noindex" />\n  </head>');
+        }
+      }
+      // Raiz do domínio da vitrine: título da vitrine, JSON-LD da loja/FAQ e o
+      // conteúdo em texto (os robôs das IAs não rodam o app).
+      if (!prod && doTenant && marca.vitrineSlug && (caminho === '/' || caminho === '')) {
+        const v = await vitrineDo(marca.vitrineSlug);
+        if (v) {
+          const base = `https://${normalizarHost(host)}`;
+          if (v.geo?.titulo) {
+            html = html
+              .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapar(v.geo.titulo)}</title>`)
+              .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${escapar(v.geo.titulo)}$2`)
+              .replace(/(<meta name="twitter:title" content=")[^"]*(")/, `$1${escapar(v.geo.titulo)}$2`);
+          }
+          const ld = jsonLdDaHome(v, { base }).map(scriptLd).join('\n    ');
+          html = html.replace('</head>', `    <link rel="canonical" href="${escapar(new URL('/', base).toString())}" />\n    ${ld}\n  </head>`);
+          html = comConteudo(html, conteudoDaHome(v, { base }));
         }
       }
       const corpo = Buffer.from(html, 'utf8');

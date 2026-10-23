@@ -58,6 +58,7 @@ import { GoogleTagService } from './google-tag.service';
 import { ModoInternoService } from './modo-interno.service';
 import { ContatoService } from './contato.service';
 import { clarityConfigSchema, type ClarityConfigDto } from './clarity';
+import { geoConfigSchema, type GeoConfigDto } from './geo';
 
 /**
  * Vitrine de atacado — cadastro do lado da empresa (Fase 1).
@@ -112,6 +113,22 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(googleTagConfigSchema)) dto: GoogleTagConfigDto,
   ) {
     return this.googleTag.salvar(user, dto);
+  }
+
+  // ─── Conteúdo pros robôs das IAs/Google (GEO, 23/10) ─────────────────────
+  @Get('geo')
+  @ApiOperation({ summary: 'Título, quem somos, FAQ e redes da vitrine (robôs das IAs e Google)' })
+  geoStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.geoStatus(user);
+  }
+
+  @Put('geo')
+  @ApiOperation({ summary: 'Salva título, quem somos, FAQ e redes; campo ausente = não mexe' })
+  geoSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(geoConfigSchema)) dto: GeoConfigDto,
+  ) {
+    return this.svc.geoSalvar(user, dto);
   }
 
   // ─── Microsoft Clarity (gravação de sessão, 22/10) ──────────────────────

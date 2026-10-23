@@ -13,6 +13,7 @@ import { VitrineFotosService } from './vitrine-fotos.service';
 import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
 import { configClarity, type ClarityConfigDto } from './clarity';
 import { slugDoNome, slugLivre } from './slug-modelo';
+import { configGeo, type GeoConfigDto } from './geo';
 import type {
   CategoriaDto,
   CorDto,
@@ -698,6 +699,34 @@ export class VitrineAdminService {
       }
       throw err;
     }
+  }
+
+  // ─── Conteúdo pros robôs das IAs/Google (GEO, 23/10) ─────────────────────
+
+  async geoStatus(user: AuthenticatedUser) {
+    const empresaId = await this.empresaComVitrine(user);
+    const e = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    return configGeo(e?.config);
+  }
+
+  /** Campo ausente = não mexe; os presentes substituem (a FAQ inteira, na ordem). */
+  async geoSalvar(user: AuthenticatedUser, dto: GeoConfigDto) {
+    const empresaId = await this.empresaComVitrine(user);
+    const atual = await this.geoStatus(user);
+    const novo = {
+      titulo: dto.titulo !== undefined ? dto.titulo || null : atual.titulo,
+      sobre: dto.sobre !== undefined ? dto.sobre || null : atual.sobre,
+      faq: dto.faq ?? atual.faq,
+      redes: dto.redes ?? atual.redes,
+    };
+    await this.prisma.$executeRaw`
+      UPDATE "Empresa"
+      SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{geo}', ${JSON.stringify(novo)}::jsonb, true)
+      WHERE "id" = ${empresaId}`;
+    return novo;
   }
 
   // ─── Microsoft Clarity (22/10) ──────────────────────────────────────────
