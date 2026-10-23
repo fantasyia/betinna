@@ -21,6 +21,7 @@ import {
   registroDaGrade,
 } from './gradeRisco';
 import { KanbanProducao } from './KanbanProducao';
+import { EtiquetasDialog } from './EtiquetasDialog';
 
 /** Visão da produção: kanban (etapas) ou lista. Fica lembrada neste aparelho. */
 const CHAVE_VISAO = 'producao:visao';
@@ -75,6 +76,7 @@ export default function ProducaoPage() {
   // Veio da Reposição: abre a Nova OP já com o modelo e a grade do que falta.
   const pre = (location.state as { nova?: NovaInicial } | null)?.nova ?? null;
   const [nova, setNova] = useState(Boolean(pre));
+  const [etiquetas, setEtiquetas] = useState(false);
   // Kanban das etapas (Léo, 14/10) é o padrão; a lista segue a um clique.
   const [visao, setVisaoEstado] = useState<'kanban' | 'lista'>(visaoSalva);
   const setVisao = (v: 'kanban' | 'lista') => {
@@ -92,13 +94,19 @@ export default function ProducaoPage() {
       description="Ordens de produção: corte, facção, recebimento e o custo real de cada peça."
       actions={
         gestor ? (
-          <Button leftIcon={<Plus className="h-3.5 w-3.5" />} onClick={() => setNova(true)} data-testid="op-nova">
-            Nova OP
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setEtiquetas(true)} data-testid="etiquetas-abrir">
+              Etiquetas
+            </Button>
+            <Button leftIcon={<Plus className="h-3.5 w-3.5" />} onClick={() => setNova(true)} data-testid="op-nova">
+              Nova OP
+            </Button>
+          </div>
         ) : undefined
       }
     >
       <CatalogoTabs />
+      <EtiquetasDialog open={etiquetas} onClose={() => setEtiquetas(false)} />
       {!gestor ? (
         <Card className="p-6 text-sm text-muted">Só a diretoria acessa a produção.</Card>
       ) : (

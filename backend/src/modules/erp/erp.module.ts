@@ -13,6 +13,8 @@ import { OrdensService } from './ordens.service';
 import { FichaImpressaoService } from './ficha-impressao.service';
 import { EncaixeAgenteController, EncaixeController } from './encaixe.controller';
 import { EncaixeService } from './encaixe.service';
+import { EtiquetasController } from './etiquetas.controller';
+import { EtiquetasService } from './etiquetas.service';
 
 /**
  * ERP próprio · Fase 2 (Ribelt Distribuidora Têxtil, 07/10/2026).
@@ -30,6 +32,7 @@ import { EncaixeService } from './encaixe.service';
     OrdensController,
     EncaixeController,
     EncaixeAgenteController,
+    EtiquetasController,
   ],
   providers: [
     EstoqueService,
@@ -40,6 +43,7 @@ import { EncaixeService } from './encaixe.service';
     OrdensService,
     FichaImpressaoService,
     EncaixeService,
+    EtiquetasService,
   ],
   exports: [EstoqueService, FichasService, OrdensService],
 })

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Barcode, Printer, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { formatMoeda, formatNumero } from '@/lib/masks';
@@ -16,6 +16,7 @@ import { GradeEditor, inteiro, totalGrade, type CelulaGrade, type ValoresGrade }
 import { STATUS_OP } from './ProducaoPage';
 import { PagamentosDaFaccao } from '@/pages/financeiro/Atalhos';
 import { EncaixeDaOp } from './EncaixeDaOp';
+import { EtiquetasDialog } from './EtiquetasDialog';
 import { textoDaGrade, type GradeRisco } from './gradeRisco';
 
 /**
@@ -90,7 +91,14 @@ export default function OpDetalhePage() {
   const gestor = role === 'ADMIN' || role === 'DIRECTOR';
   const q = useApiQuery<Op>(gestor && id ? `/erp/ops/${id}` : null);
   const [etapa, setEtapa] = useState<Etapa | null>(null);
+  const [etiquetas, setEtiquetas] = useState(false);
   const op = q.data;
+  // A grade da OP pras etiquetas: o cortado quando já houve corte, senão o planejado.
+  // Memo: objeto novo a cada render zeraria o que o usuário digitou no diálogo.
+  const etiquetasDaOp = useMemo(
+    () => (op ? Object.fromEntries(op.itens.map((i) => [i.produtoId, i.cortada ?? i.planejada])) : undefined),
+    [op],
+  );
   const pronto = () => {
     setEtapa(null);
     q.refetch();
@@ -122,6 +130,16 @@ export default function OpDetalhePage() {
             >
               <Printer className="h-4 w-4" /> Imprimir ficha
             </a>
+          )}
+          {op && (
+            <button
+              type="button"
+              onClick={() => setEtiquetas(true)}
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              data-testid="op-imprimir-etiquetas"
+            >
+              <Barcode className="h-4 w-4" /> Imprimir etiquetas
+            </button>
           )}
           <Link to="/producao" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text">
             <ArrowLeft className="h-4 w-4" /> Produção
@@ -293,6 +311,14 @@ export default function OpDetalhePage() {
       {op && etapa === 'entrega' && <EntregaDialog op={op} onClose={() => setEtapa(null)} onPronto={pronto} />}
       {op && (etapa === 'fechar' || etapa === 'cancelar') && (
         <ConfirmaDialog op={op} tipo={etapa} onClose={() => setEtapa(null)} onPronto={pronto} />
+      )}
+      {op && (
+        <EtiquetasDialog
+          open={etiquetas}
+          onClose={() => setEtiquetas(false)}
+          titulo={`Etiquetas da ${op.numero}`}
+          inicial={etiquetasDaOp}
+        />
       )}
     </PageLayout>
   );
