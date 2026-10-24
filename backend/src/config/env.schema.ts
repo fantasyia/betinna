@@ -235,6 +235,12 @@ export const envSchema = z
     SHOPEE_REDIRECT_URI: z.string().optional().default(''),
     /** 'live' (default — partner.shopeemobile.com) ou 'sandbox' (partner.test-stable.shopeemobile.com). */
     SHOPEE_ENV: z.enum(['live', 'sandbox']).default('live'),
+    /**
+     * Quando a Live Partner Key do app vence (ISO, ex.: 2027-04-01T12:59:00-03:00).
+     * É do APP, não da loja: renova no console da Shopee e troca SHOPEE_PARTNER_KEY.
+     * Vazio = sem aviso.
+     */
+    SHOPEE_PARTNER_KEY_EXPIRA_EM: z.string().optional().default(''),
 
     // Amazon SP-API
     /** LWA Client ID (do app "Login with Amazon" linkado ao Selling Partner App). */

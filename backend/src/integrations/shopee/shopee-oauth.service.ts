@@ -111,6 +111,8 @@ export class ShopeeOAuthService {
       refreshToken: tokenRes.refresh_token,
       expiresAt: Date.now() + tokenRes.expire_in * 1000,
     };
+    const vence = await this.vencimentoDaAutorizacao(tokenRes.access_token, shopId);
+    if (vence) creds.autorizacaoExpiraEm = vence;
     await this.persistir(empresaId, creds, true);
     this.logger.log(`Shopee conectada empresa=${empresaId} shop_id=${shopId}`);
     return { empresaId, shopId };
@@ -154,6 +156,11 @@ export class ShopeeOAuthService {
           expiresAt: Date.now() + tokenRes.expire_in * 1000,
           mainAccountId: c.mainAccountId,
           region: c.region,
+          // Conexão antiga (sem a data): aproveita o token novo pra buscar.
+          autorizacaoExpiraEm:
+            c.autorizacaoExpiraEm ??
+            (await this.vencimentoDaAutorizacao(tokenRes.access_token, c.shopId as string)) ??
+            undefined,
         };
         await this.persistir(empresaId, novo);
         return novo;
@@ -171,6 +178,38 @@ export class ShopeeOAuthService {
   }
 
   // ─── Internos ────────────────────────────────────────────────────────
+
+  /**
+   * Vencimento da autorização da loja (`expire_time` do get_shop_info, em s).
+   * Melhor esforço: sem a data, a conexão funciona igual — só não avisa.
+   */
+  private async vencimentoDaAutorizacao(
+    accessToken: string,
+    shopId: string,
+  ): Promise<number | null> {
+    try {
+      const path = '/api/v2/shop/get_shop_info';
+      const partnerId = this.env.get('SHOPEE_PARTNER_ID');
+      const { sign, timestamp } = this.signer().signShop(path, accessToken, shopId);
+      const qs = new URLSearchParams({
+        partner_id: partnerId,
+        timestamp: String(timestamp),
+        access_token: accessToken,
+        shop_id: shopId,
+        sign,
+      });
+      const res = await this.http.request<{ expire_time?: number; error?: string }>(
+        'GET',
+        `${this.baseUrl()}${path}?${qs}`,
+        { integration: 'shopee', redactKeys: ['access_token', 'partner_id', 'sign'], retries: 1 },
+      );
+      const t = res.data?.expire_time;
+      return typeof t === 'number' && t > 0 ? t * 1000 : null;
+    } catch (err) {
+      this.logger.warn(`Shopee get_shop_info (vencimento da autorização): ${String(err)}`);
+      return null;
+    }
+  }
 
   private async exchangeCode(code: string, shopId: string): Promise<ShopeeTokenResponse> {
     const { sign, timestamp } = this.signer().signPublic(PATH_TOKEN_GET);

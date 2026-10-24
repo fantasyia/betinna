@@ -18,11 +18,20 @@ export const RENOVA_SOZINHO: ReadonlySet<string> = new Set([
   'instagram',
   'mercadolivre',
   'tiny',
-  'shopee',
   'tiktok',
   'amazon',
   'google',
 ]);
+
+/**
+ * Renova com UM CLIQUE no botão Reconectar (refaz o OAuth). A Shopee (24/10):
+ * o token de acesso renova sozinho, mas a AUTORIZAÇÃO da loja vence em 365
+ * dias e aí só reconectando — então ela avisa como manual, com outro texto.
+ */
+export const RECONECTA_NO_BOTAO: ReadonlySet<string> = new Set(['shopee']);
+
+/** "Serviço" do aviso da chave do APP da Shopee (env SHOPEE_PARTNER_KEY_EXPIRA_EM). */
+export const SHOPEE_CHAVE_APP = 'shopee_chave_app';
 
 /** Dias antes do vencimento em que sai o e-mail (e o 0 = venceu hoje). */
 export const DIAS_DE_AVISO = [30, 7, 1, 0] as const;
@@ -67,6 +76,10 @@ export function validadeDaCredencial(
   // marketplace dura horas e mostrar essa data seria ruído.
   if (servico === 'facebook' || servico === 'instagram') {
     return { expiraEm: comoData(cred['userTokenExpiresAt']), renovaSozinho };
+  }
+  // Shopee: a data que importa é a da AUTORIZAÇÃO, não a do token de 4 h.
+  if (servico === 'shopee') {
+    return { expiraEm: comoData(cred['autorizacaoExpiraEm']), renovaSozinho };
   }
   if (renovaSozinho) return { expiraEm: null, renovaSozinho };
 

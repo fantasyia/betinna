@@ -17,6 +17,7 @@ import type { ConectarDto, ListConexoesDto } from './integracoes.dto';
 import { servicoRequerDirector, type ServicoEmpresa } from './integracoes.constants';
 import { IntegracaoStatusService } from './integracao-status.service';
 import { EvolutionService } from '@integrations/evolution/evolution.service';
+import { SHOPEE_CHAVE_APP } from './credencial-validade';
 import {
   TransactionalEmailService,
   type TemplateAmostra,
@@ -52,6 +53,8 @@ export type ConexaoPublica = Omit<IntegracaoConexao, 'credenciais'> & {
   camposCredenciais: string[];
   /** Quando o token vence (null = não vence, ou a data não é conhecida). */
   credencialExpiraEm: Date | null;
+  /** Shopee: quando a chave do APP (Live Partner Key) vence. */
+  chaveAppExpiraEm?: Date | null;
   /** true = o app renova sozinho; false = alguém cola token novo. */
   credencialRenovaSozinho: boolean;
 };
@@ -701,7 +704,16 @@ export class IntegracoesService {
       camposCredenciais,
       credencialExpiraEm: validade.expiraEm,
       credencialRenovaSozinho: validade.renovaSozinho,
+      ...(c.servico === 'shopee' ? { chaveAppExpiraEm: this.chaveAppShopeeExpiraEm() } : {}),
     } as ConexaoPublica;
+  }
+
+  /** Vencimento da Live Partner Key do app da Shopee (env). null = sem data. */
+  private chaveAppShopeeExpiraEm(): Date | null {
+    const v = this.env.get('SHOPEE_PARTNER_KEY_EXPIRA_EM')?.trim();
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
   }
 
   /**
@@ -716,6 +728,9 @@ export class IntegracoesService {
       if (p.credencialExpiraEm && !p.credencialRenovaSozinho) {
         out.push({ empresaId: c.empresaId, servico: c.servico, expiraEm: p.credencialExpiraEm });
       }
+      // A chave do APP da Shopee vence à parte da autorização da loja (24/10).
+      const chave = c.servico === 'shopee' ? this.chaveAppShopeeExpiraEm() : null;
+      if (chave) out.push({ empresaId: c.empresaId, servico: SHOPEE_CHAVE_APP, expiraEm: chave });
     }
     return out;
   }

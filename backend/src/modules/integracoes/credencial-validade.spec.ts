@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { diasParaVencer, validadeDaCredencial } from './credencial-validade';
+import { RECONECTA_NO_BOTAO, diasParaVencer, validadeDaCredencial } from './credencial-validade';
 import { ValidadeCredencialJob } from './validade-credencial.job';
 
 const jwt = (exp: number) =>
@@ -62,5 +62,21 @@ describe('ValidadeCredencialJob.avisar', () => {
       if (status.alertarValidade.mock.calls.length) dias.push(d);
     }
     expect(dias).toEqual([30, 7, 1, 0]);
+  });
+});
+
+describe('Shopee: vence a AUTORIZAÇÃO da loja (24/10)', () => {
+  it('usa autorizacaoExpiraEm (365 dias), não o token de 4 h, e avisa (não renova sozinho)', () => {
+    const vence = Date.UTC(2027, 9, 24);
+    const v = validadeDaCredencial('shopee', {
+      expiresAt: Date.now() + 4 * 3_600_000,
+      autorizacaoExpiraEm: vence,
+    });
+    expect(v).toEqual({ expiraEm: new Date(vence), renovaSozinho: false });
+    expect(RECONECTA_NO_BOTAO.has('shopee')).toBe(true);
+  });
+
+  it('conexão antiga sem a data: nada a avisar ainda', () => {
+    expect(validadeDaCredencial('shopee', { expiresAt: Date.now() }).expiraEm).toBeNull();
   });
 });

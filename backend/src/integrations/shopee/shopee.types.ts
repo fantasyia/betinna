@@ -21,6 +21,11 @@ export interface ShopeeCredenciais {
   mainAccountId?: string;
   /** Região da loja: BR, SG, ID, MY, PH, TW, TH, VN. */
   region?: string;
+  /**
+   * Epoch ms — quando a AUTORIZAÇÃO da loja vence (365 dias, `expire_time` do
+   * get_shop_info). O refresh NÃO estende isso: no dia, só reconectando (24/10).
+   */
+  autorizacaoExpiraEm?: number;
 }
 
 export interface ShopeeTokenResponse {

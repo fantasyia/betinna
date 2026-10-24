@@ -353,6 +353,8 @@ interface Conexao {
   credencialExpiraEm?: string | null;
   /** true = o app renova sozinho; false = alguém cola token novo. */
   credencialRenovaSozinho?: boolean;
+  /** Shopee: vencimento da chave do APP (Live Partner Key). */
+  chaveAppExpiraEm?: string | null;
 }
 
 /** Dias inteiros até `iso` vencer (negativo = vencido). */
@@ -378,15 +380,36 @@ function ValidadeToken({ servico, conexao }: { servico: string; conexao: Conexao
   }
   const dias = diasAte(iso);
   const cor = dias < 0 ? 'text-danger' : dias <= 30 ? 'text-warning' : '';
+  // Shopee (24/10): renova com um clique no Reconectar (refaz a autorização).
+  const peloBotao = servico === 'shopee';
   const quando =
     dias < 0
-      ? `venceu em ${data} — gere um token novo e cole aqui`
+      ? peloBotao
+        ? `venceu em ${data} — clique em Reconectar`
+        : `venceu em ${data} — gere um token novo e cole aqui`
+      : peloBotao && dias <= 30
+        ? `vence em ${data} — clique em Reconectar pra renovar por mais 1 ano`
       : dias === 0
         ? `vence HOJE (${data})`
         : `vence em ${data} (${dias === 1 ? 'amanhã' : `faltam ${dias} dias`})`;
   return (
     <p className={`m-0 text-[12px] font-semibold ${cor}`} data-testid={`validade-${servico}`}>
-      Token {quando}
+      {peloBotao ? 'Autorização da loja' : 'Token'} {quando}
+    </p>
+  );
+}
+
+/** Shopee: a chave do APP vence à parte (renova no console + Railway). */
+function ValidadeChaveApp({ iso }: { iso: string }) {
+  const dias = diasAte(iso);
+  const data = new Date(iso).toLocaleDateString('pt-BR');
+  const cor = dias < 0 ? 'text-danger' : dias <= 30 ? 'text-warning' : '';
+  return (
+    <p
+      className={`m-0 text-[12px] ${cor ? `font-semibold ${cor}` : ''}`}
+      data-testid="validade-shopee-chave-app"
+    >
+      Chave do app {dias < 0 ? `venceu em ${data}` : `vale até ${data}`}
     </p>
   );
 }
@@ -744,6 +767,7 @@ function ServicoCard({
         {servico === 'meta_app' && <UrlWebhookMeta />}
         {servico === 'facebook' && podeOperar && <AssinaturaPaginaMeta />}
         <ValidadeToken servico={servico} conexao={conexao} />
+        {conexao.chaveAppExpiraEm && <ValidadeChaveApp iso={conexao.chaveAppExpiraEm} />}
         {(conexao.externalAccountId || conexao.ultimoSync || conectadoEm) && (
           <p className="m-0 text-[12px]">
             {[

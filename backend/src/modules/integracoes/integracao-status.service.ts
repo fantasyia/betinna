@@ -4,6 +4,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { SERVICO_METADATA, type ServicoIntegracao } from './integracoes.constants';
+import { RECONECTA_NO_BOTAO, SHOPEE_CHAVE_APP } from './credencial-validade';
 
 /**
  * Semáforo de saúde das integrações (Sprint 2.1).
@@ -195,7 +196,10 @@ export class IntegracaoStatusService {
       );
       return;
     }
-    const nomeServico = SERVICO_METADATA[servico as ServicoIntegracao]?.nome ?? servico;
+    const nomeServico =
+      servico === SHOPEE_CHAVE_APP
+        ? 'app da Shopee (Partner Key)'
+        : (SERVICO_METADATA[servico as ServicoIntegracao]?.nome ?? servico);
     const empresa = await this.prisma.empresa.findUnique({
       where: { id: empresaId },
       select: { nome: true },
@@ -215,8 +219,16 @@ export class IntegracaoStatusService {
         `O token da integração <strong>${this.escapeHtml(nomeServico)}</strong> da empresa ` +
         `<strong>${this.escapeHtml(nomeEmpresa)}</strong> ${quando} (<strong>${data}</strong>). ` +
         `Depois disso a integração para de funcionar.<br><br>` +
-        `Pra renovar: gere um token novo no painel do ${this.escapeHtml(nomeServico)} e cole em ` +
-        `<em>Integrações</em> no app. Depois, apague o token antigo no painel.`,
+        (servico === SHOPEE_CHAVE_APP
+          ? `Esta é a chave do APP (vale pra todas as lojas). Pra renovar: no console da Shopee ` +
+            `(Ribelt House System), gere a nova Live Partner Key; troque <code>SHOPEE_PARTNER_KEY</code> ` +
+            `no Railway (api e worker) e a data em <code>SHOPEE_PARTNER_KEY_EXPIRA_EM</code>. ` +
+            `Depois, em <em>Integrações</em>, clique em <strong>Reconectar</strong> na Shopee.`
+          : RECONECTA_NO_BOTAO.has(servico)
+            ? `Pra renovar: no app, em <em>Integrações</em>, clique em <strong>Reconectar</strong> ` +
+              `no card ${this.escapeHtml(nomeServico)} e autorize a loja de novo. Leva 1 minuto.`
+            : `Pra renovar: gere um token novo no painel do ${this.escapeHtml(nomeServico)} e cole em ` +
+              `<em>Integrações</em> no app. Depois, apague o token antigo no painel.`),
     });
     this.logger.log(`[validade] aviso de "${nomeServico} ${quando}" enviado para ${para}`);
   }
