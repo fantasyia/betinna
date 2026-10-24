@@ -259,6 +259,27 @@ footer img{height:26px;width:auto;filter:brightness(0) invert(1);opacity:.9;marg
 .cpf{display:inline-block;background:#fdeee6;border-left:4px solid #c8562b;padding:10px 14px;border-radius:8px}
 .card .rot span{color:#ffd2b8;font-weight:700;font-size:15px}
 .final .btn-p{background:var(--petroleo);box-shadow:0 10px 22px rgba(0,0,0,.25)}
+
+/* ===== linhas em abas (Léo, 24/10: os 3 cards ficavam repetitivos) ===== */
+.abas{display:inline-flex;gap:6px;background:var(--creme-2);padding:6px;border-radius:999px;margin-top:26px;flex-wrap:wrap}
+.abas button{font:inherit;font-weight:800;font-size:16px;border:0;cursor:pointer;padding:12px 22px;border-radius:999px;background:transparent;color:var(--petroleo)}
+.abas button[aria-selected=true]{background:var(--petroleo);color:var(--creme)}
+.painel{display:grid;grid-template-columns:1fr 1.1fr;gap:40px;align-items:center;margin-top:28px}
+.painel[hidden]{display:none}
+.painel figure{border-radius:24px;overflow:hidden;aspect-ratio:4/5;box-shadow:var(--sombra)}
+.painel figure img{width:100%;height:100%;object-fit:cover;object-position:center 20%}
+.painel h3{font-size:clamp(34px,4.6vw,52px)}
+.painel .faixa-tam{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.painel .faixa-tam span{min-width:46px;text-align:center;font-weight:800;padding:8px 10px;border:2px solid var(--petroleo);border-radius:10px}
+.painel p{color:var(--texto);font-size:17px;max-width:44ch}
+.painel ul{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 26px}
+.painel li{background:var(--papel);border:1px solid var(--creme-2);border-radius:999px;padding:7px 13px;font-size:14px;font-weight:600}
+@media (max-width:860px){
+  .abas{display:flex;width:100%}
+  .abas button{flex:1;padding:12px 8px;font-size:15px}
+  .painel{grid-template-columns:1fr;gap:20px}
+  .painel figure{aspect-ratio:4/3}
+}
 </style>
 </head>
 <body>
@@ -350,14 +371,40 @@ footer img{height:26px;width:auto;filter:brightness(0) invert(1);opacity:.9;marg
   </div>
 </section>
 
-<!-- 5. Linhas -->
+<!-- 5. Linhas (abas) -->
 <section id="linhas">
   <div class="box">
     <h2>Três públicos, um fornecedor só</h2>
-    <div class="cards c3">
-      <a class="card" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine"><img src="img/linha-masculino.webp" alt="Linha masculina Regular" width="720" height="960" loading="lazy"><div class="rot"><b>Masculino</b><span>P ao GG</span></div></a>
-      <a class="card" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine"><img src="img/linha-plus.webp" alt="Linha masculina Plus Size" width="720" height="960" loading="lazy"><div class="rot"><b>Plus Size</b><span>G1 ao G3 · veste até uns 150 kg</span></div></a>
-      <a class="card" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine"><img src="img/linha-infantil.webp" alt="Linha infantil" width="720" height="960" loading="lazy"><div class="rot"><b>Infantil</b><span>2 ao 14 anos</span></div></a>
+    <div class="abas" role="tablist" aria-label="Linhas"><button role="tab" id="aba-masculino" aria-controls="painel-masculino" aria-selected="true">Masculino</button><button role="tab" id="aba-plus" aria-controls="painel-plus" aria-selected="false">Plus Size</button><button role="tab" id="aba-infantil" aria-controls="painel-infantil" aria-selected="false">Infantil</button></div>
+    <div class="painel" role="tabpanel" id="painel-masculino" aria-labelledby="aba-masculino">
+      <figure><img src="img/linha-masculino.webp" alt="Linha masculina Regular" width="720" height="960" loading="lazy"></figure>
+      <div>
+        <h3>Masculino</h3>
+        <div class="faixa-tam" aria-label="Tamanhos"><span>P</span><span>M</span><span>G</span><span>GG</span></div>
+        <p>O básico que gira o ano todo, do verão ao frio.</p>
+        <ul aria-label="Produtos da linha"><li>Camiseta UV</li><li>Camiseta básica</li><li>Regata</li><li>Moletom canguru</li><li>Moletom gola careca</li><li>Moletom com zíper</li><li>Calça de moletom</li><li>Bermuda de moletom</li><li>Calça tactel</li><li>Shorts tactel</li></ul>
+        <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha Masculino</a>
+      </div>
+    </div>
+    <div class="painel" role="tabpanel" id="painel-plus" aria-labelledby="aba-plus" hidden>
+      <figure><img src="img/linha-plus.webp" alt="Linha masculina Plus Size" width="720" height="960" loading="lazy"></figure>
+      <div>
+        <h3>Plus Size</h3>
+        <div class="faixa-tam" aria-label="Tamanhos"><span>G1</span><span>G2</span><span>G3</span></div>
+        <p>Veste até uns 150 kg (em média: G1 ~130 kg, G2 ~140 kg, G3 150 kg ou mais). Um público que procura e quase não encontra.</p>
+        <ul aria-label="Produtos da linha"><li>Camiseta básica</li><li>Regata</li><li>Moletom com zíper</li><li>Calça de moletom</li><li>Bermuda de moletom</li><li>Calça tactel</li><li>Shorts tactel</li></ul>
+        <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha Plus Size</a>
+      </div>
+    </div>
+    <div class="painel" role="tabpanel" id="painel-infantil" aria-labelledby="aba-infantil" hidden>
+      <figure><img src="img/linha-infantil.webp" alt="Linha infantil" width="720" height="960" loading="lazy"></figure>
+      <div>
+        <h3>Infantil</h3>
+        <div class="faixa-tam" aria-label="Tamanhos"><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span><span>12</span><span>14</span></div>
+        <p>Do 2 ao 14 anos, com a mesma qualidade do adulto. Pai e filho combinando vende junto.</p>
+        <ul aria-label="Produtos da linha"><li>Camiseta UV</li><li>UV com emborrachado</li><li>Camiseta manga longa</li><li>Regata</li><li>Moletom canguru</li><li>Moletom gola careca</li><li>Moletom com zíper</li><li>Calça de moletom</li><li>Bermuda de moletom</li><li>Shorts tactel</li></ul>
+        <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha Infantil</a>
+      </div>
     </div>
   </div>
 </section>
@@ -479,6 +526,16 @@ footer img{height:26px;width:auto;filter:brightness(0) invert(1);opacity:.9;marg
     if(a.dataset.ev==='whatsapp'){ fbq('track','Lead'); fbq('track','Contact'); gtag('event','generate_lead',{method:'whatsapp'}); }
   });
 })();
+
+// Abas das linhas
+document.querySelectorAll('.abas [role=tab]').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.abas [role=tab]').forEach(function(x){
+      var on=x===b; x.setAttribute('aria-selected',on);
+      document.getElementById(x.getAttribute('aria-controls')).hidden=!on;
+    });
+  });
+});
 </script>
 </body>
 </html>
