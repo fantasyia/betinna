@@ -421,6 +421,28 @@ describe('Janela de envio no motor de fluxos', () => {
     );
   });
 
+  it('teste por token enviando de verdade (só pra dentro da empresa): sem janela', async () => {
+    const { service, queue, prisma, pacing } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'CRON_AGENDADO',
+    });
+    prisma.fluxoExecucao.findUnique.mockResolvedValue({
+      ...(await prisma.fluxoExecucao.findUnique()),
+      contexto: { _teste: true, _testeViaToken: true, _testeEnviaDeVerdade: true },
+    });
+
+    // Passa da janela e chega no envio (cuja trava de destino interno o mock
+    // não simula — por isso o erro é engolido aqui; o que importa é a janela).
+    await service.executarPasso('exec-1', 'no-1', 'job-1').catch(() => undefined);
+
+    expect(pacing.esperaAntesDoProativoMs).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
+  });
+
   it('lead SEM a etiqueta continua segurado (cliente real não muda)', async () => {
     const { service, queue, prisma } = makeService({
       esperaMs: 9 * 3600_000,

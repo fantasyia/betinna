@@ -619,11 +619,15 @@ export class FluxoExecutorService {
           execucao.empresaId,
           (execucao.contexto as ExecucaoContexto | null)?.['leadId'] as string | undefined,
         ));
+      // Teste por token "enviar de verdade" (ex.: disparador DRV, 24/10) só
+      // consegue mandar pra número DA PRÓPRIA EMPRESA (assertDestinoInternoWhatsapp
+      // derruba o resto): nenhum cliente recebe, então a janela não protege ninguém.
       const esperaJanela =
         ehResposta ||
         transacional ||
         aceleradoSemJanela ||
-        this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
+        this.testeSemEnvio(execucao.contexto as ExecucaoContexto) ||
+        this.testeViaToken(execucao.contexto as ExecucaoContexto)
           ? 0
           : await this.esperaDoCanal(no.acaoTipo, execucao.empresaId).catch((err) => {
               // Falha FECHADO: Redis/DB soluçando não pode virar mensagem fora da
