@@ -55,9 +55,9 @@ export class ShopeeOrdersService {
 
     const existing = await this.prisma.marketplaceOrder.findUnique({
       where: { plataforma_numeroExterno: { plataforma: 'SHOPEE', numeroExterno: externalId } },
-      select: { id: true, liquido: true },
+      select: { id: true, extrato: true },
     });
-    const fin = await this.financeiro(empresaId, order, existing?.liquido ?? null);
+    const fin = await this.financeiro(empresaId, order, existing?.extrato ?? null);
     const data = {
       empresaId,
       plataforma: 'SHOPEE' as const,
@@ -90,9 +90,9 @@ export class ShopeeOrdersService {
   /**
    * Itens, taxas, frete da loja, líquido e custo (24/10). O extrato (escrow) é
    * uma chamada por pedido — só pra quem já foi pago/enviado e ainda não tem
-   * líquido. Melhor esforço: nunca impede gravar o pedido.
+   * extrato. Melhor esforço: nunca impede gravar o pedido.
    */
-  private async financeiro(empresaId: string, order: ShopeeOrder, liquidoSalvo: number | null) {
+  private async financeiro(empresaId: string, order: ShopeeOrder, extratoSalvo: unknown) {
     try {
       const pagoOuEnviado = [
         'READY_TO_SHIP',
@@ -102,7 +102,7 @@ export class ShopeeOrdersService {
         'COMPLETED',
       ].includes(order.order_status);
       let escrow: Parameters<typeof financeiroShopee>[1] = null;
-      if (pagoOuEnviado && liquidoSalvo === null) {
+      if (pagoOuEnviado && (extratoSalvo === null || extratoSalvo === undefined)) {
         const r = await this.shopee
           .getShop<{
             response?: { order_income?: Parameters<typeof financeiroShopee>[1] };
@@ -114,7 +114,14 @@ export class ShopeeOrdersService {
       const c = await custoDosItens(this.prisma, empresaId, 'SHOPEE', f.itens);
       return {
         itens: c.itens as unknown as object,
-        ...(f.liquido !== null ? { taxas: f.taxas, frete: f.frete, liquido: f.liquido } : {}),
+        ...(f.liquido !== null
+          ? {
+              taxas: f.taxas,
+              frete: f.frete,
+              liquido: f.liquido,
+              extrato: f.extrato as unknown as object,
+            }
+          : {}),
         custo: c.custo,
         custoCompleto: c.completo,
         financeiroEm: new Date(),

@@ -2980,6 +2980,9 @@ model MarketplaceOrder {
   custo         Float?
   custoCompleto Boolean?
   financeiroEm  DateTime?
+  /// Extrato linha a linha, como o marketplace informa (preço, cupom da loja,
+  /// comissão, serviço, frete, ajustes → líquido). Soma fecha no líquido (24/10).
+  extrato       Json?
   /// Situação igual pra todos os canais: A_ENVIAR | ENVIADO | ENTREGUE |
   /// CANCELADO | EM_DEVOLUCAO | AGUARDANDO_PAGAMENTO (24/10).
   situacao      String?

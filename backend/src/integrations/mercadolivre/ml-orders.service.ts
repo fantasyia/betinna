@@ -125,6 +125,7 @@ export class MLOrdersService {
         taxas: f.taxas,
         frete: f.frete,
         liquido: f.liquido,
+        extrato: f.extrato as unknown as object,
         custo: c.custo,
         custoCompleto: c.completo,
         financeiroEm: new Date(),

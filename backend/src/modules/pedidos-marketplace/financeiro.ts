@@ -18,11 +18,18 @@ export interface ItemPedido {
   custoUnit?: number | null;
 }
 
+/** Uma linha do extrato: positivo entra, negativo sai. A soma dá o líquido. */
+export interface LinhaExtrato {
+  rotulo: string;
+  valor: number;
+}
+
 export interface Financeiro {
   itens: ItemPedido[];
   taxas: number | null;
   frete: number | null;
   liquido: number | null;
+  extrato: LinhaExtrato[] | null;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -57,10 +64,24 @@ export function financeiroMl(
   const comTaxa = itens.filter((i) => typeof i.taxa === 'number');
   const taxas = comTaxa.length ? r2(comTaxa.reduce((s, i) => s + (i.taxa ?? 0), 0)) : null;
   const liquido = taxas !== null ? r2(order.total_amount - taxas - (freteLoja ?? 0)) : null;
-  return { itens, taxas, frete: freteLoja, liquido };
+  const extrato: LinhaExtrato[] | null =
+    liquido === null
+      ? null
+      : [
+          { rotulo: 'Venda', valor: order.total_amount },
+          { rotulo: 'Comissão do Mercado Livre', valor: -(taxas ?? 0) },
+          ...(freteLoja ? [{ rotulo: 'Frete pago pela loja', valor: -freteLoja }] : []),
+        ];
+  return { itens, taxas, frete: freteLoja, liquido, extrato };
 }
 
-/** Shopee: o extrato (escrow) já traz o líquido; taxas = comissão + serviço + transação. */
+/**
+ * Shopee: o extrato (escrow) traz o líquido. Taxas = comissão + serviço +
+ * proteção de envio, pelo valor LÍQUIDO (net_*) — o bruto (commission_fee,
+ * service_fee) é antes do subsídio da Shopee e não é o que sai da conta.
+ * Cupom da loja é desconto que a LOJA banca. O que sobrar pra fechar no
+ * escrow vira "outros ajustes da Shopee" — nunca some em silêncio.
+ */
 export function financeiroShopee(
   order: {
     item_list: Array<{
@@ -74,9 +95,15 @@ export function financeiroShopee(
   },
   escrow: {
     escrow_amount?: number;
+    order_selling_price?: number;
+    cost_of_goods_sold?: number;
+    voucher_from_seller?: number;
     commission_fee?: number;
+    net_commission_fee?: number;
     service_fee?: number;
+    net_service_fee?: number;
     seller_transaction_fee?: number;
+    shipping_seller_protection_fee_amount?: number;
     actual_shipping_fee?: number;
     shopee_shipping_rebate?: number;
     buyer_paid_shipping_fee?: number;
@@ -90,11 +117,13 @@ export function financeiroShopee(
     precoUnit: i.model_discounted_price,
   }));
   if (!escrow || typeof escrow.escrow_amount !== 'number') {
-    return { itens, taxas: null, frete: null, liquido: null };
+    return { itens, taxas: null, frete: null, liquido: null, extrato: null };
   }
-  const taxas = r2(
-    (escrow.commission_fee ?? 0) + (escrow.service_fee ?? 0) + (escrow.seller_transaction_fee ?? 0),
-  );
+  const comissao = escrow.net_commission_fee ?? escrow.commission_fee ?? 0;
+  const servico = escrow.net_service_fee ?? escrow.service_fee ?? 0;
+  const transacao = escrow.seller_transaction_fee ?? 0;
+  const protecao = escrow.shipping_seller_protection_fee_amount ?? 0;
+  const taxas = r2(comissao + servico + transacao + protecao);
   const frete = r2(
     Math.max(
       0,
@@ -103,7 +132,30 @@ export function financeiroShopee(
         (escrow.buyer_paid_shipping_fee ?? 0),
     ),
   );
-  return { itens, taxas, frete, liquido: r2(escrow.escrow_amount) };
+  const liquido = r2(escrow.escrow_amount);
+  const produtos =
+    escrow.order_selling_price ??
+    escrow.cost_of_goods_sold ??
+    r2(itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0));
+  const cupomLoja = escrow.voucher_from_seller ?? 0;
+  const linhas: LinhaExtrato[] = [
+    { rotulo: 'Produtos', valor: produtos },
+    { rotulo: 'Cupom da loja', valor: -cupomLoja },
+    { rotulo: 'Comissão da Shopee', valor: -comissao },
+    { rotulo: 'Taxa de serviço', valor: -servico },
+    { rotulo: 'Taxa de transação', valor: -transacao },
+    { rotulo: 'Proteção de envio', valor: -protecao },
+    { rotulo: 'Frete pago pela loja', valor: -frete },
+  ].filter((l) => l.valor !== 0);
+  const resto = r2(liquido - linhas.reduce((s, l) => s + l.valor, 0));
+  if (resto !== 0) linhas.push({ rotulo: 'Outros ajustes da Shopee', valor: resto });
+  return {
+    itens,
+    taxas,
+    frete,
+    liquido,
+    extrato: linhas.map((l) => ({ ...l, valor: r2(l.valor) })),
+  };
 }
 
 /**

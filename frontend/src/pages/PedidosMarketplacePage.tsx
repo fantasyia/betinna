@@ -36,6 +36,7 @@ interface Pedido {
   taxas: number | null;
   frete: number | null;
   liquido: number | null;
+  extrato?: Array<{ rotulo: string; valor: number }> | null;
   custo: number | null;
   custoCompleto: boolean | null;
   lucro: number | null;
@@ -202,10 +203,16 @@ export default function PedidosMarketplacePage() {
 }
 
 function DetalhePedido({ p }: { p: Pedido }) {
+  // Extrato linha a linha do marketplace (fecha no líquido); sem ele, o resumo.
+  const topo: Array<[string, number | null, boolean?]> = p.extrato?.length
+    ? p.extrato.map((l) => [l.rotulo, l.valor] as [string, number])
+    : [
+        ['Valor bruto (pago pelo comprador)', p.valor],
+        ['Taxas do marketplace', p.taxas === null ? null : -p.taxas],
+        ['Frete pago pela loja', p.frete === null ? null : -p.frete],
+      ];
   const linhas: Array<[string, number | null, boolean?]> = [
-    ['Valor bruto (pago pelo comprador)', p.valor],
-    ['Taxas do marketplace', p.taxas === null ? null : -p.taxas],
-    ['Frete pago pela loja', p.frete === null ? null : -p.frete],
+    ...topo,
     ['Líquido (repassado)', p.liquido, true],
     ['Custo das peças', p.custo === null ? null : -p.custo],
     ['Lucro', p.lucro, true],
