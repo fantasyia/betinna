@@ -31,11 +31,9 @@ export function AtendimentoTabs() {
   // que vive em /minhas-integracoes.
   const canWhatsApp = usePermission('whatsapp.empresa');
 
-  const canMarketplaces =
-    role === 'ADMIN' ||
-    role === 'DIRECTOR' ||
-    role === 'GERENTE' ||
-    role === 'SAC';
+  // Diretor/admin tratam reclamação e devolução na aba única "Pendências"
+  // (24/10); a sub-aba fica só pra GERENTE/SAC, que não veem Pendências.
+  const canMarketplaces = role === 'GERENTE' || role === 'SAC';
 
   const tabs: SubTab[] = [];
 

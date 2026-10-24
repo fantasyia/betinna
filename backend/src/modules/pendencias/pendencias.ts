@@ -18,6 +18,30 @@ export interface PendenciaAchada {
   link?: string | null;
   desde?: Date | null;
   prazo?: Date | null;
+  comprador?: string | null;
+  pedido?: string | null;
+  anuncio?: string | null;
+}
+
+/** Filtro de status da aba (24/10). ABERTAS = tudo que não foi encerrado. */
+export const STATUS_PENDENCIA = [
+  'ABERTAS',
+  'PENDENTE',
+  'AGUARDANDO_HUMANO',
+  'RESPONDIDA_IA',
+  'ENCERRADA',
+] as const;
+export type StatusPendencia = (typeof STATUS_PENDENCIA)[number];
+
+/** Status de UMA pendência, pro rótulo e pra contagem. */
+export function statusDa(p: {
+  resolvidaEm: Date | null;
+  estado: string | null;
+}): Exclude<StatusPendencia, 'ABERTAS'> {
+  if (p.estado === 'RESPONDIDA_IA') return 'RESPONDIDA_IA';
+  if (p.resolvidaEm) return 'ENCERRADA';
+  if (p.estado === 'AGUARDANDO_HUMANO') return 'AGUARDANDO_HUMANO';
+  return 'PENDENTE';
 }
 
 export const NOME_CANAL: Record<string, string> = {

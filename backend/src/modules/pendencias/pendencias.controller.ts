@@ -1,5 +1,6 @@
-import { Controller, ForbiddenException, Get, Post } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { STATUS_PENDENCIA, type StatusPendencia } from './pendencias';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { PendenciasService } from './pendencias.service';
@@ -19,10 +20,22 @@ export class PendenciasController {
 
   @Get()
   @ApiOperation({
-    summary: 'Pendências abertas dos marketplaces (perguntas, mensagens, reclamações, devoluções)',
+    summary:
+      'Pendências dos marketplaces (pré-venda, pós-venda, reclamações, devoluções) com filtros',
   })
-  listar(@CurrentUser() user: AuthenticatedUser) {
-    return this.pendencias.listarAbertas(this.empresa(user));
+  listar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('busca') busca?: string,
+    @Query('canal') canal?: string,
+    @Query('tipo') tipo?: string,
+    @Query('status') status?: string,
+    @Query('de') de?: string,
+    @Query('ate') ate?: string,
+  ) {
+    const st = STATUS_PENDENCIA.includes(status as StatusPendencia)
+      ? (status as StatusPendencia)
+      : undefined;
+    return this.pendencias.listar(this.empresa(user), { busca, canal, tipo, status: st, de, ate });
   }
 
   @Post('verificar')

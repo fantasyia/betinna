@@ -78,6 +78,7 @@ export class VerificadoresService {
         detalhe: p.text.slice(0, 480),
         link: '/inbox',
         desde: new Date(p.date_created),
+        anuncio: p.item_id,
       });
     }
     // Mensagens do pós-venda não lidas (por pedido/pack).
@@ -96,6 +97,7 @@ export class VerificadoresService {
           titulo: `Mensagem do comprador no pedido ${pack}`,
           detalhe: `${r.count} não lida(s)`,
           link: '/inbox',
+          pedido: pack,
         });
       }
     } catch (err) {
@@ -174,6 +176,7 @@ export class VerificadoresService {
         titulo: `Mensagem de ${c.to_name ?? 'comprador'} sem resposta`,
         detalhe: (ultima.content?.text ?? `(${ultima.message_type ?? 'mensagem'})`).slice(0, 480),
         link: '/inbox',
+        comprador: c.to_name ?? null,
         desde: esperando[0].created_timestamp
           ? new Date(esperando[0].created_timestamp * 1000)
           : null,
@@ -215,6 +218,7 @@ export class VerificadoresService {
       link: `/incidentes?id=${i.id}`,
       desde: i.abertoEm,
       prazo: i.prazoResposta,
+      pedido: i.pedidoExternoId,
     }));
   }
 }

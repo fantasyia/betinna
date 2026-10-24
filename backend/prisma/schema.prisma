@@ -3767,11 +3767,18 @@ model PendenciaMarketplace {
   avisadaEm    DateTime?
   lembreteEm   DateTime?
   resolvidaEm  DateTime?
+  /// Pra busca (24/10, aba única): comprador, nº do pedido/pack e anúncio/SKU.
+  comprador    String?   @db.VarChar(120)
+  pedido       String?   @db.VarChar(60)
+  anuncio      String?   @db.VarChar(80)
+  /// null = pendente · AGUARDANDO_HUMANO · RESPONDIDA_IA (fase 2: resposta da IA).
+  estado       String?   @db.VarChar(30)
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
 
   @@unique([empresaId, canal, tipo, chave])
   @@index([empresaId, resolvidaEm])
+  @@index([empresaId, criadoEm])
 }
 
 // ─── KANBAN (estilo Trello) ───────────────────────────────────────────

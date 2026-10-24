@@ -1,8 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { PushService } from '@modules/push/push.service';
-import { precisaLembrete, resumoDoAviso, type TipoPendencia } from './pendencias';
+import {
+  precisaLembrete,
+  resumoDoAviso,
+  statusDa,
+  type StatusPendencia,
+  type TipoPendencia,
+} from './pendencias';
+
+export interface FiltroPendencias {
+  busca?: string;
+  canal?: string;
+  tipo?: string;
+  status?: StatusPendencia;
+  de?: string;
+  ate?: string;
+}
 import { VerificadoresService } from './verificadores.service';
 
 @Injectable()
@@ -52,6 +68,9 @@ export class PendenciasService {
           link: p.link ?? null,
           desde: p.desde ?? null,
           prazo: p.prazo ?? null,
+          comprador: p.comprador?.slice(0, 120) ?? null,
+          pedido: p.pedido?.slice(0, 60) ?? null,
+          anuncio: p.anuncio?.slice(0, 80) ?? null,
         };
         if (!atual) {
           await this.prisma.pendenciaMarketplace.create({
@@ -144,12 +163,67 @@ export class PendenciasService {
     return avisar.length;
   }
 
-  listarAbertas(empresaId: string) {
-    return this.prisma.pendenciaMarketplace.findMany({
-      where: { empresaId, resolvidaEm: null },
-      orderBy: [{ prazo: { sort: 'asc', nulls: 'last' } }, { desde: 'asc' }],
-      take: 500,
-    });
+  /**
+   * Aba única (24/10): filtros de busca, canal, tipo, status e período, e a
+   * contagem por status (com os MESMOS filtros, menos o de status). Abertas
+   * saem por urgência (prazo mais curto primeiro); encerradas, as mais novas.
+   */
+  async listar(empresaId: string, f: FiltroPendencias = {}) {
+    const base: Prisma.PendenciaMarketplaceWhereInput = { empresaId };
+    const e: Prisma.PendenciaMarketplaceWhereInput[] = [];
+    if (f.canal) base.canal = f.canal;
+    if (f.tipo) base.tipo = f.tipo;
+    const busca = f.busca?.trim().slice(0, 100);
+    if (busca) {
+      const c = { contains: busca, mode: 'insensitive' as const };
+      e.push({
+        OR: [
+          { titulo: c },
+          { detalhe: c },
+          { comprador: c },
+          { pedido: c },
+          { anuncio: c },
+          { chave: c },
+        ],
+      });
+    }
+    const de = f.de ? new Date(f.de) : null;
+    const ate = f.ate ? new Date(f.ate) : null;
+    if ((de && !isNaN(+de)) || (ate && !isNaN(+ate))) {
+      const faixa = {
+        ...(de && !isNaN(+de) ? { gte: de } : {}),
+        ...(ate && !isNaN(+ate) ? { lte: ate } : {}),
+      };
+      e.push({ OR: [{ desde: faixa }, { desde: null, criadoEm: faixa }] });
+    }
+    if (e.length) base.AND = e;
+
+    const status = f.status ?? 'ABERTAS';
+    const porStatus: Record<StatusPendencia, Prisma.PendenciaMarketplaceWhereInput> = {
+      ABERTAS: { resolvidaEm: null, NOT: { estado: 'RESPONDIDA_IA' } },
+      PENDENTE: { resolvidaEm: null, estado: null },
+      AGUARDANDO_HUMANO: { resolvidaEm: null, estado: 'AGUARDANDO_HUMANO' },
+      RESPONDIDA_IA: { estado: 'RESPONDIDA_IA' },
+      ENCERRADA: { resolvidaEm: { not: null }, NOT: { estado: 'RESPONDIDA_IA' } },
+    };
+    const [data, ...contas] = await Promise.all([
+      this.prisma.pendenciaMarketplace.findMany({
+        where: { ...base, ...porStatus[status] },
+        orderBy:
+          status === 'ENCERRADA' || status === 'RESPONDIDA_IA'
+            ? [{ resolvidaEm: { sort: 'desc', nulls: 'first' } }, { atualizadoEm: 'desc' }]
+            : [{ prazo: { sort: 'asc', nulls: 'last' } }, { desde: 'asc' }],
+        take: 500,
+      }),
+      ...(['PENDENTE', 'AGUARDANDO_HUMANO', 'RESPONDIDA_IA', 'ENCERRADA'] as const).map((s) =>
+        this.prisma.pendenciaMarketplace.count({ where: { ...base, ...porStatus[s] } }),
+      ),
+    ]);
+    const [PENDENTE, AGUARDANDO_HUMANO, RESPONDIDA_IA, ENCERRADA] = contas;
+    return {
+      data: data.map((p) => ({ ...p, status: statusDa(p) })),
+      contagem: { PENDENTE, AGUARDANDO_HUMANO, RESPONDIDA_IA, ENCERRADA },
+    };
   }
 
   contarAbertas(empresaId: string) {

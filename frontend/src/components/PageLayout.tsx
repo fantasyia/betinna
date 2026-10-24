@@ -184,7 +184,8 @@ const SECTIONS: NavSection[] = [
         modulo: 'inbox',
         // `/mullerbot` saiu daqui: o Assistente IA virou item próprio do menu
         // (abaixo). Se ficasse no match, os dois acendiam juntos na sidebar.
-        match: ['/ocorrencias', '/incidentes', '/whatsapp'],
+        // /incidentes saiu (24/10): reclamações e devoluções vivem em Pendências.
+        match: ['/ocorrencias', '/whatsapp'],
         badgeKey: 'atendimento',
       },
       {
@@ -201,6 +202,8 @@ const SECTIONS: NavSection[] = [
         icon: BellRing,
         ocultarPara: ['REP', 'GERENTE', 'SAC'],
         badgeKey: 'pendencias',
+        // O detalhe do incidente (link "Abrir no app") acende Pendências.
+        match: ['/incidentes'],
       },
       {
         to: '/mullerbot',

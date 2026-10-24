@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { precisaLembrete, resumoDoAviso } from './pendencias';
+import { precisaLembrete, resumoDoAviso, statusDa } from './pendencias';
 import { PendenciasService } from './pendencias.service';
 
 const agora = new Date('2026-10-24T12:00:00Z');
@@ -132,5 +132,16 @@ describe('PendenciasService.rodada', () => {
     achados.set('MARKETPLACE_SHOPEE', null);
     expect((await svc.rodada('e1', agora)).abertas).toBe(1);
     expect(linhas[0].resolvidaEm).toBeNull();
+  });
+});
+
+describe('status da pendência (aba única, 24/10)', () => {
+  it('encerrada, aguardando humano, respondida pela IA e pendente', () => {
+    const d = new Date();
+    expect(statusDa({ resolvidaEm: null, estado: null })).toBe('PENDENTE');
+    expect(statusDa({ resolvidaEm: null, estado: 'AGUARDANDO_HUMANO' })).toBe('AGUARDANDO_HUMANO');
+    expect(statusDa({ resolvidaEm: d, estado: 'AGUARDANDO_HUMANO' })).toBe('ENCERRADA');
+    // A IA respondeu: some do marketplace (resolvida), mas segue marcada pra revisão.
+    expect(statusDa({ resolvidaEm: d, estado: 'RESPONDIDA_IA' })).toBe('RESPONDIDA_IA');
   });
 });
