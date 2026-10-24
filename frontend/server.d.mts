@@ -58,4 +58,10 @@ export function criarServidor(opts: {
   apiUrl: string;
   fetchFn?: typeof fetch;
   ttlMs?: number;
+  sites?: string | null;
 }): Server;
+export function arquivoDoSite(
+  sitesDir: string | null,
+  host: string | undefined,
+  caminho: string,
+): Promise<{ pasta: string; noindex: boolean; alvo: string | null } | null>;

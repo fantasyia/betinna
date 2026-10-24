@@ -46,6 +46,7 @@ const RIBELT = {
   vitrineSlug: 'atacado-ribelt',
 };
 
+let sitesDir = '';
 let dir: string;
 let server: Server;
 let base: string;
@@ -116,13 +117,56 @@ beforeAll(async () => {
   writeFileSync(join(dir, 'sw.js'), '// sw');
   writeFileSync(join(dir, 'betinna-symbol.png'), Buffer.from([0x89, 0x50]));
   writeFileSync(join(tmpdir(), 'fora-do-dist.txt'), 'segredo');
-  server = criarServidor({ dist: dir, apiUrl: 'http://api.test', fetchFn: fetchFn as never });
+  // Site estático por domínio: lp.teste.com (teste, com .noindex) e landing.com (indexa).
+  const sites = join(dir, '..', `sites-${Date.now()}`);
+  sitesDir = sites;
+  mkdirSync(join(sites, 'lp.teste.com', 'img'), { recursive: true });
+  writeFileSync(join(sites, 'lp.teste.com', 'index.html'), '<h1>landing A</h1>');
+  writeFileSync(join(sites, 'lp.teste.com', 'opcao-b.html'), '<h1>landing B</h1>');
+  writeFileSync(join(sites, 'lp.teste.com', 'img', 'logo.png'), Buffer.from([0x89, 0x50]));
+  writeFileSync(join(sites, 'lp.teste.com', '.noindex'), '');
+  mkdirSync(join(sites, 'landing.com'));
+  writeFileSync(join(sites, 'landing.com', 'index.html'), '<h1>oficial</h1>');
+  server = criarServidor({ dist: dir, apiUrl: 'http://api.test', fetchFn: fetchFn as never, sites });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 afterAll(() => {
   server.close();
   rmSync(dir, { recursive: true, force: true });
+  rmSync(sitesDir, { recursive: true, force: true });
+});
+
+describe('site estático por domínio (landing, 24/10)', () => {
+  it('domínio com pasta própria serve a landing, não o app; .noindex vira X-Robots-Tag', async () => {
+    const r = await get('/', 'lp.teste.com');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe('<h1>landing A</h1>');
+    expect(r.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(r.headers.get('cache-control')).toBe('no-cache, must-revalidate');
+    const b = await get('/opcao-b', 'lp.teste.com');
+    expect(await b.text()).toBe('<h1>landing B</h1>');
+    const img = await get('/img/logo.png', 'lp.teste.com');
+    expect(img.headers.get('content-type')).toBe('image/png');
+  });
+
+  it('www cai na mesma pasta; sem .noindex não manda noindex', async () => {
+    const r = await get('/', 'www.landing.com');
+    expect(await r.text()).toBe('<h1>oficial</h1>');
+    expect(r.headers.get('x-robots-tag')).toBeNull();
+  });
+
+  it('arquivo com ponto e caminho inexistente dão 404 (nunca o SPA nem o marcador)', async () => {
+    expect((await get('/.noindex', 'lp.teste.com')).status).toBe(404);
+    expect((await get('/pedidos/1', 'lp.teste.com')).status).toBe(404);
+    expect((await get('/%2e%2e/%2e%2e/fora-do-dist.txt', 'lp.teste.com')).status).toBe(404);
+  });
+
+  it('domínio sem pasta segue no app como antes', async () => {
+    const r = await get('/pedidos/123', 'app.somatecblocking.com.br');
+    expect(r.status).toBe(200);
+    expect(r.headers.get('x-robots-tag')).toBeNull();
+  });
 });
 
 describe('servidor do front — o app continua igual', () => {

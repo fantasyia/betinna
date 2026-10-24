@@ -52,6 +52,7 @@ const MIME = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
 };
 
@@ -510,7 +511,44 @@ export function robotsDaVitrine(base) {
   ].join('\n');
 }
 
-export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_000 }) {
+/**
+ * Site estático por DOMÍNIO (24/10, landing do ribelt.com.br): a pasta
+ * `sites/<host sem www>/` responde por aquele host inteiro, sem passar pelo
+ * SPA. Um arquivo `.noindex` na pasta põe `X-Robots-Tag: noindex` em tudo
+ * (endereço de teste). Arquivo começado com ponto nunca é servido.
+ */
+export async function arquivoDoSite(sitesDir, host, caminho) {
+  if (!sitesDir) return null;
+  const nome = normalizarHost(host);
+  if (!nome || !/^[a-z0-9.-]+$/.test(nome) || nome.includes('..')) return null;
+  const pasta = resolve(sitesDir, nome);
+  try {
+    if (!(await stat(pasta)).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  let noindex = false;
+  try {
+    noindex = (await stat(join(pasta, '.noindex'))).isFile();
+  } catch {
+    // sem marcador: indexa
+  }
+  const rel = caminho.replace(/^\/+/, '');
+  if (rel.split('/').some((p) => p.startsWith('.'))) return { pasta, noindex, alvo: null };
+  const tentativas = rel === '' || rel.endsWith('/') ? [`${rel}index.html`] : [rel, `${rel}.html`];
+  for (const t of tentativas) {
+    const alvo = normalize(join(pasta, t));
+    if (alvo !== pasta && !alvo.startsWith(pasta + sep)) continue;
+    try {
+      if ((await stat(alvo)).isFile()) return { pasta, noindex, alvo };
+    } catch {
+      // tenta a próxima
+    }
+  }
+  return { pasta, noindex, alvo: null };
+}
+
+export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_000, sites = null }) {
   const raiz = resolve(dist);
   const cacheMarca = new Map();
   const cacheVitrine = new Map();
@@ -595,6 +633,26 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       }
       const rel = caminho.replace(/^\/+/, '');
       const host = req.headers['x-forwarded-host'] || req.headers.host;
+
+      // Domínio com site estático próprio (landing): responde tudo dali.
+      const site = await arquivoDoSite(sites, host, caminho);
+      if (site) {
+        const extra = site.noindex ? { 'X-Robots-Tag': 'noindex, nofollow' } : {};
+        if (!site.alvo) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', ...SEGURANCA, ...extra });
+          return res.end(req.method === 'HEAD' ? undefined : 'Página não encontrada');
+        }
+        const corpo = await readFile(site.alvo);
+        const ext = extname(site.alvo).toLowerCase();
+        res.writeHead(200, {
+          'Content-Type': MIME[ext] ?? 'application/octet-stream',
+          'Content-Length': corpo.length,
+          'Cache-Control': ext === '.html' || ext === '.txt' || ext === '.xml' ? SEM_CACHE : 'public, max-age=86400',
+          ...SEGURANCA,
+          ...extra,
+        });
+        return res.end(req.method === 'HEAD' ? undefined : corpo);
+      }
 
       // robots.txt e sitemap.xml DO DOMÍNIO DA VITRINE (o arquivo do dist é o do app).
       if (caminho === '/robots.txt' || caminho === '/sitemap.xml' || caminho === '/llms.txt' || caminho === '/faq' || caminho === '/faq/') {
@@ -742,7 +800,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const porta = Number(process.env.PORT || 4173);
   const apiUrl = process.env.BRANDING_API_URL || process.env.VITE_API_URL || '';
   const dist = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
-  criarServidor({ dist, apiUrl }).listen(porta, () => {
+  const sites = join(fileURLToPath(new URL('.', import.meta.url)), 'sites');
+  criarServidor({ dist, apiUrl, sites }).listen(porta, () => {
     console.log(`[front] servindo ${dist} na porta ${porta} (marca via ${apiUrl || 'sem API — HTML padrão'})`);
   });
 }
