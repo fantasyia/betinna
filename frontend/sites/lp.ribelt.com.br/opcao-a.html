@@ -241,71 +241,6 @@ footer img{height:26px;width:auto;filter:brightness(0) invert(1);opacity:.9;marg
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
-/* ===== OPÇÃO B: editorial ===== */
-.hero-b{position:relative;min-height:88vh;display:flex;align-items:flex-end;color:#fff;overflow:hidden;padding:0}
-.hero-b>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 12%}
-.hero-b::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(26,45,56,.05) 30%,rgba(26,45,56,.82) 100%)}
-.hero-b .box{position:relative;z-index:1;padding-bottom:56px;width:100%}
-.hero-b .k{color:#f1d8c8}
-.hero-b h1{font-size:clamp(40px,7vw,84px);margin:10px 0 16px;max-width:14ch;color:#fff}
-.hero-b .lead{color:#eef1f2;max-width:42ch;margin-bottom:24px}
-.hero-b .btn-s{color:#fff;border-color:#fff}
-.hero-b .btn-s:hover{background:#fff;color:var(--petroleo)}
-header.sobre{position:absolute;top:0;left:0;right:0;z-index:5}
-header.sobre img{filter:brightness(0) invert(1)}
-header.sobre a.top-cta{color:#fff;border-color:#fff}
-.faixa{background:var(--petroleo);color:var(--creme);padding:0;overflow:hidden}
-.faixa .box{display:grid;grid-template-columns:repeat(4,1fr);text-align:center}
-.faixa .box>div{padding:22px 10px;border-right:1px solid rgba(248,241,224,.15)}
-.faixa .box>div:last-child{border-right:0}
-.faixa b{display:block;font-family:Fraunces,serif;font-size:clamp(22px,3vw,30px)}
-.faixa span{font-size:13px;color:#cdd6db}
-.lucro-b{background:var(--papel)}
-.tres{display:grid;grid-template-columns:repeat(3,1fr);margin-top:34px;border:1px solid var(--creme-2);border-radius:var(--raio);overflow:hidden;background:#fff}
-.tres div{padding:28px;text-align:center;border-right:1px solid var(--creme-2)}
-.tres div:last-child{border-right:0;background:#eef6f0}
-.tres span{display:block;font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--suave)}
-.tres b{display:block;font-family:Fraunces,serif;font-size:clamp(34px,5vw,54px);margin-top:6px}
-.tres div:last-child b{color:var(--verde)}
-.calc-b{margin-top:22px;display:grid;grid-template-columns:1.2fr 1fr;gap:24px;align-items:center;background:var(--petroleo);color:var(--creme);border-radius:var(--raio);padding:26px 28px}
-.calc-b label{font-weight:700;display:block;margin-bottom:10px}
-.calc-b input[type=range]{width:100%;accent-color:var(--terracota);height:32px}
-.calc-b .linha{display:flex;justify-content:space-between;font-size:15px;color:#cdd6db;margin-top:4px}
-.calc-b output{font-family:Fraunces,serif;font-size:46px;font-weight:700;color:#fff;display:block;text-align:right}
-.calc-b .nota{grid-column:1/-1;font-size:13px;color:#a9b6bd}
-.trilho{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 20px 18px;margin:28px -20px 0;scrollbar-width:thin}
-.trilho .card{flex:0 0 min(300px,72vw);scroll-snap-align:start}
-.linha-b{display:grid;grid-template-columns:1fr 1fr;height:560px;overflow:hidden}
-.linha-b>*{min-height:0}
-.linha-b img{width:100%;height:100%;object-fit:cover;object-position:center 25%}
-.linha-b .t{display:flex;flex-direction:column;justify-content:center;padding:40px 48px;background:var(--papel)}
-.linha-b:nth-child(2) .t{background:var(--creme-2)}
-.linha-b .t b{font-family:Fraunces,serif;font-size:38px}
-.linha-b .t p{color:var(--texto);margin:8px 0 18px;max-width:36ch}
-.linha-b .t a{font-weight:800;text-decoration:none;border-bottom:2px solid var(--terracota);align-self:flex-start}
-@media (min-width:861px){
-  .hero-b{background:var(--petroleo);min-height:86vh;align-items:center}
-  .hero-b>img{left:auto;right:0;width:50%;object-position:center 20%}
-  .hero-b::after{display:none}
-  .hero-b .box{padding:110px 20px 60px}
-  .hero-b h1{max-width:11ch;font-size:clamp(44px,5.4vw,72px)}
-  .hero-b .lead{max-width:30ch}
-}
-@media (max-width:860px){
-  .hero-b{min-height:92vh}
-  .faixa .box{grid-template-columns:1fr 1fr}
-  .faixa .box>div:nth-child(2){border-right:0}
-  .faixa .box>div:nth-child(-n+2){border-bottom:1px solid rgba(248,241,224,.15)}
-  .tres{grid-template-columns:1fr}
-  .tres div{border-right:0;border-bottom:1px solid var(--creme-2)}
-  .calc-b{grid-template-columns:1fr}
-  .calc-b output{text-align:left}
-  .linha-b{grid-template-columns:1fr;height:auto}
-  .linha-b img{aspect-ratio:4/3;height:auto}
-  .linha-b.inv .t{order:2}
-  .linha-b .t{padding:28px 20px}
-}
-
 /* ===== destaque de CTAs e números (Léo, 24/10) ===== */
 .btn{font-size:18px;min-height:58px;padding:17px 28px}
 .btn-p{background:#c8562b;box-shadow:0 10px 22px rgba(200,86,43,.38)}
@@ -324,11 +259,32 @@ header.sobre a.top-cta{color:#fff;border-color:#fff}
 .cpf{display:inline-block;background:#fdeee6;border-left:4px solid #c8562b;padding:10px 14px;border-radius:8px}
 .card .rot span{color:#ffd2b8;font-weight:700;font-size:15px}
 .final .btn-p{background:var(--petroleo);box-shadow:0 10px 22px rgba(0,0,0,.25)}
+
+/* ===== linhas em abas (Léo, 24/10: os 3 cards ficavam repetitivos) ===== */
+.abas{display:inline-flex;gap:6px;background:var(--creme-2);padding:6px;border-radius:999px;margin-top:26px;flex-wrap:wrap}
+.abas button{font:inherit;font-weight:800;font-size:16px;border:0;cursor:pointer;padding:12px 22px;border-radius:999px;background:transparent;color:var(--petroleo)}
+.abas button[aria-selected=true]{background:var(--petroleo);color:var(--creme)}
+.painel{display:grid;grid-template-columns:1fr 1.1fr;gap:40px;align-items:center;margin-top:28px}
+.painel[hidden]{display:none}
+.painel figure{border-radius:24px;overflow:hidden;aspect-ratio:4/5;box-shadow:var(--sombra)}
+.painel figure img{width:100%;height:100%;object-fit:cover;object-position:center 20%}
+.painel h3{font-size:clamp(34px,4.6vw,52px)}
+.painel .faixa-tam{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.painel .faixa-tam span{min-width:46px;text-align:center;font-weight:800;padding:8px 10px;border:2px solid var(--petroleo);border-radius:10px}
+.painel p{color:var(--texto);font-size:17px;max-width:44ch}
+.painel ul{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 26px}
+.painel li{background:var(--papel);border:1px solid var(--creme-2);border-radius:999px;padding:7px 13px;font-size:14px;font-weight:600}
+@media (max-width:860px){
+  .abas{display:flex;width:100%}
+  .abas button{flex:1;padding:12px 8px;font-size:15px}
+  .painel{grid-template-columns:1fr;gap:20px}
+  .painel figure{aspect-ratio:4/3}
+}
 </style>
 </head>
 <body>
 
-<header class="sobre">
+<header>
   <div class="box">
     <img src="img/logo.png" alt="Ribelt Têxtil" width="140" height="30">
     <a class="top-cta" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a vitrine →</a>
@@ -336,46 +292,54 @@ header.sobre a.top-cta{color:#fff;border-color:#fff}
 </header>
 
 <main>
-<!-- 1. Abertura (opção B: foto inteira, editorial) -->
-<section class="hero-b">
-  <img src="img/hero-moletom-grande.webp" alt="Homem usando moletom canguru e calça de moletom azul-marinho na rua" width="1080" height="1440" fetchpriority="high">
+<!-- 1. Abertura -->
+<section class="hero">
   <div class="box">
-    <h1>Roupa masculina no atacado pra você revender com lucro</h1>
-    <p class="lead">Escolha as peças, veja na tela quanto <strong class="dest">cada uma rende</strong> e receba em <strong class="dest">qualquer cidade do Brasil</strong>. Infantil, Masculino e Plus Size.</p>
-    <div class="btns">
-      <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a vitrine e os preços</a>
-      <a class="btn btn-w" href="https://wa.me/5511933809738?text=Oi!%20Vim%20pelo%20site%20e%20quero%20comprar%20no%20atacado" data-ev="whatsapp">Falar no WhatsApp</a>
+    <div>
+      <h1>Roupa masculina no atacado pra você <em>revender com lucro</em></h1>
+      <p class="lead">Você escolhe as peças, vê na tela <strong class="dest">quanto cada uma rende</strong> e recebe em <strong class="dest">qualquer cidade do Brasil</strong>. Infantil, Masculino e Plus Size, a partir de <strong class="dest">R$ 600</strong>.</p>
+      <div class="btns">
+        <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a vitrine e os preços</a>
+        <a class="btn btn-w" href="https://wa.me/5511933809738?text=Oi!%20Vim%20pelo%20site%20e%20quero%20comprar%20no%20atacado" data-ev="whatsapp">
+          <svg class="wa-ico" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 3a13 13 0 0 0-11.2 19.6L3 29l6.6-1.7A13 13 0 1 0 16 3zm0 23.6c-2 0-3.9-.5-5.6-1.5l-.4-.2-3.9 1 1-3.8-.3-.4A10.6 10.6 0 1 1 16 26.6zm5.8-7.9c-.3-.2-1.9-.9-2.2-1s-.5-.2-.7.2-.8 1-1 1.2-.4.2-.7 0a8.7 8.7 0 0 1-4.3-3.8c-.3-.6.3-.5.9-1.7.1-.2 0-.4 0-.5l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.9.4 3.6 3.6 0 0 0-1.1 2.7 6.3 6.3 0 0 0 1.3 3.3 14.4 14.4 0 0 0 5.5 4.9c2 .9 2.8.9 3.9.8a3.3 3.3 0 0 0 2.1-1.5 2.7 2.7 0 0 0 .2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>
+          Falar no WhatsApp
+        </a>
+      </div>
+      <div class="selos">
+        <span>A partir de 50 peças</span><span>Sem CNPJ</span><span>Pix ou 12x</span><span>Brasil todo</span>
+      </div>
+    </div>
+    <div class="galeria" aria-label="Peças da Ribelt Têxtil">
+      <figure><img src="img/hero-moletom.webp" alt="Homem usando moletom canguru e calça de moletom azul-marinho na rua" width="720" height="960" fetchpriority="high"></figure>
+      <figure><img src="img/hero-plus.webp" alt="Homem plus size usando camiseta preta e bermuda verde-militar" width="720" height="960"></figure>
+      <figure><img src="img/hero-infantil.webp" alt="Menino na praia usando camiseta UV infantil neon com emborrachado" width="720" height="960"></figure>
     </div>
   </div>
 </section>
 
-<section class="faixa" aria-label="Condições">
-  <div class="box">
-    <div><b>R$ 600</b><span>ou 50 peças no pedido</span></div>
-    <div><b>Sem CNPJ</b><span>CPF também compra</span></div>
-    <div><b>12x</b><span>no cartão, ou Pix</span></div>
-    <div><b>Brasil todo</b><span>despacho em até 24h úteis</span></div>
-  </div>
-</section>
-
-<!-- 2. Quanto você ganha (opção B) -->
-<section class="lucro-b" id="lucro">
+<!-- 2. Quanto você ganha -->
+<section class="lucro" id="lucro">
   <div class="box">
     <h2>Antes de comprar, você já sabe quanto vai sobrar</h2>
-    <p class="lead" style="max-width:58ch;margin-top:12px">Na vitrine, cada peça mostra três números. É a mesma conta que você já faz hoje, só que pronta. Exemplo com a bermuda de moletom:</p>
-    <div class="tres">
-      <div><span>Você paga</span><b>R$ 19,99</b></div>
-      <div><span>Revende por</span><b>R$ 39,99</b></div>
-      <div><span>Sobra por peça</span><b>R$ 20,00</b></div>
-    </div>
-    <div class="calc-b">
-      <div>
+    <p class="lead">Na vitrine, cada peça mostra três números: quanto você paga, por quanto revender e quanto fica pra você. É só fazer a conta do jeito que você já faz hoje, só que com o resultado pronto.</p>
+    <div class="lucro-grid">
+      <div class="conta">
+        <img src="img/bermuda-moletom.webp" alt="Bermuda de moletom cinza" width="130" height="173" loading="lazy">
+        <dl>
+          <dt>Bermuda de moletom</dt><dd></dd>
+          <dt>Você paga</dt><dd>R$ 19,99</dd>
+          <dt>Revenda sugerida</dt><dd>R$ 39,99</dd>
+          <dd class="ganho">Sobra R$ 20,00 por peça</dd>
+        </dl>
+      </div>
+      <div class="calc">
         <label for="qtd">Quantas bermudas você revenderia?</label>
         <input id="qtd" type="range" min="50" max="1200" step="10" value="50" aria-describedby="res">
         <div class="linha"><span><b id="qtdv">50</b> peças · R$ <b id="precov">19,99</b> cada</span><span id="faixav">Entrada</span></div>
+        <output id="res" for="qtd">R$ 1.000,00</output>
+        <div class="linha"><span>é o que sobra revendendo pelo preço sugerido</span></div>
+        <p class="nota">Preços da vitrine em 24/10/2026 (linha Regular). A conta é antes do frete e dos seus custos. A partir de 200 e de 1.000 peças o preço por peça cai.</p>
       </div>
-      <div><output id="res" for="qtd">R$ 1.000,00</output><div class="linha" style="justify-content:flex-end"><span>sobram pra você</span></div></div>
-      <p class="nota">Preços da vitrine em 24/10/2026 (linha Regular). A conta é antes do frete e dos seus custos. A partir de 200 e de 1.000 peças o preço por peça cai.</p>
     </div>
   </div>
 </section>
@@ -407,18 +371,49 @@ header.sobre a.top-cta{color:#fff;border-color:#fff}
   </div>
 </section>
 
-<!-- 5. Linhas (opção B: foto + texto lado a lado) -->
-<section id="linhas" style="padding:0">
-  <div class="linha-b"><img src="img/linha-masculino.webp" alt="Linha masculina Regular" width="720" height="960" loading="lazy"><div class="t"><b>Masculino</b><p>Do P ao GG. Camiseta UV, básica, regata, moletom, calça, bermuda e tactel.</p><a href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha</a></div></div>
-  <div class="linha-b inv"><div class="t"><b>Plus Size</b><p>Do G1 ao G3, veste até uns 150 kg. Um público que procura e quase não encontra.</p><a href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha</a></div><img src="img/linha-plus.webp" alt="Linha masculina Plus Size" width="720" height="960" loading="lazy"></div>
-  <div class="linha-b"><img src="img/linha-infantil.webp" alt="Linha infantil" width="720" height="960" loading="lazy"><div class="t"><b>Infantil</b><p>Do 2 ao 14 anos, inclusive a camiseta UV com emborrachado.</p><a href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha</a></div></div>
+<!-- 5. Linhas (abas) -->
+<section id="linhas">
+  <div class="box">
+    <h2>Três públicos, um fornecedor só</h2>
+    <div class="abas" role="tablist" aria-label="Linhas"><button role="tab" id="aba-masculino" aria-controls="painel-masculino" aria-selected="true">Masculino</button><button role="tab" id="aba-plus" aria-controls="painel-plus" aria-selected="false">Plus Size</button><button role="tab" id="aba-infantil" aria-controls="painel-infantil" aria-selected="false">Infantil</button></div>
+    <div class="painel" role="tabpanel" id="painel-masculino" aria-labelledby="aba-masculino">
+      <figure><img src="img/linha-masculino.webp" alt="Linha masculina Regular" width="720" height="960" loading="lazy"></figure>
+      <div>
+        <h3>Masculino</h3>
+        <div class="faixa-tam" aria-label="Tamanhos"><span>P</span><span>M</span><span>G</span><span>GG</span></div>
+        <p>O básico que gira o ano todo, do verão ao frio.</p>
+        <ul aria-label="Produtos da linha"><li>Camiseta UV</li><li>Camiseta básica</li><li>Regata</li><li>Moletom canguru</li><li>Moletom gola careca</li><li>Moletom com zíper</li><li>Calça de moletom</li><li>Bermuda de moletom</li><li>Calça tactel</li><li>Shorts tactel</li></ul>
+        <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha Masculino</a>
+      </div>
+    </div>
+    <div class="painel" role="tabpanel" id="painel-plus" aria-labelledby="aba-plus" hidden>
+      <figure><img src="img/linha-plus.webp" alt="Linha masculina Plus Size" width="720" height="960" loading="lazy"></figure>
+      <div>
+        <h3>Plus Size</h3>
+        <div class="faixa-tam" aria-label="Tamanhos"><span>G1</span><span>G2</span><span>G3</span></div>
+        <p>Veste até uns 150 kg (em média: G1 ~130 kg, G2 ~140 kg, G3 150 kg ou mais). Um público que procura e quase não encontra.</p>
+        <ul aria-label="Produtos da linha"><li>Camiseta básica</li><li>Regata</li><li>Moletom com zíper</li><li>Calça de moletom</li><li>Bermuda de moletom</li><li>Calça tactel</li><li>Shorts tactel</li></ul>
+        <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha Plus Size</a>
+      </div>
+    </div>
+    <div class="painel" role="tabpanel" id="painel-infantil" aria-labelledby="aba-infantil" hidden>
+      <figure><img src="img/linha-infantil.webp" alt="Linha infantil" width="720" height="960" loading="lazy"></figure>
+      <div>
+        <h3>Infantil</h3>
+        <div class="faixa-tam" aria-label="Tamanhos"><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span><span>12</span><span>14</span></div>
+        <p>Do 2 ao 14 anos, com a mesma qualidade do adulto. Pai e filho combinando vende junto.</p>
+        <ul aria-label="Produtos da linha"><li>Camiseta UV</li><li>UV com emborrachado</li><li>Camiseta manga longa</li><li>Regata</li><li>Moletom canguru</li><li>Moletom gola careca</li><li>Moletom com zíper</li><li>Calça de moletom</li><li>Bermuda de moletom</li><li>Shorts tactel</li></ul>
+        <a class="btn btn-p" href="https://atacado.ribelt.com.br/v/atacado-ribelt" data-ev="vitrine">Ver a linha Infantil</a>
+      </div>
+    </div>
+  </div>
 </section>
 
 <!-- 6. Mais vendidos -->
 <section class="quem" id="produtos">
   <div class="box">
     <h2>Comece pelo que o cliente já procura</h2>
-    <div class="trilho">
+    <div class="cards c4">
       <a class="card" href="https://atacado.ribelt.com.br/p/bermuda-moletom-summer" data-ev="vitrine"><img src="img/bermuda-moletom.webp" alt="Bermuda de moletom masculina" width="720" height="960" loading="lazy"><div class="rot"><b>Bermuda de Moletom</b><span>a partir de R$ 16,99</span></div></a>
       <a class="card" href="https://atacado.ribelt.com.br/p/camiseta-uv-raglan-manga-longa" data-ev="vitrine"><img src="img/camiseta-uv-manga-longa.webp" alt="Camiseta UV masculina manga longa" width="720" height="960" loading="lazy"><div class="rot"><b>Camiseta UV Manga Longa</b><span>a partir de R$ 15,99</span></div></a>
       <a class="card" href="https://atacado.ribelt.com.br/p/calca-moletom" data-ev="vitrine"><img src="img/calca-moletom.webp" alt="Calça de moletom masculina" width="720" height="960" loading="lazy"><div class="rot"><b>Calça de Moletom</b><span>a partir de R$ 34,99</span></div></a>
@@ -537,6 +532,16 @@ header.sobre a.top-cta{color:#fff;border-color:#fff}
     if(a.dataset.ev==='whatsapp'){ fbq('track','Lead'); fbq('track','Contact'); gtag('event','generate_lead',{method:'whatsapp'}); }
   });
 })();
+
+// Abas das linhas
+document.querySelectorAll('.abas [role=tab]').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.abas [role=tab]').forEach(function(x){
+      var on=x===b; x.setAttribute('aria-selected',on);
+      document.getElementById(x.getAttribute('aria-controls')).hidden=!on;
+    });
+  });
+});
 </script>
 </body>
 </html>
