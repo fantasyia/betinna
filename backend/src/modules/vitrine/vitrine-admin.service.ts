@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
@@ -15,6 +16,7 @@ import { configClarity, type ClarityConfigDto } from './clarity';
 import { slugDoNome, slugLivre } from './slug-modelo';
 import { configGeo, type GeoConfigDto } from './geo';
 import { limparFiscal } from './fiscal';
+import { REF_MODELO, fichaDoModelo } from './conhecimento-vitrine';
 import {
   campanhasMeta,
   linkDaOrigem,
@@ -120,6 +122,8 @@ const modeloInclude = {
  */
 @Injectable()
 export class VitrineAdminService {
+  private readonly logger = new Logger(VitrineAdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly fotos: VitrineFotosService,
@@ -551,6 +555,7 @@ export class VitrineAdminService {
       },
       { timeout: 30_000 },
     );
+    await this.sincronizarConhecimento(empresaId, id);
     return this.obterModelo(user, id);
   }
 
@@ -626,6 +631,7 @@ export class VitrineAdminService {
       },
       { timeout: 30_000 },
     );
+    await this.sincronizarConhecimento(empresaId, id);
     return this.obterModelo(user, id);
   }
 
@@ -650,6 +656,8 @@ export class VitrineAdminService {
       },
       { timeout: 30_000 },
     );
+    // Modelo apagado: a ficha some da busca do robô.
+    await this.sincronizarConhecimento(empresaId, id);
     const paths = [
       ...midia.cores.flatMap((c) =>
         c.fotos.flatMap((f) => [f.storagePath, ...(f.thumbPath ? [f.thumbPath] : [])]),
@@ -659,6 +667,90 @@ export class VitrineAdminService {
     // Depois do banco: falha aqui deixa arquivo órfão, nunca registro sem arquivo.
     if (paths.length) await this.fotos.removerArquivos(paths);
     return { ok: true };
+  }
+
+  // ─── Ficha do produto pro robô (base de conhecimento, 24/10) ────────────
+
+  /**
+   * Regrava o trecho "Produto · <nome>" da base de conhecimento a partir do
+   * cadastro (preços, cores, tamanhos, medidas, link). Modelo inativo ou
+   * apagado: o trecho fica inativo e some da busca. O reconciliador do RAG
+   * reindexa sozinho. Nunca derruba a gravação do modelo.
+   */
+  async sincronizarConhecimento(empresaId: string, modeloId: string): Promise<void> {
+    try {
+      const refId = REF_MODELO(modeloId);
+      const [m, vitrine, empresa] = await Promise.all([
+        this.prisma.catalogoModelo.findFirst({
+          where: { id: modeloId, empresaId },
+          select: {
+            nome: true,
+            slug: true,
+            descricao: true,
+            composicao: true,
+            ativo: true,
+            cores: { orderBy: { ordem: 'asc' }, select: { cor: { select: { nome: true } } } },
+            linhas: {
+              select: {
+                linha: { select: { nome: true } },
+                precoEntrada: true,
+                precoVolume: true,
+                precoAtacadao: true,
+                precoSugerido: true,
+                tabelaMedidas: true,
+                tamanhos: { select: { tamanho: { select: { nome: true, ordem: true } } } },
+              },
+            },
+          },
+        }),
+        this.prisma.vitrine.findUnique({
+          where: { empresaId },
+          select: { minimoEntrada: true, minimoVolume: true, minimoAtacadao: true },
+        }),
+        this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
+      ]);
+      if (!m || !m.ativo) {
+        await this.prisma.knowledgeChunk.updateMany({
+          where: { empresaId, fonte: 'CONFIG', refId },
+          data: { ativo: false },
+        });
+        return;
+      }
+      const dominio =
+        ((empresa?.config ?? {}) as { branding?: { dominio?: string | null } }).branding?.dominio ??
+        null;
+      const ficha = fichaDoModelo(
+        m,
+        vitrine ?? { minimoEntrada: null, minimoVolume: null, minimoAtacadao: null },
+        dominio,
+      );
+      await this.prisma.knowledgeChunk.upsert({
+        where: { empresaId_fonte_refId: { empresaId, fonte: 'CONFIG', refId } },
+        create: {
+          empresaId,
+          fonte: 'CONFIG',
+          refId,
+          categoria: 'produtos',
+          titulo: ficha.titulo,
+          conteudo: ficha.conteudo,
+          ativo: true,
+        },
+        update: { titulo: ficha.titulo, conteudo: ficha.conteudo, ativo: true },
+      });
+    } catch (err) {
+      this.logger.warn(`[conhecimento] ficha do modelo ${modeloId} não gravou: ${String(err)}`);
+    }
+  }
+
+  /** Regrava a ficha de TODOS os modelos da empresa (1ª carga / reparo). */
+  async sincronizarConhecimentoTodos(user: AuthenticatedUser) {
+    const empresaId = await this.empresaComVitrine(user);
+    const modelos = await this.prisma.catalogoModelo.findMany({
+      where: { empresaId },
+      select: { id: true },
+    });
+    for (const m of modelos) await this.sincronizarConhecimento(empresaId, m.id);
+    return { modelos: modelos.length };
   }
 
   /** Ordem dos modelos na vitrine: recebe TODOS os ids da empresa, na ordem nova. */
@@ -1152,7 +1244,8 @@ export class VitrineAdminService {
   async ressincronizarModelo(empresaId: string, modeloId: string): Promise<void> {
     await this.prisma.$transaction((tx) => this.sincronizarVariacoes(tx, empresaId, modeloId), {
       timeout: 30_000,
-    });
+    }); // Preço mudou (precificação) → a ficha do robô acompanha.
+    await this.sincronizarConhecimento(empresaId, modeloId);
   }
 
   /** Renomeou cor/linha/tamanho → reescreve o nome dos produtos que a usam. */

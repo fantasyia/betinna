@@ -133,6 +133,15 @@ export class VitrineAdminController {
     return this.svc.geoSalvar(user, dto);
   }
 
+  // ─── Ficha do produto pro robô (base de conhecimento, 24/10) ─────────────
+  @Post('conhecimento/sincronizar')
+  @ApiOperation({
+    summary: 'Regrava a ficha "Produto · <nome>" de todos os modelos na base de conhecimento',
+  })
+  sincronizarConhecimento(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.sincronizarConhecimentoTodos(user);
+  }
+
   // ─── Lead do Meta: campanha → produto (card cmvl673p6, 23/10) ────────────
   @Get('campanhas-meta')
   @ApiOperation({

@@ -73,6 +73,8 @@ export const fiscalEmpresaSchema = z.object({
   csosn: digitos(3, 'CSOSN tem 3 dígitos'),
   cfopDentro: digitos(4, 'CFOP tem 4 dígitos'),
   cfopFora: digitos(4, 'CFOP tem 4 dígitos'),
+  /** Fora do estado pra NÃO contribuinte (consumidor final; ex.: 6107). */
+  cfopForaNaoContribuinte: digitos(4, 'CFOP tem 4 dígitos'),
   cstPisCofins: digitos(2, 'CST de PIS/COFINS tem 2 dígitos'),
 });
 export type FiscalEmpresa = z.infer<typeof fiscalEmpresaSchema>;

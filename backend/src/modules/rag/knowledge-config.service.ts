@@ -114,7 +114,10 @@ export class KnowledgeConfigService {
       slaAnaliseDiasUteis?: number;
       janelaPosEntregaDias?: number;
       motivos?: Array<{ label?: string }>;
+      /** false = a regra é da tela de devolução, NÃO do robô (Ribelt, 24/10). */
+      ensinarRobo?: boolean;
     };
+    if (d.ensinarRobo === false) return { ...base, conteudo: null };
     const partes: string[] = [];
     if (d.janelaPosEntregaDias)
       partes.push(`prazo de ${d.janelaPosEntregaDias} dias após a entrega para solicitar`);

@@ -143,6 +143,8 @@ const devolucaoInternaSchema = z
     slaAnaliseDiasUteis: z.number().int().nonnegative().max(60).optional(),
     janelaPosEntregaDias: z.number().int().nonnegative().max(365).optional(),
     estornoComissaoProporcional: z.boolean().optional(),
+    /** false = a política NÃO vira trecho da base do robô (24/10). */
+    ensinarRobo: z.boolean().optional(),
   })
   .optional();
 

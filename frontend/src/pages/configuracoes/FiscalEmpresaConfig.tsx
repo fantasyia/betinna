@@ -15,6 +15,11 @@ const CAMPOS: Array<{ k: string; rotulo: string; dica: string }> = [
   { k: 'csosn', rotulo: 'CSOSN padrão', dica: '3 dígitos (ex.: 101, 102)' },
   { k: 'cfopDentro', rotulo: 'CFOP dentro do estado', dica: '4 dígitos (ex.: 5101, 5102)' },
   { k: 'cfopFora', rotulo: 'CFOP fora do estado', dica: '4 dígitos (ex.: 6101, 6102)' },
+  {
+    k: 'cfopForaNaoContribuinte',
+    rotulo: 'CFOP fora do estado (consumidor final)',
+    dica: 'Não contribuinte (ex.: 6107)',
+  },
   { k: 'cstPisCofins', rotulo: 'CST PIS/COFINS', dica: '2 dígitos (ex.: 49, 99)' },
 ];
 

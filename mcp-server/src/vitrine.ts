@@ -523,6 +523,18 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   );
 
   server.registerTool(
+    "vitrine_conhecimento_sincronizar",
+    {
+      description:
+        "Regrava na base de conhecimento do robô a ficha 'Produto · <nome>' de TODOS os modelos da vitrine (link, descrição, composição, cores, tamanhos, preços das faixas, revenda, lucro, medidas). " +
+        "Já acontece sozinho ao salvar cada modelo; use pra 1ª carga ou reparo. Modelo inativo fica fora.",
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    seguro(async () => ok(await api.post("/vitrine/admin/conhecimento/sincronizar", {}))),
+  );
+
+  server.registerTool(
     "meta_campanhas_ver",
     {
       description:
