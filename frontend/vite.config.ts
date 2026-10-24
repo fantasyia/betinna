@@ -97,6 +97,8 @@ export default defineConfig({
         // abertas → com o reload do controllerchange, o deploy chega sem banner.
         skipWaiting: true,
         clientsClaim: true,
+        // Web Push (24/10): recebe o push e abre a tela certa ao tocar.
+        importScripts: ['/push-sw.js'],
       },
       devOptions: {
         // Em dev, PWA fica desligado pra não interferir com HMR

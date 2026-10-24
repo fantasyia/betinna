@@ -241,6 +241,10 @@ export const envSchema = z
      * Vazio = sem aviso.
      */
     SHOPEE_PARTNER_KEY_EXPIRA_EM: z.string().optional().default(''),
+    /** Web Push (24/10): par VAPID do app + contato. Vazio = push desligado. */
+    VAPID_PUBLIC_KEY: z.string().optional().default(''),
+    VAPID_PRIVATE_KEY: z.string().optional().default(''),
+    VAPID_SUBJECT: z.string().optional().default('mailto:comercial@ribelt.com.br'),
 
     // Amazon SP-API
     /** LWA Client ID (do app "Login with Amazon" linkado ao Selling Partner App). */

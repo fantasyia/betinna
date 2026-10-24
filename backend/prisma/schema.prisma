@@ -3699,6 +3699,48 @@ model Notificacao {
   @@index([empresaId, criadoEm])
 }
 
+/// Aparelho inscrito pra receber PUSH (Web Push / VAPID, 24/10). Um por
+/// navegador × aparelho; o endpoint some quando o provedor responde 404/410.
+model PushInscricao {
+  id          String    @id @default(cuid())
+  usuarioId   String
+  empresaId   String?
+  endpoint    String    @unique
+  p256dh      String
+  auth        String
+  userAgent   String?   @db.VarChar(300)
+  criadoEm    DateTime  @default(now())
+  ultimoUsoEm DateTime?
+
+  @@index([usuarioId])
+}
+
+/// Pendência de marketplace achada pela rotina de hora em hora (24/10): o que
+/// precisa da LOJA (pergunta/mensagem sem resposta, reclamação ou devolução
+/// esperando a loja). Chave estável por (empresa, canal, tipo, chave);
+/// `resolvidaEm` quando some da próxima varredura. O aviso sai 1x por item
+/// (`avisadaEm`) + 1 lembrete com prazo < 24 h (`lembreteEm`).
+model PendenciaMarketplace {
+  id           String    @id @default(cuid())
+  empresaId    String
+  canal        String // MARKETPLACE_ML | MARKETPLACE_SHOPEE | ...
+  tipo         String // PERGUNTA | MENSAGEM | RECLAMACAO | DEVOLUCAO
+  chave        String // id externo (conversa, pergunta, incidente)
+  titulo       String    @db.VarChar(200)
+  detalhe      String?   @db.VarChar(500)
+  link         String?   @db.VarChar(300)
+  desde        DateTime?
+  prazo        DateTime?
+  avisadaEm    DateTime?
+  lembreteEm   DateTime?
+  resolvidaEm  DateTime?
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  @@unique([empresaId, canal, tipo, chave])
+  @@index([empresaId, resolvidaEm])
+}
+
 // ─── KANBAN (estilo Trello) ───────────────────────────────────────────
 // Módulo de quadros visuais + MCP server (docs/kanban-betinna-EM-BATCHES.md).
 // Regras: REP máx 1 board; multi-tenant SEMPRE por empresaId; visibilidade
@@ -4121,27 +4163,27 @@ model CatalogoCategoria {
 
 /// O que aparece na vitrine (um "card" do feed).
 model CatalogoModelo {
-  id          String   @id @default(cuid())
-  empresaId   String
-  nome        String
+  id           String   @id @default(cuid())
+  empresaId    String
+  nome         String
   /// Endereço próprio na vitrine (/p/<slug>, 23/10). Acompanha o NOME (Léo,
   /// 23/10); os anteriores ficam em `slugsAntigos` e redirecionam (301).
-  slug        String?
+  slug         String?
   slugsAntigos String[] @default([])
   /// Título pro Google/IAs (23/10): o <title>, og:title e JSON-LD da página do
   /// produto. Sem ele, vale o nome. O nome curto segue na vitrine.
-  tituloSeo   String?  @db.VarChar(120)
+  tituloSeo    String?  @db.VarChar(120)
   /// Palavras SEO do produto (23/10): meta keywords e `keywords` do JSON-LD.
-  palavrasSeo String[] @default([])
-  categoriaId String?
-  descricao   String?  @db.Text
+  palavrasSeo  String[] @default([])
+  categoriaId  String?
+  descricao    String?  @db.Text
   /// Chips do cartão (ex.: "Gramatura 280", "Capuz").
-  etiquetas   String[] @default([])
+  etiquetas    String[] @default([])
   /// Modelos que combinam com este (conjunto: blusa ↔ calça). Vale nos DOIS
   /// sentidos na vitrine — basta ligar de um lado. Upsell, sem desconto.
-  combinaCom  String[] @default([])
-  ordem       Int      @default(0)
-  ativo       Boolean  @default(true)
+  combinaCom   String[] @default([])
+  ordem        Int      @default(0)
+  ativo        Boolean  @default(true)
 
   // ── KIT PRA ANUNCIAR (Léo, 05/10) ──
   // O revendedor de marketplace baixa fotos + texto pra montar o PRÓPRIO
@@ -4181,9 +4223,8 @@ model CatalogoModelo {
   /// ERP próprio: ordens de produção deste modelo.
   ordensProducao OrdemProducao[]
 
-  @@index([empresaId, ativo, ordem])
-
   @@unique([empresaId, slug])
+  @@index([empresaId, ativo, ordem])
 }
 
 /// Cor marcada num modelo, com as fotos daquela cor.

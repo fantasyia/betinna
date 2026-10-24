@@ -11,6 +11,8 @@ export interface BadgeCounts {
    *  Antes contava todo PENDENTE — inflava (99+) porque conversa não saía de
    *  PENDENTE quando o bot respondia. */
   atendimento: number;
+  /** Pendências abertas dos marketplaces (24/10) — só diretor/admin. */
+  pendencias?: number;
 }
 
 /**
@@ -28,7 +30,7 @@ export class BadgesService {
 
   async getBadges(user: AuthenticatedUser): Promise<BadgeCounts> {
     const empresaId = user.empresaIdAtiva;
-    if (!empresaId) return { vendas: 0, atendimento: 0 };
+    if (!empresaId) return { vendas: 0, atendimento: 0, pendencias: 0 };
 
     // Atendimento: conversas que precisam de HUMANO (bot caiu no fallback /
     // escalou). Não conta as que o bot já respondeu. REP vê só as suas.
@@ -80,6 +82,17 @@ export class BadgesService {
         : Promise.resolve(0),
     ]);
 
-    return { vendas: aprovacoes + cancelamentos, atendimento };
+    // Pendências dos marketplaces (24/10): nunca derruba os outros badges.
+    let pendencias = 0;
+    if (['ADMIN', 'DIRECTOR'].includes(user.role)) {
+      try {
+        pendencias = await this.prisma.pendenciaMarketplace.count({
+          where: { empresaId, resolvidaEm: null },
+        });
+      } catch {
+        pendencias = 0;
+      }
+    }
+    return { vendas: aprovacoes + cancelamentos, atendimento, pendencias };
   }
 }

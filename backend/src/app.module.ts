@@ -42,6 +42,8 @@ import { InboxModule } from '@modules/inbox/inbox.module';
 import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
 import { AmostrasModule } from '@modules/amostras/amostras.module';
 import { BadgesModule } from '@modules/badges/badges.module';
+import { PushModule } from '@modules/push/push.module';
+import { PendenciasModule } from '@modules/pendencias/pendencias.module';
 import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { AuditModule } from '@modules/audit/audit.module';
@@ -267,6 +269,8 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     InboxInternaModule,
     AmostrasModule,
     BadgesModule,
+    PushModule,
+    PendenciasModule,
     LeadsModule,
     FunisModule,
     KanbanModule,

@@ -14,6 +14,7 @@ import {
   Briefcase,
   Settings,
   Inbox,
+  BellRing,
   Bot,
   Menu,
   ChevronRight,
@@ -184,6 +185,14 @@ const SECTIONS: NavSection[] = [
         // (abaixo). Se ficasse no match, os dois acendiam juntos na sidebar.
         match: ['/ocorrencias', '/incidentes', '/whatsapp'],
         badgeKey: 'atendimento',
+      },
+      {
+        // Pendências dos marketplaces (24/10): o que espera a loja, com prazo.
+        to: '/pendencias',
+        label: 'Pendências',
+        icon: BellRing,
+        ocultarPara: ['REP', 'GERENTE', 'SAC'],
+        badgeKey: 'pendencias',
       },
       {
         to: '/mullerbot',

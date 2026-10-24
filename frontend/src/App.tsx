@@ -62,6 +62,7 @@ const RegrasProducaoPage = lazyComRetry(() => import("@/pages/producao/RegrasPro
 const FichaOpImpressaoPage = lazyComRetry(() => import("@/pages/producao/FichaOpImpressaoPage"));
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
+const PendenciasPage = lazyComRetry(() => import("@/pages/PendenciasPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
   () => import("@/pages/MarketplaceIncidentsPage"),
 );
@@ -574,6 +575,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <RespostasRapidasPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/pendencias",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute bloquearPara={["REP", "GERENTE", "SAC"]}>
+          <PageSuspense>
+            <PendenciasPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

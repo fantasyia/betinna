@@ -8,17 +8,24 @@ import { api } from '@/lib/api';
 export interface BadgeCounts {
   vendas: number;
   atendimento: number;
+  /** Pendências dos marketplaces (24/10). */
+  pendencias: number;
 }
 
 export function useBadges(): BadgeCounts {
-  const [counts, setCounts] = useState<BadgeCounts>({ vendas: 0, atendimento: 0 });
+  const [counts, setCounts] = useState<BadgeCounts>({ vendas: 0, atendimento: 0, pendencias: 0 });
 
   useEffect(() => {
     let active = true;
     async function load() {
       try {
         const r = await api.get<BadgeCounts>('/badges');
-        if (active && r) setCounts({ vendas: r.vendas ?? 0, atendimento: r.atendimento ?? 0 });
+        if (active && r)
+          setCounts({
+            vendas: r.vendas ?? 0,
+            atendimento: r.atendimento ?? 0,
+            pendencias: r.pendencias ?? 0,
+          });
       } catch {
         // silencioso — badge é informativo, não bloqueia nada
       }
