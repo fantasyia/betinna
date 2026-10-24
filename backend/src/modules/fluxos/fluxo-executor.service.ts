@@ -2120,7 +2120,14 @@ export class FluxoExecutorService {
     };
 
     // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
-    await this.pacing.aguardarSlot(empresaId, reativo);
+    // Mesma exceção do gate de cima (24/10): teste por token (só sai pra número
+    // da própria empresa) e lead de teste acelerado não esperam a janela — sem
+    // isto o passo passava no gate e era adiado AQUI, "na borda".
+    const semJanela =
+      this.testeViaToken(ctx) ||
+      (await leadAcelerado(this.prisma, empresaId, ctx['leadId'] as string | undefined));
+    if (semJanela) await this.pacing.aguardarSlot(empresaId, reativo, { ignorarJanela: true });
+    else await this.pacing.aguardarSlot(empresaId, reativo);
 
     // Envio: se há anexo (midia), manda mídia com a `mensagem` como legenda; senão, texto.
     // Único ponto de envio (reusado pelo caminho de grupo e pelo de telefone).
