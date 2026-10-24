@@ -70,6 +70,12 @@ const camposModelo = {
   tituloMarketplace: z.string().max(60).nullable().optional().describe("Material de divulgação (marketplace)"),
   descricaoMarketplace: z.string().max(8000).nullable().optional().describe("Material de divulgação (marketplace)"),
   composicao: z.string().max(200).nullable().optional().describe('Ex.: "100% poliamida"'),
+  ncm: z
+    .string()
+    .max(12)
+    .nullable()
+    .optional()
+    .describe('NCM do produto, 8 dígitos (pode vir com pontos; grava só os dígitos). Variação e kit herdam. Conferido pelo contador.'),
   tituloSeo: z
     .string()
     .max(120)

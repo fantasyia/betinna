@@ -4153,6 +4153,9 @@ model CatalogoModelo {
   descricaoMarketplace String? @db.Text
   /// Composição do tecido (ex.: "50% algodão, 50% poliéster").
   composicao           String? @db.VarChar(200)
+  /// NCM (8 dígitos, SEM pontuação) — vai no export pro Magis5; variação e kit
+  /// herdam (24/10). O resto do fiscal o Léo preenche no Magis5.
+  ncm                  String? @db.VarChar(8)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt

@@ -117,6 +117,8 @@ export interface Modelo {
   tituloMarketplace: string | null;
   descricaoMarketplace: string | null;
   composicao: string | null;
+  /** NCM, 8 dígitos sem pontos (24/10). */
+  ncm?: string | null;
   /** Título pro Google/IAs (23/10); null = o nome. */
   tituloSeo?: string | null;
   /** Palavras SEO (23/10). */

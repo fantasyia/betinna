@@ -130,6 +130,18 @@ export const modeloSchema = z
     tituloMarketplace: z.string().trim().max(60).nullable().optional(),
     descricaoMarketplace: z.string().trim().max(8000).nullable().optional(),
     composicao: z.string().trim().max(200).nullable().optional(),
+    /**
+     * NCM (24/10): aceita com ou sem pontos e grava SÓ os 8 dígitos — com
+     * pontuação a SEFAZ recusa a nota. Vazio = sem NCM.
+     */
+    ncm: z
+      .string()
+      .trim()
+      .transform((v) => v.replace(/\D/g, ''))
+      .refine((v) => v === '' || v.length === 8, 'NCM tem 8 dígitos')
+      .transform((v) => v || null)
+      .nullable()
+      .optional(),
     /** Título pro Google/IAs (23/10). Vazio = usa o nome. */
     tituloSeo: z.string().trim().max(120).nullable().optional(),
     /** Palavras SEO (23/10), sem repetir. */

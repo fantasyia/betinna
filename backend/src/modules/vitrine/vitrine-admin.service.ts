@@ -536,6 +536,7 @@ export class VitrineAdminService {
             tituloMarketplace: dto.tituloMarketplace ?? null,
             descricaoMarketplace: dto.descricaoMarketplace ?? null,
             composicao: dto.composicao ?? null,
+            ncm: dto.ncm ?? null,
             tituloSeo: dto.tituloSeo || null,
             palavrasSeo: [...new Set(dto.palavrasSeo ?? [])],
           },
@@ -611,6 +612,7 @@ export class VitrineAdminService {
               ? { descricaoMarketplace: dto.descricaoMarketplace }
               : {}),
             ...(dto.composicao !== undefined ? { composicao: dto.composicao } : {}),
+            ...(dto.ncm !== undefined ? { ncm: dto.ncm } : {}),
           },
         });
         await this.aplicarGrade(tx, id, dto);

@@ -69,6 +69,7 @@ export interface Rascunho {
   tituloMarketplace: string;
   descricaoMarketplace: string;
   composicao: string;
+  ncm: string;
   /** Título pro Google/IAs e palavras SEO (23/10). */
   tituloSeo: string;
   palavrasSeo: string;
@@ -106,6 +107,7 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
     tituloMarketplace: m?.tituloMarketplace ?? '',
     descricaoMarketplace: m?.descricaoMarketplace ?? '',
     composicao: m?.composicao ?? '',
+    ncm: m?.ncm ?? '',
     tituloSeo: m?.tituloSeo ?? '',
     palavrasSeo: (m?.palavrasSeo ?? []).join(', '),
     corIds: m?.cores.map((c) => c.corId) ?? [],
@@ -189,6 +191,7 @@ export function montarCorpo(
       tituloMarketplace: r.tituloMarketplace.trim() || null,
       descricaoMarketplace: r.descricaoMarketplace.trim() || null,
       composicao: r.composicao.trim() || null,
+      ncm: (r.ncm ?? '').replace(/\D/g, '') || null,
       tituloSeo: (r.tituloSeo ?? '').trim() || null,
       palavrasSeo: separar(r.palavrasSeo ?? '').filter((p) => p.length >= 2),
       corIds: r.corIds,
@@ -878,6 +881,23 @@ export function ModeloEditor({
                 value={r.composicao}
                 maxLength={200}
                 onChange={(e) => set('composicao', e.target.value)}
+              />
+            </Field>
+            <Field
+              label="NCM"
+              hint="8 dígitos, sem pontos (ex.: 61034200). Vai pro Magis5; cores e kits herdam."
+              error={
+                r.ncm.replace(/\D/g, '') && r.ncm.replace(/\D/g, '').length !== 8
+                  ? 'NCM tem 8 dígitos'
+                  : undefined
+              }
+            >
+              <Input
+                value={r.ncm}
+                inputMode="numeric"
+                maxLength={10}
+                data-testid="modelo-ncm"
+                onChange={(e) => set('ncm', e.target.value.replace(/[^\d.]/g, ''))}
               />
             </Field>
           </div>
