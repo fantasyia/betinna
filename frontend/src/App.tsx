@@ -63,6 +63,7 @@ const FichaOpImpressaoPage = lazyComRetry(() => import("@/pages/producao/FichaOp
 const MetasPage = lazyComRetry(() => import("@/pages/MetasPage"));
 const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const PendenciasPage = lazyComRetry(() => import("@/pages/PendenciasPage"));
+const PedidosMarketplacePage = lazyComRetry(() => import("@/pages/PedidosMarketplacePage"));
 const MarketplaceIncidentsPage = lazyComRetry(
   () => import("@/pages/MarketplaceIncidentsPage"),
 );
@@ -575,6 +576,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <RespostasRapidasPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/pedidos-marketplace",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute bloquearPara={["REP", "GERENTE", "SAC"]}>
+          <PageSuspense>
+            <PedidosMarketplacePage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

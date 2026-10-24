@@ -146,6 +146,7 @@ export interface ShopeeOrderItem {
   item_id: number;
   item_name: string;
   item_sku?: string;
+  model_sku?: string;
   model_id?: number;
   model_name?: string;
   model_quantity_purchased: number;

@@ -44,6 +44,7 @@ import { AmostrasModule } from '@modules/amostras/amostras.module';
 import { BadgesModule } from '@modules/badges/badges.module';
 import { PushModule } from '@modules/push/push.module';
 import { PendenciasModule } from '@modules/pendencias/pendencias.module';
+import { PedidosMarketplaceModule } from '@modules/pedidos-marketplace/pedidos-marketplace.module';
 import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { AuditModule } from '@modules/audit/audit.module';
@@ -271,6 +272,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     BadgesModule,
     PushModule,
     PendenciasModule,
+    PedidosMarketplaceModule,
     LeadsModule,
     FunisModule,
     KanbanModule,

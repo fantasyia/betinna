@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { MLClientService } from './ml-client.service';
 import type { MLOrder } from './ml.types';
+import { custoDosItens, financeiroMl } from '@modules/pedidos-marketplace/financeiro';
 
 /**
  * Pedidos do Mercado Livre.
@@ -52,8 +53,9 @@ export class MLOrdersService {
 
     const existing = await this.prisma.marketplaceOrder.findUnique({
       where: { plataforma_numeroExterno: { plataforma: 'ML', numeroExterno: externalId } },
-      select: { id: true },
+      select: { id: true, frete: true },
     });
+    const fin = await this.financeiro(empresaId, order, existing?.frete ?? null);
 
     const data = {
       empresaId,
@@ -73,10 +75,45 @@ export class MLOrdersService {
           status: data.status,
           valor: data.valor,
           quantidade: data.quantidade,
+          ...fin,
         },
       });
     } else {
-      await this.prisma.marketplaceOrder.create({ data });
+      await this.prisma.marketplaceOrder.create({ data: { ...data, ...fin } });
+    }
+  }
+
+  /**
+   * Itens, comissão, frete da loja, líquido e custo (24/10). O frete pede uma
+   * chamada a mais (custo do envio) — só quando o pedido ainda não tem.
+   * Melhor esforço: falhar aqui nunca impede gravar o pedido.
+   */
+  private async financeiro(empresaId: string, order: MLOrder, freteSalvo: number | null) {
+    try {
+      let frete = freteSalvo;
+      if (frete === null && order.shipping?.id) {
+        const c = await this.ml
+          .get<{
+            senders?: Array<{ cost?: number }>;
+          }>(empresaId, `/shipments/${order.shipping.id}/costs`)
+          .catch(() => null);
+        const v = c?.senders?.[0]?.cost;
+        frete = typeof v === 'number' ? v : null;
+      }
+      const f = financeiroMl(order, frete);
+      const c = await custoDosItens(this.prisma, empresaId, 'ML', f.itens);
+      return {
+        itens: c.itens as unknown as object,
+        taxas: f.taxas,
+        frete: f.frete,
+        liquido: f.liquido,
+        custo: c.custo,
+        custoCompleto: c.completo,
+        financeiroEm: new Date(),
+      };
+    } catch (err) {
+      this.logger.warn(`[pedido ML ${order.id}] financeiro não calculado: ${String(err)}`);
+      return {};
     }
   }
 

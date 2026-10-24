@@ -2968,12 +2968,39 @@ model MarketplaceOrder {
   pedidoEm      DateTime            @default(now())
   enviadoEm     DateTime?
   entregueEm    DateTime?
+  /// Financeiro do pedido (24/10, tela de pedidos com lucro). Itens com SKU e
+  /// preço; taxas (comissão + serviço), frete pago pela loja e o LÍQUIDO que
+  /// cai na conta, como o marketplace informa. Custo = custo por peça do
+  /// cadastro (SKU → variação, ou vínculo manual pra kit); `custoCompleto`
+  /// false quando algum item ficou sem custo.
+  itens         Json?
+  taxas         Float?
+  frete         Float?
+  liquido       Float?
+  custo         Float?
+  custoCompleto Boolean?
+  financeiroEm  DateTime?
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   @@unique([plataforma, numeroExterno])
   @@index([empresaId])
   @@index([status])
+}
+
+/// SKU do marketplace → produto do cadastro (24/10): pro custo de kit ("Kit 2
+/// bermudas" = 2 × a variação) e de SKU que não bate com o do cadastro.
+model SkuMarketplaceVinculo {
+  id          String   @id @default(cuid())
+  empresaId   String
+  plataforma  String
+  sku         String
+  variacaoId  String
+  quantidade  Int      @default(1)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([empresaId, plataforma, sku])
 }
 
 // ─── INTEGRAÇÕES (tokens criptografados) ──────────────────────────────

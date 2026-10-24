@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { ShopeeClientService } from './shopee-client.service';
 import type { ShopeeOrder, ShopeeOrderListResponse } from './shopee.types';
+import { custoDosItens, financeiroShopee } from '@modules/pedidos-marketplace/financeiro';
 
 const PATH_ORDER_LIST = '/api/v2/order/get_order_list';
 const PATH_ORDER_DETAIL = '/api/v2/order/get_order_detail';
@@ -53,8 +54,9 @@ export class ShopeeOrdersService {
 
     const existing = await this.prisma.marketplaceOrder.findUnique({
       where: { plataforma_numeroExterno: { plataforma: 'SHOPEE', numeroExterno: externalId } },
-      select: { id: true },
+      select: { id: true, liquido: true },
     });
+    const fin = await this.financeiro(empresaId, order, existing?.liquido ?? null);
     const data = {
       empresaId,
       plataforma: 'SHOPEE' as const,
@@ -73,10 +75,51 @@ export class ShopeeOrdersService {
           status: data.status,
           valor: data.valor,
           quantidade: data.quantidade,
+          ...fin,
         },
       });
     } else {
-      await this.prisma.marketplaceOrder.create({ data });
+      await this.prisma.marketplaceOrder.create({ data: { ...data, ...fin } });
+    }
+  }
+
+  /**
+   * Itens, taxas, frete da loja, líquido e custo (24/10). O extrato (escrow) é
+   * uma chamada por pedido — só pra quem já foi pago/enviado e ainda não tem
+   * líquido. Melhor esforço: nunca impede gravar o pedido.
+   */
+  private async financeiro(empresaId: string, order: ShopeeOrder, liquidoSalvo: number | null) {
+    try {
+      const pagoOuEnviado = [
+        'READY_TO_SHIP',
+        'PROCESSED',
+        'SHIPPED',
+        'TO_CONFIRM_RECEIVE',
+        'COMPLETED',
+      ].includes(order.order_status);
+      let escrow: Parameters<typeof financeiroShopee>[1] = null;
+      if (pagoOuEnviado && liquidoSalvo === null) {
+        const r = await this.shopee
+          .getShop<{
+            response?: { order_income?: Parameters<typeof financeiroShopee>[1] };
+          }>(empresaId, '/api/v2/payment/get_escrow_detail', { order_sn: order.order_sn })
+          .catch(() => null);
+        escrow = r?.response?.order_income ?? null;
+      }
+      const f = financeiroShopee(order, escrow);
+      const c = await custoDosItens(this.prisma, empresaId, 'SHOPEE', f.itens);
+      return {
+        itens: c.itens as unknown as object,
+        ...(f.liquido !== null ? { taxas: f.taxas, frete: f.frete, liquido: f.liquido } : {}),
+        custo: c.custo,
+        custoCompleto: c.completo,
+        financeiroEm: new Date(),
+      };
+    } catch (err) {
+      this.logger.warn(
+        `[pedido Shopee ${order.order_sn}] financeiro não calculado: ${String(err)}`,
+      );
+      return {};
     }
   }
 }

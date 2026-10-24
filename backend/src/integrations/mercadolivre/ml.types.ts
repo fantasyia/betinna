@@ -110,9 +110,17 @@ export interface MLMessagesResponse {
 // ─── Orders ──────────────────────────────────────────────────────────
 
 export interface MLOrderItem {
-  item: { id: string; title: string; variation_id?: number | null };
+  item: {
+    id: string;
+    title: string;
+    variation_id?: number | null;
+    seller_sku?: string | null;
+    variation_attributes?: Array<{ name: string; value_name: string }>;
+  };
   quantity: number;
   unit_price: number;
+  /** Comissão do ML por UNIDADE. */
+  sale_fee?: number | null;
   full_unit_price?: number;
   currency_id: string;
 }

@@ -15,6 +15,7 @@ import {
   Settings,
   Inbox,
   BellRing,
+  ShoppingBag,
   Bot,
   Menu,
   ChevronRight,
@@ -185,6 +186,13 @@ const SECTIONS: NavSection[] = [
         // (abaixo). Se ficasse no match, os dois acendiam juntos na sidebar.
         match: ['/ocorrencias', '/incidentes', '/whatsapp'],
         badgeKey: 'atendimento',
+      },
+      {
+        // Pedidos de venda dos marketplaces, 1 por 1, com lucro (24/10).
+        to: '/pedidos-marketplace',
+        label: 'Vendas marketplaces',
+        icon: ShoppingBag,
+        ocultarPara: ['REP', 'GERENTE', 'SAC'],
       },
       {
         // Pendências dos marketplaces (24/10): o que espera a loja, com prazo.
