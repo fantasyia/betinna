@@ -61,6 +61,40 @@ describe('BotCustoService — orçamento ÚNICO por período (não soma in+out)'
       pausadoPorCustoAte: null,
     };
 
+    it('pausa velha com o teto AUMENTADO: libera e limpa a pausa (24/10)', async () => {
+      (prisma.mullerBotPersona as Record<string, unknown>).updateMany = vi
+        .fn()
+        .mockResolvedValue({ count: 1 });
+      prisma.mullerBotPersona.findUnique.mockResolvedValue({
+        limiteTokensDiaIn: 500000,
+        limiteTokensMesIn: 15000000,
+        pausadoPorCustoAte: new Date(Date.now() + 3600_000),
+      });
+      prisma.botUsoTokens.findUnique.mockResolvedValue({ tokensIn: 94937, tokensOut: 7440 });
+      prisma.botUsoTokens.aggregate.mockResolvedValue({
+        _sum: { tokensIn: 200000, tokensOut: 20000 },
+      });
+
+      expect((await svc.verificarTeto('emp-1')).bloqueado).toBe(false);
+      expect(
+        (prisma.mullerBotPersona as unknown as { updateMany: ReturnType<typeof vi.fn> }).updateMany,
+      ).toHaveBeenCalledWith({
+        where: { empresaId: 'emp-1', usuarioId: '' },
+        data: { pausadoPorCustoAte: null },
+      });
+    });
+
+    it('pausa com o uso AINDA acima do teto continua bloqueando', async () => {
+      prisma.mullerBotPersona.findUnique.mockResolvedValue({
+        ...persona,
+        pausadoPorCustoAte: new Date(Date.now() + 3600_000),
+      });
+      prisma.botUsoTokens.findUnique.mockResolvedValue({ tokensIn: 94937, tokensOut: 7440 });
+      prisma.botUsoTokens.aggregate.mockResolvedValue({ _sum: { tokensIn: 200000, tokensOut: 0 } });
+
+      expect((await svc.verificarTeto('emp-1')).bloqueado).toBe(true);
+    });
+
     it('bloqueia quando total do dia (in+out) >= limite', async () => {
       prisma.mullerBotPersona.findUnique.mockResolvedValue(persona);
       prisma.botUsoTokens.findUnique.mockResolvedValue({ tokensIn: 60000, tokensOut: 40000 }); // 100k

@@ -107,18 +107,32 @@ export class BotCustoService {
     const limiteDia = persona?.limiteTokensDiaIn ?? LIMITE_TOKENS_DIA_DEFAULT;
     const limiteMes = persona?.limiteTokensMesIn ?? LIMITE_TOKENS_MES_DEFAULT;
 
+    const uso = await this.usoAtual(empresaId);
+    // Orçamento único por período: total de tokens (entrada + saída) vs o limite.
+    const usadoDia = uso.diaIn + uso.diaOut;
+    const usadoMes = uso.mesIn + uso.mesOut;
+    const acimaDoTeto = usadoDia >= limiteDia || usadoMes >= limiteMes;
+
     if (persona?.pausadoPorCustoAte && persona.pausadoPorCustoAte.getTime() > Date.now()) {
+      // Pausa velha com o teto JÁ AUMENTADO (24/10): o gestor subiu o limite e o
+      // robô continuava parado até a virada do dia. Abaixo do teto atual, a pausa
+      // não vale mais — limpa e segue.
+      if (!acimaDoTeto) {
+        await this.prisma.mullerBotPersona
+          .updateMany({
+            where: { empresaId, usuarioId: '' },
+            data: { pausadoPorCustoAte: null },
+          })
+          .catch(() => undefined);
+        this.logger.log(`[custo] ${empresaId}: teto aumentado — pausa por custo liberada`);
+        return { bloqueado: false };
+      }
       return {
         bloqueado: true,
         motivo: 'Teto de custo do bot atingido (pausado automaticamente).',
       };
     }
-
-    const uso = await this.usoAtual(empresaId);
-    // Orçamento único por período: total de tokens (entrada + saída) vs o limite.
-    const usadoDia = uso.diaIn + uso.diaOut;
-    const usadoMes = uso.mesIn + uso.mesOut;
-    if (usadoDia >= limiteDia || usadoMes >= limiteMes) {
+    if (acimaDoTeto) {
       return { bloqueado: true, motivo: 'Teto de custo do bot atingido.' };
     }
     return { bloqueado: false };
