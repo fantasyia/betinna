@@ -4156,6 +4156,10 @@ model CatalogoModelo {
   /// NCM (8 dígitos, SEM pontuação) — vai no export pro Magis5; variação e kit
   /// herdam (24/10). O resto do fiscal o Léo preenche no Magis5.
   ncm                  String? @db.VarChar(8)
+  /// Resto do fiscal do cadastro (24/10): CEST, origem, unidade, CSOSN, CFOP,
+  /// marca, embalagem, IBS/CBS. Vazio = não preenchido (sem padrão inventado).
+  /// Formato em modules/vitrine/fiscal.ts.
+  fiscal               Json?
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -4313,6 +4317,8 @@ model CatalogoVariacao {
   skuSecundario   String?
   /// EAN-13 da peça (20/10). Prefixo GS1 da empresa ou faixa interna (2).
   ean             String?
+  /// Peça sem código de barras: o export sai "SEM GTIN" (24/10).
+  semGtin         Boolean @default(false)
   /// Opcional nesta fase e NÃO bloqueia venda.
   estoque         Int?
   /// ERP próprio: abaixo disto (disponível) a variação aparece em "Reposição".

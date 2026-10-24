@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fiscalEmpresaSchema } from '@modules/vitrine/fiscal';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 import { boolQuery } from '@shared/validators/query.schema';
 
@@ -637,6 +638,8 @@ export const tenantConfigPatchSchema = z
     materiaisVenda: materiaisTiposSchema.nullable(),
     devolucaoInterna: devolucaoInternaSchema.nullable(),
     inboxInterna: inboxInternaSchema.nullable(),
+    /** Padrão fiscal da empresa (24/10) — vazio = não definido. */
+    fiscal: fiscalEmpresaSchema.nullable().optional(),
     whatsappMidia: whatsappMidiaSchema.nullable().optional(),
     envioWhatsapp: envioWhatsappSchema.nullable(),
     emailTransacional: emailTransacionalSchema.nullable(),

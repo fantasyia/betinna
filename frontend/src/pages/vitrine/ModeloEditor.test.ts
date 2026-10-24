@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copiarPrecos, lerPreco, montarCorpo, type Rascunho } from './ModeloEditor';
+import { copiarPrecos, fiscalDoRascunho, lerPreco, montarCorpo, type Rascunho } from './ModeloEditor';
 import type { Linha } from './tipos';
 
 describe('lerPreco', () => {
@@ -161,5 +161,15 @@ describe('copiarPrecos (item 9)', () => {
       colunas: ['Tórax'],
     });
     expect(b.linhas['lin-plus'].precoEntrada).toBe(''); // original intacto
+  });
+});
+
+describe('fiscalDoRascunho (24/10)', () => {
+  it('tira o vazio, embalagem vira número; nada preenchido = null', () => {
+    expect(
+      fiscalDoRascunho({ origem: '0', cest: ' ', embalagemAlturaCm: '4,5', marca: 'Ribelt' }),
+    ).toEqual({ origem: '0', embalagemAlturaCm: 4.5, marca: 'Ribelt' });
+    expect(fiscalDoRascunho({ cest: '', marca: '' })).toBeNull();
+    expect(fiscalDoRascunho(undefined)).toBeNull();
   });
 });

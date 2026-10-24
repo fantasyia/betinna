@@ -18,6 +18,7 @@ import { maskCNPJ } from '@/lib/masks';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import { cn } from '@/lib/cn';
 import { MidiaRetencaoConfig } from '@/pages/configuracoes/MidiaRetencaoConfig';
+import { FiscalEmpresaConfig } from '@/pages/configuracoes/FiscalEmpresaConfig';
 import {
   PEDIDO_STATUSES,
   STATUS_VARIANTS,
@@ -234,6 +235,7 @@ export default function ConfiguracoesPage() {
           <ComissaoConfig />
           <MateriaisTiposConfig />
           <DevolucaoConfig />
+          <FiscalEmpresaConfig />
           <InboxInternaConfig />
           <EnvioWhatsappConfig />
           <MidiaRetencaoConfig />

@@ -76,6 +76,24 @@ const camposModelo = {
     .nullable()
     .optional()
     .describe('NCM do produto, 8 dígitos (pode vir com pontos; grava só os dígitos). Variação e kit herdam. Conferido pelo contador.'),
+  fiscal: z
+    .object({
+      cest: z.string().max(10).nullable().optional().describe('7 dígitos'),
+      origem: z.string().max(1).nullable().optional().describe('0 a 8 (0 = nacional)'),
+      unidade: z.string().max(6).nullable().optional().describe('UN, PC, KIT'),
+      csosn: z.string().max(3).nullable().optional().describe('sobrescreve o da empresa'),
+      cfopDentro: z.string().max(5).nullable().optional(),
+      cfopFora: z.string().max(5).nullable().optional(),
+      marca: z.string().max(40).nullable().optional(),
+      embalagemComprimentoCm: z.number().positive().max(500).nullable().optional(),
+      embalagemLarguraCm: z.number().positive().max(500).nullable().optional(),
+      embalagemAlturaCm: z.number().positive().max(500).nullable().optional(),
+      ibsCbsCst: z.string().max(3).nullable().optional().describe('reforma tributária, reservado'),
+      ibsCbsClassTrib: z.string().max(6).nullable().optional().describe('reforma tributária, reservado'),
+    })
+    .nullable()
+    .optional()
+    .describe('Fiscal do produto (pro Magis5). Manda o bloco INTEIRO (substitui); vazio = não preenchido, NUNCA inventar valor. null apaga.'),
   tituloSeo: z
     .string()
     .max(120)
@@ -448,6 +466,7 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
       .optional()
       .describe("EAN-13 com dígito verificador válido; null tira"),
     estoque: z.number().int().min(0).nullable().optional(),
+    semGtin: z.boolean().optional().describe('Peça sem código de barras: o export sai "SEM GTIN"'),
   });
   server.registerTool(
     "vitrine_variacoes_atualizar",

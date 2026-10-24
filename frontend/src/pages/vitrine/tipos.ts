@@ -119,6 +119,8 @@ export interface Modelo {
   composicao: string | null;
   /** NCM, 8 dígitos sem pontos (24/10). */
   ncm?: string | null;
+  /** Resto do fiscal (24/10), vazio = não preenchido. */
+  fiscal?: Record<string, string | number | null> | null;
   /** Título pro Google/IAs (23/10); null = o nome. */
   tituloSeo?: string | null;
   /** Palavras SEO (23/10). */
@@ -137,6 +139,8 @@ export interface Modelo {
     skuSecundario?: string | null;
     /** EAN-13 (20/10); sem prefixo GS1, faixa interna (começa com 2). */
     ean?: string | null;
+    /** Sem código de barras (export "SEM GTIN"). */
+    semGtin?: boolean;
     estoque: number | null;
   }>;
 }

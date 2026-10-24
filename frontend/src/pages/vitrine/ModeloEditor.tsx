@@ -60,6 +60,38 @@ export interface RascunhoLinha {
   pesos?: Record<string, string>;
 }
 
+/** Campos fiscais do produto (24/10) — rótulo e dica; embalagem é número em cm. */
+export const CAMPOS_FISCAIS: Array<{ k: string; rotulo: string; dica: string; cm?: true }> = [
+  { k: 'origem', rotulo: 'Origem', dica: '0 a 8 (0 = nacional)' },
+  { k: 'unidade', rotulo: 'Unidade', dica: 'UN, PC, KIT' },
+  { k: 'cest', rotulo: 'CEST', dica: '7 dígitos (vestuário em geral não tem)' },
+  { k: 'csosn', rotulo: 'CSOSN', dica: 'Vazio = o da empresa' },
+  { k: 'cfopDentro', rotulo: 'CFOP dentro do estado', dica: 'Vazio = o da empresa' },
+  { k: 'cfopFora', rotulo: 'CFOP fora do estado', dica: 'Vazio = o da empresa' },
+  { k: 'marca', rotulo: 'Marca', dica: 'Ex.: Ribelt' },
+  { k: 'embalagemComprimentoCm', rotulo: 'Embalagem: comprimento (cm)', dica: '', cm: true },
+  { k: 'embalagemLarguraCm', rotulo: 'Embalagem: largura (cm)', dica: '', cm: true },
+  { k: 'embalagemAlturaCm', rotulo: 'Embalagem: altura (cm)', dica: '', cm: true },
+  { k: 'ibsCbsCst', rotulo: 'IBS/CBS: CST', dica: 'Reforma tributária (reservado)' },
+  { k: 'ibsCbsClassTrib', rotulo: 'IBS/CBS: cClassTrib', dica: 'Reforma tributária (reservado)' },
+];
+
+/** Rascunho → corpo: tira o vazio; embalagem vira número; nada preenchido = null. */
+export function fiscalDoRascunho(
+  f: Record<string, string> | undefined,
+): Record<string, string | number> | null {
+  const out: Record<string, string | number> = {};
+  for (const c of CAMPOS_FISCAIS) {
+    const v = (f?.[c.k] ?? '').trim();
+    if (!v) continue;
+    if (c.cm) {
+      const n = Number(v.replace(',', '.'));
+      if (Number.isFinite(n) && n > 0) out[c.k] = n;
+    } else out[c.k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export interface Rascunho {
   nome: string;
   categoriaId: string;
@@ -70,6 +102,8 @@ export interface Rascunho {
   descricaoMarketplace: string;
   composicao: string;
   ncm: string;
+  /** Resto do fiscal (24/10): texto por campo; vazio = não preenchido. */
+  fiscal?: Record<string, string>;
   /** Título pro Google/IAs e palavras SEO (23/10). */
   tituloSeo: string;
   palavrasSeo: string;
@@ -108,6 +142,9 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
     descricaoMarketplace: m?.descricaoMarketplace ?? '',
     composicao: m?.composicao ?? '',
     ncm: m?.ncm ?? '',
+    fiscal: Object.fromEntries(
+      Object.entries(m?.fiscal ?? {}).map(([k, v]) => [k, v === null ? '' : String(v)]),
+    ),
     tituloSeo: m?.tituloSeo ?? '',
     palavrasSeo: (m?.palavrasSeo ?? []).join(', '),
     corIds: m?.cores.map((c) => c.corId) ?? [],
@@ -192,6 +229,7 @@ export function montarCorpo(
       descricaoMarketplace: r.descricaoMarketplace.trim() || null,
       composicao: r.composicao.trim() || null,
       ncm: (r.ncm ?? '').replace(/\D/g, '') || null,
+      fiscal: fiscalDoRascunho(r.fiscal),
       tituloSeo: (r.tituloSeo ?? '').trim() || null,
       palavrasSeo: separar(r.palavrasSeo ?? '').filter((p) => p.length >= 2),
       corIds: r.corIds,
@@ -322,12 +360,14 @@ export function ModeloEditor({
 
   async function salvarVariacao(
     id: string,
-    campo: 'sku' | 'skuSecundario' | 'ean' | 'estoque',
+    campo: 'sku' | 'skuSecundario' | 'ean' | 'estoque' | 'semGtin',
     valor: string,
   ) {
     const v = valor.trim();
     const corpo =
-      campo === 'sku'
+      campo === 'semGtin'
+        ? { semGtin: v === 'sim' }
+        : campo === 'sku'
         ? { sku: v || null }
         : campo === 'skuSecundario'
           ? { skuSecundario: v || null }
@@ -900,6 +940,27 @@ export function ModeloEditor({
                 onChange={(e) => set('ncm', e.target.value.replace(/[^\d.]/g, ''))}
               />
             </Field>
+            {/* Fiscal (24/10): tudo opcional, sem padrão — vazio = não preenchido. */}
+            <details className="sm:col-span-2" data-testid="modelo-fiscal">
+              <summary className="cursor-pointer text-sm font-semibold text-text">
+                Dados fiscais (pro Magis5)
+              </summary>
+              <div className="grid sm:grid-cols-3 gap-3 mt-2">
+                {CAMPOS_FISCAIS.map((c) => (
+                  <Field key={c.k} label={c.rotulo} hint={c.dica || undefined}>
+                    <Input
+                      value={r.fiscal?.[c.k] ?? ''}
+                      inputMode={c.cm ? 'decimal' : undefined}
+                      maxLength={c.k === 'marca' ? 40 : 10}
+                      data-testid={`fiscal-${c.k}`}
+                      onChange={(e) =>
+                        set('fiscal', { ...(r.fiscal ?? {}), [c.k]: e.target.value })
+                      }
+                    />
+                  </Field>
+                ))}
+              </div>
+            </details>
           </div>
           {linhasMarcadas.map((l) => (
             <TabelaMedidasEditor
@@ -931,7 +992,11 @@ function TabelaVariacoes({
   onGerar,
 }: {
   modelo: Modelo | null;
-  onSalvar: (id: string, campo: 'sku' | 'skuSecundario' | 'ean' | 'estoque', valor: string) => unknown;
+  onSalvar: (
+    id: string,
+    campo: 'sku' | 'skuSecundario' | 'ean' | 'estoque' | 'semGtin',
+    valor: string,
+  ) => unknown;
   onGerar: () => unknown;
 }) {
   if (!modelo || modelo.variacoes.length === 0) {
@@ -1027,10 +1092,22 @@ function TabelaVariacoes({
                     inputMode="numeric"
                     className="h-8 tabular-nums"
                     data-testid={`ean-${v.id}`}
+                    disabled={v.semGtin === true}
                     onBlur={(e) =>
                       e.target.value !== (v.ean ?? '') && void onSalvar(v.id, 'ean', e.target.value)
                     }
                   />
+                  <label className="flex items-center gap-1 text-[11px] text-muted mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={v.semGtin === true}
+                      data-testid={`semgtin-${v.id}`}
+                      onChange={(e) =>
+                        void onSalvar(v.id, 'semGtin', e.target.checked ? 'sim' : 'nao')
+                      }
+                    />
+                    sem GTIN
+                  </label>
                 </td>
                 <td className="px-3 py-1.5">
                   <Input

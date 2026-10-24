@@ -14,6 +14,7 @@ import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-p
 import { configClarity, type ClarityConfigDto } from './clarity';
 import { slugDoNome, slugLivre } from './slug-modelo';
 import { configGeo, type GeoConfigDto } from './geo';
+import { limparFiscal } from './fiscal';
 import {
   campanhasMeta,
   linkDaOrigem,
@@ -97,6 +98,7 @@ const modeloInclude = {
       sku: true,
       skuSecundario: true,
       ean: true,
+      semGtin: true,
       estoque: true,
       produtoId: true,
     },
@@ -537,6 +539,7 @@ export class VitrineAdminService {
             descricaoMarketplace: dto.descricaoMarketplace ?? null,
             composicao: dto.composicao ?? null,
             ncm: dto.ncm ?? null,
+            ...(limparFiscal(dto.fiscal) ? { fiscal: limparFiscal(dto.fiscal)! } : {}),
             tituloSeo: dto.tituloSeo || null,
             palavrasSeo: [...new Set(dto.palavrasSeo ?? [])],
           },
@@ -613,6 +616,9 @@ export class VitrineAdminService {
               : {}),
             ...(dto.composicao !== undefined ? { composicao: dto.composicao } : {}),
             ...(dto.ncm !== undefined ? { ncm: dto.ncm } : {}),
+            ...(dto.fiscal !== undefined
+              ? { fiscal: limparFiscal(dto.fiscal) ?? Prisma.JsonNull }
+              : {}),
           },
         });
         await this.aplicarGrade(tx, id, dto);
@@ -693,6 +699,7 @@ export class VitrineAdminService {
             ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
             ...(dto.ean !== undefined ? { ean: dto.ean } : {}),
             ...(dto.skuSecundario !== undefined ? { skuSecundario: dto.skuSecundario } : {}),
+            ...(dto.semGtin !== undefined ? { semGtin: dto.semGtin } : {}),
             ...(dto.estoque !== undefined ? { estoque: dto.estoque } : {}),
           },
         });

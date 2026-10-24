@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fiscalProdutoSchema } from './fiscal';
 import { eanValido } from './codigos-produto';
 
 /**
@@ -142,6 +143,8 @@ export const modeloSchema = z
       .transform((v) => v || null)
       .nullable()
       .optional(),
+    /** Resto do fiscal (24/10): ver fiscal.ts. null = apaga. */
+    fiscal: fiscalProdutoSchema.nullable().optional(),
     /** Título pro Google/IAs (23/10). Vazio = usa o nome. */
     tituloSeo: z.string().trim().max(120).nullable().optional(),
     /** Palavras SEO (23/10), sem repetir. */
@@ -176,6 +179,8 @@ export const variacaoPatchSchema = z.object({
     .nullable()
     .optional(),
   estoque: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  /** Peça sem código de barras (export "SEM GTIN"). */
+  semGtin: z.boolean().optional(),
 });
 export type VariacaoPatchDto = z.infer<typeof variacaoPatchSchema>;
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { modeloSchema } from './vitrine.dto';
+import { fiscalEmpresaSchema, fiscalProdutoSchema, limparFiscal } from './fiscal';
 
 const ncm = (v: unknown) => modeloSchema.safeParse({ nome: 'Bermuda', ncm: v });
 
@@ -18,5 +19,37 @@ describe('NCM do produto (24/10)', () => {
 
   it('recusa NCM que não tem 8 dígitos', () => {
     expect(ncm('6103.42').success).toBe(false);
+  });
+});
+
+describe('fiscal do produto e da empresa (24/10)', () => {
+  it('guarda só os dígitos e tira o vazio — sem valor padrão', () => {
+    const r = fiscalProdutoSchema.parse({
+      cest: '',
+      origem: '0',
+      unidade: 'pc',
+      csosn: '',
+      cfopDentro: '5.101',
+      marca: ' Ribelt ',
+      embalagemAlturaCm: 4,
+    });
+    expect(limparFiscal(r)).toEqual({
+      origem: '0',
+      unidade: 'PC',
+      cfopDentro: '5101',
+      marca: 'Ribelt',
+      embalagemAlturaCm: 4,
+    });
+    expect(limparFiscal(fiscalProdutoSchema.parse({ cest: '', marca: '' }))).toBeNull();
+  });
+
+  it('recusa valor no formato errado', () => {
+    expect(fiscalProdutoSchema.safeParse({ origem: '9' }).success).toBe(false);
+    expect(fiscalProdutoSchema.safeParse({ cfopFora: '610' }).success).toBe(false);
+    expect(fiscalEmpresaSchema.safeParse({ crt: '5' }).success).toBe(false);
+    expect(fiscalEmpresaSchema.parse({ cstPisCofins: '49', csosn: '' })).toEqual({
+      cstPisCofins: '49',
+      csosn: null,
+    });
   });
 });
