@@ -39,6 +39,8 @@ export class EmpresasService {
     'funilEtapas',
     'marca',
     'branding',
+    // O menu do rep precisa saber se "Mensagens" está ligado (só tipos + ativo).
+    'inboxInterna',
   ]);
 
   constructor(

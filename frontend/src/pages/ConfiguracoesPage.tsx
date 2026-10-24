@@ -1296,6 +1296,22 @@ function InboxInternaConfig() {
     }));
   }, [cfg]);
   const tipos = rows ?? base;
+  // Liga/desliga o menu "Mensagens" da empresa toda (24/10). Ausente = ligado.
+  const ativoAtual = (cfg?.inboxInterna as { ativo?: boolean } | undefined)?.ativo !== false;
+  async function alternarAtivo() {
+    setBusy(true);
+    try {
+      await api.patch('/empresas/config', {
+        inboxInterna: { ...((cfg?.inboxInterna as object) ?? {}), ativo: !ativoAtual },
+      });
+      toast.success(ativoAtual ? '"Mensagens" saiu do menu' : '"Mensagens" voltou pro menu');
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const slug = (s: string) =>
     s
@@ -1325,7 +1341,7 @@ function InboxInternaConfig() {
           prioridade: t.prioridade,
         }))
         .filter((t) => t.key && t.nome);
-      await api.patch('/empresas/config', { inboxInterna: { tipos: limpos } });
+      await api.patch('/empresas/config', { inboxInterna: { ativo: ativoAtual, tipos: limpos } });
       toast.success('Canais internos salvos');
       setRows(null);
       refetch();
@@ -1341,6 +1357,16 @@ function InboxInternaConfig() {
       <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         💬 Mensagens internas (canais)
       </h2>
+      <label className="flex items-center gap-2 text-sm text-text mb-2">
+        <input
+          type="checkbox"
+          checked={ativoAtual}
+          disabled={!podeEditar || busy || loading}
+          onChange={() => void alternarAtivo()}
+          data-testid="inbox-interna-ativo"
+        />
+        Mostrar &quot;Mensagens&quot; no menu (desmarcado, some pra todos desta empresa)
+      </label>
       <p className="text-xs text-muted mt-0">
         Canais de conversa do rep com a empresa, com SLA em horas úteis. Desmarque "responde" para
         canais só-leitura (avisos/broadcast).

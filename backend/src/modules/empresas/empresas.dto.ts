@@ -156,6 +156,8 @@ const whatsappMidiaSchema = z.object({
 /** Inbox interna: tipos de canal + SLA (7º consumidor). */
 const inboxInternaSchema = z
   .object({
+    /** false = a empresa não usa: "Mensagens" some do menu de todo mundo (24/10). */
+    ativo: z.boolean().optional(),
     tipos: z
       .array(
         z.object({

@@ -97,7 +97,7 @@ interface NavItem {
    *  pro quadro de tarefas dele — mas planejar campanha não é trabalho dele). */
   ocultarPara?: string[];
   /** Só aparece onde a função está LIGADA na empresa (ex.: financeiro da Distribuidora). */
-  flag?: 'financeiro';
+  flag?: 'financeiro' | 'inboxInterna';
 }
 
 interface NavSection {
@@ -202,6 +202,8 @@ const SECTIONS: NavSection[] = [
         to: '/inbox-interna',
         label: 'Mensagens',
         icon: Inbox,
+        // Some quando a empresa desliga em Configurações (inboxInterna.ativo=false).
+        flag: 'inboxInterna',
       },
       {
         to: '/relatorios',
@@ -545,6 +547,8 @@ function Sidebar({
   const financeiro = useApiQuery<{ ativo: boolean }>(
     role === 'ADMIN' || role === 'DIRECTOR' ? '/financeiro/status' : null,
   );
+  // Mensagens internas: a empresa pode desligar (Configurações). Sem resposta = mostra.
+  const configEmpresa = useApiQuery<{ inboxInterna?: { ativo?: boolean } }>('/empresas/config');
   const location = useLocation();
   const badges = useBadges();
 
@@ -561,6 +565,9 @@ function Sidebar({
 
   function canSee(item: NavItem): boolean {
     if (item.flag === 'financeiro' && financeiro.data?.ativo !== true) return false;
+    if (item.flag === 'inboxInterna' && configEmpresa.data?.inboxInterna?.ativo === false) {
+      return false;
+    }
     if (item.ocultarPara && role && item.ocultarPara.includes(role)) return false;
     if (item.permission && !perms[item.permission as keyof typeof perms]) return false;
     if (item.modulo && role !== 'ADMIN' && matriz) {
