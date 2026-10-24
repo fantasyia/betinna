@@ -404,6 +404,39 @@ describe('Janela de envio no motor de fluxos', () => {
     );
   });
 
+  it('lead com teste-acelerado: fora da janela sai NA HORA (bateria 24 h, Léo 24/10)', async () => {
+    const { service, queue, prisma, pacing } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'CRON_AGENDADO',
+    });
+    (prisma.lead as unknown as { count: unknown }).count = vi.fn().mockResolvedValue(1);
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(pacing.esperaAntesDoProativoMs).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
+  });
+
+  it('lead SEM a etiqueta continua segurado (cliente real não muda)', async () => {
+    const { service, queue, prisma } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'CRON_AGENDADO',
+    });
+    (prisma.lead as unknown as { count: unknown }).count = vi.fn().mockResolvedValue(0);
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
+  });
+
   it('lead que NUNCA escreveu (família S, veio de formulário): SEGURA', async () => {
     const { service, queue } = makeService({
       esperaMs: 9 * 3600_000,

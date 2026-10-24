@@ -609,8 +609,21 @@ export class FluxoExecutorService {
       // por definição, mas era reagendado pra madrugada como se fosse mandar —
       // ficava horas EM_EXECUCAO sem ninguém entender. Teste com
       // enviarDeVerdade=true continua respeitando a janela: aí envia de fato.
+      // Lead de teste acelerado (Léo, 24/10): a bateria roda 24 h — sem janela
+      // 8h–20h e sem pacing. Só pra quem tem a etiqueta; cliente real segue igual.
+      const aceleradoSemJanela =
+        !ehResposta &&
+        !transacional &&
+        (await leadAcelerado(
+          this.prisma,
+          execucao.empresaId,
+          (execucao.contexto as ExecucaoContexto | null)?.['leadId'] as string | undefined,
+        ));
       const esperaJanela =
-        ehResposta || transacional || this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
+        ehResposta ||
+        transacional ||
+        aceleradoSemJanela ||
+        this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
           ? 0
           : await this.esperaDoCanal(no.acaoTipo, execucao.empresaId).catch((err) => {
               // Falha FECHADO: Redis/DB soluçando não pode virar mensagem fora da
