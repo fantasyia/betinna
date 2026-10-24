@@ -509,6 +509,12 @@ footer img{height:26px;width:auto;filter:brightness(0) invert(1);opacity:.9;marg
   document.querySelectorAll('a[href*="atacado.ribelt.com.br"]').forEach(function(a){
     var u=new URL(a.href); keep.forEach(function(v,k){ if(!u.searchParams.has(k)) u.searchParams.set(k,v); }); a.href=u.toString();
   });
+  // WhatsApp: leva a campanha no fim do texto pronto (o Betinna sabe de qual anúncio veio)
+  var camp=keep.get('utm_campaign');
+  if(camp) document.querySelectorAll('a[href*="wa.me/"]').forEach(function(a){
+    var u=new URL(a.href), t=u.searchParams.get('text')||'Oi! Vim pelo site e quero comprar no atacado';
+    a.href=u.origin+u.pathname+'?text='+encodeURIComponent(t+' (ref: '+camp+')');
+  });
 })();
 
 // Tags (só no domínio de verdade: no teste local nada dispara)
