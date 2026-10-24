@@ -64,7 +64,7 @@ export function fichaDoModelo(
     const vol = num(l.precoVolume);
     const ata = num(l.precoAtacadao);
     const faixa = (min: number | null, rotulo: string) =>
-      min ? `a partir de ${min} peças (${rotulo})` : rotulo;
+      min ? `a partir de ${min} peças (${rotulo})` : `(${rotulo})`;
     if (ent !== null) precos.push(`${brl(ent)} por peça ${faixa(faixas.minimoEntrada, 'Entrada')}`);
     if (vol !== null) precos.push(`${brl(vol)} ${faixa(faixas.minimoVolume, 'Volume')}`);
     if (ata !== null) precos.push(`${brl(ata)} ${faixa(faixas.minimoAtacadao, 'Atacadão')}`);
