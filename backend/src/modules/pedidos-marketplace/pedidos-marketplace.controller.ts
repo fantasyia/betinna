@@ -8,6 +8,9 @@ import { PedidosMarketplaceService } from './pedidos-marketplace.service';
 
 const listarSchema = z.object({
   plataforma: z.enum(['ML', 'SHOPEE', 'AMAZON', 'TIKTOK']).optional(),
+  situacao: z
+    .enum(['A_ENVIAR', 'ENVIADO', 'ENTREGUE', 'CANCELADO', 'EM_DEVOLUCAO', 'AGUARDANDO_PAGAMENTO'])
+    .optional(),
   de: z.string().max(40).optional(),
   ate: z.string().max(40).optional(),
   page: z.coerce.number().int().min(1).optional(),

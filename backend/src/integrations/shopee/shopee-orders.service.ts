@@ -3,6 +3,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ShopeeClientService } from './shopee-client.service';
 import type { ShopeeOrder, ShopeeOrderListResponse } from './shopee.types';
 import { custoDosItens, financeiroShopee } from '@modules/pedidos-marketplace/financeiro';
+import { situacaoShopee } from '@modules/pedidos-marketplace/situacao';
 
 const PATH_ORDER_LIST = '/api/v2/order/get_order_list';
 const PATH_ORDER_DETAIL = '/api/v2/order/get_order_detail';
@@ -76,10 +77,13 @@ export class ShopeeOrdersService {
           valor: data.valor,
           quantidade: data.quantidade,
           ...fin,
+          situacao: situacaoShopee(order.order_status),
         },
       });
     } else {
-      await this.prisma.marketplaceOrder.create({ data: { ...data, ...fin } });
+      await this.prisma.marketplaceOrder.create({
+        data: { ...data, ...fin, situacao: situacaoShopee(order.order_status) },
+      });
     }
   }
 

@@ -3,6 +3,7 @@ import { PrismaService } from '@database/prisma.service';
 import { MLClientService } from './ml-client.service';
 import type { MLOrder } from './ml.types';
 import { custoDosItens, financeiroMl } from '@modules/pedidos-marketplace/financeiro';
+import { situacaoMl } from '@modules/pedidos-marketplace/situacao';
 
 /**
  * Pedidos do Mercado Livre.
@@ -53,9 +54,10 @@ export class MLOrdersService {
 
     const existing = await this.prisma.marketplaceOrder.findUnique({
       where: { plataforma_numeroExterno: { plataforma: 'ML', numeroExterno: externalId } },
-      select: { id: true, frete: true },
+      select: { id: true, frete: true, situacao: true },
     });
     const fin = await this.financeiro(empresaId, order, existing?.frete ?? null);
+    const situacao = await this.situacao(empresaId, order, existing?.situacao ?? null);
 
     const data = {
       empresaId,
@@ -76,11 +78,27 @@ export class MLOrdersService {
           valor: data.valor,
           quantidade: data.quantidade,
           ...fin,
+          situacao,
         },
       });
     } else {
-      await this.prisma.marketplaceOrder.create({ data: { ...data, ...fin } });
+      await this.prisma.marketplaceOrder.create({ data: { ...data, ...fin, situacao } });
     }
+  }
+
+  /** Situação a partir do pedido + status do envio. Pedido que já terminou não consulta mais. */
+  private async situacao(empresaId: string, order: MLOrder, atual: string | null): Promise<string> {
+    if (atual === 'ENTREGUE' || atual === 'CANCELADO') {
+      return order.status === 'cancelled' ? 'CANCELADO' : atual;
+    }
+    let envio: string | null = order.shipping?.status ?? null;
+    if (!envio && order.shipping?.id && order.status !== 'cancelled') {
+      const s = await this.ml
+        .get<{ status?: string }>(empresaId, `/shipments/${order.shipping.id}`)
+        .catch(() => null);
+      envio = s?.status ?? null;
+    }
+    return situacaoMl(order.status, envio);
   }
 
   /**

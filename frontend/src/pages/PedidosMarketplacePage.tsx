@@ -30,6 +30,7 @@ interface Pedido {
   quantidade: number;
   valor: number;
   status: string;
+  situacao: string | null;
   pedidoEm: string;
   itens: Item[] | null;
   taxas: number | null;
@@ -42,6 +43,7 @@ interface Pedido {
 }
 interface Lista {
   data: Pedido[];
+  porSituacao: Record<string, number>;
   total: number;
   resumo: { pedidos: number; bruto: number; taxas: number; frete: number; liquido: number; custo: number };
 }
@@ -54,14 +56,28 @@ interface SemCusto {
 }
 
 const CANAL: Record<string, string> = { ML: 'Mercado Livre', SHOPEE: 'Shopee', AMAZON: 'Amazon', TIKTOK: 'TikTok' };
+const SITUACOES: Array<[string, string]> = [
+  ['A_ENVIAR', 'A enviar'],
+  ['ENVIADO', 'Enviado'],
+  ['ENTREGUE', 'Entregue'],
+  ['CANCELADO', 'Cancelado'],
+  ['EM_DEVOLUCAO', 'Em devolução'],
+];
+const ROTULO_SITUACAO: Record<string, string> = {
+  ...Object.fromEntries(SITUACOES),
+  AGUARDANDO_PAGAMENTO: 'Aguardando pagamento',
+};
 const m = (v: number | null | undefined) => (v === null || v === undefined ? '—' : formatMoeda(v));
 
 export default function PedidosMarketplacePage() {
   const [plataforma, setPlataforma] = useState('');
+  const [situacao, setSituacao] = useState('');
   const [aba, setAba] = useState<'pedidos' | 'sem-custo'>('pedidos');
   const [aberto, setAberto] = useState<Pedido | null>(null);
   const lista = useApiQuery<Lista>(
-    `/marketplace/pedidos?limit=100${plataforma ? `&plataforma=${plataforma}` : ''}`,
+    `/marketplace/pedidos?limit=100${plataforma ? `&plataforma=${plataforma}` : ''}${
+      situacao ? `&situacao=${situacao}` : ''
+    }`,
   );
   const semCusto = useApiQuery<SemCusto[]>(aba === 'sem-custo' ? '/marketplace/pedidos/skus-sem-custo' : null);
   const r = lista.data?.resumo;
@@ -114,11 +130,27 @@ export default function PedidosMarketplacePage() {
               ))}
             </div>
           )}
+          <div className="flex flex-wrap gap-2 mb-3" data-testid="abas-situacao">
+            <Button size="sm" variant={situacao === '' ? 'primary' : 'ghost'} onClick={() => setSituacao('')}>
+              Todos
+            </Button>
+            {SITUACOES.map(([k, rot]) => (
+              <Button
+                key={k}
+                size="sm"
+                variant={situacao === k ? 'primary' : 'ghost'}
+                onClick={() => setSituacao(k)}
+                data-testid={`situacao-${k}`}
+              >
+                {rot} ({lista.data?.porSituacao?.[k] ?? 0})
+              </Button>
+            ))}
+          </div>
           <div className="overflow-x-auto bg-surface border border-border rounded-[10px]">
             <table className="w-full text-sm">
               <thead className="text-left text-[11px] text-muted">
                 <tr>
-                  {['Data', 'Canal', 'Pedido', 'Produto', 'Status', 'Bruto', 'Líquido', 'Custo', 'Lucro'].map((h) => (
+                  {['Data', 'Canal', 'Pedido', 'Produto', 'Situação', 'Bruto', 'Líquido', 'Custo', 'Lucro'].map((h) => (
                     <th key={h} className="px-3 py-2 font-medium">
                       {h}
                     </th>
@@ -137,7 +169,7 @@ export default function PedidosMarketplacePage() {
                     <td className="px-3 py-2">{CANAL[p.plataforma] ?? p.plataforma}</td>
                     <td className="px-3 py-2 tabular-nums">{p.numeroExterno}</td>
                     <td className="px-3 py-2 max-w-[260px] truncate">{p.produtoNome}</td>
-                    <td className="px-3 py-2">{p.status}</td>
+                    <td className="px-3 py-2">{ROTULO_SITUACAO[p.situacao ?? ''] ?? p.status}</td>
                     <td className="px-3 py-2 tabular-nums">{m(p.valor)}</td>
                     <td className="px-3 py-2 tabular-nums">{m(p.liquido)}</td>
                     <td className="px-3 py-2 tabular-nums">
@@ -182,7 +214,7 @@ function DetalhePedido({ p }: { p: Pedido }) {
     <div className="flex flex-col gap-4 text-sm" data-testid="pedido-detalhe">
       <div className="text-muted">
         {CANAL[p.plataforma] ?? p.plataforma} · {new Date(p.pedidoEm).toLocaleString('pt-BR')} · {p.comprador} ·{' '}
-        {p.status}
+        {ROTULO_SITUACAO[p.situacao ?? ''] ?? p.status}
       </div>
       <table className="w-full">
         <thead className="text-left text-[11px] text-muted">

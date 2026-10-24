@@ -19,3 +19,5 @@ CREATE TABLE IF NOT EXISTS "SkuMarketplaceVinculo" (
   CONSTRAINT "SkuMarketplaceVinculo_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "SkuMarketplaceVinculo_empresaId_plataforma_sku_key" ON "SkuMarketplaceVinculo"("empresaId", "plataforma", "sku");
+ALTER TABLE "MarketplaceOrder" ADD COLUMN IF NOT EXISTS "situacao" TEXT;
+CREATE INDEX IF NOT EXISTS "MarketplaceOrder_empresaId_situacao_idx" ON "MarketplaceOrder"("empresaId", "situacao");

@@ -28,7 +28,14 @@ export class PedidosMarketplaceService {
 
   async listar(
     user: AuthenticatedUser,
-    q: { plataforma?: string; de?: string; ate?: string; page?: number; limit?: number },
+    q: {
+      plataforma?: string;
+      situacao?: string;
+      de?: string;
+      ate?: string;
+      page?: number;
+      limit?: number;
+    },
   ) {
     const empresaId = this.empresa(user);
     const where: Prisma.MarketplaceOrderWhereInput = {
@@ -45,6 +52,40 @@ export class PedidosMarketplaceService {
           }
         : {}),
     };
+    // Devolução ABERTA nos Incidentes vence o status do canal: o pedido está
+    // "em devolução" mesmo que o marketplace ainda diga "entregue".
+    const devolucoes = await this.prisma.marketplaceIncident.findMany({
+      where: {
+        empresaId,
+        tipo: 'DEVOLUCAO',
+        status: { notIn: ['RESOLVIDO', 'CANCELADO', 'EXPIRADO'] },
+        pedidoExternoId: { not: null },
+      },
+      select: { pedidoExternoId: true },
+    });
+    const emDevolucao = devolucoes.map((d) => d.pedidoExternoId as string);
+    const porSituacao = await this.prisma.marketplaceOrder.groupBy({
+      by: ['situacao'],
+      where: { ...where, numeroExterno: { notIn: emDevolucao } },
+      _count: { _all: true },
+    });
+    const nDevolucao = await this.prisma.marketplaceOrder.count({
+      where: {
+        ...where,
+        OR: [{ situacao: 'EM_DEVOLUCAO' }, { numeroExterno: { in: emDevolucao } }],
+      },
+    });
+    const contagem: Record<string, number> = {};
+    for (const g of porSituacao) {
+      if (g.situacao && g.situacao !== 'EM_DEVOLUCAO') contagem[g.situacao] = g._count._all;
+    }
+    contagem.EM_DEVOLUCAO = nDevolucao;
+    if (q.situacao === 'EM_DEVOLUCAO') {
+      where.OR = [{ situacao: 'EM_DEVOLUCAO' }, { numeroExterno: { in: emDevolucao } }];
+    } else if (q.situacao) {
+      where.situacao = q.situacao;
+      where.numeroExterno = { notIn: emDevolucao };
+    }
     const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
     const page = Math.max(q.page ?? 1, 1);
     const [total, rows, soma] = await Promise.all([
@@ -56,13 +97,17 @@ export class PedidosMarketplaceService {
         take: limit,
       }),
       this.prisma.marketplaceOrder.aggregate({
-        where: { ...where, status: { notIn: ['cancelado', 'CANCELLED', 'cancelled'] } },
+        where: { ...where, NOT: { situacao: 'CANCELADO' } },
         _sum: { valor: true, taxas: true, frete: true, liquido: true, custo: true },
         _count: { _all: true },
       }),
     ]);
     return {
-      data: rows.map((p) => this.comLucro(p)),
+      data: rows.map((p) => ({
+        ...this.comLucro(p),
+        situacao: emDevolucao.includes(p.numeroExterno) ? 'EM_DEVOLUCAO' : p.situacao,
+      })),
+      porSituacao: contagem,
       total,
       page,
       limit,
