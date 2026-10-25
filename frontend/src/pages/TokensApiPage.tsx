@@ -75,7 +75,7 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
   },
   {
     key: 'encaixe',
-    label: 'Agente do encaixe (GPU) — pega risco da fila e entrega o .plt; nada mais do ERP',
+    label: 'Agente do encaixe — pega risco da fila e entrega o .plt; nada mais do ERP',
     badge: 'Encaixe',
   },
   {

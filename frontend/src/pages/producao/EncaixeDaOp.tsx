@@ -9,7 +9,7 @@ import type { GradeRisco } from './gradeRisco';
 
 /**
  * Encaixe automático (risco) na OP: escolhe a grade, quantas peças de cada
- * tamanho vão NO risco e quanto tempo a GPU pode procurar. O agente do PC do
+ * tamanho vão NO risco e quanto tempo o encaixe (Sparrow) pode procurar. O agente do PC do
  * Léo pega da fila, manda a imagem a cada melhora e, no fim, o .plt pro plotter.
  */
 
@@ -146,7 +146,7 @@ interface Encaixe {
 
 const NOME_STATUS: Record<Status, string> = {
   PENDENTE: 'na fila',
-  RODANDO: 'encaixando na GPU',
+  RODANDO: 'encaixando',
   CONCLUIDO: 'pronto',
   FALHOU: 'falhou',
   CANCELADO: 'cancelado',
@@ -263,8 +263,8 @@ export function EncaixeDaOp({
       });
       toast.success(
         material === 'RIBANA'
-          ? 'Risco da ribana na fila — o agente da GPU pega em instantes'
-          : 'Risco na fila — o agente da GPU pega em instantes',
+          ? 'Risco da ribana na fila — o agente do encaixe pega em instantes'
+          : 'Risco na fila — o agente do encaixe pega em instantes',
       );
       q.refetch();
     } catch (err) {
@@ -366,10 +366,10 @@ export function EncaixeDaOp({
             )}
             <span className="text-xs text-muted">
               {ativoDe('TECIDO') && ativoDe('RIBANA')
-                ? 'Os riscos do tecido e da ribana estão na fila — a GPU faz um depois do outro.'
+                ? 'Os riscos do tecido e da ribana estão na fila — o encaixe faz um depois do outro.'
                 : ativoDe('TECIDO') || ativoDe('RIBANA')
                   ? `Já tem um risco ${ativoDe('RIBANA') ? 'da ribana' : 'do tecido'} desta OP na fila.`
-                  : `${pecas} peça(s) no risco${nGrades > 1 ? ` · ${nGrades} grades juntas` : ''} · ideal até ${formatNumero(RISCO_IDEAL_M)} m (mesa: ${formatNumero(MESA_M)} m) · a GPU faz um por vez.`}
+                  : `${pecas} peça(s) no risco${nGrades > 1 ? ` · ${nGrades} grades juntas` : ''} · ideal até ${formatNumero(RISCO_IDEAL_M)} m (mesa: ${formatNumero(MESA_M)} m) · o encaixe faz um por vez.`}
             </span>
           </div>
         </div>
@@ -594,7 +594,7 @@ function ItemEncaixe({
       )}
       {j.status === 'PENDENTE' && (
         <p className="text-xs text-muted">
-          Esperando o agente da GPU (o programa no PC precisa estar aberto).
+          Esperando o agente do encaixe (o programa no PC precisa estar aberto).
         </p>
       )}
       {j.erro && <p className="text-sm text-danger">{j.erro}</p>}
