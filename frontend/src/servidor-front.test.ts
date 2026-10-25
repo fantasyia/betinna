@@ -125,6 +125,8 @@ beforeAll(async () => {
   writeFileSync(join(sites, 'lp.teste.com', 'opcao-b.html'), '<h1>landing B</h1>');
   writeFileSync(join(sites, 'lp.teste.com', 'img', 'logo.png'), Buffer.from([0x89, 0x50]));
   writeFileSync(join(sites, 'lp.teste.com', '.noindex'), '');
+  mkdirSync(join(sites, 'velho.com'));
+  writeFileSync(join(sites, 'velho.com', '.redirect'), 'https://landing.com/\n');
   mkdirSync(join(sites, 'landing.com'));
   writeFileSync(join(sites, 'landing.com', 'index.html'), '<h1>oficial</h1>');
   server = criarServidor({ dist: dir, apiUrl: 'http://api.test', fetchFn: fetchFn as never, sites });
@@ -160,6 +162,12 @@ describe('site estático por domínio (landing, 24/10)', () => {
     expect((await get('/.noindex', 'lp.teste.com')).status).toBe(404);
     expect((await get('/pedidos/1', 'lp.teste.com')).status).toBe(404);
     expect((await get('/%2e%2e/%2e%2e/fora-do-dist.txt', 'lp.teste.com')).status).toBe(404);
+  });
+
+  it('.redirect: endereço aposentado manda 301 pro novo, levando caminho e query', async () => {
+    const r = await get('/opcao-b?utm_campaign=x', 'velho.com');
+    expect(r.status).toBe(301);
+    expect(r.headers.get('location')).toBe('https://landing.com/opcao-b?utm_campaign=x');
   });
 
   it('domínio sem pasta segue no app como antes', async () => {

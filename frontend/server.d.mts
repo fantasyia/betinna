@@ -64,4 +64,4 @@ export function arquivoDoSite(
   sitesDir: string | null,
   host: string | undefined,
   caminho: string,
-): Promise<{ pasta: string; noindex: boolean; alvo: string | null } | null>;
+): Promise<{ pasta: string; noindex: boolean; alvo: string | null; redirect?: string } | null>;

@@ -515,7 +515,9 @@ export function robotsDaVitrine(base) {
  * Site estático por DOMÍNIO (24/10, landing do ribelt.com.br): a pasta
  * `sites/<host sem www>/` responde por aquele host inteiro, sem passar pelo
  * SPA. Um arquivo `.noindex` na pasta põe `X-Robots-Tag: noindex` em tudo
- * (endereço de teste). Arquivo começado com ponto nunca é servido.
+ * (endereço de teste); um `.redirect` com uma URL manda 301 de tudo pra lá
+ * (endereço aposentado, ex.: lp → ribelt.com.br). Arquivo começado com ponto
+ * nunca é servido.
  */
 export async function arquivoDoSite(sitesDir, host, caminho) {
   if (!sitesDir) return null;
@@ -532,6 +534,14 @@ export async function arquivoDoSite(sitesDir, host, caminho) {
     noindex = (await stat(join(pasta, '.noindex'))).isFile();
   } catch {
     // sem marcador: indexa
+  }
+  try {
+    const destino = (await readFile(join(pasta, '.redirect'), 'utf8')).trim();
+    if (/^https:\/\/[a-z0-9.-]+(\/[^\s]*)?$/i.test(destino)) {
+      return { pasta, noindex, alvo: null, redirect: destino };
+    }
+  } catch {
+    // sem redirect
   }
   const rel = caminho.replace(/^\/+/, '');
   if (rel.split('/').some((p) => p.startsWith('.'))) return { pasta, noindex, alvo: null };
@@ -638,6 +648,11 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       const site = await arquivoDoSite(sites, host, caminho);
       if (site) {
         const extra = site.noindex ? { 'X-Robots-Tag': 'noindex, nofollow' } : {};
+        if (site.redirect) {
+          const destino = new URL(caminho + url.search, site.redirect).toString();
+          res.writeHead(301, { Location: destino, 'Cache-Control': 'public, max-age=3600', ...SEGURANCA, ...extra });
+          return res.end();
+        }
         if (!site.alvo) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', ...SEGURANCA, ...extra });
           return res.end(req.method === 'HEAD' ? undefined : 'Página não encontrada');
