@@ -1,6 +1,7 @@
 import { MessageSquare, AlertTriangle, ShieldAlert, Smartphone } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
+import { useApiQuery } from '@/hooks/useApiQuery';
 
 /**
  * AtendimentoTabs — sub-abas da aba principal "Atendimento".
@@ -35,14 +36,20 @@ export function AtendimentoTabs() {
   // (24/10); a sub-aba fica só pra GERENTE/SAC, que não veem Pendências.
   const canMarketplaces = role === 'GERENTE' || role === 'SAC';
 
+  // A empresa pode desligar o "SAC interno" (Configurações → Itens do menu, 25/10).
+  const config = useApiQuery<{ menu?: { ocultar?: string[] } }>('/empresas/config');
+  const semSac = config.data?.menu?.ocultar?.includes('sacInterno') ?? false;
+
   const tabs: SubTab[] = [];
 
   tabs.push({ to: '/inbox', label: 'Inbox', icon: <MessageSquare size={14} /> });
-  tabs.push({
-    to: '/ocorrencias',
-    label: 'SAC interno',
-    icon: <AlertTriangle size={14} />,
-  });
+  if (!semSac) {
+    tabs.push({
+      to: '/ocorrencias',
+      label: 'SAC interno',
+      icon: <AlertTriangle size={14} />,
+    });
+  }
   if (canMarketplaces) {
     tabs.push({
       to: '/incidentes',

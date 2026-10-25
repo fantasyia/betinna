@@ -237,6 +237,7 @@ export default function ConfiguracoesPage() {
           <DevolucaoConfig />
           <FiscalEmpresaConfig />
           <InboxInternaConfig />
+          <ItensMenuConfig />
           <EnvioWhatsappConfig />
           <MidiaRetencaoConfig />
           <AlertaEsquecidaConfig />
@@ -1266,6 +1267,54 @@ const DEFAULT_INBOX_TIPOS: InboxTipoForm[] = [
   { key: 'suporte_pedidos', nome: 'Suporte Pedidos', slaHorasUteis: '8', permiteResposta: true, prioridade: 'media' },
   { key: 'avisos', nome: 'Avisos', slaHorasUteis: '0', permiteResposta: false, prioridade: 'baixa' },
 ];
+
+/** Itens do menu que a empresa não usa (25/10): somem pra todo mundo. */
+const ITENS_MENU: Array<{ key: 'treinamentos' | 'sacInterno'; nome: string }> = [
+  { key: 'treinamentos', nome: 'Treinamentos' },
+  { key: 'sacInterno', nome: 'SAC interno (aba do Atendimento)' },
+];
+function ItensMenuConfig() {
+  const toast = useToast();
+  const { data: cfg, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [busy, setBusy] = useState(false);
+  const ocultos = ((cfg?.menu as { ocultar?: string[] } | undefined)?.ocultar ?? []) as string[];
+  async function alternar(key: string) {
+    setBusy(true);
+    try {
+      const ocultar = ocultos.includes(key) ? ocultos.filter((k) => k !== key) : [...ocultos, key];
+      await api.patch('/empresas/config', { menu: { ocultar } });
+      toast.success('Menu atualizado');
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4" data-testid="config-itens-menu">
+      <h2 className="mt-0 text-[16px] text-text">🧭 Itens do menu</h2>
+      <p className="text-sm text-muted mb-3">Desligue o que a empresa não usa: some do menu de todo mundo.</p>
+      <div className="flex flex-col gap-2">
+        {ITENS_MENU.map((i) => {
+          const ligado = !ocultos.includes(i.key);
+          return (
+            <label key={i.key} className="flex items-center gap-2 text-sm text-text">
+              <input
+                type="checkbox"
+                checked={ligado}
+                disabled={busy}
+                onChange={() => void alternar(i.key)}
+                data-testid={`menu-${i.key}`}
+              />
+              {i.nome}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function InboxInternaConfig() {
   const toast = useToast();

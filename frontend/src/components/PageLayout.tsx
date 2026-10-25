@@ -99,7 +99,7 @@ interface NavItem {
    *  pro quadro de tarefas dele — mas planejar campanha não é trabalho dele). */
   ocultarPara?: string[];
   /** Só aparece onde a função está LIGADA na empresa (ex.: financeiro da Distribuidora). */
-  flag?: 'financeiro' | 'inboxInterna';
+  flag?: 'financeiro' | 'inboxInterna' | 'treinamentos';
 }
 
 interface NavSection {
@@ -236,6 +236,8 @@ const SECTIONS: NavSection[] = [
         to: '/treinamentos',
         label: 'Treinamentos',
         icon: GraduationCap,
+        // Some quando a empresa desliga em Configurações (menu.ocultar).
+        flag: 'treinamentos',
       },
       {
         to: '/perfil',
@@ -568,7 +570,10 @@ function Sidebar({
     role === 'ADMIN' || role === 'DIRECTOR' ? '/financeiro/status' : null,
   );
   // Mensagens internas: a empresa pode desligar (Configurações). Sem resposta = mostra.
-  const configEmpresa = useApiQuery<{ inboxInterna?: { ativo?: boolean } }>('/empresas/config');
+  const configEmpresa = useApiQuery<{
+    inboxInterna?: { ativo?: boolean };
+    menu?: { ocultar?: string[] };
+  }>('/empresas/config');
   const location = useLocation();
   const badges = useBadges();
 
@@ -586,6 +591,9 @@ function Sidebar({
   function canSee(item: NavItem): boolean {
     if (item.flag === 'financeiro' && financeiro.data?.ativo !== true) return false;
     if (item.flag === 'inboxInterna' && configEmpresa.data?.inboxInterna?.ativo === false) {
+      return false;
+    }
+    if (item.flag === 'treinamentos' && configEmpresa.data?.menu?.ocultar?.includes('treinamentos')) {
       return false;
     }
     if (item.ocultarPara && role && item.ocultarPara.includes(role)) return false;

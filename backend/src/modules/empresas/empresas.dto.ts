@@ -156,6 +156,12 @@ const whatsappMidiaSchema = z.object({
   retencaoDias: z.number().int().min(15).max(3650).nullable(),
 });
 
+/** Itens do menu que a empresa não usa (25/10): somem pra todo mundo da empresa. */
+export const ITENS_MENU_OCULTAVEIS = ['treinamentos', 'sacInterno'] as const;
+const menuSchema = z.object({
+  ocultar: z.array(z.enum(ITENS_MENU_OCULTAVEIS)).max(10),
+});
+
 /** Inbox interna: tipos de canal + SLA (7º consumidor). */
 const inboxInternaSchema = z
   .object({
@@ -640,6 +646,7 @@ export const tenantConfigPatchSchema = z
     materiaisVenda: materiaisTiposSchema.nullable(),
     devolucaoInterna: devolucaoInternaSchema.nullable(),
     inboxInterna: inboxInternaSchema.nullable(),
+    menu: menuSchema.nullable().optional(),
     /** Padrão fiscal da empresa (24/10) — vazio = não definido. */
     fiscal: fiscalEmpresaSchema.nullable().optional(),
     whatsappMidia: whatsappMidiaSchema.nullable().optional(),

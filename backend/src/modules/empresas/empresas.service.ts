@@ -41,6 +41,8 @@ export class EmpresasService {
     'branding',
     // O menu do rep precisa saber se "Mensagens" está ligado (só tipos + ativo).
     'inboxInterna',
+    // Itens do menu que a empresa desligou (Treinamentos, SAC interno).
+    'menu',
   ]);
 
   constructor(
