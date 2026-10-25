@@ -34,6 +34,15 @@ interface Pendencia {
   anuncio: string | null;
   resolvidaEm: string | null;
   status: Status;
+  /** Última coisa que a IA fez nesta pendência (fase 2, 25/10). */
+  ia: {
+    acao: 'responder' | 'humano';
+    resposta: string;
+    motivo: string | null;
+    enviada: boolean;
+    erro: string | null;
+    criadoEm: string;
+  } | null;
 }
 interface Resposta {
   data: Pendencia[];
@@ -99,6 +108,7 @@ function tempo(p: Pendencia): { texto: string; cor: string } {
 
 export default function PendenciasPage() {
   const toast = useToast();
+  const cfgIa = useApiQuery<{ ativo: boolean; desligados: string[] }>('/pendencias/ia');
   const [busca, setBusca] = useState('');
   const [buscaAplicada, setBuscaAplicada] = useState('');
   const [canal, setCanal] = useState('');
@@ -121,6 +131,16 @@ export default function PendenciasPage() {
   if (de) qs.set('de', `${de}T00:00:00-03:00`);
   if (ate) qs.set('ate', `${ate}T23:59:59-03:00`);
   const { data, loading, error, refetch } = useApiQuery<Resposta>(`/pendencias?${qs.toString()}`);
+
+  async function alternarIa(mudanca: Partial<{ ativo: boolean; desligados: string[] }>) {
+    const atual = cfgIa.data ?? { ativo: false, desligados: [] };
+    try {
+      await api.put('/pendencias/ia', { ...atual, ...mudanca });
+      cfgIa.refetch();
+    } catch (err) {
+      toast.error('Não deu pra salvar', apiErrorMessage(err));
+    }
+  }
 
   async function conferirAgora() {
     setConferindo(true);
@@ -155,6 +175,40 @@ export default function PendenciasPage() {
           Conferir agora
         </Button>
         <AtivarPush />
+        {cfgIa.data && (
+          <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="pendencias-ia">
+            <label className="flex items-center gap-1.5 font-medium text-text">
+              <input
+                type="checkbox"
+                checked={cfgIa.data.ativo}
+                onChange={() => void alternarIa({ ativo: !cfgIa.data!.ativo })}
+                data-testid="pendencias-ia-ativo"
+              />
+              IA responde sozinha
+            </label>
+            {cfgIa.data.ativo &&
+              (Object.keys(TIPO) as Tipo[]).map((t) => {
+                const ligado = !cfgIa.data!.desligados.includes(t);
+                return (
+                  <label key={t} className="flex items-center gap-1 text-muted">
+                    <input
+                      type="checkbox"
+                      checked={ligado}
+                      onChange={() =>
+                        void alternarIa({
+                          desligados: ligado
+                            ? [...cfgIa.data!.desligados, t]
+                            : cfgIa.data!.desligados.filter((x) => x !== t),
+                        })
+                      }
+                      data-testid={`pendencias-ia-${t}`}
+                    />
+                    {TIPO[t]}
+                  </label>
+                );
+              })}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2 items-end mb-3">
@@ -233,6 +287,19 @@ export default function PendenciasPage() {
                   <span className="text-sm font-medium text-text">{p.titulo}</span>
                   <span className={`text-xs ml-auto ${t.cor}`}>{t.texto}</span>
                   {p.detalhe && <span className="basis-full text-sm text-muted break-words">{p.detalhe}</span>}
+                  {p.ia && (
+                    <span
+                      className="basis-full text-xs rounded-[10px] bg-surface-hover border border-border px-3 py-2 text-text break-words"
+                      data-testid="pendencia-ia"
+                    >
+                      <b>{p.ia.acao === 'humano' ? 'IA passou pra você' : 'IA respondeu'}</b>
+                      {p.ia.motivo ? ` (${p.ia.motivo})` : ''}
+                      {p.ia.resposta ? `: "${p.ia.resposta}"` : ''}
+                      {!p.ia.enviada && p.ia.resposta && (
+                        <span className="text-danger"> · não foi enviada{p.ia.erro ? `: ${p.ia.erro}` : ''}</span>
+                      )}
+                    </span>
+                  )}
                   <span className="basis-full flex flex-wrap gap-x-3 text-xs">
                     <span className={COR_STATUS[p.status]}>{UM_STATUS[p.status]}</span>
                     {ref && <span className="text-muted">{ref}</span>}

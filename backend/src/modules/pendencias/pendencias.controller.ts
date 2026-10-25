@@ -1,15 +1,27 @@
-import { Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { z } from 'zod';
+import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
+import { PendenciasIaService } from './pendencias-ia.service';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { STATUS_PENDENCIA, type StatusPendencia } from './pendencias';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { PendenciasService } from './pendencias.service';
 
+/** Liga/desliga a IA das pendências (e por tipo). */
+const iaSchema = z.object({
+  ativo: z.boolean(),
+  desligados: z.array(z.enum(['PERGUNTA', 'MENSAGEM', 'RECLAMACAO', 'DEVOLUCAO'])).max(4),
+});
+
 @ApiTags('pendencias')
 @ApiBearerAuth()
 @Controller('pendencias')
 export class PendenciasController {
-  constructor(private readonly pendencias: PendenciasService) {}
+  constructor(
+    private readonly pendencias: PendenciasService,
+    private readonly ia: PendenciasIaService,
+  ) {}
 
   private empresa(user: AuthenticatedUser): string {
     if (!['ADMIN', 'DIRECTOR'].includes(user.role) || !user.empresaIdAtiva) {
@@ -40,7 +52,31 @@ export class PendenciasController {
 
   @Post('verificar')
   @ApiOperation({ summary: 'Roda a conferência agora (a rotina roda sozinha de hora em hora)' })
-  verificar(@CurrentUser() user: AuthenticatedUser) {
-    return this.pendencias.rodada(this.empresa(user));
+  async verificar(@CurrentUser() user: AuthenticatedUser) {
+    const empresaId = this.empresa(user);
+    const r = await this.pendencias.rodada(empresaId);
+    const ia = await this.ia.processar(empresaId);
+    return { ...r, ia };
+  }
+
+  @Get('ia')
+  @ApiOperation({ summary: 'IA das pendências: ligada e tipos desligados' })
+  configIa(@CurrentUser() user: AuthenticatedUser) {
+    return this.ia.config(this.empresa(user));
+  }
+
+  @Put('ia')
+  @ApiOperation({ summary: 'Liga/desliga a IA das pendências (e por tipo)' })
+  salvarIa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(iaSchema)) dto: z.infer<typeof iaSchema>,
+  ) {
+    return this.pendencias.salvarConfigIa(this.empresa(user), dto);
+  }
+
+  @Get(':id/respostas')
+  @ApiOperation({ summary: 'O que a IA respondeu (ou escalou) nesta pendência' })
+  respostas(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.ia.respostas(this.empresa(user), id);
   }
 }

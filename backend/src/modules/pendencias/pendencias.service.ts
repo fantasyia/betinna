@@ -220,10 +220,36 @@ export class PendenciasService {
       ),
     ]);
     const [PENDENTE, AGUARDANDO_HUMANO, RESPONDIDA_IA, ENCERRADA] = contas;
+    // Última coisa que a IA fez em cada uma (pra revisar na tela).
+    const ia = data.length
+      ? await this.prisma.pendenciaRespostaIa.findMany({
+          where: { empresaId, pendenciaId: { in: data.map((p) => p.id) } },
+          orderBy: { criadoEm: 'desc' },
+          select: {
+            pendenciaId: true,
+            acao: true,
+            resposta: true,
+            motivo: true,
+            enviada: true,
+            erro: true,
+            criadoEm: true,
+          },
+        })
+      : [];
+    const ultimaIa = new Map<string, (typeof ia)[number]>();
+    for (const r of ia) if (!ultimaIa.has(r.pendenciaId)) ultimaIa.set(r.pendenciaId, r);
     return {
-      data: data.map((p) => ({ ...p, status: statusDa(p) })),
+      data: data.map((p) => ({ ...p, status: statusDa(p), ia: ultimaIa.get(p.id) ?? null })),
       contagem: { PENDENTE, AGUARDANDO_HUMANO, RESPONDIDA_IA, ENCERRADA },
     };
+  }
+
+  /** Liga/desliga a IA (merge no Empresa.config — não mexe no resto). */
+  async salvarConfigIa(empresaId: string, dto: { ativo: boolean; desligados: string[] }) {
+    await this.prisma.$executeRaw`
+      update "Empresa" set config = coalesce(config, '{}'::jsonb) || jsonb_build_object('pendenciasIa', ${JSON.stringify(dto)}::jsonb)
+      where id = ${empresaId}`;
+    return dto;
   }
 
   contarAbertas(empresaId: string) {

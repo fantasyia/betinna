@@ -3781,6 +3781,26 @@ model PendenciaMarketplace {
   @@index([empresaId, criadoEm])
 }
 
+/// O que a IA fez numa pendência (fase 2, 25/10): guarda TUDO pra revisar e
+/// afinar o prompt e a base — inclusive quando escalou pro humano.
+model PendenciaRespostaIa {
+  id             String   @id @default(cuid())
+  empresaId      String
+  pendenciaId    String
+  conversationId String?
+  /// responder | humano
+  acao           String   @db.VarChar(20)
+  resposta       String   @db.Text
+  motivo         String?  @db.VarChar(300)
+  enviada        Boolean  @default(false)
+  erro           String?  @db.VarChar(500)
+  modelo         String?  @db.VarChar(60)
+  criadoEm       DateTime @default(now())
+
+  @@index([empresaId, criadoEm])
+  @@index([pendenciaId])
+}
+
 // ─── KANBAN (estilo Trello) ───────────────────────────────────────────
 // Módulo de quadros visuais + MCP server (docs/kanban-betinna-EM-BATCHES.md).
 // Regras: REP máx 1 board; multi-tenant SEMPRE por empresaId; visibilidade
