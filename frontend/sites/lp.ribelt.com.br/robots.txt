@@ -17,4 +17,4 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-Sitemap: https://ribelt.com.br/sitemap.xml
+Sitemap: https://lp.ribelt.com.br/sitemap.xml
