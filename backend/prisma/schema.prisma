@@ -2997,13 +2997,13 @@ model MarketplaceOrder {
 /// SKU do marketplace → produto do cadastro (24/10): pro custo de kit ("Kit 2
 /// bermudas" = 2 × a variação) e de SKU que não bate com o do cadastro.
 model SkuMarketplaceVinculo {
-  id          String   @id @default(cuid())
-  empresaId   String
-  plataforma  String
-  sku         String
-  variacaoId  String
-  quantidade  Int      @default(1)
-  criadoEm    DateTime @default(now())
+  id           String   @id @default(cuid())
+  empresaId    String
+  plataforma   String
+  sku          String
+  variacaoId   String
+  quantidade   Int      @default(1)
+  criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
   @@unique([empresaId, plataforma, sku])
@@ -4409,11 +4409,12 @@ model CatalogoVariacao {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  modelo        CatalogoModelo        @relation(fields: [modeloId], references: [id], onDelete: Cascade)
-  modeloCor     CatalogoModeloCor     @relation(fields: [modeloCorId], references: [id], onDelete: Cascade)
-  modeloLinha   CatalogoModeloLinha   @relation(fields: [modeloLinhaId], references: [id], onDelete: Cascade)
-  modeloTamanho CatalogoModeloTamanho @relation(fields: [modeloTamanhoId], references: [id], onDelete: Cascade)
-  produto       Produto               @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  modelo         CatalogoModelo          @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+  modeloCor      CatalogoModeloCor       @relation(fields: [modeloCorId], references: [id], onDelete: Cascade)
+  modeloLinha    CatalogoModeloLinha     @relation(fields: [modeloLinhaId], references: [id], onDelete: Cascade)
+  modeloTamanho  CatalogoModeloTamanho   @relation(fields: [modeloTamanhoId], references: [id], onDelete: Cascade)
+  produto        Produto                 @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  kitComponentes CatalogoKitComponente[]
 
   @@unique([modeloCorId, modeloTamanhoId])
   @@unique([empresaId, ean])
@@ -5107,4 +5108,75 @@ model CarrinhoSalvo {
   @@index([origem, notificadoEm, atualizadoEm])
   @@index([vitrineId, leadId])
   @@index([pedidoId])
+}
+
+// ─── KITS DOS MARKETPLACES (25/10, card cmvnyodx7) ─────────────────────
+// Kit anunciado nos marketplaces (ex.: "Kit 2 Bermudas Preto + Cinza-Escuro").
+// Fica no ERP com SKU próprio, mas em tabela SEPARADA do catálogo: por
+// construção nunca aparece na vitrine. Sem EAN (Léo, 25/10). A composição
+// aponta pras peças que o kit consome; "Cores Aleatórias" fica sem composição
+// até o Léo definir. Estoque: reserva até a NF (entra com o Magis5).
+
+/// Um anúncio de kit: produto × modelo × combinação de cores.
+model CatalogoKit {
+  id           String   @id @default(cuid())
+  empresaId    String
+  /// Como está na planilha do Léo ("Bermuda Moletom", "Cores Lisas").
+  produto      String   @db.VarChar(120)
+  modelo       String   @db.VarChar(80)
+  /// "Preto + Cinza-Escuro", "3 Preto", "Cores Aleatórias".
+  combinacao   String   @db.VarChar(160)
+  /// Peças por kit (somando todas as cores e peças do conjunto).
+  pecas        Int
+  aleatorio    Boolean  @default(false)
+  /// Produtos do catálogo que o kit consome (nomes); vazio = sem par ainda.
+  modelosBase  String[] @default([])
+  /// planilha | kits-bermuda
+  origem       String   @db.VarChar(30)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  itens CatalogoKitItem[]
+
+  @@unique([empresaId, produto, modelo, combinacao])
+  @@index([empresaId])
+}
+
+/// Um tamanho do kit, com o SKU dele.
+model CatalogoKitItem {
+  id            String   @id @default(cuid())
+  empresaId     String
+  kitId         String
+  tamanho       String   @db.VarChar(10)
+  sku           String   @db.VarChar(60)
+  skuSecundario String?  @db.VarChar(30)
+  /// Legenda da planilha: AJUSTADO_MAGIS | FALTA_CRIAR_MAGIS | SEM_SKU_MAGIS | FALTA_AJUSTAR_VARIACAO | REVISAR
+  situacaoMagis String?  @db.VarChar(30)
+  /// Composição completa (todas as peças acharam variação no catálogo).
+  composicaoOk  Boolean  @default(false)
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  kit         CatalogoKit             @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  componentes CatalogoKitComponente[]
+
+  @@unique([empresaId, sku])
+  @@unique([kitId, tamanho])
+  @@index([empresaId, skuSecundario])
+}
+
+/// Peça que o kit consome: N × variação do catálogo.
+model CatalogoKitComponente {
+  id         String @id @default(cuid())
+  kitItemId  String
+  variacaoId String
+  quantidade Int
+
+  kitItem  CatalogoKitItem  @relation(fields: [kitItemId], references: [id], onDelete: Cascade)
+  variacao CatalogoVariacao @relation(fields: [variacaoId], references: [id], onDelete: Restrict)
+
+  @@unique([kitItemId, variacaoId])
+  @@index([variacaoId])
 }

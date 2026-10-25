@@ -216,7 +216,7 @@ const SECTIONS: NavSection[] = [
         label: 'Catálogo',
         icon: Package,
         modulo: 'catalogo',
-        match: ['/catalogo', '/vitrine', '/precificacao', '/estoque', '/insumos', '/faccoes', '/producao'],
+        match: ['/catalogo', '/vitrine', '/precificacao', '/estoque', '/insumos', '/faccoes', '/producao', '/kits'],
       },
       {
         to: '/inbox-interna',
