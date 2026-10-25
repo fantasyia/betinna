@@ -7,7 +7,7 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import { PedidosMarketplaceService } from './pedidos-marketplace.service';
 
 const listarSchema = z.object({
-  plataforma: z.enum(['ML', 'SHOPEE', 'AMAZON', 'TIKTOK']).optional(),
+  plataforma: z.enum(['ML', 'SHOPEE', 'AMAZON', 'TIKTOK', 'DAFITI', 'SHEIN']).optional(),
   situacao: z
     .enum(['A_ENVIAR', 'ENVIADO', 'ENTREGUE', 'CANCELADO', 'EM_DEVOLUCAO', 'AGUARDANDO_PAGAMENTO'])
     .optional(),
@@ -17,7 +17,7 @@ const listarSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 const vincularSchema = z.object({
-  plataforma: z.enum(['ML', 'SHOPEE', 'AMAZON', 'TIKTOK']),
+  plataforma: z.enum(['ML', 'SHOPEE', 'AMAZON', 'TIKTOK', 'DAFITI', 'SHEIN']),
   sku: z.string().trim().min(1).max(120),
   variacaoId: z.string().min(1).max(40),
   quantidade: z.number().int().min(1).max(100),

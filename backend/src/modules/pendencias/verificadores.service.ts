@@ -34,7 +34,7 @@ export class VerificadoresService {
   async levantar(empresaId: string): Promise<Achados> {
     const out: Achados = new Map();
     const conexoes = await this.prisma.integracaoConexao.findMany({
-      where: { empresaId, ativo: true, servico: { in: ['mercadolivre', 'shopee'] } },
+      where: { empresaId, ativo: true, servico: { in: ['mercadolivre', 'shopee', 'dafiti'] } },
       select: { servico: true },
     });
     const tem = new Set(conexoes.map((c) => c.servico));
@@ -45,6 +45,13 @@ export class VerificadoresService {
       out.set(
         'MARKETPLACE_SHOPEE',
         await this.tentar('Shopee', () => this.shopeeChatPend(empresaId)),
+      );
+    }
+    // Dafiti (25/10): devolução esperando a aprovação da loja, dos pedidos sincronizados.
+    if (tem.has('dafiti')) {
+      out.set(
+        'MARKETPLACE_DAFITI',
+        await this.tentar('Dafiti', () => this.dafitiDevolucoes(empresaId)),
       );
     }
     // Incidentes (todos os canais conectados): o que está esperando a loja.
@@ -213,6 +220,31 @@ export class VerificadoresService {
         .catch(() => undefined);
     }
     return achados;
+  }
+
+  // ─── Dafiti ─────────────────────────────────────────────────────────────
+
+  /** Pedido com item em "return_waiting_for_approval": a loja precisa aprovar ou recusar no Seller Center. */
+  private async dafitiDevolucoes(empresaId: string): Promise<PendenciaAchada[]> {
+    const rows = await this.prisma.marketplaceOrder.findMany({
+      where: {
+        empresaId,
+        plataforma: 'DAFITI',
+        status: { contains: 'return_waiting_for_approval' },
+      },
+      select: { numeroExterno: true, produtoNome: true, comprador: true, pedidoEm: true },
+      take: 200,
+    });
+    return rows.map((o) => ({
+      canal: 'MARKETPLACE_DAFITI',
+      tipo: 'DEVOLUCAO' as const,
+      chave: `dafiti-dev:${o.numeroExterno}`,
+      titulo: `Devolução do pedido ${o.numeroExterno} esperando aprovação`,
+      detalhe: o.produtoNome,
+      link: `/pedidos-marketplace`,
+      comprador: o.comprador,
+      pedido: o.numeroExterno,
+    }));
   }
 
   // ─── Incidentes (todos os canais) ────────────────────────────────────────

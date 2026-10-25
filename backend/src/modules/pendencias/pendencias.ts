@@ -48,6 +48,7 @@ export const NOME_CANAL: Record<string, string> = {
   MARKETPLACE_ML: 'Mercado Livre',
   MARKETPLACE_SHOPEE: 'Shopee',
   MARKETPLACE_SHEIN: 'Shein',
+  MARKETPLACE_DAFITI: 'Dafiti',
   MARKETPLACE_AMAZON: 'Amazon',
   MARKETPLACE_TIKTOK: 'TikTok',
 };
@@ -90,7 +91,7 @@ export function resumoDoAviso(
     const total = [...m.values()].reduce((a, b) => a + b, 0);
     const tipos = [...m.entries()].map(([t, n]) => `${n} ${ROTULO[t][n === 1 ? 0 : 1]}`).join(', ');
     const nome = NOME_CANAL[canal] ?? canal;
-    const prep = /^(Shopee|Shein|Amazon)$/.test(nome) ? 'na' : 'no';
+    const prep = /^(Shopee|Shein|Amazon|Dafiti)$/.test(nome) ? 'na' : 'no';
     return `${total} ${prep} ${nome} (${tipos})`;
   });
   const n = itens.length;

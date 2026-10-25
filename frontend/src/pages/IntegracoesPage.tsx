@@ -36,6 +36,8 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'meta_pixel',
   'ga4_mp',
   'resend',
+  'dafiti',
+  'shein',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -56,7 +58,9 @@ type ServicoEmpresa =
   | 'melhorenvio'
   | 'meta_pixel'
   | 'ga4_mp'
-  | 'resend';
+  | 'resend'
+  | 'dafiti'
+  | 'shein';
 
 interface ServicoMeta {
   nome: string;
@@ -285,6 +289,39 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     credentialFields: [{ name: 'apiSecret', label: 'Secret da API do Measurement Protocol', type: 'password' }],
     atalho: { rotulo: 'Configurar a tag →', rota: '/vitrine?aba=config' },
   },
+  dafiti: {
+    nome: 'Dafiti',
+    tipo: 'marketplace',
+    obrigatorio: false,
+    color: '#1a1a1a',
+    icon: '👗',
+    description:
+      'Pedidos de venda da Dafiti no app (Vendas marketplaces), com comissão, repasse, situação e devoluções. ' +
+      'No Seller Center: Configurações → Aplicações OAuth → Adicionar aplicativo, COM permissão de pedidos. ' +
+      'Copie o ID e o Segredo do aplicativo e cole aqui. A sincronização roda a cada 30 min.',
+    connectMode: 'credentials',
+    credentialFields: [
+      { name: 'clientId', label: 'ID do aplicativo OAuth' },
+      { name: 'clientSecret', label: 'Segredo do aplicativo OAuth', type: 'password' },
+    ],
+    atalho: { rotulo: 'Ver os pedidos →', rota: '/pedidos-marketplace' },
+  },
+  shein: {
+    nome: 'Shein',
+    tipo: 'marketplace',
+    obrigatorio: false,
+    color: '#222222',
+    icon: '🛍️',
+    description:
+      'Pedidos de venda e devoluções da Shein no app. A Shein libera o acesso à API pelo Open Platform ' +
+      '(open.sheincorp.com) ou pelo contato da loja na Shein: peça o openKeyId e o secretKey da loja e cole aqui.',
+    connectMode: 'credentials',
+    credentialFields: [
+      { name: 'openKeyId', label: 'openKeyId da loja' },
+      { name: 'secretKey', label: 'secretKey da loja', type: 'password' },
+    ],
+    atalho: { rotulo: 'Ver os pedidos →', rota: '/pedidos-marketplace' },
+  },
   resend: {
     nome: 'E-mail da empresa (Resend)',
     tipo: 'mensageria',
@@ -320,6 +357,8 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'meta_pixel',
   'ga4_mp',
   'resend',
+  'dafiti',
+  'shein',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {

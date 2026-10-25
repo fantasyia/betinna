@@ -53,6 +53,7 @@ const CANAL: Record<string, string> = {
   MARKETPLACE_ML: 'Mercado Livre',
   MARKETPLACE_SHOPEE: 'Shopee',
   MARKETPLACE_SHEIN: 'Shein',
+  MARKETPLACE_DAFITI: 'Dafiti',
 };
 const TIPO: Record<Tipo, string> = {
   PERGUNTA: 'Pergunta pré-venda',

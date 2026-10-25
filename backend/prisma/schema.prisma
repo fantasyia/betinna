@@ -229,6 +229,8 @@ enum MarketplacePlatform {
   SHOPEE
   AMAZON
   TIKTOK
+  DAFITI
+  SHEIN
 }
 
 enum MarketplaceMsgStatus {

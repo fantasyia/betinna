@@ -56,7 +56,14 @@ interface SemCusto {
   pedidos: number;
 }
 
-const CANAL: Record<string, string> = { ML: 'Mercado Livre', SHOPEE: 'Shopee', AMAZON: 'Amazon', TIKTOK: 'TikTok' };
+const CANAL: Record<string, string> = {
+  ML: 'Mercado Livre',
+  SHOPEE: 'Shopee',
+  DAFITI: 'Dafiti',
+  SHEIN: 'Shein',
+  AMAZON: 'Amazon',
+  TIKTOK: 'TikTok',
+};
 const SITUACOES: Array<[string, string]> = [
   ['A_ENVIAR', 'A enviar'],
   ['ENVIADO', 'Enviado'],
@@ -86,7 +93,7 @@ export default function PedidosMarketplacePage() {
   return (
     <PageLayout
       title="Pedidos dos marketplaces"
-      description="Cada venda do Mercado Livre e da Shopee com taxas, frete, valor líquido, custo e lucro."
+      description="Cada venda dos marketplaces (Mercado Livre, Shopee, Dafiti, Shein) com taxas, frete, valor líquido, custo e lucro."
     >
       <div className="flex flex-wrap gap-2 items-center mb-4">
         <Button variant={aba === 'pedidos' ? 'primary' : 'ghost'} onClick={() => setAba('pedidos')}>
@@ -109,6 +116,8 @@ export default function PedidosMarketplacePage() {
             <option value="">Todos os canais</option>
             <option value="ML">Mercado Livre</option>
             <option value="SHOPEE">Shopee</option>
+            <option value="DAFITI">Dafiti</option>
+            <option value="SHEIN">Shein</option>
           </Select>
         )}
       </div>

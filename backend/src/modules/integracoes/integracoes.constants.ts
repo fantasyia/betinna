@@ -40,6 +40,9 @@ export const SERVICOS_EMPRESA = [
   // Conta Resend PRÓPRIA da empresa (Léo, 19/10): os e-mails dela saem do
   // domínio dela (ex.: comercial@ribelt.com.br). Sem ela, a conta do sistema.
   'resend',
+  // Marketplaces com chave colada (25/10): pedidos de venda e devoluções no app.
+  'dafiti',
+  'shein',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -206,6 +209,21 @@ export const SERVICO_METADATA: Record<
   meta_pixel: {
     nome: 'Pixel do Meta (API de Conversões)',
     tipo: 'anuncios',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  // Chaves dos marketplaces (pedidos e devoluções da empresa): diretoria.
+  dafiti: {
+    nome: 'Dafiti',
+    tipo: 'marketplace',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  shein: {
+    nome: 'Shein',
+    tipo: 'marketplace',
     escopo: 'empresa',
     obrigatorio: false,
     requerDirector: true,
