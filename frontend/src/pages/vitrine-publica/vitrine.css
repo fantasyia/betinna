@@ -481,3 +481,14 @@
 .vt-osso-stage { background: linear-gradient(90deg, #ebdfc6 25%, #f3e9d4 50%, #ebdfc6 75%); background-size: 200% 100%; animation: vt-brilho 1.4s ease-in-out infinite; }
 @keyframes vt-brilho { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .vt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Avaliações de clientes (25/10) */
+.vt-av-resumo { display: inline-flex; gap: 4px; align-items: center; margin: 2px 0 4px; padding: 0; border: 0; background: none; color: var(--petroleo); font-size: 13px; text-decoration: underline; text-underline-offset: 2px; }
+.vt-av-resumo span { color: #e0a100; letter-spacing: 1px; text-decoration: none; }
+.vt-av-lista { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 62vh; padding: 0 2px 6px; }
+.vt-av { border-bottom: 1px solid var(--linha, rgba(0,0,0,.08)); padding-bottom: 12px; }
+.vt-av p { margin: 6px 0 8px; font-size: 14px; color: var(--petroleo); }
+.vt-av-topo { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; }
+.vt-av-estrelas { color: #e0a100; letter-spacing: 1px; font-size: 14px; }
+.vt-av-fotos { display: flex; gap: 8px; overflow-x: auto; }
+.vt-av-fotos img { width: 104px; height: 138px; object-fit: cover; border-radius: 10px; flex: none; }

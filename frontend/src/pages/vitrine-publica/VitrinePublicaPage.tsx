@@ -233,6 +233,7 @@ function Vitrine({
   );
   const [carrinho, setCarrinho] = useState<Carrinho>(() => limparCarrinho(lerCarrinho(slug), v));
   const [pdp, setPdp] = useState<ModeloPub | null>(null);
+  const [avaliacoesDe, setAvaliacoesDe] = useState<ModeloPub | null>(null);
   const [grade, setGrade] = useState<ModeloPub | null>(null);
   const [kit, setKit] = useState<ModeloPub | null>(null);
   const [verPedido, setVerPedido] = useState(false);
@@ -643,6 +644,17 @@ function Vitrine({
                   />
                 </div>
                 <NomeDoModelo nome={m.nome} base={22} />
+                {(m.avaliacoes?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className="vt-av-resumo"
+                    onClick={() => setAvaliacoesDe(m)}
+                    data-testid={`vt-avaliacoes-${m.id}`}
+                  >
+                    <span aria-hidden="true">★★★★★</span> {m.avaliacoes!.length}{' '}
+                    {m.avaliacoes!.length === 1 ? 'avaliação' : 'avaliações'} de clientes
+                  </button>
+                )}
                 {!semALinha && <Selo texto={seloDa(l.linhaId)} />}
                 {m.etiquetas.length > 0 && (
                   <div className="vt-tags">
@@ -685,6 +697,9 @@ function Vitrine({
         )}
       </div>
 
+      {avaliacoesDe && (
+        <FolhaAvaliacoes m={avaliacoesDe} onFechar={() => setAvaliacoesDe(null)} />
+      )}
       {pdp && (
         <PaginaModelo
           m={pdp}
@@ -812,6 +827,50 @@ function MonteConjunto({
         );
       })}
     </div>
+  );
+}
+
+/** Avaliações de clientes do modelo (25/10): comentário, estrelas, cores e fotos. */
+function FolhaAvaliacoes({ m, onFechar }: { m: ModeloPub; onFechar: () => void }) {
+  const lista = m.avaliacoes ?? [];
+  return (
+    <>
+      <div className="vt-scrim" onClick={onFechar} />
+      <section className="vt-sheet" role="dialog" aria-label="Avaliações de clientes" data-testid="vt-folha-avaliacoes">
+        <div className="vt-grab" />
+        <div className="vt-sh-head">
+          <div>
+            <div className="vt-name">O que os clientes dizem</div>
+            <span className="vt-muted">{m.nome}</span>
+          </div>
+        </div>
+        <div className="vt-av-lista">
+          {lista.map((a, i) => (
+            <article key={i} className="vt-av">
+              <div className="vt-av-topo">
+                <span className="vt-av-estrelas" aria-label={`${a.estrelas} estrelas`}>
+                  {'★'.repeat(a.estrelas)}
+                </span>
+                {a.cores.length > 0 && <span className="vt-muted">{a.cores.join(' + ')}</span>}
+              </div>
+              <p>{a.texto}</p>
+              {a.fotos.length > 0 && (
+                <div className="vt-av-fotos">
+                  {a.fotos.map((f) => (
+                    <img key={f} src={f} alt={`Foto de cliente: ${m.nome}`} loading="lazy" />
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+        <div className="vt-sh-foot">
+          <button type="button" className="vt-cta vt-cta-sec" onClick={onFechar}>
+            Fechar
+          </button>
+        </div>
+      </section>
+    </>
   );
 }
 

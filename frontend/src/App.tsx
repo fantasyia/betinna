@@ -65,6 +65,7 @@ const SegmentosPage = lazyComRetry(() => import("@/pages/SegmentosPage"));
 const PendenciasPage = lazyComRetry(() => import("@/pages/PendenciasPage"));
 const PedidosMarketplacePage = lazyComRetry(() => import("@/pages/PedidosMarketplacePage"));
 const KitsPage = lazyComRetry(() => import("@/pages/KitsPage"));
+const AvaliacoesPage = lazyComRetry(() => import("@/pages/AvaliacoesPage"));
 const MarketplaceIncidentsPage = lazyComRetry(
   () => import("@/pages/MarketplaceIncidentsPage"),
 );
@@ -577,6 +578,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <RespostasRapidasPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: "/avaliacoes",
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute bloquearPara={["REP", "GERENTE", "SAC"]}>
+          <PageSuspense>
+            <AvaliacoesPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

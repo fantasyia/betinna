@@ -5202,3 +5202,31 @@ model CatalogoKitComponente {
   @@unique([kitItemId, variacaoId])
   @@index([variacaoId])
 }
+
+/// Avaliação de cliente (Shopee) publicada na vitrine (25/10, card cmvleo3tv).
+/// Só 5 estrelas com foto, cores do site, texto sem marketplace; a IA olha a
+/// foto e o Léo revisa. Só comentário + foto vão pro site (sem nome).
+model AvaliacaoVitrine {
+  id         String    @id @default(cuid())
+  empresaId  String
+  modeloId   String
+  /// shopee
+  origem     String    @db.VarChar(20)
+  externoId  String    @db.VarChar(60)
+  estrelas   Int
+  texto      String    @db.Text
+  /// Cores do cadastro da variação comprada.
+  cores      String[]  @default([])
+  /// Fotos copiadas pro nosso bucket (webp) — caminho no storage.
+  fotos      String[]  @default([])
+  /// PENDENTE | APROVADA | RECUSADA
+  status     String    @default("PENDENTE") @db.VarChar(20)
+  motivo     String?   @db.VarChar(200)
+  /// true = o Léo decidiu na tela (a IA não mexe mais).
+  revisada   Boolean   @default(false)
+  avaliadaEm DateTime?
+  criadoEm   DateTime  @default(now())
+
+  @@unique([empresaId, origem, externoId])
+  @@index([empresaId, modeloId, status])
+}

@@ -1,4 +1,4 @@
-import { Boxes, Calculator, Factory, Layers, Package, PackagePlus, Scissors, Sparkles, Store } from 'lucide-react';
+import { Boxes, Calculator, Factory, Layers, Package, PackagePlus, Scissors, Sparkles, Star, Store } from 'lucide-react';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
@@ -29,6 +29,8 @@ export function CatalogoTabs() {
     ...(vitrine.data ? [{ to: '/vitrine', label: 'Vitrine', icon: <Store size={14} /> }] : []),
     // Kits dos marketplaces (25/10): ERP, fora da vitrine.
     ...(gestor ? [{ to: '/kits', label: 'Kits', icon: <PackagePlus size={14} /> }] : []),
+    // Avaliações da Shopee na vitrine (25/10): revisão do Léo.
+    ...(vitrine.data ? [{ to: '/avaliacoes', label: 'Avaliações', icon: <Star size={14} /> }] : []),
     ...(precificacao.data?.ativa
       ? [{ to: '/precificacao', label: 'Precificação', icon: <Calculator size={14} /> }]
       : []),

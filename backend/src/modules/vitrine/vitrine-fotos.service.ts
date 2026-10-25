@@ -384,6 +384,11 @@ export class VitrineFotosService implements OnModuleInit {
     if (!ehWebp(arq.buffer)) throw new BusinessRuleException(`${rotulo} precisa ser WebP`);
   }
 
+  /** Sobe um webp já pronto (ex.: foto de avaliação copiada da Shopee, 25/10). */
+  async subirWebp(path: string, buffer: Buffer): Promise<void> {
+    return this.subir(path, buffer);
+  }
+
   private async subir(path: string, buffer: Buffer): Promise<void> {
     const { error } = await this.storage.storage
       .from(BUCKET_VITRINE)

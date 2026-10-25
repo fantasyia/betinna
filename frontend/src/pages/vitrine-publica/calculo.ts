@@ -63,6 +63,14 @@ export interface ModeloPub {
   estoque?: Record<string, Record<string, number>> | null;
   /** Modelos que combinam (conjunto), já nos dois sentidos. */
   combinaCom?: string[];
+  /** Avaliações de clientes aprovadas (25/10): só comentário, estrelas, cores e fotos. */
+  avaliacoes?: AvaliacaoPub[];
+}
+export interface AvaliacaoPub {
+  estrelas: number;
+  texto: string;
+  cores: string[];
+  fotos: string[];
 }
 export interface Faixas {
   minimoEntrada: number | null;
