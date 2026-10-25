@@ -1,6 +1,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { MLClientService } from '@integrations/mercadolivre/ml-client.service';
+import {
+  MLQuestionsService,
+  perguntasRecentes,
+} from '@integrations/mercadolivre/ml-questions.service';
 import { ShopeeClientService } from '@integrations/shopee/shopee-client.service';
 import { ShopeeChatService } from '@integrations/shopee/shopee-chat.service';
 import type { PendenciaAchada } from './pendencias';
@@ -22,6 +26,7 @@ export class VerificadoresService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly ml?: MLClientService,
+    @Optional() private readonly mlPerguntas?: MLQuestionsService,
     @Optional() private readonly shopee?: ShopeeClientService,
     @Optional() private readonly shopeeChat?: ShopeeChatService,
   ) {}
@@ -69,7 +74,12 @@ export class VerificadoresService {
     const q = await ml.get<{
       questions?: Array<{ id: number; text: string; date_created: string; item_id: string }>;
     }>(empresaId, '/my/received_questions/search?status=UNANSWERED&limit=50&api_version=4');
-    for (const p of q.questions ?? []) {
+    // Mesma janela da sincronização (14 dias, Léo 29/09): pergunta mais velha o
+    // painel do ML já esconde. As da janela entram no app — é a entrada que
+    // aciona o robô de resposta (25/10: perguntas de até 52 dias ficavam aqui
+    // e nunca passavam pela IA, porque não tinham conversa no app).
+    for (const p of perguntasRecentes(q.questions ?? [])) {
+      await this.garantirNoApp(empresaId, p.id);
       achados.push({
         canal: 'MARKETPLACE_ML',
         tipo: 'PERGUNTA',
@@ -104,6 +114,22 @@ export class VerificadoresService {
       this.logger.warn(`[pendências] ML mensagens não lidas: ${String(err)}`);
     }
     return achados;
+  }
+
+  /** Pergunta que ainda não virou conversa no app entra agora (e passa pelo robô). */
+  private async garantirNoApp(empresaId: string, questionId: number): Promise<void> {
+    if (!this.mlPerguntas) return;
+    try {
+      const ja = await this.prisma.conversation.findFirst({
+        where: { empresaId, canal: 'MARKETPLACE_ML', peerId: `q:${questionId}` },
+        select: { id: true },
+      });
+      if (ja) return;
+      const q = await this.mlPerguntas.obter(empresaId, questionId);
+      await this.mlPerguntas.processarQuestion(empresaId, q);
+    } catch (err) {
+      this.logger.warn(`[pendências] pergunta ML ${questionId} não entrou no app: ${String(err)}`);
+    }
   }
 
   // ─── Shopee ──────────────────────────────────────────────────────────────
