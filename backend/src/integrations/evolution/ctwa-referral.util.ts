@@ -41,7 +41,10 @@ export interface CtwaReferral {
    * confundir com o nome da campanha.
    */
   campanha?: string;
-  campanhaFonte?: 'meta' | 'manchete';
+  /** 'ref' = veio no texto pronto da landing: "(ref: <utm_campaign>)" (25/10). */
+  campanhaFonte?: 'meta' | 'manchete' | 'ref';
+  /** 'landing' = o contato abriu o WhatsApp pelo botão da landing (lp.ribelt.com.br). */
+  origem?: 'landing';
   /** Bloco cru (externalAdReply + campos de conversão), pra não perder o que não mapeamos. */
   raw?: Record<string, unknown>;
 }
@@ -172,11 +175,15 @@ export function atribuicaoDeReferral(
   ref: CtwaReferral,
   capturadoEm?: string,
 ): { primeiro: Record<string, string>; ultimo: Record<string, string> } {
-  const bloco: Record<string, string> = {
-    // Convenção do card de atribuição: source = plataforma, medium = como chegou.
-    utmSource: 'meta',
-    utmMedium: 'click_to_whatsapp',
-  };
+  const bloco: Record<string, string> =
+    ref.origem === 'landing'
+      ? // Botão do WhatsApp na landing: a campanha veio no texto (utm_campaign).
+        { utmSource: 'landing', utmMedium: 'whatsapp' }
+      : {
+          // Convenção do card de atribuição: source = plataforma, medium = como chegou.
+          utmSource: 'meta',
+          utmMedium: 'click_to_whatsapp',
+        };
   const campanha = campanhaDoReferral(ref);
   if (campanha) bloco.utmCampaign = campanha;
   bloco.campanhaFonte = ref.campanhaFonte ?? 'manchete';
@@ -185,4 +192,29 @@ export function atribuicaoDeReferral(
   if (ref.sourceUrl) bloco.landingPage = ref.sourceUrl;
   if (capturadoEm) bloco.capturadoEm = capturadoEm;
   return { primeiro: { ...bloco }, ultimo: { ...bloco } };
+}
+
+/** "(ref: campanha-x)" no texto — o que a landing põe na 1ª mensagem do WhatsApp. */
+const REF_NO_TEXTO = /\s*\(\s*ref\s*:\s*([^()\n]{1,120})\)\s*/i;
+
+/**
+ * Campanha que veio no TEXTO pronto da landing (card cmvm5pfu8, 25/10): o botão
+ * do WhatsApp em lp.ribelt.com.br manda "Oi! Vim pelo site… (ref: <utm_campaign>)".
+ * Devolve a atribuição (origem landing) e o texto SEM o "(ref: …)" — o robô e a
+ * equipe não precisam ver o código. Sem "(ref:" no texto = null.
+ */
+export function referralDaRef(
+  texto: string | null | undefined,
+): { referral: CtwaReferral; texto: string } | null {
+  if (!texto) return null;
+  const m = REF_NO_TEXTO.exec(texto);
+  const campanha = m?.[1]?.trim().toLowerCase();
+  if (!m || !campanha) return null;
+  const limpo = (texto.slice(0, m.index) + ' ' + texto.slice(m.index + m[0].length))
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return {
+    referral: { campanha: campanha.slice(0, 255), campanhaFonte: 'ref', origem: 'landing' },
+    texto: limpo || texto,
+  };
 }

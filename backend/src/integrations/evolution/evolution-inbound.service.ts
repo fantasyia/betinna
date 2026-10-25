@@ -6,7 +6,7 @@ import { WhatsAppSessionService } from '@integrations/whatsapp/whatsapp-session.
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { EvolutionInstanciaService } from './evolution-instancia.service';
 import { EvolutionService } from './evolution.service';
-import { extrairCtwaReferral, metaDoReferral } from './ctwa-referral.util';
+import { extrairCtwaReferral, metaDoReferral, referralDaRef } from './ctwa-referral.util';
 import { normalizarJid } from './jid.util';
 
 /** Mensagem como o Evolution entrega no webhook messages.upsert (formato Baileys). */
@@ -305,7 +305,7 @@ export class EvolutionInboundService {
         }
       }
 
-      const conteudoFinal = conteudo || (tipo === 'TEXT' ? '[mensagem não suportada]' : conteudo);
+      let conteudoFinal = conteudo || (tipo === 'TEXT' ? '[mensagem não suportada]' : conteudo);
       if (!conteudoFinal) return;
 
       // Em grupos: peerNome = nome do grupo (subject via Evolution), senderName =
@@ -320,8 +320,12 @@ export class EvolutionInboundService {
 
       // Atribuição de anúncio (CTWA). Só faz sentido em 1:1 INBOUND: grupo não vem
       // de anúncio e mensagem nossa (fromMe) não tem referral.
-      const ctwaReferral =
+      const ctwaAnuncio =
         !isGroup && !fromMe ? extrairCtwaReferral(m.message as unknown, m.contextInfo) : undefined;
+      // Botão do WhatsApp da landing: "(ref: campanha)" no texto (25/10). Anúncio vence.
+      const daRef = !isGroup && !fromMe ? referralDaRef(conteudoFinal) : null;
+      const ctwaReferral = ctwaAnuncio ?? daRef?.referral;
+      if (daRef) conteudoFinal = daRef.texto;
 
       await this.inbox.processarMensagemEntrante({
         empresaId,

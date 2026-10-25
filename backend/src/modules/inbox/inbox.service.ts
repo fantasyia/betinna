@@ -1879,7 +1879,8 @@ export class InboxService {
       : undefined;
     // Item 9 (29/09): campanha = NOME da campanha no Meta, pelo sourceId — é o
     // que soma com Lead Ads e site no relatório. Sem acesso, a manchete, MARCADA.
-    if (referral) {
+    // Campanha que veio no texto da landing ("(ref: …)") já é o nome: não consulta a Meta.
+    if (referral && referral.campanhaFonte !== 'ref') {
       const nomeMeta = await this.ctwaCampanha
         ?.nomeDaCampanha(p.empresaId, referral.sourceId as string | undefined)
         .catch(() => null);

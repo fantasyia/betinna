@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { campanhaDoReferral, extrairCtwaReferral, metaDoReferral } from './ctwa-referral.util';
+import {
+  atribuicaoDeReferral,
+  campanhaDoReferral,
+  extrairCtwaReferral,
+  metaDoReferral,
+  referralDaRef,
+} from './ctwa-referral.util';
 
 describe('extrairCtwaReferral', () => {
   it('acha o externalAdReply em QUALQUER variante da mensagem (não só extendedText)', () => {
@@ -146,5 +152,34 @@ describe('campanhaDoReferral', () => {
   it('sem referral → undefined (conversa orgânica não ganha campanha)', () => {
     expect(campanhaDoReferral(undefined)).toBeUndefined();
     expect(campanhaDoReferral({})).toBeUndefined();
+  });
+});
+
+describe('referralDaRef — "(ref: campanha)" da landing (25/10)', () => {
+  it('pega a campanha, tira o código do texto e marca origem landing', () => {
+    const r = referralDaRef('Oi! Vim pelo site e quero comprar no atacado (ref: UV-Adulto_Out25)');
+    expect(r?.referral).toEqual({
+      campanha: 'uv-adulto_out25',
+      campanhaFonte: 'ref',
+      origem: 'landing',
+    });
+    expect(r?.texto).toBe('Oi! Vim pelo site e quero comprar no atacado');
+  });
+
+  it('sem "(ref:" no texto não inventa atribuição', () => {
+    expect(referralDaRef('Oi, quero comprar')).toBeNull();
+    expect(referralDaRef('(ref: )')).toBeNull();
+    expect(referralDaRef(undefined)).toBeNull();
+  });
+
+  it('atribuição da landing não se passa por anúncio da Meta', () => {
+    const r = referralDaRef('Oi (ref: geral)')!;
+    const a = atribuicaoDeReferral(r.referral);
+    expect(a.primeiro).toMatchObject({
+      utmSource: 'landing',
+      utmMedium: 'whatsapp',
+      utmCampaign: 'geral',
+      campanhaFonte: 'ref',
+    });
   });
 });

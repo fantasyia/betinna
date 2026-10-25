@@ -20,7 +20,11 @@ import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.s
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { WhatsAppAuthState, ownerKey, type WhatsAppOwner } from './whatsapp-auth-state';
 import { WhatsAppMediaService } from './whatsapp-media.service';
-import { extrairCtwaReferral, metaDoReferral } from '@integrations/evolution/ctwa-referral.util';
+import {
+  extrairCtwaReferral,
+  metaDoReferral,
+  referralDaRef,
+} from '@integrations/evolution/ctwa-referral.util';
 import type { WhatsAppSessionInfo, WhatsAppSessionStatus } from './whatsapp.types';
 
 /**
@@ -999,7 +1003,9 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       if (peerId === 'status@broadcast') continue;
       const isGroup = peerId.endsWith('@g.us');
 
-      const { conteudo, tipo, mediaMime, extras } = this.extrairConteudo(m.message);
+      const extraido = this.extrairConteudo(m.message);
+      const { tipo, mediaMime, extras } = extraido;
+      let conteudo = extraido.conteudo;
       // Antes: descartava silenciosamente quando extrairConteudo caía no fallback
       // (tipos não reconhecidos: reply citando, reação, edição, poll, lista,
       // viewOnce, etc). Resultado: algumas mensagens "sumiam". Agora logamos
@@ -1083,7 +1089,12 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       // Click-to-WhatsApp (29/09): o Baileys direto é o provider PADRÃO e
       // descartava o referral do anúncio — só o Evolution lia. Mesma extração
       // dos dois lados; só 1:1 INBOUND (grupo não vem de anúncio).
-      const ctwa = !isGroup && !fromMe ? extrairCtwaReferral(m.message as unknown) : undefined;
+      const ctwaAnuncio =
+        !isGroup && !fromMe ? extrairCtwaReferral(m.message as unknown) : undefined;
+      // Botão do WhatsApp da landing: "(ref: campanha)" no texto (25/10). Anúncio vence.
+      const daRef = !isGroup && !fromMe ? referralDaRef(conteudo) : null;
+      const ctwa = ctwaAnuncio ?? daRef?.referral;
+      if (daRef) conteudo = daRef.texto;
 
       await this.inbox.processarMensagemEntrante({
         empresaId: ctx.empresaId,
