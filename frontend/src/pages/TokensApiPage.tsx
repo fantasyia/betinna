@@ -95,6 +95,12 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     badge: 'Financeiro (lançar)',
   },
   {
+    key: 'financeiro-total',
+    label:
+      'Financeiro — COMPLETO (dar baixa total/parcial, estornar, editar e cancelar título, a receber, recorrências, categorias e contas · junto com Financeiro)',
+    badge: 'Financeiro (completo)',
+  },
+  {
     key: 'erp',
     label:
       'Produção (somente leitura · fichas técnicas, insumos, facções, acabamento e OPs — custo do produto)',

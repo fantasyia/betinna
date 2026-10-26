@@ -342,6 +342,11 @@ export class AuthGuard implements CanActivate {
     // criar/editar recorrência A PAGAR. Pede o escopo `financeiro-escrita`
     // (conferido abaixo). Receber, baixa, estorno, cancelar e editar título: tela.
     const tipoDoCorpo = (request.body as { tipo?: unknown } | undefined)?.tipo;
+    // Financeiro COMPLETO por token (Léo, 26/10 — escopo `financeiro-total`): baixa,
+    // estorno, editar/cancelar título, a receber, recorrências, categorias e contas.
+    // Conferido abaixo junto do escopo; sem ele, vale a regra do `financeiro-escrita`.
+    const financeiroTotal =
+      moduloRequerido === 'financeiro' && metodo !== 'GET' && /^\/financeiro\//.test(rel);
     const lancarCusto =
       moduloRequerido === 'financeiro' &&
       tipoDoCorpo === 'PAGAR' &&
@@ -376,7 +381,8 @@ export class AuthGuard implements CanActivate {
       (request.method ?? 'GET').toUpperCase() !== 'GET' &&
       !zerarConversa &&
       !fecharConversa &&
-      !lancarCusto
+      !lancarCusto &&
+      !financeiroTotal
     ) {
       throw new ForbiddenException(
         moduloRequerido === 'financeiro'
@@ -398,11 +404,16 @@ export class AuthGuard implements CanActivate {
         `Token sem escopo "${moduloRequerido}". Gere um token com esse escopo no app (Quadros → Tokens de API).`,
       );
     }
-    // Lançar custo pede o escopo PRÓPRIO, além do `financeiro` (leitura).
-    if (lancarCusto && !row.escopo.includes('financeiro-escrita')) {
-      throw new ForbiddenException(
-        'Token sem escopo "financeiro-escrita" (lançar conta a pagar e recorrência). Ajuste o escopo em Quadros → Tokens de API.',
-      );
+    // Escrita completa no Financeiro: escopo `financeiro-total`. Lançar custo
+    // (a pagar) também passa com o `financeiro-escrita`, como antes.
+    if (financeiroTotal && !row.escopo.includes('financeiro-total')) {
+      if (!(lancarCusto && row.escopo.includes('financeiro-escrita'))) {
+        throw new ForbiddenException(
+          lancarCusto
+            ? 'Token sem escopo "financeiro-escrita" (lançar conta a pagar e recorrência). Ajuste o escopo em Quadros → Tokens de API.'
+            : 'Token sem escopo "financeiro-total" (baixa, estorno, editar/cancelar, a receber). Ajuste o escopo em Quadros → Tokens de API.',
+        );
+      }
     }
     if (escreverErp && !row.escopo.includes('erp-escrita')) {
       throw new ForbiddenException(

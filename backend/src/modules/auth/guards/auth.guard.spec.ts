@@ -251,10 +251,10 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
       comEscopos(['financeiro', 'financeiro-escrita']);
       await expect(
         pedir('POST', '/financeiro/titulos', { ...conta, tipo: 'RECEBER' }),
-      ).rejects.toThrow(/Receber, baixa/);
+      ).rejects.toThrow(/financeiro-total/);
       await expect(
         pedir('POST', '/financeiro/recorrencias', { ...rec, tipo: 'RECEBER' }),
-      ).rejects.toThrow(/Receber, baixa/);
+      ).rejects.toThrow(/financeiro-total/);
       for (const [m, path] of [
         ['POST', '/financeiro/titulos/t1/baixas'],
         ['POST', '/financeiro/baixas/b1/estornar'],
@@ -264,8 +264,31 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
         ['POST', '/financeiro/contas'],
         ['PUT', '/financeiro/categorias/c1'],
       ] as const) {
-        await expect(pedir(m, path, { tipo: 'PAGAR' })).rejects.toThrow(/Receber, baixa/);
+        await expect(pedir(m, path, { tipo: 'PAGAR' })).rejects.toThrow(/financeiro-total/);
       }
+    });
+
+    it('com "financeiro-total" (Léo, 26/10): baixa, estorno, editar, cancelar, a receber e contas passam', async () => {
+      comEscopos(['financeiro', 'financeiro-total']);
+      for (const [m, path, body] of [
+        ['POST', '/financeiro/titulos', { ...conta, tipo: 'RECEBER' }],
+        ['POST', '/financeiro/titulos/t1/baixas', { valor: 10, data: '2026-10-26', contaId: 'c1' }],
+        ['POST', '/financeiro/baixas/b1/estornar', {}],
+        ['POST', '/financeiro/titulos/t1/cancelar', {}],
+        ['PUT', '/financeiro/titulos/t1', conta],
+        ['POST', '/financeiro/baixas-em-massa', { ids: ['t1'] }],
+        ['PUT', '/financeiro/recorrencias/r1', { ...rec, tipo: 'RECEBER' }],
+        ['POST', '/financeiro/contas', { nome: 'Banco', tipo: 'BANCO' }],
+      ] as const) {
+        await expect(pedir(m, path, body)).resolves.toBe(true);
+      }
+    });
+
+    it('"financeiro-total" sem "financeiro" (leitura) não basta', async () => {
+      comEscopos(['financeiro-total']);
+      await expect(pedir('POST', '/financeiro/titulos/t1/baixas', {})).rejects.toThrow(
+        /escopo "financeiro"/,
+      );
     });
   });
 

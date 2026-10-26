@@ -270,6 +270,10 @@ export const API_TOKEN_ESCOPOS = [
   // Exige também `financeiro`.
   // Receber, baixa, estorno, cancelamento e edição de título seguem na tela.
   'financeiro-escrita',
+  // financeiro-total (Léo, 26/10): o Orquestrador mexe no Financeiro inteiro
+  // quando o Léo pede — baixa (total/parcial), estorno, editar e cancelar título,
+  // a receber, recorrências, categorias e contas. Exige também `financeiro`.
+  'financeiro-total',
   // erp = LEITURA da produção (Léo, 20/10): fichas técnicas, insumos, facções,
   // acabamento e OPs (+ simular OP, que só calcula). Custo do produto/CPV.
   'erp',
