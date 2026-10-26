@@ -19,6 +19,7 @@ interface Avaliacao {
   modelo: string;
   estrelas: number;
   texto: string;
+  autor: string | null;
   cores: string[];
   fotos: string[];
   status: Status;
@@ -99,7 +100,8 @@ export default function AvaliacoesPage() {
                 <div className="flex flex-wrap items-baseline gap-x-3 text-sm">
                   <b className="text-text">{a.modelo}</b>
                   <span className="text-warning">{'★'.repeat(a.estrelas)}</span>
-                  {a.cores.length > 0 && <span className="text-muted text-xs">{a.cores.join(' + ')}</span>}
+                  {a.autor && <span className="text-muted text-xs">{a.autor}</span>}
+                  {a.cores.length > 0 && <span className="text-muted text-xs">· {a.cores.join(' + ')}</span>}
                 </div>
                 <p className="text-sm text-text">{a.texto}</p>
                 <div className="flex gap-2 overflow-x-auto">

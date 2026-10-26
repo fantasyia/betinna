@@ -5215,6 +5215,8 @@ model AvaliacaoVitrine {
   externoId  String    @db.VarChar(60)
   estrelas   Int
   texto      String    @db.Text
+  /// Nome de quem avaliou, como a Shopee mostra (Léo, 26/10: aparece no site).
+  autor      String?   @db.VarChar(80)
   /// Cores do cadastro da variação comprada.
   cores      String[]  @default([])
   /// Fotos copiadas pro nosso bucket (webp) — caminho no storage.

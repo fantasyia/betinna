@@ -28,6 +28,7 @@ const MAX_ITENS = 500;
 interface ComentarioShopee {
   comment_id: number;
   comment?: string;
+  buyer_username?: string;
   rating_star?: number;
   model_id_list?: number[];
   hidden?: boolean;
@@ -68,14 +69,13 @@ export class AvaliacoesService {
     });
     const porChave = new Map(modelos.map((m) => [chaveModelo(m.nome), m]));
     const itens = await this.anuncios(empresaId);
-    const ja = new Set(
-      (
-        await this.prisma.avaliacaoVitrine.findMany({
-          where: { empresaId, origem: 'shopee' },
-          select: { externoId: true },
-        })
-      ).map((a) => a.externoId),
-    );
+    const existentes = await this.prisma.avaliacaoVitrine.findMany({
+      where: { empresaId, origem: 'shopee' },
+      select: { id: true, externoId: true, autor: true },
+    });
+    const ja = new Set(existentes.map((a) => a.externoId));
+    // Antigas sem nome (antes de 26/10) ganham o nome na próxima passada.
+    const semAutor = new Map(existentes.filter((a) => !a.autor).map((a) => [a.externoId, a.id]));
     let novas = 0;
     let aprovadas = 0;
     for (const item of itens) {
@@ -90,6 +90,13 @@ export class AvaliacoesService {
       for (const c of await this.comentarios(empresaId, item.id)) {
         if (novas >= NOVAS_POR_RODADA) break;
         const externoId = String(c.comment_id);
+        const idSemAutor = semAutor.get(externoId);
+        if (idSemAutor && c.buyer_username) {
+          await this.prisma.avaliacaoVitrine
+            .update({ where: { id: idSemAutor }, data: { autor: c.buyer_username.slice(0, 80) } })
+            .catch(() => undefined);
+          semAutor.delete(externoId);
+        }
         if (ja.has(externoId)) continue;
         const urls = c.media?.image_url_list ?? [];
         if (
@@ -155,6 +162,7 @@ export class AvaliacoesService {
         externoId,
         estrelas: c.rating_star ?? 5,
         texto: (c.comment ?? '').trim().slice(0, 2000),
+        autor: c.buyer_username?.slice(0, 80) ?? null,
         cores,
         fotos: paths,
         status: v.aprovar ? 'APROVADA' : 'RECUSADA',

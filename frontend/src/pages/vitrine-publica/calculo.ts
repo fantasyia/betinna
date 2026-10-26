@@ -69,6 +69,8 @@ export interface ModeloPub {
 export interface AvaliacaoPub {
   estrelas: number;
   texto: string;
+  /** Nome de quem avaliou (como aparece na Shopee). */
+  autor?: string | null;
   cores: string[];
   fotos: string[];
 }

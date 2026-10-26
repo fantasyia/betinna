@@ -851,7 +851,7 @@ function FolhaAvaliacoes({ m, onFechar }: { m: ModeloPub; onFechar: () => void }
                 <span className="vt-av-estrelas" aria-label={`${a.estrelas} estrelas`}>
                   {'★'.repeat(a.estrelas)}
                 </span>
-                {a.cores.length > 0 && <span className="vt-muted">{a.cores.join(' + ')}</span>}
+                {a.autor && <span className="vt-muted">{a.autor}</span>}
               </div>
               <p>{a.texto}</p>
               {a.fotos.length > 0 && (

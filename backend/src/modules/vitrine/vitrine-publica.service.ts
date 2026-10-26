@@ -231,14 +231,27 @@ export class VitrinePublicaService {
     // fotos — sem nome. Falha aqui nunca derruba a vitrine.
     const avaliacoes = new Map<
       string,
-      Array<{ estrelas: number; texto: string; cores: string[]; fotos: string[] }>
+      Array<{
+        estrelas: number;
+        texto: string;
+        autor: string | null;
+        cores: string[];
+        fotos: string[];
+      }>
     >();
     try {
       const rows = await this.prisma.avaliacaoVitrine.findMany({
         where: { empresaId, status: 'APROVADA', modeloId: { in: publicos.map((m) => m.id) } },
         orderBy: { criadoEm: 'desc' },
         take: 400,
-        select: { modeloId: true, estrelas: true, texto: true, cores: true, fotos: true },
+        select: {
+          modeloId: true,
+          estrelas: true,
+          texto: true,
+          autor: true,
+          cores: true,
+          fotos: true,
+        },
       });
       for (const r of rows) {
         const l = avaliacoes.get(r.modeloId) ?? [];
@@ -246,6 +259,7 @@ export class VitrinePublicaService {
         l.push({
           estrelas: r.estrelas,
           texto: r.texto,
+          autor: r.autor,
           cores: r.cores,
           fotos: r.fotos.map((f) => this.fotos.urlPublica(f)).filter((u): u is string => !!u),
         });
