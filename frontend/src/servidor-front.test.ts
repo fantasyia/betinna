@@ -170,6 +170,12 @@ describe('site estático por domínio (landing, 24/10)', () => {
     expect(r.headers.get('location')).toBe('https://landing.com/opcao-b?utm_campaign=x');
   });
 
+  it('www.<subdomínio> manda 301 pro endereço sem www, com caminho e query (26/10)', async () => {
+    const r = await get('/p/bermuda?utm_source=x', 'www.atacado.ribelt.com.br');
+    expect(r.status).toBe(301);
+    expect(r.headers.get('location')).toBe('https://atacado.ribelt.com.br/p/bermuda?utm_source=x');
+  });
+
   it('domínio sem pasta segue no app como antes', async () => {
     const r = await get('/pedidos/123', 'app.somatecblocking.com.br');
     expect(r.status).toBe(200);

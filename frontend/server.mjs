@@ -644,6 +644,19 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       const rel = caminho.replace(/^\/+/, '');
       const host = req.headers['x-forwarded-host'] || req.headers.host;
 
+      // www.<domínio> → <domínio> (26/10): clientes digitavam www.atacado… e a
+      // vitrine caía no login (a API só aceita a origem sem www). Um endereço só,
+      // pro cliente e pro Google; caminho e query vão junto.
+      const hostCru = String(host ?? '').trim().toLowerCase().replace(/:\d+$/, '');
+      if (hostCru.startsWith('www.') && hostCru.split('.').length > 3) {
+        res.writeHead(301, {
+          Location: `https://${hostCru.slice(4)}${url.pathname}${url.search}`,
+          'Cache-Control': 'public, max-age=3600',
+          ...SEGURANCA,
+        });
+        return res.end();
+      }
+
       // Domínio com site estático próprio (landing): responde tudo dali.
       const site = await arquivoDoSite(sites, host, caminho);
       if (site) {
