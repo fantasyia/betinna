@@ -15,7 +15,7 @@ function montar(o: {
   desligados?: string[];
   pendencias: Pend[];
   conversa?: { id: string } | null;
-  mensagens?: Array<{ direction: 'INBOUND' | 'OUTBOUND'; conteudo: string }>;
+  mensagens?: Array<{ direction: 'INBOUND' | 'OUTBOUND'; conteudo: string; tipo?: string }>;
   iaTexto?: string;
   envioFalha?: boolean;
 }) {
@@ -39,7 +39,11 @@ function montar(o: {
       findFirst: vi.fn(async () => (o.conversa === undefined ? { id: 'c1' } : o.conversa)),
     },
     // findMany vem em ordem DESC (o serviço inverte)
-    message: { findMany: vi.fn(async () => [...(o.mensagens ?? [])].reverse()) },
+    message: {
+      findMany: vi.fn(async () =>
+        [...(o.mensagens ?? [])].map((m) => ({ tipo: 'TEXT', ...m })).reverse(),
+      ),
+    },
     marketplaceOrder: { findFirst: vi.fn(async () => null) },
     pendenciaRespostaIa: {
       create: vi.fn(async ({ data }) => {
@@ -117,6 +121,18 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
     await t.svc.processar('e1');
     expect(t.bot.gerarRespostaIa).not.toHaveBeenCalled();
     expect(t.enviados).toEqual([]);
+  });
+
+  it('figurinha da loja não é resposta: a IA responde mesmo assim (mesmo critério da rotina)', async () => {
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [
+        { direction: 'INBOUND', conteudo: 'Tem a cor bege no G?' },
+        { direction: 'OUTBOUND', conteudo: '[sticker]', tipo: 'STICKER' },
+      ],
+    });
+    await t.svc.processar('e1');
+    expect(t.bot.gerarRespostaIa).toHaveBeenCalledTimes(1);
   });
 
   it('reembolso: manda a espera (última palavra), marca humano e avisa por push', async () => {

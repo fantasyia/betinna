@@ -132,11 +132,14 @@ export class PendenciasIaService {
       where: { conversationId: conv.id, status: { not: 'FAILED' } },
       orderBy: { criadoEm: 'desc' },
       take: MAX_HISTORICO,
-      select: { direction: true, conteudo: true },
+      select: { direction: true, conteudo: true, tipo: true },
     });
     const historico: MensagemHistorico[] = msgs
       .reverse()
       .filter((m) => m.conteudo?.trim())
+      // Figurinha/cupom automático da loja não é resposta (mesmo critério da
+      // rotina, 25/10): só TEXTO da loja conta como "a loja falou".
+      .filter((m) => m.direction !== 'OUTBOUND' || m.tipo === 'TEXT')
       .map((m) => ({ daLoja: m.direction === 'OUTBOUND', texto: m.conteudo.slice(0, 800) }));
     // A loja já falou por último: nada a fazer (a próxima rodada fecha a pendência).
     if (!clienteFalouPorUltimo(historico)) return 'pulada';
