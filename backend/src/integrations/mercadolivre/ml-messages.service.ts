@@ -49,13 +49,16 @@ export class MLMessagesService {
     const messages = await this.listarMensagens(empresaId, packId, sellerId);
     let processadas = 0;
     for (const m of messages) {
+      // Nossas mensagens entram como OUTBOUND (25/10): o app mostra a conversa inteira
+      // do pós-venda (inclusive o respondido pelo painel do ML); o envio pelo app
+      // não duplica (eco adota o externalId).
       const fromMe = m.from.user_id === sellerIdNum;
-      if (fromMe) continue; // não processamos echoes das nossas próprias mensagens
       await this.inbox.processarMensagemEntrante({
         empresaId,
         canal: 'MARKETPLACE_ML',
         peerId: `pack:${packId}`,
-        peerNome: `Comprador ML #${m.from.user_id}`,
+        peerNome: fromMe ? undefined : `Comprador ML #${m.from.user_id}`,
+        direction: fromMe ? 'OUTBOUND' : 'INBOUND',
         tipo: m.message_attachments?.length ? 'DOCUMENT' : 'TEXT',
         conteudo: m.text?.plain ?? '[mensagem]',
         externalId: m.id,
@@ -68,7 +71,7 @@ export class MLMessagesService {
           ml_message_id: m.id,
           ml_pack_id: packId,
           ml_seller_id: sellerIdNum,
-          ml_buyer_id: m.from.user_id,
+          ml_buyer_id: fromMe ? m.to?.user_id : m.from.user_id,
           ml_status: m.status,
           categoria: 'POS_VENDA',
         },

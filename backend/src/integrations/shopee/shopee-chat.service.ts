@@ -43,15 +43,18 @@ export class ShopeeChatService {
     const msgs = await this.listarMensagens(empresaId, conversationId);
     let processadas = 0;
     for (const m of msgs) {
-      // Ignorar nossas mensagens (from_shop_id = nosso shop)
-      if (m.from_shop_id === shopIdNum) continue;
+      // Nossas mensagens (from_shop_id = nosso shop) entram como OUTBOUND (25/10): a
+      // conversa no app mostra os dois lados, inclusive o que foi respondido pelo
+      // painel da Shopee — e a IA vê quem falou por último.
+      const daLoja = m.from_shop_id === shopIdNum;
       const { conteudo, tipo, mediaUrl } = this.extrair(m);
       if (!conteudo && tipo === 'TEXT') continue;
       await this.inbox.processarMensagemEntrante({
         empresaId,
         canal: 'MARKETPLACE_SHOPEE',
         peerId: `conv:${conversationId}`,
-        peerNome: `Comprador Shopee #${m.from_id}`,
+        peerNome: daLoja ? undefined : `Comprador Shopee #${m.from_id}`,
+        direction: daLoja ? 'OUTBOUND' : 'INBOUND',
         tipo,
         conteudo,
         externalId: m.message_id,
@@ -60,7 +63,8 @@ export class ShopeeChatService {
         meta: {
           shopee_conv_id: conversationId,
           shopee_message_id: m.message_id,
-          shopee_from_id: m.from_id,
+          // Comprador = quem NÃO é a loja (o send_message precisa dele em to_id).
+          shopee_from_id: daLoja ? m.to_id : m.from_id,
           shopee_to_id: m.to_id,
           shopee_message_type: m.message_type,
           shopee_source: m.source,
@@ -84,9 +88,10 @@ export class ShopeeChatService {
       to_id: Number(toBuyerId),
       message_type: 'text',
       content: { text: texto },
-      // Shopee aceita conversation_id opcional pra forçar thread específico
-      conversation_id: conversationId,
+      // SEM conversation_id: a Shopee recusava (HTTP 491 param_error, 25/10) — o campo é
+      // de outro tipo de conversa e ia como texto. to_id + conteúdo bastam.
     });
+    void conversationId;
     return { externalId: r.response?.message_id };
   }
 

@@ -7,6 +7,7 @@ import {
 } from '@integrations/mercadolivre/ml-questions.service';
 import { ShopeeClientService } from '@integrations/shopee/shopee-client.service';
 import { ShopeeChatService } from '@integrations/shopee/shopee-chat.service';
+import { MLMessagesService } from '@integrations/mercadolivre/ml-messages.service';
 import type { PendenciaAchada } from './pendencias';
 
 /** Resultado por canal: `null` = a conferência falhou (não resolve nada desse canal). */
@@ -29,6 +30,7 @@ export class VerificadoresService {
     @Optional() private readonly mlPerguntas?: MLQuestionsService,
     @Optional() private readonly shopee?: ShopeeClientService,
     @Optional() private readonly shopeeChat?: ShopeeChatService,
+    @Optional() private readonly mlMensagens?: MLMessagesService,
   ) {}
 
   async levantar(empresaId: string): Promise<Achados> {
@@ -107,6 +109,15 @@ export class VerificadoresService {
       for (const r of u.results ?? []) {
         const pack = r.resource.match(/packs\/(\d+)/)?.[1];
         if (!pack || !r.count) continue;
+        // Traz a conversa do pós-venda pro app (25/10): dá pra responder por lá.
+        if (this.mlMensagens) {
+          const creds = await ml.getCredenciais(empresaId).catch(() => null);
+          if (creds?.userId) {
+            await this.mlMensagens
+              .processarPack(empresaId, pack, creds.userId)
+              .catch(() => undefined);
+          }
+        }
         achados.push({
           canal: 'MARKETPLACE_ML',
           tipo: 'MENSAGEM',

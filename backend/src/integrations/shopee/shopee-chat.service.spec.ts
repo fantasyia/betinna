@@ -50,7 +50,7 @@ describe('ShopeeChatService', () => {
   });
 
   describe('processarConversation', () => {
-    it('ignora mensagens enviadas pelo próprio shop (from_shop_id = shopId)', async () => {
+    it('mensagem do próprio shop entra como OUTBOUND (a conversa mostra os dois lados, 25/10)', async () => {
       shopee.getShop.mockResolvedValue({
         response: {
           messages: [
@@ -62,8 +62,15 @@ describe('ShopeeChatService', () => {
 
       const r = await service.processarConversation('emp-1', 'conv-abc');
 
-      expect(r.processadas).toBe(1);
-      expect(inbox.processarMensagemEntrante).toHaveBeenCalledOnce();
+      expect(r.processadas).toBe(2);
+      const dirs = inbox.processarMensagemEntrante.mock.calls.map((c) => [
+        c[0].externalId,
+        c[0].direction,
+      ]);
+      expect(dirs).toEqual([
+        ['m-mine', 'OUTBOUND'],
+        ['m-buyer', 'INBOUND'],
+      ]);
     });
 
     it('cria Inbox message com peerId conv:<id> e categoria POS_VENDA', async () => {
@@ -130,7 +137,7 @@ describe('ShopeeChatService', () => {
   });
 
   describe('enviarMensagem', () => {
-    it('POST sellerchat/send_message com to_id, content e conversation_id', async () => {
+    it('POST sellerchat/send_message com to_id e content — SEM conversation_id (dava 491, 25/10)', async () => {
       shopee.postShop.mockResolvedValue({ response: { message_id: 'sent-1' } });
 
       const r = await service.enviarMensagem('emp-1', 'conv-x', 222, 'Olá!');
@@ -142,9 +149,9 @@ describe('ShopeeChatService', () => {
           to_id: 222,
           message_type: 'text',
           content: { text: 'Olá!' },
-          conversation_id: 'conv-x',
         }),
       );
+      expect(shopee.postShop.mock.calls[0][2]).not.toHaveProperty('conversation_id');
       expect(r.externalId).toBe('sent-1');
     });
   });

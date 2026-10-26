@@ -53,7 +53,7 @@ describe('MLMessagesService', () => {
   });
 
   describe('processarPack', () => {
-    it('ignora mensagens enviadas pelo seller (echoes próprios)', async () => {
+    it('mensagem do seller entra como OUTBOUND (a conversa mostra os dois lados, 25/10)', async () => {
       ml.get.mockResolvedValue({
         messages: [
           fakeMessage({ id: 'm-1', from: { user_id: 999 } }), // do próprio seller
@@ -63,8 +63,15 @@ describe('MLMessagesService', () => {
 
       const r = await service.processarPack('emp-1', 'pack-1', 999);
 
-      expect(r.processadas).toBe(1);
-      expect(inbox.processarMensagemEntrante).toHaveBeenCalledOnce();
+      expect(r.processadas).toBe(2);
+      const dirs = inbox.processarMensagemEntrante.mock.calls.map((c) => [
+        c[0].externalId,
+        c[0].direction,
+      ]);
+      expect(dirs).toEqual([
+        ['m-1', 'OUTBOUND'],
+        ['m-2', 'INBOUND'],
+      ]);
     });
 
     it('cria Inbox message com peerId pack:<id> e categoria POS_VENDA', async () => {

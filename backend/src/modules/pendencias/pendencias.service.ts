@@ -79,9 +79,10 @@ export class PendenciasService {
         } else {
           await this.prisma.pendenciaMarketplace.update({
             where: { id: atual.id },
-            // Voltou depois de resolvida (comprador falou de novo): é novidade.
+            // Voltou depois de resolvida (comprador falou de novo): é novidade — e a
+            // IA pode responder de novo (estado volta a pendente).
             data: atual.resolvidaEm
-              ? { ...dados, resolvidaEm: null, avisadaEm: null, lembreteEm: null }
+              ? { ...dados, resolvidaEm: null, avisadaEm: null, lembreteEm: null, estado: null }
               : dados,
           });
         }
@@ -238,8 +239,27 @@ export class PendenciasService {
       : [];
     const ultimaIa = new Map<string, (typeof ia)[number]>();
     for (const r of ia) if (!ultimaIa.has(r.pendenciaId)) ultimaIa.set(r.pendenciaId, r);
+    // "Abrir no app" leva direto pra conversa (chat da Shopee, pós-venda do ML).
+    const peers = data
+      .map((p) => (p.chave.startsWith('inc:') ? `claim:${p.chave.slice(4)}` : p.chave))
+      .filter((c) => /^(conv|pack|q|claim):/.test(c));
+    const convs = peers.length
+      ? await this.prisma.conversation.findMany({
+          where: { empresaId, peerId: { in: peers } },
+          select: { id: true, peerId: true },
+        })
+      : [];
+    const convDe = new Map(convs.map((c) => [c.peerId, c.id]));
     return {
-      data: data.map((p) => ({ ...p, status: statusDa(p), ia: ultimaIa.get(p.id) ?? null })),
+      data: data.map((p) => {
+        const conv = convDe.get(p.chave.startsWith('inc:') ? `claim:${p.chave.slice(4)}` : p.chave);
+        return {
+          ...p,
+          link: conv ? `/inbox?conv=${conv}` : p.link,
+          status: statusDa(p),
+          ia: ultimaIa.get(p.id) ?? null,
+        };
+      }),
       contagem: { PENDENTE, AGUARDANDO_HUMANO, RESPONDIDA_IA, ENCERRADA },
     };
   }
