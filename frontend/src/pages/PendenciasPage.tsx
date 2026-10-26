@@ -306,7 +306,7 @@ export default function PendenciasPage() {
                     {ref && <span className="text-muted">{ref}</span>}
                     {p.link && (
                       <Link to={p.link} className="text-primary hover:underline ml-auto">
-                        Abrir no app ›
+                        Abrir conversa ›
                       </Link>
                     )}
                   </span>
