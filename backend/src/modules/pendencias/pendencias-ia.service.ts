@@ -128,7 +128,8 @@ export class PendenciasIaService {
     }
 
     const msgs = await this.prisma.message.findMany({
-      where: { conversationId: conv.id },
+      // Envio que FALHOU não conta como fala da loja (senão a IA nunca tenta de novo).
+      where: { conversationId: conv.id, status: { not: 'FAILED' } },
       orderBy: { criadoEm: 'desc' },
       take: MAX_HISTORICO,
       select: { direction: true, conteudo: true },
