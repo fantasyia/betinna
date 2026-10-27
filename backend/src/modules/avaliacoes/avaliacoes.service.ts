@@ -20,10 +20,11 @@ import {
   modeloDoAnuncio,
 } from './avaliacoes';
 
-/** Teto de avaliações NOVAS por rodada (custo da IA e das fotos). */
-const NOVAS_POR_RODADA = 60;
+// Sem teto de avaliações por rodada (Léo, 26/10: traz TODAS as que passam no
+// filtro). Os limites abaixo só seguram um laço que a Shopee não encerre.
 const FOTOS_POR_AVALIACAO = 3;
-const MAX_ITENS = 500;
+const MAX_ITENS = 5000;
+const MAX_PAGINAS_COMENTARIOS = 1000;
 
 interface ComentarioShopee {
   comment_id: number;
@@ -79,7 +80,6 @@ export class AvaliacoesService {
     let novas = 0;
     let aprovadas = 0;
     for (const item of itens) {
-      if (novas >= NOVAS_POR_RODADA) break;
       const alvo = modeloDoAnuncio(item.nome);
       const modelo = alvo ? porChave.get(chaveModelo(alvo)) : undefined;
       if (!modelo) continue;
@@ -88,7 +88,6 @@ export class AvaliacoesService {
         () => new Map<number, string>(),
       );
       for (const c of await this.comentarios(empresaId, item.id)) {
-        if (novas >= NOVAS_POR_RODADA) break;
         const externoId = String(c.comment_id);
         const idSemAutor = semAutor.get(externoId);
         if (idSemAutor && c.buyer_username) {
@@ -240,7 +239,7 @@ export class AvaliacoesService {
   private async comentarios(empresaId: string, itemId: number): Promise<ComentarioShopee[]> {
     const out: ComentarioShopee[] = [];
     let cursor = '';
-    for (let pag = 0; pag < 30; pag++) {
+    for (let pag = 0; pag < MAX_PAGINAS_COMENTARIOS; pag++) {
       const r = await this.shopee!.getShop<{
         response?: { item_comment_list?: ComentarioShopee[]; more?: boolean; next_cursor?: string };
       }>(empresaId, '/api/v2/product/get_comment', {
@@ -301,8 +300,26 @@ export class AvaliacoesService {
     });
   }
 
-  async importarAgora(user: AuthenticatedUser) {
-    return this.importarShopee(this.empresa(user));
+  /** Empresas com importação em andamento (o acervo inteiro leva minutos). */
+  private readonly rodando = new Set<string>();
+
+  /**
+   * "Buscar agora": roda em segundo plano — o acervo completo passa do tempo
+   * de uma requisição. As avaliações vão aparecendo na tela conforme gravam.
+   */
+  importarAgora(user: AuthenticatedUser): { iniciada: boolean } {
+    const empresaId = this.empresa(user);
+    if (this.rodando.has(empresaId)) return { iniciada: false };
+    this.rodando.add(empresaId);
+    void this.importarShopee(empresaId)
+      .then((r) =>
+        this.logger.log(
+          `[avaliações] ${empresaId}: ${r.novas} novas, ${r.aprovadas} aprovadas pela IA`,
+        ),
+      )
+      .catch((err) => this.logger.warn(`[avaliações] ${empresaId} falhou: ${String(err)}`))
+      .finally(() => this.rodando.delete(empresaId));
+    return { iniciada: true };
   }
 }
 

@@ -32,7 +32,9 @@ export class AvaliacoesController {
   }
 
   @Post('importar')
-  @ApiOperation({ summary: 'Busca as avaliações novas agora (a rotina roda 1x por dia)' })
+  @ApiOperation({
+    summary: 'Busca TODAS as avaliações agora, em segundo plano (a rotina roda 1x por semana)',
+  })
   importar(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.importarAgora(user);
   }

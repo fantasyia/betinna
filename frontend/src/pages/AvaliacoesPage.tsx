@@ -9,7 +9,7 @@ import { useToast } from '@/components/toast';
 
 /**
  * Avaliações da Shopee na vitrine (Léo, 23–25/10; card cmvleo3tv). A rotina
- * traz 1x por dia as de 5 estrelas com foto, das cores do site, com texto sem
+ * traz 1x por semana as de 5 estrelas com foto, das cores do site, com texto sem
  * marketplace; a IA olha a foto (embalagem/logo = fora). Aqui o Léo revisa:
  * só APROVADA aparece no site, e a decisão dele vale sobre a da IA.
  */
@@ -55,9 +55,12 @@ export default function AvaliacoesPage() {
   async function importar() {
     setImportando(true);
     try {
-      const r = await api.post<{ novas: number; aprovadas: number }>('/vitrine/admin/avaliacoes/importar', {});
-      toast.success(`${r.novas} nova(s), ${r.aprovadas} aprovada(s) pela IA`);
-      refetch();
+      const r = await api.post<{ iniciada: boolean }>('/vitrine/admin/avaliacoes/importar', {});
+      toast.success(
+        r.iniciada
+          ? 'Buscando todas as avaliações — elas vão aparecendo aqui em alguns minutos'
+          : 'Já está buscando — atualize daqui a pouco',
+      );
     } catch (err) {
       toast.error('Não deu pra buscar agora', apiErrorMessage(err));
     } finally {

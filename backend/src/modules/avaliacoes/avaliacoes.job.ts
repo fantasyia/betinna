@@ -6,9 +6,9 @@ import { CronLockService } from '@shared/utils/cron-lock.service';
 import { AvaliacoesService } from './avaliacoes.service';
 
 /**
- * Avaliações novas da Shopee, de HORA em hora, nas empresas com vitrine + Shopee
- * (Léo, 26/10: puxar TODAS). Cada rodada grava até NOVAS_POR_RODADA; o acervo
- * antigo entra aos poucos e, depois, a rodada só acha as novas e sai rápido.
+ * Avaliações novas da Shopee, 1x por SEMANA (segunda, madrugada), nas empresas
+ * com vitrine + Shopee (Léo, 26/10). Sem teto: traz todas as que passam no
+ * filtro. O acervo antigo entra pelo "Buscar agora".
  */
 @Injectable()
 export class AvaliacoesJob {
@@ -21,10 +21,10 @@ export class AvaliacoesJob {
     private readonly env: EnvService,
   ) {}
 
-  @Cron('0 20 * * * *', { name: 'avaliacoes-shopee', timeZone: 'America/Sao_Paulo' })
+  @Cron('0 20 4 * * 1', { name: 'avaliacoes-shopee', timeZone: 'America/Sao_Paulo' })
   async rodar(): Promise<void> {
     if (this.env.get('NODE_ENV') === 'test') return;
-    if (!(await this.cronLock.acquire('avaliacoes-shopee', 3000))) return;
+    if (!(await this.cronLock.acquire('avaliacoes-shopee', 6 * 3600))) return;
     try {
       const conexoes = await this.prisma.integracaoConexao.findMany({
         where: { servico: 'shopee', ativo: true },
