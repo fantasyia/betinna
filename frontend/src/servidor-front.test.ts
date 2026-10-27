@@ -248,10 +248,10 @@ describe('servidor do front — preview do link com a marca do domínio', () => 
     expect(await r.text()).toContain('<title>Ribelt Têxtil · Atacado de roupa masculina</title>');
   });
 
-  it('link antigo /v/<slug> no domínio da vitrine → raiz (302), mantendo a query', async () => {
+  it('link antigo /v/<slug> no domínio da vitrine → raiz (301), mantendo a query', async () => {
     for (const caminho of ['/v/atacado-ribelt', '/v/atacado-ribelt/']) {
       const r = await get(`${caminho}?utm_source=meta&fbclid=abc`, 'atacado.ribelt.com.br');
-      expect(r.status).toBe(302);
+      expect(r.status).toBe(301);
       expect(r.headers.get('location')).toBe('/?utm_source=meta&fbclid=abc');
     }
   });

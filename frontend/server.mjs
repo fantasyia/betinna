@@ -754,10 +754,10 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
       }
       // A vitrine mora na RAIZ do domínio próprio (Léo, 14/10: na barra, só
       // "atacado.ribelt.com.br"). O link antigo /v/<slug>, já compartilhado em
-      // WhatsApp e anúncio, vem pra raiz levando a query (utm, fbclid). 302,
-      // não 301: o navegador não grava pra sempre se um dia mudar de novo.
+      // WhatsApp e anúncio, vem pra raiz levando a query (utm, fbclid). 301
+      // (26/10, #04): o Search Console só passa a autoridade com permanente.
       if (doTenant && marca.vitrineSlug && caminho.replace(/\/+$/, '') === `/v/${marca.vitrineSlug}`) {
-        res.writeHead(302, {
+        res.writeHead(301, {
           Location: `/${url.search}`,
           'Cache-Control': SEM_CACHE,
           ...SEGURANCA,
