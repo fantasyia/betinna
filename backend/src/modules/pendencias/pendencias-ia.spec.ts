@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ESPERA_PADRAO,
+  baseParaConversa,
   cardsDoHistorico,
   clienteFalouPorUltimo,
   clienteTerminou,
@@ -87,9 +88,24 @@ describe('IA das pendências (fase 2, 25/10)', () => {
     expect(c).toContain('### Bermuda de Moletom\nP 38 · M 40');
   });
 
-  it('silêncio: só responde depois de alguns minutos sem o cliente escrever', () => {
+  it('silêncio: só responde depois de 30 s sem o cliente escrever (Léo, 26/10)', () => {
     const agora = new Date('2026-10-26T12:00:00Z');
-    expect(clienteTerminou(new Date('2026-10-26T11:59:00Z'), agora)).toBe(false);
-    expect(clienteTerminou(new Date('2026-10-26T11:50:00Z'), agora)).toBe(true);
+    expect(clienteTerminou(new Date('2026-10-26T11:59:50Z'), agora)).toBe(false);
+    expect(clienteTerminou(new Date('2026-10-26T11:59:25Z'), agora)).toBe(true);
+  });
+
+  it('base: com produto vai só a ficha dele (+ pós-venda); sem produto, a base inteira', () => {
+    const base = [
+      { titulo: 'Produto · Bermuda de Moletom', categoria: 'produtos' },
+      { titulo: 'Produto · Calça de Moletom', categoria: 'produtos' },
+      { titulo: 'Troca, defeito e devolução', categoria: 'pos_venda' },
+    ];
+    const anuncio = 'Bermuda de Moletom Com Amarração e Elástico Academia Masculina';
+    expect(baseParaConversa(base, [anuncio]).map((c) => c.titulo)).toEqual([
+      'Troca, defeito e devolução',
+      'Produto · Bermuda de Moletom',
+    ]);
+    expect(baseParaConversa(base, [])).toHaveLength(3);
+    expect(baseParaConversa(base, ['Boné aba reta'])).toHaveLength(3);
   });
 });

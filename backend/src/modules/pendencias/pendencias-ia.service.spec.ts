@@ -92,6 +92,37 @@ const SHOPEE: Pend = {
 };
 
 describe('PendenciasIaService (fase 2, 25/10)', () => {
+  it('resposta na hora: cada fala do cliente zera o relógio; a IA entra 30 s depois da ÚLTIMA', () => {
+    vi.useFakeTimers();
+    try {
+      const t = montar({ pendencias: [] });
+      const responder = vi.spyOn(t.svc, 'responderChat').mockResolvedValue();
+      t.svc.agendarChat('e1', 'MARKETPLACE_SHOPEE', 'conv:9', 'c1');
+      vi.advanceTimersByTime(20_000);
+      t.svc.agendarChat('e1', 'MARKETPLACE_SHOPEE', 'conv:9', 'c1'); // escreveu de novo
+      vi.advanceTimersByTime(20_000);
+      expect(responder).not.toHaveBeenCalled(); // 40 s da 1ª, mas só 20 s da última
+      vi.advanceTimersByTime(12_000);
+      expect(responder).toHaveBeenCalledTimes(1);
+      expect(responder).toHaveBeenCalledWith('e1', 'MARKETPLACE_SHOPEE', 'conv:9');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pergunta de anúncio do ML (q:) não entra no relógio — fica com o robô do ML', () => {
+    vi.useFakeTimers();
+    try {
+      const t = montar({ pendencias: [] });
+      const responder = vi.spyOn(t.svc, 'responderChat').mockResolvedValue();
+      t.svc.agendarChat('e1', 'MARKETPLACE_ML', 'q:123', 'c2');
+      vi.advanceTimersByTime(60_000);
+      expect(responder).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('cliente ainda escrevendo (card agora há pouco): espera, não responde no meio', async () => {
     const t = montar({
       pendencias: [SHOPEE],
@@ -99,7 +130,7 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
         {
           direction: 'INBOUND',
           conteudo: '[produto: 123]',
-          criadoEm: new Date(Date.now() - 60_000),
+          criadoEm: new Date(Date.now() - 10_000),
         },
       ],
     });

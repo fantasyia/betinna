@@ -9,6 +9,8 @@
  * - A IA só ESCREVE mensagem. Nunca aceita devolução, reembolsa nem contesta.
  */
 
+import { chaveModelo, modeloDoAnuncio } from '@modules/avaliacoes/avaliacoes';
+
 export type AcaoIa = 'responder' | 'humano';
 
 export interface DecisaoIa {
@@ -117,6 +119,30 @@ export function textoLegivel(texto: string, anuncios: AnuncioContexto[]): string
 }
 
 const MAX_CONHECIMENTO = 40_000;
+
+/**
+ * Que parte da base vai pra IA (Léo, 26/10 — economia de token): se a conversa
+ * tem produto (card do anúncio ou item do pedido), vai a FICHA desse produto
+ * (medidas de todas as linhas) + os textos que não são de produto (troca,
+ * pós-venda). Sem produto, ou sem ficha que bata, vai a base inteira.
+ */
+export function baseParaConversa<T extends { titulo: string; categoria: string | null }>(
+  base: T[],
+  produtos: string[],
+): T[] {
+  const alvos = new Set(
+    produtos
+      .map((t) => modeloDoAnuncio(t))
+      .filter((x): x is string => !!x)
+      .map(chaveModelo),
+  );
+  if (!alvos.size) return base;
+  const doProduto = (c: T) => /^produto\s*·/i.test(c.titulo) || c.categoria === 'produtos';
+  const nome = (c: T) => chaveModelo(c.titulo.replace(/^produto\s*·\s*/i, ''));
+  const fichas = base.filter((c) => doProduto(c) && alvos.has(nome(c)));
+  if (!fichas.length) return base;
+  return [...base.filter((c) => !doProduto(c)), ...fichas];
+}
 const MAX_DESCRICAO = 3000;
 
 /** Monta o que a IA lê: conversa, anúncios, pedido e a base INTEIRA (Léo, 26/10). */
@@ -168,13 +194,14 @@ export function contextoDaPendencia(p: {
 }
 
 /**
- * O cliente terminou de escrever? Quem manda o card e a pergunta em seguida
- * não pode receber "como posso ajudar?" no meio (26/10): a IA espera alguns
- * minutos de silêncio desde a última mensagem dele.
+ * O cliente terminou de escrever? (Léo, 26/10) Quem manda o card e a pergunta
+ * em seguida não pode receber "como posso ajudar?" no meio do raciocínio: a IA
+ * espera 30 s sem mensagem nova dele e SÓ ENTÃO lê a conversa inteira,
+ * interpreta e responde — tudo de uma vez.
  */
-export const SILENCIO_MIN = 4;
+export const SILENCIO_S = 30;
 export function clienteTerminou(ultimaDoCliente: Date, agora = new Date()): boolean {
-  return agora.getTime() - ultimaDoCliente.getTime() >= SILENCIO_MIN * 60_000;
+  return agora.getTime() - ultimaDoCliente.getTime() >= SILENCIO_S * 1000;
 }
 
 /** Última mensagem é do cliente? (só aí a IA entra — a loja nunca fala duas vezes seguidas sem motivo) */

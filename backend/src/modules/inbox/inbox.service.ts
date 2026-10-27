@@ -218,6 +218,20 @@ export class InboxService {
     this.leadEventHook = fn;
   }
 
+  /**
+   * Pendências (26/10) — mensagem nova de cliente no chat da Shopee/Mercado
+   * Livre. A IA das pendências se registra aqui no boot e responde quando o
+   * cliente para de escrever. Best-effort, não-bloqueante.
+   */
+  private chatMarketplaceHook?: (
+    params: MensagemEntranteParams,
+    resultado: { conversationId: string; messageId: string; duplicada: boolean },
+  ) => void;
+
+  registrarChatMarketplaceHook(fn: NonNullable<InboxService['chatMarketplaceHook']>): void {
+    this.chatMarketplaceHook = fn;
+  }
+
   // ─── Visibilidade / multi-tenant ─────────────────────────────────────
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -1769,6 +1783,15 @@ export class InboxService {
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Falha no leadEventHook conv=${conv.id}: ${m}`);
+      }
+    }
+
+    if (this.chatMarketplaceHook && isInbound && params.canal.startsWith('MARKETPLACE_')) {
+      try {
+        this.chatMarketplaceHook(params, resultado);
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Falha no chatMarketplaceHook conv=${conv.id}: ${m}`);
       }
     }
 

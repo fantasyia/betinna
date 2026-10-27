@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { InboxService } from '@modules/inbox/inbox.service';
@@ -10,10 +10,12 @@ import { ShopeeClientService } from '@integrations/shopee/shopee-client.service'
 import {
   PROMPT_PENDENCIA,
   SCHEMA_PENDENCIA,
+  baseParaConversa,
   cardsDoHistorico,
   clienteFalouPorUltimo,
   clienteTerminou,
   contextoDaPendencia,
+  SILENCIO_S,
   lerDecisao,
   textoLegivel,
   type AnuncioContexto,
@@ -47,7 +49,7 @@ const MAX_HISTORICO = 15;
  * próprio do ML (já ligado) — aqui só se acompanha o "humano" dele.
  */
 @Injectable()
-export class PendenciasIaService {
+export class PendenciasIaService implements OnModuleInit {
   private readonly logger = new Logger(PendenciasIaService.name);
 
   constructor(
@@ -59,6 +61,74 @@ export class PendenciasIaService {
     @Optional() private readonly redis?: RedisService,
     @Optional() private readonly shopee?: ShopeeClientService,
   ) {}
+
+  /** Última mensagem de cliente por conversa (o relógio do silêncio). */
+  private readonly ultimaFala = new Map<string, number>();
+
+  onModuleInit(): void {
+    this.inbox.registrarChatMarketplaceHook((params, r) => {
+      if (r.duplicada) return;
+      this.agendarChat(params.empresaId, params.canal, params.peerId, r.conversationId);
+    });
+  }
+
+  /**
+   * Resposta NA HORA (Léo, 26/10): cada mensagem do cliente zera um relógio de
+   * 30 s daquela conversa. Quando ele fica 30 s quieto, a IA lê a conversa
+   * inteira de uma vez, interpreta e responde — sem cortar o raciocínio dele.
+   * A rodada de 15 min continua como rede (aviso perdido, deploy no meio).
+   */
+  agendarChat(empresaId: string, canal: string, peerId: string, conversationId: string): void {
+    if (!/^(conv|pack):/.test(peerId)) return;
+    const marca = Date.now();
+    this.ultimaFala.set(conversationId, marca);
+    setTimeout(
+      () => {
+        if (this.ultimaFala.get(conversationId) !== marca) return; // ele escreveu de novo
+        this.ultimaFala.delete(conversationId);
+        void this.responderChat(empresaId, canal, peerId).catch((err) =>
+          this.logger.warn(`[pendências IA] chat ${peerId} falhou: ${String(err)}`),
+        );
+      },
+      (SILENCIO_S + 1) * 1000,
+    ).unref?.();
+  }
+
+  /** Garante a pendência do chat e passa a IA nela (se a empresa ligou). */
+  async responderChat(empresaId: string, canal: string, peerId: string): Promise<void> {
+    const cfg = await this.config(empresaId);
+    if (!cfg.ativo || cfg.desligados.includes('MENSAGEM')) return;
+    const chave = { empresaId, canal, tipo: 'MENSAGEM', chave: peerId };
+    let p = await this.prisma.pendenciaMarketplace.findUnique({
+      where: { empresaId_canal_tipo_chave: chave },
+    });
+    // Passou pra equipe: a IA não volta a falar por cima de quem atende.
+    if (p?.estado === 'AGUARDANDO_HUMANO' && !p.resolvidaEm) return;
+    if (!p) {
+      const conv = await this.prisma.conversation.findFirst({
+        where: { empresaId, canal: canal as never, peerId },
+        select: { peerNome: true },
+      });
+      const nome = conv?.peerNome?.replace(/^Comprador Shopee #/, '') || 'comprador';
+      p = await this.prisma.pendenciaMarketplace.create({
+        data: {
+          ...chave,
+          titulo: `Mensagem de ${nome} sem resposta`.slice(0, 200),
+          link: '/inbox',
+          comprador: conv?.peerNome?.slice(0, 120) ?? null,
+          desde: new Date(),
+        },
+      });
+    } else if (p.resolvidaEm || p.estado === 'RESPONDIDA_IA') {
+      // Cliente falou de novo: é conversa nova pra IA.
+      p = await this.prisma.pendenciaMarketplace.update({
+        where: { id: p.id },
+        data: { resolvidaEm: null, avisadaEm: null, lembreteEm: null, estado: null },
+      });
+    }
+    const r = await this.tratar(empresaId, p);
+    if (r === 'humano') await this.avisarHumano(empresaId, [p.titulo]);
+  }
 
   /** Config da empresa: ligada + tipos desligados. */
   async config(empresaId: string): Promise<{ ativo: boolean; desligados: string[] }> {
@@ -157,8 +227,11 @@ export class PendenciasIaService {
     if (ultimaDoCliente && !clienteTerminou(ultimaDoCliente.criadoEm)) return 'pulada';
 
     if (this.redis) {
+      // Trava por FALA do cliente (não pela pendência): duas rodadas não respondem
+      // a mesma fala, mas a próxima fala dele é respondida na hora.
+      const fala = ultimaDoCliente?.criadoEm.getTime() ?? 0;
       const trava = await this.redis.client
-        .set(`pend:ia:${p.id}`, '1', 'EX', TTL_TRAVA_S, 'NX')
+        .set(`pend:ia:${p.id}:${fala}`, '1', 'EX', TTL_TRAVA_S, 'NX')
         .catch(() => 'OK');
       if (trava !== 'OK') return 'pulada';
     }
@@ -206,15 +279,20 @@ export class PendenciasIaService {
     tipo: TipoPendenciaIa,
     historico: MensagemHistorico[],
   ) {
-    const conhecimento = await this.baseInteira(empresaId);
     const cards = cardsDoHistorico(historico);
     const numeros = [...new Set([...(p.pedido ? [p.pedido] : []), ...cards.pedidos])].slice(0, 3);
-    const resumos = await Promise.all(numeros.map((n) => this.resumoDoPedido(empresaId, n)));
-    const pedido = resumos.filter(Boolean).join('\n') || null;
+    const pedidos = await Promise.all(numeros.map((n) => this.resumoDoPedido(empresaId, n)));
+    const pedido = pedidos.map((x) => x.texto).join('\n') || null;
     const anuncios =
       p.canal === 'MARKETPLACE_SHOPEE'
         ? await this.anunciosShopee(empresaId, cards.itens, numeros)
         : [];
+    // Anúncio + ficha do produto (economia de token, Léo 26/10); a base
+    // inteira só quando a conversa não tem produto.
+    const conhecimento = baseParaConversa(await this.baseInteira(empresaId), [
+      ...anuncios.map((a) => a.nome),
+      ...pedidos.flatMap((x) => x.titulos),
+    ]);
     const contexto = contextoDaPendencia({
       canal: p.canal,
       tipo,
@@ -314,7 +392,10 @@ export class PendenciasIaService {
   }
 
   /** Pedido como a IA precisa: itens com variação, situação, rastreio e datas. */
-  private async resumoDoPedido(empresaId: string, numero: string): Promise<string | null> {
+  private async resumoDoPedido(
+    empresaId: string,
+    numero: string,
+  ): Promise<{ texto: string; titulos: string[] }> {
     const o = await this.prisma.marketplaceOrder.findFirst({
       where: { empresaId, numeroExterno: numero },
       select: {
@@ -330,17 +411,23 @@ export class PendenciasIaService {
         entregueEm: true,
       },
     });
-    if (!o) return `Pedido ${numero}: não encontrado no app.`;
+    if (!o) return { texto: `Pedido ${numero}: não encontrado no app.`, titulos: [] };
     const dia = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
-    const itens = Array.isArray(o.itens)
+    const lista = Array.isArray(o.itens)
       ? (o.itens as Array<{ titulo?: string; variacao?: string; quantidade?: number }>)
+      : [];
+    const itens = lista.length
+      ? lista
           .map(
             (i) =>
               `${i.quantidade ?? 1}x ${i.titulo ?? '?'}${i.variacao ? ` (${i.variacao})` : ''}`,
           )
           .join('; ')
       : `${o.quantidade}x ${o.produtoNome}`;
-    return [
+    const titulos = lista.length
+      ? lista.map((i) => i.titulo ?? '').filter(Boolean)
+      : [o.produtoNome];
+    const texto = [
       `Pedido ${o.numeroExterno}: ${itens}`,
       `situação: ${o.situacao ?? o.status}`,
       `feito em ${dia(o.pedidoEm)}`,
@@ -350,6 +437,7 @@ export class PendenciasIaService {
     ]
       .filter(Boolean)
       .join(' · ');
+    return { texto, titulos };
   }
 
   /**
