@@ -153,13 +153,17 @@ export default function VitrinePublicaPage({
   const [interno, setInterno] = useState(false);
 
   useEffect(() => {
-    document.title = 'Vitrine de atacado';
-  }, [slug]);
+    // Link de produto: o título que o servidor pôs (do produto) fica.
+    if (!produto) document.title = 'Vitrine de atacado';
+  }, [slug, produto]);
 
   useEffect(() => {
     if (!dados) return;
     const v = dados;
-        document.title = `${v.empresa.nome} · Atacado`;
+        // Em /p/<slug> o título é o do PRODUTO (SEO, 26/10): voltar pro
+        // genérico fazia o Google ver todas as páginas de produto iguais.
+        const doLink = produto ? v.modelos.find((m) => m.slug === produto) : undefined;
+        document.title = doLink ? `${doLink.nome} · ${v.empresa.nome}` : `${v.empresa.nome} · Atacado`;
         // De onde o cliente veio (utm/fbclid) — guardado no aparelho pro pedido.
         capturarAtribuicao(window.location.href, document.referrer);
         sairDoModoInterno(slug, window.location.href);
@@ -178,7 +182,7 @@ export default function VitrinePublicaPage({
             if (v.googleTag) iniciarGoogleTag(v.googleTag, { interno: eInterno });
             if (v.clarity) iniciarClarity(v.clarity.projetoId, { interno: eInterno });
           });
-  }, [dados, slug]);
+  }, [dados, slug, produto]);
 
   return (
     <div className="vt-app">
@@ -385,7 +389,16 @@ function Vitrine({
     for (const m of daLinha) if (m.categoria) map.set(m.categoria.id, m.categoria.nome);
     return [...map.entries()];
   }, [daLinha]);
-  const lista = cat === 'todos' ? daLinha : daLinha.filter((m) => m.categoria?.id === cat);
+  const daCategoria = useMemo(
+    () => (cat === 'todos' ? daLinha : daLinha.filter((m) => m.categoria?.id === cat)),
+    [daLinha, cat],
+  );
+  // Link de produto: ele abre o feed, em 1º (SEO, 26/10). Antes o feed vinha
+  // sempre na mesma ordem e só rolava até ele — pro Google, todo /p/ era igual.
+  const lista = useMemo(() => {
+    const i = inicio ? daCategoria.findIndex((m) => m.id === inicio.modelo.id) : -1;
+    return i > 0 ? [daCategoria[i], ...daCategoria.slice(0, i), ...daCategoria.slice(i + 1)] : daCategoria;
+  }, [daCategoria, inicio]);
 
   useEffect(() => {
     if (cat !== 'todos' && !categorias.some(([id]) => id === cat)) setCat('todos');
