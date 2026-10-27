@@ -281,6 +281,11 @@ export const API_TOKEN_ESCOPOS = [
   // cadastro do insumo (preço de referência). Exige também `erp`. Compra,
   // movimento de estoque e etapas da OP seguem na tela.
   'erp-escrita',
+  // tudo (Léo, 26/10: "o app vira só interface"): qualquer rota da empresa como
+  // o dono do token, MENOS as portas de token-tudo.ts (integrações, token,
+  // ativar fluxo, disparar campanha, mensagem pra cliente, cobrança/estorno,
+  // plataforma). É o token do Orquestrador.
+  'tudo',
 ] as const;
 
 export const createApiTokenSchema = z.object({

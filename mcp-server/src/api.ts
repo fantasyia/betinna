@@ -167,5 +167,7 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
+  /** Escopo `tudo`: qualquer verbo (betinna_api). */
+  chamar: <T>(method: string, path: string, body?: unknown) => request<T>(method, path, body),
   postForm: <T>(path: string, form: FormData) => postForm<T>(path, form),
 };

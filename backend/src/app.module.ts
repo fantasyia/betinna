@@ -48,6 +48,7 @@ import { PedidosMarketplaceModule } from '@modules/pedidos-marketplace/pedidos-m
 import { KitsModule } from '@modules/kits/kits.module';
 import { DafitiModule } from '@integrations/dafiti/dafiti.module';
 import { AvaliacoesModule } from '@modules/avaliacoes/avaliacoes.module';
+import { RotasApiModule } from '@modules/rotas-api/rotas-api.module';
 import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { AuditModule } from '@modules/audit/audit.module';
@@ -279,6 +280,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     KitsModule,
     DafitiModule,
     AvaliacoesModule,
+    RotasApiModule,
     LeadsModule,
     FunisModule,
     KanbanModule,

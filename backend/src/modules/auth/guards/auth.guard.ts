@@ -10,6 +10,7 @@ import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-ex
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { SupabaseAuthService } from '../supabase-auth.service';
+import { bloqueioDoTudo } from './token-tudo';
 
 /**
  * Cache hit body: { id, email, nome, role, status, empresaIds }
@@ -159,6 +160,21 @@ export class AuthGuard implements CanActivate {
     // Gestão de tokens NUNCA via PAT (token não cunha outro token).
     if (path.includes('/kanban/api-tokens')) {
       throw new ForbiddenException('Token de API não pode gerenciar tokens de API');
+    }
+
+    const row = await this.prisma.kanbanApiToken.findUnique({
+      where: { tokenHash: hashKanbanToken(token) },
+    });
+    if (!row || row.revogado) {
+      throw new UnauthorizedException('Token de API inválido ou revogado');
+    }
+    // Escopo `tudo` (Léo, 26/10): qualquer rota da empresa, menos as portas de
+    // bloqueioDoTudo. Os @Roles e o filtro por empresa dos controllers seguem.
+    if (row.escopo.includes('tudo')) {
+      const relTudo = path.replace(/^\/api\/v[0-9]+/, '');
+      const motivo = bloqueioDoTudo(relTudo, request.method ?? 'GET', request.body);
+      if (motivo) throw new ForbiddenException(motivo);
+      return this.donoDoToken(request, row, { soNaEmpresa: true });
     }
 
     // Módulo exigido pela rota → escopo correspondente.
@@ -393,13 +409,6 @@ export class AuthGuard implements CanActivate {
       );
     }
 
-    const row = await this.prisma.kanbanApiToken.findUnique({
-      where: { tokenHash: hashKanbanToken(token) },
-    });
-    if (!row || row.revogado) {
-      throw new UnauthorizedException('Token de API inválido ou revogado');
-    }
-
     // Escopo: o token precisa ter o módulo da rota liberado.
     if (!row.escopo.includes(moduloRequerido)) {
       throw new ForbiddenException(
@@ -429,6 +438,15 @@ export class AuthGuard implements CanActivate {
       );
     }
 
+    return this.donoDoToken(request, row);
+  }
+
+  /** Injeta o dono do token como req.user, na empresa do token. */
+  private async donoDoToken(
+    request: Request,
+    row: { id: string; nome: string; usuarioId: string; empresaId: string },
+    opts: { soNaEmpresa?: boolean } = {},
+  ): Promise<boolean> {
     const cached = await this.loadUser(row.usuarioId);
     if (!cached) {
       throw new UnauthorizedException('Dono do token não existe mais');
@@ -444,12 +462,16 @@ export class AuthGuard implements CanActivate {
       );
     }
 
+    // Escopo `tudo`: SÓ a empresa do token. Dono ADMIN entra como DIRECTOR —
+    // o ADMIN é cross-tenant (lista todas as empresas, edita empresa/usuário
+    // de outro cliente, mexe na matriz de papéis de todo mundo) e o token do
+    // Orquestrador não pode alcançar a outra empresa.
     request.user = {
       id: cached.id,
       email: cached.email,
       nome: cached.nome,
-      role: cached.role,
-      empresaIds: cached.empresaIds,
+      role: opts.soNaEmpresa && cached.role === 'ADMIN' ? 'DIRECTOR' : cached.role,
+      empresaIds: opts.soNaEmpresa ? [row.empresaId] : cached.empresaIds,
       empresaIdAtiva: row.empresaId,
     };
     request.apiToken = { id: row.id, nome: row.nome };

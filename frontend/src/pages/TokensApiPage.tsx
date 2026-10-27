@@ -36,6 +36,12 @@ interface ApiToken {
  * era fácil esquecer um.
  */
 const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
+  {
+    key: 'tudo',
+    label:
+      'TUDO — o app inteiro pelo chat (menos: conectar integração, gerar token, ativar fluxo, disparar campanha, mandar mensagem pra cliente e cobrança/estorno)',
+    badge: 'Tudo',
+  },
   { key: 'fluxos', label: 'Fluxos de automação', badge: 'Fluxos' },
   { key: 'funis', label: 'Funis e etapas', badge: 'Funis' },
   { key: 'contatos', label: 'Contatos (somente leitura · dados pessoais)', badge: 'Contatos' },

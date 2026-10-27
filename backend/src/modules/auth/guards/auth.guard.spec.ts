@@ -292,6 +292,92 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     });
   });
 
+  describe('escopo "tudo" (Léo, 26/10: o app vira só interface)', () => {
+    const comEscopos = (escopo: string[]) =>
+      prisma.kanbanApiToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        empresaId: 'emp-1',
+        usuarioId: 'u1',
+        escopo,
+        revogado: false,
+      });
+    const pedir = (method: string, path: string, body?: unknown) =>
+      guard.canActivate(
+        fakeContext({ method, path, headers: { authorization: 'Bearer bkt_abc' }, body }),
+      );
+
+    it('alcança rotas que nenhum escopo cobria, inclusive escrita', async () => {
+      comEscopos(['tudo']);
+      for (const [m, p] of [
+        ['PUT', '/erp/acabamento'],
+        ['POST', '/erp/ops'],
+        ['POST', '/erp/insumos/i1/compras'],
+        ['GET', '/erp/estoque/saldos'],
+        ['PATCH', '/empresas/config'],
+        ['PUT', '/devolucoes/d1/status'],
+        ['POST', '/kits'],
+        ['PATCH', '/pedidos/p1'],
+        ['PUT', '/permissions/usuario/u2'],
+        ['GET', '/api/v1/integracoes/shopee/status'],
+      ] as const) {
+        await expect(pedir(m, p, {})).resolves.toBe(true);
+      }
+    });
+
+    it('as portas que o Léo deixou de fora CONTINUAM fechadas', async () => {
+      comEscopos(['tudo']);
+      for (const [m, p, body] of [
+        ['POST', '/kanban/api-tokens', {}],
+        ['POST', '/integracoes/shopee/conectar', {}],
+        ['DELETE', '/integracoes/whatsapp/desconectar', {}],
+        ['POST', '/checkout/ativar', {}],
+        ['POST', '/fluxos/f1/ativar', {}],
+        ['DELETE', '/fluxos/f1/permanente', {}],
+        ['POST', '/campanhas/c1/disparar', {}],
+        ['POST', '/campanhas/c1/agendar', {}],
+        ['POST', '/inbox/conv-1/responder', {}],
+        ['POST', '/propostas/p1/enviar-email', {}],
+        ['POST', '/pedidos/p1/enviar-erp', {}],
+        ['PUT', '/pendencias/ia', {}],
+        ['POST', '/users', {}],
+        ['DELETE', '/users/u2', {}],
+        ['PATCH', '/users/u2', { role: 'ADMIN' }],
+        ['GET', '/admin/db-health', {}],
+        ['POST', '/empresas', {}],
+        ['GET', '/empresas', {}],
+        ['GET', '/empresas/minhas', {}],
+      ] as const) {
+        await expect(pedir(m, p, body)).rejects.toBeInstanceOf(ForbiddenException);
+      }
+    });
+
+    it('dono ADMIN entra como DIRECTOR, só na empresa do token (ADMIN é cross-tenant)', async () => {
+      comEscopos(['tudo']);
+      prisma.usuario.findUnique.mockResolvedValue({
+        ...bktUser,
+        role: 'ADMIN',
+        empresas: [{ empresaId: 'emp-1' }, { empresaId: 'emp-2' }],
+      });
+      const ctx = fakeContext({
+        method: 'GET',
+        path: '/empresas/atual',
+        headers: { authorization: 'Bearer bkt_abc', 'x-empresa-id': 'emp-2' },
+      });
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      const req = ctx.switchToHttp().getRequest<{ user: Record<string, unknown> }>();
+      expect(req.user).toMatchObject({
+        role: 'DIRECTOR',
+        empresaIds: ['emp-1'],
+        empresaIdAtiva: 'emp-1',
+      });
+    });
+
+    it('sem "tudo", nada muda: o ERP segue só leitura + erp-escrita', async () => {
+      comEscopos(['erp', 'erp-escrita']);
+      await expect(pedir('POST', '/erp/ops', {})).rejects.toThrow(/O resto é pela tela/);
+    });
+  });
+
   describe('ERP de produção por token (escopos erp / erp-escrita, Léo 20/10)', () => {
     const comEscopos = (escopo: string[]) =>
       prisma.kanbanApiToken.findUnique.mockResolvedValue({
