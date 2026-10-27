@@ -20,6 +20,15 @@ const SETE_DIAS = 7 * 86_400_000;
  * aqui). Cada um pergunta à API o que está esperando a loja. Reclamações e
  * devoluções vêm dos Incidentes, que o sincronismo de 10 min já mantém pela API.
  */
+/** Mensagem da Shopee que não é texto, como aparece na lista (26/10: "(item)" não dizia nada). */
+const ROTULO_TIPO: Record<string, string> = {
+  item: 'mandou o card de um produto',
+  order: 'mandou o card do pedido',
+  sticker: 'mandou uma figurinha',
+  image: 'mandou uma foto',
+  video: 'mandou um vídeo',
+};
+
 @Injectable()
 export class VerificadoresService {
   private readonly logger = new Logger(VerificadoresService.name);
@@ -218,7 +227,10 @@ export class VerificadoresService {
         tipo: 'MENSAGEM',
         chave: `conv:${c.conversation_id}`,
         titulo: `Mensagem de ${c.to_name ?? 'comprador'} sem resposta`,
-        detalhe: (ultima.content?.text ?? `(${ultima.message_type ?? 'mensagem'})`).slice(0, 480),
+        detalhe: (
+          ultima.content?.text ??
+          `(${ROTULO_TIPO[ultima.message_type ?? ''] ?? ultima.message_type ?? 'mensagem'})`
+        ).slice(0, 480),
         link: '/inbox',
         comprador: c.to_name ?? null,
         desde: esperando[0].created_timestamp

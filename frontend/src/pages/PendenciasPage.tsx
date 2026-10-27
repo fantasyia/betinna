@@ -4,7 +4,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { Button, Input, Select } from '@/components/ui';
+import { Button, Dialog, Input, Select } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { AtivarPush } from '@/components/AtivarPush';
 
@@ -18,6 +18,16 @@ import { AtivarPush } from '@/components/AtivarPush';
  */
 type Tipo = 'PERGUNTA' | 'MENSAGEM' | 'RECLAMACAO' | 'DEVOLUCAO';
 type Status = 'PENDENTE' | 'AGUARDANDO_HUMANO' | 'RESPONDIDA_IA' | 'ENCERRADA';
+
+interface Simulacao {
+  id: string;
+  titulo: string;
+  comprador: string | null;
+  conversa: string[];
+  acao: string;
+  resposta: string;
+  motivo: string;
+}
 
 interface Pendencia {
   id: string;
@@ -156,6 +166,32 @@ export default function PendenciasPage() {
     }
   }
 
+  // "Testar a IA" (26/10): o que ela responderia nas últimas conversas reais —
+  // não envia nada. É como o Léo confere antes de deixar ela responder sozinha.
+  const [teste, setTeste] = useState<Simulacao[] | null>(null);
+  const [testando, setTestando] = useState(false);
+  async function testarIa() {
+    setTestando(true);
+    try {
+      setTeste(await api.post<Simulacao[]>('/pendencias/ia/simular', {}));
+    } catch (err) {
+      toast.error('Não deu pra testar agora', apiErrorMessage(err));
+    } finally {
+      setTestando(false);
+    }
+  }
+
+  // "Resolvido" (26/10): o caso que a IA passou pra equipe só fecha aqui ou
+  // quando alguém da equipe responde na conversa.
+  async function resolver(id: string) {
+    try {
+      await api.post(`/pendencias/${id}/resolver`, {});
+      refetch();
+    } catch (err) {
+      toast.error('Não deu pra marcar como resolvida', apiErrorMessage(err));
+    }
+  }
+
   const lista = data?.data ?? [];
   const cont = data?.contagem;
   const abertas = cont ? cont.PENDENTE + cont.AGUARDANDO_HUMANO : 0;
@@ -176,6 +212,14 @@ export default function PendenciasPage() {
           Conferir agora
         </Button>
         <AtivarPush />
+        <Button
+          variant="ghost"
+          onClick={() => void testarIa()}
+          loading={testando}
+          data-testid="pendencias-ia-testar"
+        >
+          Testar a IA (não envia nada)
+        </Button>
         {cfgIa.data && (
           <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="pendencias-ia">
             <label className="flex items-center gap-1.5 font-medium text-text">
@@ -304,8 +348,21 @@ export default function PendenciasPage() {
                   <span className="basis-full flex flex-wrap gap-x-3 text-xs">
                     <span className={COR_STATUS[p.status]}>{UM_STATUS[p.status]}</span>
                     {ref && <span className="text-muted">{ref}</span>}
+                    {!p.resolvidaEm && (
+                      <button
+                        type="button"
+                        onClick={() => void resolver(p.id)}
+                        className="text-muted hover:text-text hover:underline ml-auto"
+                        data-testid={`pendencia-resolver-${p.id}`}
+                      >
+                        Resolvido
+                      </button>
+                    )}
                     {p.link && (
-                      <Link to={p.link} className="text-primary hover:underline ml-auto">
+                      <Link
+                        to={p.link}
+                        className={`text-primary hover:underline ${p.resolvidaEm ? 'ml-auto' : ''}`}
+                      >
                         Abrir conversa ›
                       </Link>
                     )}
@@ -316,6 +373,31 @@ export default function PendenciasPage() {
           </ul>
         )}
       </StateView>
+      <Dialog
+        open={teste !== null}
+        onClose={() => setTeste(null)}
+        title="Teste da IA — nada foi enviado"
+        description="O que ela responderia em cada uma das últimas conversas, no ponto em que o cliente parou de escrever."
+        size="lg"
+      >
+        {teste?.length === 0 && <p className="text-sm text-muted">Nenhuma conversa pra testar.</p>}
+        <ul className="flex flex-col gap-3" data-testid="pendencias-ia-teste">
+          {teste?.map((t) => (
+            <li key={t.id} className="border border-border rounded-[10px] p-3 flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-text">{t.comprador ?? t.titulo}</span>
+              {t.conversa.map((linha, i) => (
+                <span key={i} className="text-muted break-words">
+                  {linha}
+                </span>
+              ))}
+              <span className="rounded-[10px] bg-surface-hover px-3 py-2 text-text break-words">
+                <b>{t.acao === 'humano' ? 'Passaria pra você' : 'Responderia'}:</b> "{t.resposta}"
+                <span className="text-muted"> ({t.motivo})</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Dialog>
     </PageLayout>
   );
 }

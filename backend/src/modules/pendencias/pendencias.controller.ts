@@ -74,6 +74,20 @@ export class PendenciasController {
     return this.pendencias.salvarConfigIa(this.empresa(user), dto);
   }
 
+  @Post('ia/simular')
+  @ApiOperation({
+    summary: 'Testar a IA: o que ela responderia nas últimas conversas reais (não envia nada)',
+  })
+  simularIa(@CurrentUser() user: AuthenticatedUser) {
+    return this.ia.simular(this.empresa(user));
+  }
+
+  @Post(':id/resolver')
+  @ApiOperation({ summary: 'Marca a pendência como resolvida (a equipe já cuidou)' })
+  resolver(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.pendencias.resolver(this.empresa(user), id);
+  }
+
   @Get(':id/respostas')
   @ApiOperation({ summary: 'O que a IA respondeu (ou escalou) nesta pendência' })
   respostas(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

@@ -15,7 +15,13 @@ function montar(o: {
   desligados?: string[];
   pendencias: Pend[];
   conversa?: { id: string } | null;
-  mensagens?: Array<{ direction: 'INBOUND' | 'OUTBOUND'; conteudo: string; tipo?: string }>;
+  mensagens?: Array<{
+    direction: 'INBOUND' | 'OUTBOUND';
+    conteudo: string;
+    tipo?: string;
+    criadoEm?: Date;
+  }>;
+  base?: Array<{ titulo: string; conteudo: string; categoria: string | null }>;
   iaTexto?: string;
   envioFalha?: boolean;
 }) {
@@ -41,10 +47,14 @@ function montar(o: {
     // findMany vem em ordem DESC (o serviço inverte)
     message: {
       findMany: vi.fn(async () =>
-        [...(o.mensagens ?? [])].map((m) => ({ tipo: 'TEXT', ...m })).reverse(),
+        [...(o.mensagens ?? [])]
+          // Padrão: o cliente falou há 10 min (já terminou de escrever).
+          .map((m) => ({ tipo: 'TEXT', criadoEm: new Date(Date.now() - 10 * 60_000), ...m }))
+          .reverse(),
       ),
     },
     marketplaceOrder: { findFirst: vi.fn(async () => null) },
+    knowledgeChunk: { findMany: vi.fn(async () => o.base ?? []) },
     pendenciaRespostaIa: {
       create: vi.fn(async ({ data }) => {
         registros.push(data);
@@ -82,6 +92,38 @@ const SHOPEE: Pend = {
 };
 
 describe('PendenciasIaService (fase 2, 25/10)', () => {
+  it('cliente ainda escrevendo (card agora há pouco): espera, não responde no meio', async () => {
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [
+        {
+          direction: 'INBOUND',
+          conteudo: '[produto: 123]',
+          criadoEm: new Date(Date.now() - 60_000),
+        },
+      ],
+    });
+    await t.svc.processar('e1');
+    expect(t.bot.gerarRespostaIa).not.toHaveBeenCalled();
+    expect(t.enviados).toEqual([]);
+  });
+
+  it('a IA recebe a base de conhecimento INTEIRA, não 4 trechos (Léo, 26/10)', async () => {
+    const base = Array.from({ length: 16 }, (_, i) => ({
+      titulo: `Produto ${i}`,
+      conteudo: `Medidas do produto ${i}`,
+      categoria: 'produtos',
+    }));
+    const t = montar({
+      pendencias: [SHOPEE],
+      base,
+      mensagens: [{ direction: 'INBOUND', conteudo: 'Tamanho G vestir qual numeração' }],
+    });
+    await t.svc.processar('e1');
+    const contexto = (t.bot.gerarRespostaIa.mock.calls[0] as unknown[])[2] as string;
+    for (let i = 0; i < 16; i++) expect(contexto).toContain(`## Produto ${i}`);
+  });
+
   it('empresa sem a IA ligada: não toca em nada', async () => {
     const t = montar({
       ativo: false,

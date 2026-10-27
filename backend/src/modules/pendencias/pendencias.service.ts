@@ -32,6 +32,39 @@ export class PendenciasService {
     private readonly push: PushService,
   ) {}
 
+  /**
+   * Alguém da equipe (não a IA) escreveu na conversa depois que a IA passou o
+   * caso? Pendência sem conversa (devolução só no painel) conta como sim: lá o
+   * marketplace é quem diz que acabou.
+   */
+  private async equipeRespondeu(pendenciaId: string): Promise<boolean> {
+    const ia = await this.prisma.pendenciaRespostaIa.findFirst({
+      where: { pendenciaId, acao: 'humano' },
+      orderBy: { criadoEm: 'desc' },
+      select: { conversationId: true, criadoEm: true },
+    });
+    if (!ia?.conversationId) return true;
+    const n = await this.prisma.message.count({
+      where: {
+        conversationId: ia.conversationId,
+        direction: 'OUTBOUND',
+        enviadaPorBot: false,
+        status: { not: 'FAILED' },
+        criadoEm: { gt: ia.criadoEm },
+      },
+    });
+    return n > 0;
+  }
+
+  /** "Resolvido" na tela: fecha a pendência (a equipe já cuidou). */
+  async resolver(empresaId: string, id: string) {
+    const r = await this.prisma.pendenciaMarketplace.updateMany({
+      where: { id, empresaId, resolvidaEm: null },
+      data: { resolvidaEm: new Date() },
+    });
+    return { resolvida: r.count > 0 };
+  }
+
   /** Empresas com algum marketplace conectado (a rotina passa por todas). */
   async empresasComMarketplace(): Promise<string[]> {
     const r = await this.prisma.integracaoConexao.findMany({
@@ -89,9 +122,17 @@ export class PendenciasService {
       }
       const abertas = await this.prisma.pendenciaMarketplace.findMany({
         where: { empresaId, canal, resolvidaEm: null },
-        select: { id: true, tipo: true, chave: true },
+        select: { id: true, tipo: true, chave: true, estado: true },
       });
-      const sumiram = abertas.filter((a) => !chaves.has(`${a.tipo}|${a.chave}`)).map((a) => a.id);
+      const sumiram: string[] = [];
+      for (const a of abertas) {
+        if (chaves.has(`${a.tipo}|${a.chave}`)) continue;
+        // A IA passou pra equipe (26/10): a mensagem de espera dela faz o chat
+        // sair da lista do marketplace, mas o caso NÃO foi resolvido. Só fecha
+        // quando alguém da equipe responde de verdade, ou no botão "Resolvido".
+        if (a.estado === 'AGUARDANDO_HUMANO' && !(await this.equipeRespondeu(a.id))) continue;
+        sumiram.push(a.id);
+      }
       if (sumiram.length) {
         await this.prisma.pendenciaMarketplace.updateMany({
           where: { id: { in: sumiram } },

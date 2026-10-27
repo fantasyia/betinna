@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ESPERA_PADRAO,
+  cardsDoHistorico,
   clienteFalouPorUltimo,
+  clienteTerminou,
   contextoDaPendencia,
   lerDecisao,
 } from './pendencias-ia';
@@ -61,6 +63,33 @@ describe('IA das pendências (fase 2, 25/10)', () => {
     expect(c).toContain('## Trocas');
     expect(c).toContain('PEDIDO:\nKit 2 bermudas');
     expect(c.indexOf('CLIENTE: cadê')).toBeLessThan(c.indexOf('LOJA: já saiu'));
-    expect(c.trim().endsWith('CLIENTE: obg')).toBe(true);
+    expect(c).toContain('CLIENTE: obg');
+  });
+
+  it('card de produto/pedido e figurinha viram texto que a IA entende', () => {
+    const h = [
+      { daLoja: false, texto: '[produto: 555]' },
+      { daLoja: false, texto: '[pedido: 261027PA82X36N]' },
+      { daLoja: false, texto: '[sticker]' },
+    ];
+    expect(cardsDoHistorico(h)).toEqual({ itens: ['555'], pedidos: ['261027PA82X36N'] });
+    const c = contextoDaPendencia({
+      canal: 'MARKETPLACE_SHOPEE',
+      tipo: 'MENSAGEM',
+      titulo: 'x',
+      conhecimento: [],
+      anuncios: [{ id: '555', nome: 'Bermuda de Moletom', descricao: 'P 38 · M 40' }],
+      historico: h,
+    });
+    expect(c).toContain('[mandou o card do anúncio "Bermuda de Moletom"]');
+    expect(c).toContain('[mandou o card do pedido 261027PA82X36N]');
+    expect(c).toContain('[mandou uma figurinha]');
+    expect(c).toContain('### Bermuda de Moletom\nP 38 · M 40');
+  });
+
+  it('silêncio: só responde depois de alguns minutos sem o cliente escrever', () => {
+    const agora = new Date('2026-10-26T12:00:00Z');
+    expect(clienteTerminou(new Date('2026-10-26T11:59:00Z'), agora)).toBe(false);
+    expect(clienteTerminou(new Date('2026-10-26T11:50:00Z'), agora)).toBe(true);
   });
 });
