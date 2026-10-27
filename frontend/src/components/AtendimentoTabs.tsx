@@ -1,4 +1,5 @@
-import { MessageSquare, AlertTriangle, ShieldAlert, Smartphone } from 'lucide-react';
+import { MessageSquare, AlertTriangle, ShieldAlert, Smartphone, Bot } from 'lucide-react';
+import { useNomeBot } from '@/hooks/useNomeBot';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -20,11 +21,12 @@ import { useApiQuery } from '@/hooks/useApiQuery';
  *                          escopo pelo papel: gestão vê "Número da empresa" +
  *                          "Meu WhatsApp pessoal"; REP/GERENTE só o pessoal.
  *
- * O Assistente IA (/mullerbot) NÃO está aqui — virou item próprio do menu
- * lateral (PageLayout → SECTIONS), com as sub-abas dele em AssistenteTabs.
+ * O Assistente IA (/mullerbot) voltou pra cá (Léo, 26/10) como a última aba;
+ * as sub-abas dele (Persona/Conhecimento/Auditoria) seguem em AssistenteTabs.
  */
 export function AtendimentoTabs() {
   const role = useRole();
+  const nomeBot = useNomeBot();
   // Gate da ABA (não mais o da rota — a rota é livre, porque o REP precisa
   // chegar em /whatsapp pra parear o WhatsApp PESSOAL dele). Estava
   // invertido: GERENTE/REP viam a aba e caíam em /403, e o SAC — que gerencia o
@@ -66,9 +68,9 @@ export function AtendimentoTabs() {
     label: canWhatsApp ? 'WhatsApp' : 'Meu WhatsApp',
     icon: <Smartphone size={14} />,
   });
-  // Assistente IA saiu daqui: virou item PRÓPRIO do menu lateral (PageLayout →
-  // SECTIONS). Como as sub-abas dele (Persona/Conhecimento/Auditoria) já vivem
-  // em AssistenteTabs, mantê-lo aqui deixaria a mesma seção em dois lugares.
+  // Assistente IA dentro de Atendimento (Léo, 26/10). As páginas dele mostram
+  // esta barra e, embaixo, a do próprio assistente (AssistenteTabs).
+  tabs.push({ to: '/mullerbot', label: nomeBot, icon: <Bot size={14} /> });
 
   return <SubTabsBar tabs={tabs} ariaLabel="Sub-abas de Atendimento" />;
 }

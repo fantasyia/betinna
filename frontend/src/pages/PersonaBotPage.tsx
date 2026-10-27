@@ -8,6 +8,7 @@ import { useToast } from '@/components/toast';
 import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import {
   Button,
   Card,
@@ -369,6 +370,7 @@ export default function PersonaBotPage() {
         </Button>
       }
     >
+      <AtendimentoTabs />
       <AssistenteTabs />
       <div className="mb-3">
         <Link

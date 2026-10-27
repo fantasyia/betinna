@@ -9,6 +9,7 @@ import { useNomeBot } from '@/hooks/useNomeBot';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Field, Select } from '@/components/ui';
 import { formatNumero, formatSegundos } from '@/lib/masks';
@@ -111,6 +112,7 @@ export default function BotAuditoriaPage() {
         </Button>
       }
     >
+      <AtendimentoTabs />
       <AssistenteTabs />
 
       {/* Filtros */}

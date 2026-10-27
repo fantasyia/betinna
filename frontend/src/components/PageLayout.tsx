@@ -16,7 +16,6 @@ import {
   Inbox,
   BellRing,
   ShoppingBag,
-  Bot,
   Menu,
   ChevronRight,
   Sun,
@@ -182,10 +181,10 @@ const SECTIONS: NavSection[] = [
         label: 'Atendimento',
         icon: MessageSquare,
         modulo: 'inbox',
-        // `/mullerbot` saiu daqui: o Assistente IA virou item próprio do menu
-        // (abaixo). Se ficasse no match, os dois acendiam juntos na sidebar.
+        // Assistente IA voltou pra dentro de Atendimento (Léo, 26/10): é uma
+        // sub-aba daqui, então /mullerbot acende Atendimento.
         // /incidentes saiu (24/10): reclamações e devoluções vivem em Pendências.
-        match: ['/ocorrencias', '/whatsapp'],
+        match: ['/ocorrencias', '/whatsapp', '/mullerbot'],
         badgeKey: 'atendimento',
       },
       {
@@ -204,12 +203,6 @@ const SECTIONS: NavSection[] = [
         badgeKey: 'pendencias',
         // O detalhe do incidente (link "Abrir no app") acende Pendências.
         match: ['/incidentes'],
-      },
-      {
-        to: '/mullerbot',
-        label: 'Assistente IA',
-        icon: Bot,
-        match: ['/mullerbot/persona', '/mullerbot/conhecimento', '/mullerbot/auditoria'],
       },
       {
         to: '/produtos',
