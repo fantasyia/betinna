@@ -21,7 +21,7 @@ import {
 } from './avaliacoes';
 
 /** Teto de avaliações NOVAS por rodada (custo da IA e das fotos). */
-const NOVAS_POR_RODADA = 30;
+const NOVAS_POR_RODADA = 60;
 const FOTOS_POR_AVALIACAO = 3;
 const MAX_ITENS = 500;
 
@@ -240,7 +240,7 @@ export class AvaliacoesService {
   private async comentarios(empresaId: string, itemId: number): Promise<ComentarioShopee[]> {
     const out: ComentarioShopee[] = [];
     let cursor = '';
-    for (let pag = 0; pag < 5; pag++) {
+    for (let pag = 0; pag < 30; pag++) {
       const r = await this.shopee!.getShop<{
         response?: { item_comment_list?: ComentarioShopee[]; more?: boolean; next_cursor?: string };
       }>(empresaId, '/api/v2/product/get_comment', {
