@@ -135,6 +135,32 @@ export function registrarProducaoErp(server: McpServer, { ok, seguro }: Ajudante
   // ─── Escrita (erp-escrita) ───────────────────────────────────────────────
 
   server.registerTool(
+    "erp_acabamento_salvar",
+    {
+      description:
+        "GRAVA os serviços de ACABAMENTO da empresa — SUBSTITUI a lista INTEIRA (é como a tela edita). " +
+        "Leia antes com erp_acabamento_ver e mande TODOS: os antigos com o id deles e os novos sem id (ganham um). " +
+        "Tirar da lista = desativar; antes, confira se nenhuma ficha usa o id. " +
+        "custoCortePorPeca e fretePorPeca (R$ por peça): ausente = não mexe. Escopo 'erp-escrita'.",
+      inputSchema: {
+        servicos: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(60).optional(),
+              nome: z.string().trim().min(2).max(80),
+              preco: z.number().min(0).max(1000).describe("R$ por peça"),
+            }),
+          )
+          .max(30),
+        custoCortePorPeca: z.number().min(0).max(1000).optional(),
+        fretePorPeca: z.number().min(0).max(1000).optional(),
+      },
+      annotations: escrita,
+    },
+    seguro(async (a: Record<string, unknown>) => ok(await api.put("/erp/acabamento", a))),
+  );
+
+  server.registerTool(
     "erp_ficha_salvar",
     {
       description:

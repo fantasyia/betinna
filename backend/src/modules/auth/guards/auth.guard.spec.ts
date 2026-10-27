@@ -336,6 +336,11 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
       await expect(pedir('PUT', '/erp/fichas/ml-1', { itens: [] })).resolves.toBe(true);
       await expect(pedir('POST', '/erp/insumos', { nome: 'Cordão' })).resolves.toBe(true);
       await expect(pedir('PUT', '/erp/insumos/i1', { nome: 'Cordão' })).resolves.toBe(true);
+      await expect(pedir('PUT', '/erp/acabamento', { servicos: [] })).resolves.toBe(true);
+      comEscopos(['erp']);
+      await expect(pedir('PUT', '/erp/acabamento', { servicos: [] })).rejects.toThrow(
+        /erp-escrita/,
+      );
     });
 
     it('compra, movimento, OP e estoque CONTINUAM barrados mesmo com erp-escrita', async () => {
@@ -348,7 +353,6 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
         ['POST', '/erp/ops/op-1/corte'],
         ['POST', '/erp/ops/op-1/fechar'],
         ['PUT', '/erp/faccoes/f1/precos'],
-        ['PUT', '/erp/acabamento'],
       ] as const) {
         await expect(pedir(m, path, {})).rejects.toThrow(/O resto é pela tela/);
       }

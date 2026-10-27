@@ -354,18 +354,20 @@ export class AuthGuard implements CanActivate {
         (metodo === 'PUT' && /^\/financeiro\/recorrencias\/[^/]+\/?$/.test(rel)));
 
     // ERP por token: simular OP é CONTA (não grava nada) — vale como leitura.
-    // Escrever (escopo `erp-escrita`): a ficha da grade e o cadastro do insumo
-    // (nome, unidade, preço de referência). Compra, movimento e foto: tela.
+    // Escrever (escopo `erp-escrita`): a ficha da grade, o cadastro do insumo
+    // (nome, unidade, preço de referência) e os serviços de acabamento + corte e
+    // frete por peça (26/10, #01). Compra, movimento e foto: tela.
     const simularOp = metodo === 'POST' && /^\/erp\/ops\/simular\/?$/.test(rel);
     const escreverErp =
       moduloRequerido === 'erp' &&
       ((metodo === 'PUT' && /^\/erp\/fichas\/[^/]+\/?$/.test(rel)) ||
         (metodo === 'POST' && /^\/erp\/insumos\/?$/.test(rel)) ||
-        (metodo === 'PUT' && /^\/erp\/insumos\/[^/]+\/?$/.test(rel)));
+        (metodo === 'PUT' && /^\/erp\/insumos\/[^/]+\/?$/.test(rel)) ||
+        (metodo === 'PUT' && /^\/erp\/acabamento\/?$/.test(rel)));
     if (moduloRequerido === 'erp' && metodo !== 'GET' && !simularOp && !escreverErp) {
       throw new ForbiddenException(
         'Token de API no ERP: lê fichas, insumos, facções, acabamento e OPs (e simula OP); ' +
-          'com o escopo "erp-escrita", grava a ficha técnica e cria/edita insumo. O resto é pela tela.',
+          'com o escopo "erp-escrita", grava a ficha técnica, cria/edita insumo e grava o acabamento. O resto é pela tela.',
       );
     }
 
@@ -417,7 +419,7 @@ export class AuthGuard implements CanActivate {
     }
     if (escreverErp && !row.escopo.includes('erp-escrita')) {
       throw new ForbiddenException(
-        'Token sem escopo "erp-escrita" (gravar ficha técnica e insumo). Ajuste o escopo em Quadros → Tokens de API.',
+        'Token sem escopo "erp-escrita" (gravar ficha técnica, insumo e acabamento). Ajuste o escopo em Quadros → Tokens de API.',
       );
     }
     // Fechar conversa pede o escopo PRÓPRIO, além do `inbox` (leitura).
