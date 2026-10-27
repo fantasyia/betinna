@@ -300,6 +300,29 @@ export class AvaliacoesService {
     });
   }
 
+  /**
+   * A IA de novo nas recusadas que o Léo ainda não revisou — a regra mudou
+   * (26/10: só embalagem da SHOPEE sai; a transparente fica).
+   */
+  private async retriarRecusadas(empresaId: string): Promise<void> {
+    const recusadas = await this.prisma.avaliacaoVitrine.findMany({
+      where: { empresaId, status: 'RECUSADA', revisada: false },
+      select: { id: true, fotos: true },
+    });
+    for (const a of recusadas) {
+      const url = a.fotos[0] ? this.fotos.urlPublica(a.fotos[0]) : null;
+      if (!url) continue;
+      const r = await fetch(url, { signal: AbortSignal.timeout(20_000) }).catch(() => null);
+      if (!r?.ok) continue;
+      const v = await this.triar(empresaId, Buffer.from(await r.arrayBuffer()));
+      if (!v.aprovar) continue;
+      await this.prisma.avaliacaoVitrine.update({
+        where: { id: a.id },
+        data: { status: 'APROVADA', motivo: v.motivo || null, avaliadaEm: new Date() },
+      });
+    }
+  }
+
   /** Empresas com importação em andamento (o acervo inteiro leva minutos). */
   private readonly rodando = new Set<string>();
 
@@ -311,7 +334,8 @@ export class AvaliacoesService {
     const empresaId = this.empresa(user);
     if (this.rodando.has(empresaId)) return { iniciada: false };
     this.rodando.add(empresaId);
-    void this.importarShopee(empresaId)
+    void this.retriarRecusadas(empresaId)
+      .then(() => this.importarShopee(empresaId))
       .then((r) =>
         this.logger.log(
           `[avaliações] ${empresaId}: ${r.novas} novas, ${r.aprovadas} aprovadas pela IA`,

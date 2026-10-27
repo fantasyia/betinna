@@ -76,8 +76,8 @@ export function candidata(c: {
 
 export const PROMPT_TRIAGEM = `Você revisa fotos de avaliações de clientes que vão aparecer no site de uma confecção de roupas.
 
-APROVE só se a foto mostra a peça de roupa (vestida, segurada ou estendida) de forma clara.
-RECUSE se aparecer: embalagem/pacote/saco plástico (especialmente laranja), logo ou nome de marketplace (Shopee, Mercado Livre etc.), etiqueta de envio, caixa de transporte, print de tela, a peça não aparece, foto borrada demais, nudez ou algo impróprio.
+APROVE se a foto mostra a peça de roupa (vestida, segurada, estendida ou ainda no saquinho TRANSPARENTE) de forma clara. Embalagem transparente é normal e NÃO é motivo de recusa.
+RECUSE se aparecer: embalagem/saco da SHOPEE (o pacote laranja), logo ou nome de marketplace (Shopee, Mercado Livre etc.), etiqueta de envio, print de tela, a peça não aparece, foto borrada demais, nudez ou algo impróprio.
 
 Responda em JSON: {"aprovar": true|false, "motivo": "poucas palavras"}.`;
 
