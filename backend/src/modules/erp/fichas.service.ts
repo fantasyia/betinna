@@ -141,6 +141,9 @@ export class FichasService {
       where: { modeloLinhaId },
       include: {
         itens: {
+          // Na ordem em que foram gravados (cuid cresce): com o mesmo insumo em
+          // mais de uma linha, "cós" e "barra" não trocam de lugar na tela.
+          orderBy: { id: 'asc' },
           include: {
             insumo: {
               select: {
