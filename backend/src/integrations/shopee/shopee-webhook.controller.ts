@@ -36,11 +36,16 @@ import type { ShopeeWebhookEnvelope } from './shopee.types';
  *   3  → order status update      → OrdersService
  *   4  → tracking number          → OrdersService (mesma órbita)
  *   6  → return/refund update     → ReturnsService
- *   7  → chat message             → ChatService
+ *   10 → chat (webchat_push)      → ChatService (7 mantido por compatibilidade)
  *   15 → return seller proof
  *   16 → dispute escalation       → ReturnsService (status muda)
  *
- * SEMPRE responde 200 — Shopee retentaria em 5xx.
+ * SEMPRE responde 200 — Shopee retentaria em 5xx, e o push de teste do
+ * set_app_push_config exige 2xx pra salvar a URL. Assinatura inválida também
+ * é 200 (sem processar): 401 travava o cadastro do push (28/10).
+ *
+ * O push é só um AVISO: o conteúdo nunca é confiado — com o id na mão, o
+ * serviço busca a conversa/pedido de verdade na API da Shopee.
  */
 @ApiTags('webhooks')
 @Controller('webhooks/shopee')
@@ -83,10 +88,17 @@ export class ShopeeWebhookController {
         this.logger.warn('Webhook Shopee sem rawBody — não é possível validar HMAC');
         throw new UnauthorizedException('rawBody ausente');
       }
-      const signer = new ShopeeSigner(partnerId, partnerKey);
-      if (!signature || !signer.verifyWebhook(url, raw, signature)) {
-        this.logger.warn('Webhook Shopee com assinatura inválida — descartado');
-        throw new UnauthorizedException('assinatura inválida');
+      // A Shopee assina o push com a "Live Push Partner Key" (console → Push
+      // Mechanism), que não é a chave das chamadas de API. Confere com as duas.
+      const chaves = [this.env.get('SHOPEE_PUSH_PARTNER_KEY'), partnerKey].filter(Boolean);
+      const valida =
+        !!signature &&
+        chaves.some((k) => new ShopeeSigner(partnerId, k).verifyWebhook(url, raw, signature));
+      if (!valida) {
+        this.logger.warn(
+          'Webhook Shopee com assinatura inválida — descartado (confira SHOPEE_PUSH_PARTNER_KEY)',
+        );
+        return { ok: false };
       }
 
       // Sprint 3 FIX 1: anti-replay. Shopee envia `timestamp` no body (unix seconds).
@@ -146,12 +158,16 @@ export class ShopeeWebhookController {
         await this.returns.processarReturn(empresaId, ret);
         return;
       }
-      case 7: {
-        // chat message
-        const conversationId =
-          (env.data?.['conversation_id'] as string) ?? (env.data?.['conversation_id'] as string);
+      case 7:
+      case 10: {
+        // chat (webchat_push): o id vem em data ou em data.content
+        const conteudo = env.data?.['content'] as Record<string, unknown> | undefined;
+        const conversationId = (env.data?.['conversation_id'] ?? conteudo?.['conversation_id']) as
+          | string
+          | number
+          | undefined;
         if (!conversationId) return;
-        await this.chat.processarConversation(empresaId, conversationId);
+        await this.chat.processarConversation(empresaId, String(conversationId));
         return;
       }
       default:

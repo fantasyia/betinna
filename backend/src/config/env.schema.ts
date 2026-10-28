@@ -233,6 +233,12 @@ export const envSchema = z
     SHOPEE_PARTNER_ID: z.string().optional().default(''),
     SHOPEE_PARTNER_KEY: z.string().optional().default(''),
     SHOPEE_REDIRECT_URI: z.string().optional().default(''),
+    /**
+     * Chave que a Shopee usa pra ASSINAR o push (28/10): no console, App →
+     * Push Mechanism → "Live Push Partner Key". Não é a SHOPEE_PARTNER_KEY das
+     * chamadas de API. Vazio = confere só com a SHOPEE_PARTNER_KEY.
+     */
+    SHOPEE_PUSH_PARTNER_KEY: z.string().optional().default(''),
     /** 'live' (default — partner.shopeemobile.com) ou 'sandbox' (partner.test-stable.shopeemobile.com). */
     SHOPEE_ENV: z.enum(['live', 'sandbox']).default('live'),
     /**
