@@ -1465,6 +1465,11 @@ function GuiaTamanhos({
                 ))}
               </tbody>
             </table>
+            {t.nota?.trim() && (
+              <p className="vt-muted" data-testid="vt-guia-nota">
+                {t.nota.trim()}
+              </p>
+            )}
             <p className="vt-muted">Medidas em média — podem variar um pouco de peça pra peça.</p>
           </div>
         )}

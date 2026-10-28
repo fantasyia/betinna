@@ -43,6 +43,24 @@ describe('fichaDoModelo (24/10)', () => {
     expect(f.conteudo).toContain('M: cintura 40, comprimento 50');
   });
 
+  it('a observação da tabela de medidas vai junto (28/10)', () => {
+    const nota = 'Medidas da peça deitada, em cm (a volta inteira é o dobro).';
+    const f = fichaDoModelo(
+      {
+        ...modelo,
+        linhas: [
+          {
+            ...modelo.linhas[0],
+            tabelaMedidas: { ...modelo.linhas[0].tabelaMedidas, nota },
+          },
+        ],
+      },
+      { minimoEntrada: null, minimoVolume: null, minimoAtacadao: null },
+      null,
+    );
+    expect(f.conteudo).toContain(`M: cintura 40, comprimento 50. (${nota})`);
+  });
+
   it('sem preço = sob consulta; sem domínio = sem link', () => {
     const f = fichaDoModelo(
       {

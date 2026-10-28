@@ -69,6 +69,8 @@ export interface Video {
 export interface TabelaMedidas {
   colunas: string[];
   linhas: Array<{ tamanho: string; valores: string[] }>;
+  /** Observação abaixo da tabela (28/10). */
+  nota?: string;
 }
 
 /** Decimal chega como number (ResponseInterceptor) ou string — normalizar na tela. */

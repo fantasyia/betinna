@@ -492,6 +492,18 @@ describe('tabela de medidas no material de divulgação', () => {
     expect(txt).toContain('Plus Size\nG1: Veste bem até (média) 130 kg · Cintura esticada (cm) 64');
     expect(txt).not.toContain('Plus Size (cm)');
   });
+
+  it('a observação da tabela vai logo abaixo dela (28/10)', () => {
+    const reg = linha({
+      tabelaMedidas: {
+        colunas: ['Cintura'],
+        linhas: [{ tamanho: 'M', valores: ['40'] }],
+        nota: 'Medidas da peça deitada, em cm.',
+      },
+    });
+    const txt = textoKit(modelo({ linhas: [reg] }));
+    expect(txt).toContain('M: Cintura 40\nMedidas da peça deitada, em cm.');
+  });
 });
 
 describe('rodízio da foto de abertura (Léo, 07/10)', () => {

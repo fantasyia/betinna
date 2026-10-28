@@ -56,6 +56,8 @@ export interface RascunhoLinha {
   colunas: string[];
   /** tamanho (nome) → um valor por coluna. */
   medidas: Record<string, string[]>;
+  /** Observação abaixo da tabela de medidas (28/10). */
+  nota: string;
   /** tamanhoId → peso de uma peça em gramas (texto do campo). Ausente = não mexe. */
   pesos?: Record<string, string>;
 }
@@ -127,6 +129,7 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
       precoSugerido: precoParaTexto(ml?.precoSugerido ?? null),
       colunas: tabela?.colunas ?? [],
       medidas: Object.fromEntries((tabela?.linhas ?? []).map((r) => [r.tamanho, r.valores])),
+      nota: tabela?.nota ?? '',
       pesos: Object.fromEntries(
         (ml?.tamanhos ?? []).map((t) => [t.tamanhoId, t.pesoGramas ? String(t.pesoGramas) : '']),
       ),
@@ -193,7 +196,8 @@ export function montarCorpo(
           ...x,
           valores: colunas.map((_, i) => x.valores[i] ?? ''),
         }));
-      tabelaMedidas = { colunas, linhas: linhasTabela };
+      const nota = rl.nota.trim();
+      tabelaMedidas = { colunas, linhas: linhasTabela, ...(nota ? { nota } : {}) };
     }
     // Peso por peça (frete): só dos tamanhos marcados; vazio = apaga (null).
     let pesos: Record<string, number | null> | undefined;
@@ -1182,7 +1186,7 @@ function TabelaMedidasEditor({
                       <Input
                         value={c}
                         placeholder="Ex.: Tórax"
-                        maxLength={30}
+                        maxLength={50}
                         className="h-8 w-28"
                         onChange={(e) =>
                           onChange({
@@ -1223,6 +1227,17 @@ function TabelaMedidasEditor({
             </tbody>
           </table>
         </div>
+      )}
+      {rl.colunas.length > 0 && (
+        <Field label="Observação (aparece abaixo da tabela)" className="mt-3">
+          <Input
+            value={rl.nota}
+            maxLength={300}
+            placeholder="Ex.: Medidas da peça deitada, em cm (a volta inteira é o dobro)."
+            data-testid={`tabela-nota-${linha.id}`}
+            onChange={(e) => onChange({ nota: e.target.value })}
+          />
+        </Field>
       )}
     </div>
   );

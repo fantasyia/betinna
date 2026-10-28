@@ -49,6 +49,11 @@ const tabelaMedidas = z
       .array(z.object({ tamanho: z.string(), valores: z.array(z.string()) }))
       .max(40)
       .describe("Uma por tamanho, com UM valor por coluna (em cm)."),
+    nota: z
+      .string()
+      .max(300)
+      .optional()
+      .describe('Observação abaixo da tabela. Ex.: "Medidas da peça deitada, em cm (a volta inteira é o dobro)."'),
   })
   .nullable()
   .optional();

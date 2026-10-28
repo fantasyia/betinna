@@ -43,6 +43,7 @@ const vazioLinha = {
   precoSugerido: '',
   colunas: [] as string[],
   medidas: {} as Record<string, string[]>,
+  nota: '',
 };
 
 const base = (): Rascunho => ({
@@ -139,6 +140,20 @@ describe('montarCorpo', () => {
       colunas: ['Tórax', 'Comprimento'],
       linhas: [{ tamanho: 'P', valores: ['50', ''] }],
     });
+  });
+
+  it('observação da tabela vai no corpo; vazia fica de fora (28/10)', () => {
+    const b = base();
+    b.linhas['lin-reg'].colunas = ['Tórax'];
+    b.linhas['lin-reg'].medidas = { P: ['50'] };
+    b.linhas['lin-reg'].nota = '  Medidas da peça deitada, em cm.  ';
+    const tabela = () => {
+      const r = montarCorpo(b, linhas);
+      return r.ok ? (r.corpo.linhas as Array<{ tabelaMedidas: { nota?: string } }>)[0].tabelaMedidas : null;
+    };
+    expect(tabela()?.nota).toBe('Medidas da peça deitada, em cm.');
+    b.linhas['lin-reg'].nota = '   ';
+    expect(tabela()).not.toHaveProperty('nota');
   });
 
   it('linha desmarcada não vai no corpo', () => {

@@ -77,10 +77,10 @@ export const tamanhoSchema = z.object({
 });
 export type TamanhoDto = z.infer<typeof tamanhoSchema>;
 
-/** Tabela de medidas de uma linha: cabeçalho + uma linha por tamanho. */
+/** Tabela de medidas de uma linha: cabeçalho + uma linha por tamanho (+ observação). */
 export const tabelaMedidasSchema = z
   .object({
-    colunas: z.array(z.string().trim().min(1).max(30)).min(1).max(10),
+    colunas: z.array(z.string().trim().min(1).max(50)).min(1).max(10),
     linhas: z
       .array(
         z.object({
@@ -89,6 +89,13 @@ export const tabelaMedidasSchema = z
         }),
       )
       .max(40),
+    /** Observação abaixo da tabela (ex.: "medidas da peça deitada"). Vazia = ausente. */
+    nota: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .transform((v) => v || undefined),
   })
   .superRefine((t, ctx) => {
     t.linhas.forEach((l, i) => {

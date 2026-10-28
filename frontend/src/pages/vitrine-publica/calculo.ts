@@ -12,6 +12,8 @@ export interface TamanhoPub {
 export interface TabelaMedidasPub {
   colunas: string[];
   linhas: Array<{ tamanho: string; valores: string[] }>;
+  /** Observação abaixo da tabela (28/10), ex.: "medidas da peça deitada". */
+  nota?: string;
 }
 export interface LinhaPub {
   id: string; // linha NO MODELO
@@ -574,6 +576,7 @@ export function textoKit(m: ModeloPub): string {
           `${r.tamanho}: ${t.colunas.map((c, i) => `${c} ${r.valores[i] || '-'}`).join(' · ')}`,
       );
       // A unidade vem no cabeçalho de cada coluna (cm, kg — o Plus tem "Veste bem até").
+      if (t.nota?.trim()) linhas.push(t.nota.trim());
       return `${l.nome}\n${linhas.join('\n')}`;
     });
   if (medidas.length) partes.push(`TABELA DE MEDIDAS\n${medidas.join('\n\n')}`);

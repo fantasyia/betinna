@@ -29,7 +29,7 @@ const D: DadosImpressao = {
       modeloLinhaId: 'ml-reg',
       linha: 'Regular',
       observacoes: null,
-      tabelaMedidas: { colunas: ['Cintura'], linhas: [{ tamanho: 'M', valores: ['40'] }] },
+      tabelaMedidas: { colunas: ['Cintura'], linhas: [{ tamanho: 'M', valores: ['40'] }], nota: 'Peça deitada' },
       acabamento: [{ id: 'passar-cordao', nome: 'Passar cordão', preco: 0.25 }],
       itens: [
         { nome: 'Moletom', tipo: 'TECIDO', unidade: 'KG', consumoPorPeca: 0.12, porTamanho: null, etapa: 'FACCAO', observacao: null },
@@ -57,5 +57,6 @@ describe('FichaOp', () => {
     expect(within(acab).getByText('Cordão')).toBeTruthy();
     expect(within(acab).getByText('Passar cordão')).toBeTruthy();
     expect(within(faccao).getByText('Costura reforçada no gancho')).toBeTruthy();
+    expect(within(faccao).getByText('Peça deitada')).toBeTruthy(); // observação da tabela (28/10)
   });
 });

@@ -82,9 +82,13 @@ export function fichaDoModelo(
   return { titulo: `Produto · ${m.nome}`, conteudo: partes.join('\n') };
 }
 
-/** Tabela de medidas → "P: busto 50, comprimento 70; M: …". */
+/** Tabela de medidas → "P: busto 50, comprimento 70; M: … (nota)". */
 function medidas(raw: unknown): string | null {
-  const t = raw as { colunas?: string[]; linhas?: Array<{ tamanho: string; valores: string[] }> };
+  const t = raw as {
+    colunas?: string[];
+    linhas?: Array<{ tamanho: string; valores: string[] }>;
+    nota?: string;
+  };
   if (!t?.colunas?.length || !t.linhas?.length) return null;
   const linhas = t.linhas
     .map((l) => {
@@ -94,5 +98,7 @@ function medidas(raw: unknown): string | null {
       return v.length ? `${l.tamanho}: ${v.join(', ')}` : '';
     })
     .filter(Boolean);
-  return linhas.length ? `${linhas.join('; ')}.` : null;
+  if (!linhas.length) return null;
+  const nota = t.nota?.trim();
+  return nota ? `${linhas.join('; ')}. (${nota})` : `${linhas.join('; ')}.`;
 }

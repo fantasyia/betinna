@@ -34,7 +34,7 @@ interface Ficha {
   modeloLinhaId: string;
   linha: string;
   observacoes: string | null;
-  tabelaMedidas: { colunas: string[]; linhas: Array<{ tamanho: string; valores: string[] }> } | null;
+  tabelaMedidas: { colunas: string[]; linhas: Array<{ tamanho: string; valores: string[] }>; nota?: string } | null;
   acabamento: Array<{ id: string; nome: string; preco: number }>;
   itens: ItemFicha[];
 }
@@ -304,6 +304,7 @@ function ViaFaccao({ d }: { d: DadosImpressao }) {
               ))}
             </tbody>
           </table>
+          {f.tabelaMedidas!.nota && <p className="text-xs">{f.tabelaMedidas!.nota}</p>}
         </div>
       ))}
       {instr.length ? (
