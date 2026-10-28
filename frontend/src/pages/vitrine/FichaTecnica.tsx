@@ -36,6 +36,8 @@ interface FichaApi {
     porTamanho?: Record<string, number> | null;
     etapa?: Etapa;
     observacao: string | null;
+    /** Onde a linha é usada na peça (cós, barra…), 27/10. */
+    uso?: string | null;
     corFixa: { id: string; nome: string; hex: string } | null;
   }>;
   semCusto: string[];
@@ -60,6 +62,8 @@ interface Linha {
   observacao: string | null;
   /** Insumo com cores: '' = a cor da própria peça; senão a cor fixa (corId da lista). */
   corFixaId: string;
+  /** Onde é usado na peça (Léo, 27/10): o mesmo insumo pode vir no "cós" e na "barra". */
+  uso: string;
 }
 
 export function FichaTecnicaAba({
@@ -215,6 +219,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           : null,
         observacao: i.observacao ?? null,
         corFixaId: i.corFixa?.id ?? '',
+        uso: i.uso ?? '',
       })),
     );
     setFaccao(paraCampo(q.data.custoFaccaoPrevisto));
@@ -252,8 +257,8 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
     }, 0);
   const custoCorte = q.data?.custoCortePorPeca ?? 0;
   const total = custoInsumos + (lerNumero(faccao) ?? 0) + custoAcab + custoCorte;
-  const usados = new Set(itens.map((l) => l.insumoId));
-  const livres = insumos.filter((i) => i.ativo && !usados.has(i.id));
+  // O mesmo insumo pode repetir (cós e barra, 27/10): a lista é a de todos os ativos.
+  const ativos = insumos.filter((i) => i.ativo);
   const valido = itens.every((l) => l.insumoId && consumoDe(l) > 0);
 
   async function salvar() {
@@ -283,6 +288,7 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
             observacao: l.observacao,
             etapa: l.etapa,
             corFixaId: l.corFixaId || null,
+            uso: l.uso.trim() || null,
           };
         }),
       });
@@ -311,25 +317,35 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           {itens.map((l, idx) => {
             const ins = porId.get(l.insumoId);
             return (
-              <div key={`${l.insumoId}-${idx}`} className="grid grid-cols-[minmax(0,1fr)_9rem_9rem_7rem_auto] items-end gap-2">
+              <div key={`${l.insumoId}-${idx}`} className="grid grid-cols-[minmax(0,1fr)_8rem_9rem_9rem_7rem_auto] items-end gap-2">
                 <Field label={idx === 0 ? 'Insumo' : undefined}>
                   <Select
                     value={l.insumoId}
                     onChange={(e) => setItens((xs) => xs.map((x, i) => (i === idx ? { ...x, insumoId: e.target.value, corFixaId: '' } : x)))}
                   >
-                    {ins && (
+                    {ins && !ins.ativo && (
                       <option value={ins.id}>
                         {ins.nome}
                         {ins.cor ? ` · ${ins.cor}` : ''}
                       </option>
                     )}
-                    {livres.map((i) => (
+                    {ativos.map((i) => (
                       <option key={i.id} value={i.id}>
                         {i.nome}
                         {i.cor ? ` · ${i.cor}` : ''}
                       </option>
                     ))}
                   </Select>
+                </Field>
+                <Field label={idx === 0 ? 'Uso' : undefined}>
+                  <Input
+                    value={l.uso}
+                    onChange={(e) => setItens((xs) => xs.map((x, i) => (i === idx ? { ...x, uso: e.target.value } : x)))}
+                    maxLength={60}
+                    placeholder="cós, barra…"
+                    title="Onde vai na peça — o mesmo insumo pode ter uma linha por uso"
+                    data-testid={`ficha-uso-${idx}`}
+                  />
                 </Field>
                 <Field label={idx === 0 ? 'Consumo por peça' : undefined}>
                   <div className="flex items-center gap-1.5">
@@ -446,8 +462,10 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
           size="sm"
           variant="secondary"
           leftIcon={<Plus className="h-3.5 w-3.5" />}
-          disabled={livres.length === 0}
-          onClick={() => setItens((xs) => [...xs, { insumoId: livres[0].id, consumo: '', etapa: 'FACCAO', porTamanho: null, observacao: null, corFixaId: '' }])}
+          disabled={ativos.length === 0}
+          onClick={() =>
+            setItens((xs) => [...xs, { insumoId: ativos[0].id, consumo: '', etapa: 'FACCAO', porTamanho: null, observacao: null, corFixaId: '', uso: '' }])
+          }
           data-testid={`ficha-add-${modeloLinhaId}`}
         >
           Adicionar insumo

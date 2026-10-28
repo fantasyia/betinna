@@ -4675,12 +4675,15 @@ model FichaTecnicaItem {
   /// Insumo com cores: fixa UMA cor pra toda peça (cordão sempre Branco).
   /// null = a OP usa a cor da própria peça.
   corFixaId      String?
+  /// Onde a linha é usada na peça (Léo, 27/10): "cós", "barra", "viés". O mesmo
+  /// insumo pode ter várias linhas; custo e OP somam as do mesmo insumo e cor.
+  uso            String? @db.VarChar(60)
 
   ficha   FichaTecnica @relation(fields: [fichaId], references: [id], onDelete: Cascade)
   insumo  Insumo       @relation(fields: [insumoId], references: [id], onDelete: Restrict)
   corFixa CatalogoCor? @relation(fields: [corFixaId], references: [id], onDelete: Restrict)
 
-  @@unique([fichaId, insumoId])
+  @@index([fichaId])
 }
 
 /// Quem costura. A facção recebe o tecido JÁ CORTADO e cobra por peça ENVIADA.

@@ -11,6 +11,10 @@ const textoOpcional = (max: number) =>
     .optional()
     .transform((v) => (v ? v : null));
 
+/** Linha da ficha que conta como a mesma: insumo + cor fixa + uso (sem caixa). */
+const chaveDaLinha = (x: { insumoId: string; corFixaId?: string | null; uso?: string | null }) =>
+  `${x.insumoId}|${x.corFixaId ?? ''}|${(x.uso ?? '').toLowerCase()}`;
+
 /** Ficha da grade: SUBSTITUI a lista de insumos inteira (é como a tela edita). */
 export const fichaSchema = z.object({
   custoFaccaoPrevisto: z.number().nonnegative().max(100_000).nullable().optional(),
@@ -48,11 +52,17 @@ export const fichaSchema = z.object({
         observacao: textoOpcional(200),
         /** Insumo com cores: fixa uma cor (cordão sempre Branco). Vazio = a cor da peça. */
         corFixaId: z.string().min(1).max(40).nullable().optional(),
+        /**
+         * Onde a linha é usada na peça (Léo, 27/10): o mesmo insumo pode vir em
+         * várias linhas — elástico no "cós" e na "barra". A OP soma as linhas.
+         */
+        uso: textoOpcional(60),
       }),
     )
     .max(100)
-    .refine((xs) => new Set(xs.map((x) => x.insumoId)).size === xs.length, {
-      message: 'Insumo repetido na ficha — some o consumo numa linha só',
+    // Repetido só é recusado quando é a MESMA linha: insumo, cor fixa e uso.
+    .refine((xs) => new Set(xs.map(chaveDaLinha)).size === xs.length, {
+      message: 'Insumo repetido com o mesmo uso — diga onde cada linha é usada (ex.: cós, barra)',
     }),
 });
 export type FichaDto = z.infer<typeof fichaSchema>;

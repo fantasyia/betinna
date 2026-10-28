@@ -6,6 +6,60 @@ import { EstoqueService } from './estoque.service';
 import { servicosAcabamento } from './acabamento';
 import { materialDe, rotuloLinhas } from './encaixe.service';
 
+/** Linha da ficha como a impressão lê (uma por uso: cós, barra…). */
+export interface LinhaFichaImpressao {
+  insumoId: string;
+  corFixaId: string | null;
+  consumoPorPeca: number;
+  porTamanho: Record<string, number> | null;
+  etapa: string;
+  observacao: string | null;
+  uso: string | null;
+  nome: string;
+  tipo: string;
+  unidade: string;
+  cor: string | null;
+}
+
+/**
+ * Junta as linhas do MESMO insumo, cor efetiva e etapa (Léo, 27/10: elástico
+ * no cós e na barra vai pra facção como UM total). Por tamanho soma tamanho a
+ * tamanho — linha sem o tamanho entra com o consumo médio dela, como na OP.
+ * Etapas diferentes não se misturam (cada via tem a sua lista). PURO.
+ */
+export function juntarItensDaFicha(linhas: LinhaFichaImpressao[]) {
+  const grupos = new Map<string, LinhaFichaImpressao[]>();
+  for (const l of linhas) {
+    const k = `${l.insumoId}|${l.corFixaId ?? ''}|${l.etapa}`;
+    grupos.set(k, [...(grupos.get(k) ?? []), l]);
+  }
+  return [...grupos.values()].map((g) => {
+    const consumoPorPeca = g.reduce((s, l) => s + l.consumoPorPeca, 0);
+    const tamanhos = new Set(g.flatMap((l) => Object.keys(l.porTamanho ?? {})));
+    const porTamanho = tamanhos.size
+      ? Object.fromEntries(
+          [...tamanhos].map((t) => [
+            t,
+            g.reduce((s, l) => s + (l.porTamanho?.[t] ?? l.consumoPorPeca), 0),
+          ]),
+        )
+      : null;
+    const textos = (xs: Array<string | null>) => [...new Set(xs.filter((x): x is string => !!x))];
+    return {
+      nome: g[0].nome,
+      tipo: g[0].tipo,
+      unidade: g[0].unidade,
+      cor: g[0].cor,
+      consumoPorPeca,
+      porTamanho,
+      etapa: g[0].etapa,
+      observacao: textos(g.map((l) => l.observacao)).join(' · ') || null,
+      /** Onde vai na peça (cós, barra…) — o total já soma todos. */
+      usos: textos(g.map((l) => l.uso)),
+    };
+  });
+}
+
 /**
  * Ficha da OP pra IMPRIMIR (card cmv8po94p0089pf5ih9l3n8bn — Léo, 14/10): tudo
  * o que as 3 vias (corte, facção, acabamento) precisam, numa leitura só. A
@@ -62,11 +116,15 @@ export class FichaImpressaoService {
           acabamento: true,
           itens: {
             select: {
+              insumoId: true,
+              corFixaId: true,
               consumoPorPeca: true,
               porTamanho: true,
               etapa: true,
               observacao: true,
+              uso: true,
               insumo: { select: { nome: true, tipo: true, unidade: true } },
+              corFixa: { select: { nome: true } },
             },
           },
         },
@@ -129,15 +187,22 @@ export class FichaImpressaoService {
           observacoes: f?.observacoes ?? null,
           tabelaMedidas: ml?.tabelaMedidas ?? null,
           acabamento: servicos.filter((s) => ids.includes(s.id)),
-          itens: (f?.itens ?? []).map((i) => ({
-            nome: i.insumo.nome,
-            tipo: i.insumo.tipo,
-            unidade: i.insumo.unidade,
-            consumoPorPeca: Number(i.consumoPorPeca),
-            porTamanho: (i.porTamanho as Record<string, number> | null) ?? null,
-            etapa: i.etapa,
-            observacao: i.observacao,
-          })),
+          // Mesmo insumo em duas linhas (cós e barra) sai num total só.
+          itens: juntarItensDaFicha(
+            (f?.itens ?? []).map((i) => ({
+              insumoId: i.insumoId,
+              corFixaId: i.corFixaId,
+              consumoPorPeca: Number(i.consumoPorPeca),
+              porTamanho: (i.porTamanho as Record<string, number> | null) ?? null,
+              etapa: i.etapa,
+              observacao: i.observacao,
+              uso: i.uso,
+              nome: i.insumo.nome,
+              tipo: i.insumo.tipo,
+              unidade: i.insumo.unidade,
+              cor: i.corFixa?.nome ?? null,
+            })),
+          ),
         };
       }),
       // O risco mais recente de cada material (tecido, ribana).

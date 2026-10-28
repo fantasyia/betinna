@@ -166,6 +166,8 @@ export function registrarProducaoErp(server: McpServer, { ok, seguro }: Ajudante
       description:
         "GRAVA a ficha técnica de uma grade — SUBSTITUI a lista de itens INTEIRA (é como a tela edita). " +
         "Leia antes com erp_ficha_ver e mande TODOS os itens, os antigos e os novos. Escopo 'erp-escrita'. " +
+        "O mesmo insumo pode vir em mais de uma linha, uma por USO (elástico no cós e na barra) — a OP soma; " +
+        "só não repete insumo + cor fixa + uso iguais. " +
         "acabamento = ids de erp_acabamento_ver; custoFaccaoPrevisto = R$ por peça (null tira).",
       inputSchema: {
         modeloLinhaId: id,
@@ -192,6 +194,12 @@ export function registrarProducaoErp(server: McpServer, { ok, seguro }: Ajudante
               etapa: z.enum(["FACCAO", "ACABAMENTO"]).optional(),
               observacao: z.string().max(200).nullable().optional(),
               corFixaId: id.nullable().optional().describe("Só pra insumo com cores (ex.: cordão sempre Branco)"),
+              uso: z
+                .string()
+                .max(60)
+                .nullable()
+                .optional()
+                .describe("Onde a linha é usada na peça (ex.: cós, barra, corpo, viés). Mande o que veio no erp_ficha_ver"),
             }),
           )
           .max(100),

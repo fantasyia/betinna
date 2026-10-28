@@ -55,7 +55,8 @@ export interface Necessidade {
  * peça da ficha daquela grade). Insumo com cores sai na cor fixada na ficha
  * ou, sem cor fixa, na cor da própria peça (Moletinho Preto pra bermuda
  * Preta). Insumo sem cores soma tudo junto. Grade sem ficha não entra (a tela
- * avisa). PURO.
+ * avisa). O mesmo insumo em várias linhas da ficha (cós e barra, 27/10) soma
+ * na mesma chave insumo × cor — cada linha com o seu consumo por tamanho. PURO.
  */
 export function necessidadesDaGrade(
   // Por cor: o total, ou as peças POR TAMANHO (pra ficha com quantidade por tamanho).

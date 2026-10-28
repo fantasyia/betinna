@@ -130,6 +130,17 @@ describe('custo previsto pela ficha', () => {
     });
   });
 
+  it('27/10: o mesmo insumo em duas linhas (cós e barra) soma as duas', () => {
+    const r = custoPrevistoDaFicha(
+      [
+        { consumoPorPeca: 0.8, custoMedio: 1.5 },
+        { consumoPorPeca: 0.5, custoMedio: 1.5 },
+      ],
+      null,
+    );
+    expect(r.insumos).toBeCloseTo(1.95, 6);
+  });
+
   it('20/10: o corte por peça da empresa entra no previsto', () => {
     const r = custoPrevistoDaFicha([{ consumoPorPeca: 1, custoMedio: 2 }], 3, 0.75, 0.45);
     expect(r.corte).toBe(0.45);
@@ -178,8 +189,8 @@ describe('FichasService', () => {
       custoFaccaoPrevisto: 4.5,
       observacoes: null,
       itens: [
-        { insumoId: 'tec', consumoPorPeca: 0.32, observacao: null },
-        { insumoId: 'cord', consumoPorPeca: 1, observacao: null },
+        { insumoId: 'tec', consumoPorPeca: 0.32, observacao: null, uso: null },
+        { insumoId: 'cord', consumoPorPeca: 1, observacao: null, uso: null },
       ],
     });
     expect(tx.fichaTecnicaItem.deleteMany).toHaveBeenCalledWith({ where: { fichaId: 'f-1' } });
@@ -195,9 +206,10 @@ describe('FichasService', () => {
           insumoId: 'tec',
           consumoPorPeca: 9, // ignorado: com tamanhos, vale a média
           observacao: null,
+          uso: null,
           porTamanho: { P: 0.76, M: 0.8, G: 0.84 },
         },
-        { insumoId: 'cord', consumoPorPeca: 1, observacao: null },
+        { insumoId: 'cord', consumoPorPeca: 1, observacao: null, uso: null },
       ],
     });
     const d = tx.fichaTecnicaItem.createMany.mock.calls[0][0].data[0];
@@ -211,8 +223,14 @@ describe('FichasService', () => {
       svc.salvar(user as never, 'ml-1', {
         observacoes: null,
         itens: [
-          { insumoId: 'tec', consumoPorPeca: 1, observacao: null, porTamanho: { G1: 0.96 } },
-          { insumoId: 'cord', consumoPorPeca: 1, observacao: null },
+          {
+            insumoId: 'tec',
+            consumoPorPeca: 1,
+            observacao: null,
+            uso: null,
+            porTamanho: { G1: 0.96 },
+          },
+          { insumoId: 'cord', consumoPorPeca: 1, observacao: null, uso: null },
         ],
       }),
     ).rejects.toThrow(/fora da grade Regular: G1/);
@@ -242,7 +260,7 @@ describe('FichasService', () => {
       .mockResolvedValueOnce([tec])
       .mockResolvedValueOnce([cord])
       .mockResolvedValueOnce([cord]);
-    const base = { insumoId: 'tec', consumoPorPeca: 0.32, observacao: null };
+    const base = { insumoId: 'tec', consumoPorPeca: 0.32, observacao: null, uso: null };
     await expect(
       svc.salvar(user as never, 'ml-1', {
         observacoes: null,
@@ -252,13 +270,29 @@ describe('FichasService', () => {
     await expect(
       svc.salvar(user as never, 'ml-1', {
         observacoes: null,
-        itens: [{ insumoId: 'cord', consumoPorPeca: 1, observacao: null, corFixaId: 'cor-roxo' }],
+        itens: [
+          {
+            insumoId: 'cord',
+            consumoPorPeca: 1,
+            observacao: null,
+            uso: null,
+            corFixaId: 'cor-roxo',
+          },
+        ],
       }),
     ).rejects.toThrow(/não é uma das cores/);
     expect(tx.fichaTecnica.upsert).not.toHaveBeenCalled();
     await svc.salvar(user as never, 'ml-1', {
       observacoes: null,
-      itens: [{ insumoId: 'cord', consumoPorPeca: 1, observacao: null, corFixaId: 'cor-branco' }],
+      itens: [
+        {
+          insumoId: 'cord',
+          consumoPorPeca: 1,
+          observacao: null,
+          uso: null,
+          corFixaId: 'cor-branco',
+        },
+      ],
     });
     expect(tx.fichaTecnicaItem.createMany.mock.calls[0][0].data[0].corFixaId).toBe('cor-branco');
   });
@@ -270,8 +304,8 @@ describe('FichasService', () => {
       svc.salvar(user as never, 'ml-1', {
         observacoes: null,
         itens: [
-          { insumoId: 'tec', consumoPorPeca: 0.32, observacao: null },
-          { insumoId: 'alheio', consumoPorPeca: 1, observacao: null },
+          { insumoId: 'tec', consumoPorPeca: 0.32, observacao: null, uso: null },
+          { insumoId: 'alheio', consumoPorPeca: 1, observacao: null, uso: null },
         ],
       }),
     ).rejects.toBeInstanceOf(BusinessRuleException);
@@ -298,7 +332,7 @@ describe('FichasService', () => {
     expect(prisma.faccao.delete).not.toHaveBeenCalled();
   });
 
-  it('DTO: insumo repetido na ficha é recusado', () => {
+  it('DTO: insumo repetido SEM dizer o uso é recusado (é a mesma linha)', () => {
     const r = fichaSchema.safeParse({
       itens: [
         { insumoId: 'a', consumoPorPeca: 1 },
@@ -306,6 +340,60 @@ describe('FichasService', () => {
       ],
     });
     expect(r.success).toBe(false);
+  });
+
+  it('27/10 DTO: o mesmo insumo em usos (ou cores fixas) diferentes passa; mesmo uso, não', () => {
+    const ok = fichaSchema.safeParse({
+      itens: [
+        { insumoId: 'el', consumoPorPeca: 0.8, uso: 'cós' },
+        { insumoId: 'el', consumoPorPeca: 0.5, uso: 'barra' },
+        { insumoId: 'mm', consumoPorPeca: 0.02, uso: 'viés' },
+        { insumoId: 'mm', consumoPorPeca: 0.02, uso: 'viés', corFixaId: 'branco' },
+      ],
+    });
+    expect(ok.success).toBe(true);
+    const dup = fichaSchema.safeParse({
+      itens: [
+        { insumoId: 'el', consumoPorPeca: 0.8, uso: 'Cós' },
+        { insumoId: 'el', consumoPorPeca: 0.5, uso: ' cós ' },
+      ],
+    });
+    expect(dup.success).toBe(false);
+    const longo = fichaSchema.safeParse({
+      itens: [{ insumoId: 'el', consumoPorPeca: 1, uso: 'x'.repeat(61) }],
+    });
+    expect(longo.success).toBe(false);
+  });
+
+  it('27/10 salvar: elástico no cós E na barra grava as duas linhas, com o uso', async () => {
+    const { svc, prisma, tx } = montar();
+    prisma.insumo.findMany.mockResolvedValue([{ id: 'el', nome: 'Elástico 45 mm', cores: [] }]);
+    await svc.salvar(user as never, 'ml-1', {
+      observacoes: null,
+      itens: [
+        { insumoId: 'el', consumoPorPeca: 0.8, observacao: null, uso: 'cós' },
+        { insumoId: 'el', consumoPorPeca: 0.5, observacao: null, uso: 'barra' },
+      ],
+    });
+    expect(prisma.insumo.findMany.mock.calls[0][0].where.id.in).toEqual(['el']);
+    const data = tx.fichaTecnicaItem.createMany.mock.calls[0][0].data;
+    expect(data.map((d: { uso: string }) => d.uso)).toEqual(['cós', 'barra']);
+  });
+
+  it('27/10 obter: duas linhas do mesmo insumo somam no custo e seguem separadas na ficha', async () => {
+    const { svc, prisma } = montar();
+    const ficha = await prisma.fichaTecnica.findUnique();
+    ficha.itens[0].uso = 'corpo';
+    ficha.itens.push({ ...ficha.itens[0], consumoPorPeca: Dc(0.08), uso: 'viés' });
+    ficha.itens.push({ ...ficha.itens[1], uso: 'barra' }); // cordão sem custo, 2ª linha
+    prisma.fichaTecnica.findUnique.mockResolvedValue(ficha);
+    const f = await svc.obter(user as never, 'ml-1');
+    expect(f.itens).toHaveLength(4);
+    expect(f.itens.map((i) => i.uso)).toEqual(['corpo', undefined, 'viés', 'barra']);
+    // (0,32 + 0,08) kg × 42 = 16,80 + facção 4,50 + embalar não marcado
+    expect(f.custoPrevisto.insumos).toBeCloseTo(16.8, 6);
+    expect(f.custoPrevisto.total).toBeCloseTo(21.3, 6);
+    expect(f.semCusto).toEqual(['Cordão']);
   });
 
   it('regras de encaixe do produto 100 (tubular, 103 cm, espelha, corpo 180, forro livre)', async () => {

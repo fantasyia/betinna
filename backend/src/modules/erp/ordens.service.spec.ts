@@ -780,3 +780,69 @@ describe('OrdensService.dividir', () => {
     await expect(svc.dividir(user as never, 'op-1')).rejects.toThrow(/rascunho/);
   });
 });
+
+/** Mesmo insumo em mais de uma linha da ficha (Léo, 27/10): cós e barra. */
+describe('ficha com o mesmo insumo em duas linhas', () => {
+  const pecas = new Map([
+    [
+      'reg',
+      new Map<string | null, Map<string, number>>([
+        [
+          'cor-preto',
+          new Map([
+            ['P', 10],
+            ['G', 10],
+          ]),
+        ],
+      ]),
+    ],
+  ]);
+
+  it('necessidade soma as linhas, cada uma com o seu consumo por tamanho', () => {
+    const cos = {
+      insumoId: 'el45',
+      consumoPorPeca: 0.8,
+      porTamanho: new Map([
+        ['P', 0.76],
+        ['G', 0.84],
+      ]),
+      cores: null,
+    };
+    const barra = { insumoId: 'el45', consumoPorPeca: 0.5, cores: null };
+    const m = necessidadesDaGrade(pecas, new Map([['reg', [cos, barra]]]));
+    expect(m.size).toBe(1);
+    // cós: 10×0,76 + 10×0,84 = 16 · barra: 20×0,5 = 10
+    expect(m.get('el45|')?.quantidade).toBeCloseTo(26, 6);
+  });
+
+  it('cor: linhas da mesma cor efetiva somam; cor fixa diferente fica separada', () => {
+    const cores = new Map([
+      ['cor-preto', 'mm-preto'],
+      ['cor-branco', 'mm-branco'],
+    ]);
+    const corpo = { insumoId: 'mm', consumoPorPeca: 0.3, cores };
+    const vies = { insumoId: 'mm', consumoPorPeca: 0.02, cores };
+    const viesBranco = { ...vies, corFixaId: 'cor-branco' };
+    const m = necessidadesDaGrade(pecas, new Map([['reg', [corpo, vies, viesBranco]]]));
+    expect(m.get('mm|mm-preto')?.quantidade).toBeCloseTo(20 * 0.32, 6);
+    expect(m.get('mm|mm-branco')?.quantidade).toBeCloseTo(20 * 0.02, 6);
+    expect(m.size).toBe(2);
+  });
+
+  it('simulação: uma linha só do insumo, com o total e o custo das duas', async () => {
+    const { svc, prisma } = montar();
+    const [ficha] = await prisma.fichaTecnica.findMany();
+    ficha.itens.push({ ...ficha.itens[0], consumoPorPeca: Dc(0.1) }); // o viés
+    prisma.fichaTecnica.findMany.mockResolvedValue([ficha]);
+    const s = await svc.simular(user as never, {
+      modeloId: 'm-1',
+      faccaoId: 'f-1',
+      itens: [{ produtoId: 'p-m', quantidade: 10 }],
+    });
+    expect(s.insumos).toHaveLength(1);
+    expect(s.insumos[0]).toMatchObject({ insumoId: 'tec', saldo: 2 });
+    expect(s.insumos[0].necessario).toBeCloseTo(4, 6); // 10 × (0,3 + 0,1)
+    expect(s.insumos[0].falta).toBeCloseTo(2, 6);
+    expect(s.custoInsumos).toBeCloseTo(168, 6); // 4 kg × 42
+  });
+});

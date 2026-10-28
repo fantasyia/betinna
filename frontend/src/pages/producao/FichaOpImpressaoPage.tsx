@@ -22,6 +22,13 @@ interface ItemFicha {
   porTamanho: Record<string, number> | null;
   etapa: 'FACCAO' | 'ACABAMENTO';
   observacao: string | null;
+  /** Cor fixa da ficha (cordão sempre Branco); null = a cor da peça. */
+  cor?: string | null;
+  /**
+   * Onde vai na peça (27/10). O servidor já juntou as linhas do mesmo insumo
+   * (cós + barra): o consumo e o total são a SOMA delas.
+   */
+  usos?: string[];
 }
 interface Ficha {
   modeloLinhaId: string;
@@ -151,7 +158,9 @@ function TabelaItens({ d, etapa, tipo }: { d: DadosImpressao; etapa?: 'FACCAO' |
           <tr key={k}>
             <td className="text-left">
               {i.nome}
+              {i.cor ? ` · ${i.cor}` : null}
               {d.fichas.length > 1 ? <span className="text-gray-500"> · {f.linha}</span> : null}
+              {i.usos?.length ? <div className="text-[10px] text-gray-600">{i.usos.join(' + ')}</div> : null}
               {i.observacao ? <div className="text-[10px] text-gray-600">{i.observacao}</div> : null}
             </td>
             <td className="text-left">

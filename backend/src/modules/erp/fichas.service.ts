@@ -26,7 +26,8 @@ const D = (v: number, casas: number) => new Prisma.Decimal(v.toFixed(casas));
 const num = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
 
 /**
- * Custo PREVISTO por peça de uma grade: Σ consumo × custo médio do insumo +
+ * Custo PREVISTO por peça de uma grade: Σ consumo × custo médio de CADA linha
+ * (o mesmo insumo em duas linhas — cós e barra — soma as duas) +
  * facção prevista + acabamento + corte. É o "previsto pela ficha" da calculadora de precificação e
  * a base da simulação da OP. Insumo sem custo médio (nunca comprado) conta 0 —
  * e a tela avisa.
@@ -172,6 +173,8 @@ export class FichasService {
         porTamanho: (i.porTamanho as Record<string, number> | null) ?? null,
         etapa: i.etapa,
         observacao: i.observacao,
+        /** Onde a linha é usada na peça (cós, barra…). O insumo pode repetir. */
+        uso: i.uso,
         /** Cor fixa (cordão sempre Branco). null = a cor da própria peça. */
         corFixa: i.corFixa,
         custoPorPeca: consumo * custoMedio,
@@ -209,7 +212,10 @@ export class FichasService {
         acabamentoPorPeca(acabamento, servicos, acabamentoTamanhos, tamanhosDaGrade),
         corte,
       ),
-      semCusto: itens.filter((i) => i.insumo.custoMedio <= 0).map((i) => i.insumo.nome),
+      // Insumo em duas linhas (cós e barra) aparece uma vez só.
+      semCusto: [
+        ...new Set(itens.filter((i) => i.insumo.custoMedio <= 0).map((i) => i.insumo.nome)),
+      ],
     };
   }
 
@@ -246,15 +252,17 @@ export class FichasService {
       }
     }
     if (dto.itens.length) {
+      // O mesmo insumo pode vir em várias linhas (cós e barra, 27/10).
+      const ids = [...new Set(dto.itens.map((i) => i.insumoId))];
       const deles = await this.prisma.insumo.findMany({
-        where: { empresaId, id: { in: dto.itens.map((i) => i.insumoId) } },
+        where: { empresaId, id: { in: ids } },
         select: {
           id: true,
           nome: true,
           cores: { where: { ativo: true }, select: { corId: true } },
         },
       });
-      if (deles.length !== dto.itens.length) {
+      if (deles.length !== ids.length) {
         throw new BusinessRuleException(
           'Algum insumo da ficha não existe nesta empresa',
           ErrorCode.BUSINESS_RULE_VIOLATION,
@@ -317,6 +325,7 @@ export class FichasService {
             etapa: i.etapa ?? 'FACCAO',
             observacao: i.observacao ?? null,
             corFixaId: i.corFixaId ?? null,
+            uso: i.uso ?? null,
           })),
         });
       }
