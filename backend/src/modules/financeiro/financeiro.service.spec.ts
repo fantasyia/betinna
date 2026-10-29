@@ -257,6 +257,27 @@ describe('FinanceiroService', () => {
     expect(vencs).toEqual(['2027-01-31', '2027-02-28']);
     expect(prisma.finTitulo.createMany.mock.calls[0][0].skipDuplicates).toBe(true);
   });
+
+  it('recorrente com "começa em": vencimento antes do início não é gerado (29/10)', async () => {
+    const { svc, prisma } = montar();
+    prisma.finRecorrencia.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        empresaId: 'emp-1',
+        tipo: 'PAGAR',
+        descricao: 'Reclame Aqui',
+        valor: Dc(53.9),
+        dia: 12,
+        categoriaId: null,
+        contatoNome: null,
+        inicio: dataPura('2026-11-12'),
+      },
+    ]);
+    // Hoje 29/10: o mês atual (12/10) fica de fora; o 12/11 (= início) entra.
+    await svc.gerarRecorrentes(new Date('2026-10-29T12:00:00Z'));
+    const vencs = prisma.finTitulo.createMany.mock.calls.map((c) => iso(c[0].data[0].vencimento));
+    expect(vencs).toEqual(['2026-11-12']);
+  });
 });
 
 describe('FinanceiroService — fluxo de caixa e por contato (entrega C)', () => {

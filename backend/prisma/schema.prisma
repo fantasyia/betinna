@@ -5049,6 +5049,9 @@ model FinRecorrencia {
   categoriaId String?
   contatoNome String?
   ativo       Boolean  @default(true)
+  /// Começa em (29/10): vencimento antes desta data não é gerado — período
+  /// grátis, contrato que começa no mês que vem. Null = desde já.
+  inicio      DateTime? @db.Date
   criadoEm    DateTime @default(now())
 
   categoria FinCategoria? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)

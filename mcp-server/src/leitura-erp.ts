@@ -227,6 +227,11 @@ export function registrarLeituraErp(server: McpServer, { ok, seguro }: Ajudantes
         dia: z.number().int().min(1).max(31).describe("Dia do mês do vencimento"),
         categoriaId: z.string().max(40).optional(),
         contatoNome: z.string().max(120).optional().describe("Fornecedor"),
+        inicio: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe("Começa em (AAAA-MM-DD): vencimento antes disso não é gerado (ex.: período grátis)"),
       },
       annotations: escrita,
     },
@@ -247,6 +252,11 @@ export function registrarLeituraErp(server: McpServer, { ok, seguro }: Ajudantes
         categoriaId: z.string().max(40).optional(),
         contatoNome: z.string().max(120).optional(),
         ativo: z.boolean().optional(),
+        inicio: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe("Começa em (AAAA-MM-DD): vencimento antes disso não é gerado. Ausente = mantém o que está"),
       },
       annotations: { ...escrita, idempotentHint: true },
     },

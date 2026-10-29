@@ -744,6 +744,8 @@ export class FinanceiroService {
       dia: dto.dia,
       categoriaId,
       contatoNome: dto.contatoNome ?? null,
+      // Ausente = mantém (a tela ainda não tem o campo); null = limpa.
+      ...(dto.inicio !== undefined ? { inicio: dto.inicio ? dataPura(dto.inicio) : null } : {}),
       ...(dto.ativo !== undefined ? { ativo: dto.ativo } : {}),
     };
     let rid = id;
@@ -785,6 +787,8 @@ export class FinanceiroService {
     for (const r of rs) {
       for (const m of [0, 1]) {
         const venc = vencimentoNoMes(hoje.getUTCFullYear(), hoje.getUTCMonth() + m, r.dia);
+        // Antes do "começa em" não existe cobrança (período grátis etc., 29/10).
+        if (r.inicio && venc < r.inicio) continue;
         const res = await this.prisma.finTitulo.createMany({
           data: [
             {

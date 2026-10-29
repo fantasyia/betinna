@@ -104,5 +104,7 @@ export const recorrenciaSchema = z.object({
   categoriaId: id.nullable().optional(),
   contatoNome: textoOpcional(120),
   ativo: z.boolean().optional(),
+  /** Começa em (AAAA-MM-DD): vencimento antes disso não é gerado. Null/ausente = desde já. */
+  inicio: data.nullable().optional(),
 });
 export type RecorrenciaDto = z.infer<typeof recorrenciaSchema>;
