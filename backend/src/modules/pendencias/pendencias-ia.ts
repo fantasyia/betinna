@@ -17,6 +17,8 @@ export interface DecisaoIa {
   acao: AcaoIa;
   resposta: string;
   motivo: string;
+  /** A resposta indica o anúncio da peça unitária: o card dele vai logo depois (Léo, 29/10). */
+  cardUnitario?: boolean;
 }
 
 /** Tipo da pendência → o que a IA pode fazer nele. */
@@ -37,6 +39,7 @@ COMO RESPONDER:
 - Se o cliente só mandou o card do produto ou do pedido, sem pergunta, cumprimente citando o produto ou o pedido e pergunte como pode ajudar (ex.: "Oi! Vi que você mandou a Bermuda de Moletom. Quer saber alguma medida ou tamanho?").
 - Agradecimento, "ok", emoji ou figurinha: resposta curta e simpática ("Nós que agradecemos! Qualquer coisa, é só chamar."). A loja sempre fala por último.
 - A BASE é do site de ATACADO: NUNCA fale de preço de atacado, pedido mínimo, revenda, lucro, link ou site. Use a base pra produto (medidas, tamanhos, composição, cores, características) e pras REGRAS DE ATENDIMENTO da loja (tom, endereço errado, prazo de envio): siga-as sempre.
+- Pra escolher a cor (ou o tamanho) de cada peça, o caminho é o anúncio da peça unitária. Se os ANÚNCIOS trazem "Anúncio da peça unitária deste kit", diga que vai mandar o anúncio aqui e marque card_unitario = true: o card do anúncio vai logo depois do seu texto. Se não trazem, não prometa mandar nada. Em qualquer outro caso, card_unitario = false.
 - Quando a descrição do anúncio e a BASE disserem coisas diferentes (composição, medida, gramatura, FPS, quantidade de peças do kit), vale a BASE: é a informação conferida pela loja.
 - Não invente medida, prazo, estoque, cor nem política. Se a informação não está no que você recebeu, não chute.
 - Português do Brasil, simpático e direto, como uma pessoa da loja: 1 a 3 frases, sem emoji, sem markdown, sem "Olá! Recebemos sua mensagem".
@@ -47,7 +50,7 @@ Se a BASE traz o caminho pro caso (ex.: endereço errado, prazo de envio de pedi
 
 QUANDO PASSAR PRA EQUIPE ("humano"): cancelamento, troca, devolução, reembolso, defeito, avaria, peça errada ou faltando, atraso, contestação, reclamação, ou pergunta cuja resposta não está no que você recebeu. Nesses casos a "resposta" é uma mensagem curta e humana que mostra que entendeu o caso, sem prometer nada e sem prazo (ex.: "Entendi, você não conseguiu cancelar o pedido. Já passei pra equipe e te respondo por aqui em seguida."). Nunca diga que aceitou, cancelou, trocou ou vai reembolsar.
 
-Responda em JSON: {"acao": "responder" | "humano", "resposta": "texto pronto pra enviar", "motivo": "por que, em poucas palavras"}.`;
+Responda em JSON: {"acao": "responder" | "humano", "resposta": "texto pronto pra enviar", "motivo": "por que, em poucas palavras", "card_unitario": true | false}.`;
 
 export const SCHEMA_PENDENCIA = {
   name: 'resposta_pendencia',
@@ -58,8 +61,9 @@ export const SCHEMA_PENDENCIA = {
       acao: { type: 'string', enum: ['responder', 'humano'] },
       resposta: { type: 'string' },
       motivo: { type: 'string' },
+      card_unitario: { type: 'boolean' },
     },
-    required: ['acao', 'resposta', 'motivo'],
+    required: ['acao', 'resposta', 'motivo', 'card_unitario'],
     additionalProperties: false,
   },
 };
@@ -71,14 +75,15 @@ export const SCHEMA_PENDENCIA = {
  */
 export function lerDecisao(bruto: string): DecisaoIa {
   try {
-    const j = JSON.parse(bruto) as Partial<DecisaoIa>;
+    const j = JSON.parse(bruto) as Partial<DecisaoIa> & { card_unitario?: unknown };
     const resposta = String(j.resposta ?? '')
       .trim()
       .slice(0, MAX_RESPOSTA);
     const motivo = String(j.motivo ?? '')
       .trim()
       .slice(0, 300);
-    if (j.acao === 'responder' && resposta) return { acao: 'responder', resposta, motivo };
+    if (j.acao === 'responder' && resposta)
+      return { acao: 'responder', resposta, motivo, cardUnitario: j.card_unitario === true };
     if (j.acao === 'humano') return { acao: 'humano', resposta: resposta || ESPERA_PADRAO, motivo };
   } catch {
     // cai no padrão abaixo
@@ -96,6 +101,22 @@ export interface AnuncioContexto {
   id: string;
   nome: string;
   descricao: string;
+  /** item_id do anúncio da peça unitária que a descrição do kit aponta. */
+  unitario?: string | null;
+}
+
+/**
+ * Anúncio da peça unitária que a descrição do kit aponta (Léo, 29/10): link da
+ * Shopee no formato /product/<loja>/<item> ou no fim do nome, -i.<loja>.<item>.
+ */
+export function unitarioDoAnuncio(a: { id: string; descricao: string }): string | null {
+  for (const m of a.descricao.matchAll(
+    /shopee\.com\.br\/(?:product\/\d+\/(\d+)|\S*?-i\.\d+\.(\d+))/g,
+  )) {
+    const id = m[1] ?? m[2];
+    if (id && id !== a.id) return id;
+  }
+  return null;
 }
 
 /** Card do marketplace no histórico: "[produto: 123]" e "[pedido: ABC]". */
@@ -186,7 +207,14 @@ export function contextoDaPendencia(p: {
     `CONVERSA (mais antiga primeiro):\n${conversa}`,
     anuncios.length
       ? `ANÚNCIOS (do marketplace):\n${anuncios
-          .map((a) => `### ${a.nome}\n${a.descricao.slice(0, MAX_DESCRICAO) || '(sem descrição)'}`)
+          .map(
+            (a) =>
+              `### ${a.nome}\n${a.descricao.slice(0, MAX_DESCRICAO) || '(sem descrição)'}${
+                a.unitario
+                  ? '\nAnúncio da peça unitária deste kit: o card pode ir junto da resposta.'
+                  : ''
+              }`,
+          )
           .join('\n\n')}`
       : null,
     p.pedido ? `PEDIDO:\n${p.pedido}` : null,

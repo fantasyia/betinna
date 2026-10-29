@@ -24,6 +24,7 @@ function montar(o: {
   base?: Array<{ titulo: string; conteudo: string; categoria: string | null }>;
   iaTexto?: string;
   envioFalha?: boolean;
+  shopee?: unknown;
 }) {
   const estados: Record<string, string> = {};
   const registros: Array<Record<string, unknown>> = [];
@@ -43,6 +44,7 @@ function montar(o: {
     },
     conversation: {
       findFirst: vi.fn(async () => (o.conversa === undefined ? { id: 'c1' } : o.conversa)),
+      findUnique: vi.fn(async () => ({ metadata: { shopee_from_id: 848307855 } })),
     },
     // findMany vem em ordem DESC (o serviço inverte)
     message: {
@@ -78,7 +80,15 @@ function montar(o: {
     })),
   };
   const push = { enviar: vi.fn(async () => 1) };
-  const svc = new PendenciasIaService(prisma as never, inbox as never, bot as never, push as never);
+  const svc = new PendenciasIaService(
+    prisma as never,
+    inbox as never,
+    bot as never,
+    push as never,
+    undefined,
+    undefined,
+    o.shopee as never,
+  );
   return { svc, estados, registros, enviados, bot, push, inbox };
 }
 
@@ -181,6 +191,64 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
       enviada: true,
       conversationId: 'c1',
     });
+  });
+
+  it('kit na Shopee: a IA indica o unitário e o card dele vai logo depois do texto (Léo, 29/10)', async () => {
+    const postShop = vi.fn(async () => ({}));
+    const shopee = {
+      getShop: vi.fn(async () => ({
+        response: {
+          item_list: [
+            {
+              item_id: 10801442351,
+              item_name: 'Kit 3 Camisetas UV',
+              description:
+                'Pra escolher as cores, acesse este link https://shopee.com.br/product/327263189/11501442309/',
+            },
+          ],
+        },
+      })),
+      postShop,
+    };
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [
+        { direction: 'INBOUND', conteudo: '[produto: 10801442351]' },
+        { direction: 'INBOUND', conteudo: 'Posso escolher as cores?' },
+      ],
+      iaTexto:
+        '{"acao":"responder","resposta":"Te mando aqui o anúncio da peça unitária.","motivo":"cor do kit","card_unitario":true}',
+      shopee,
+    });
+    await t.svc.processar('e1');
+    expect(t.enviados).toEqual(['Te mando aqui o anúncio da peça unitária.']);
+    expect(postShop).toHaveBeenCalledWith('e1', '/api/v2/sellerchat/send_message', {
+      to_id: 848307855,
+      message_type: 'item',
+      content: { item_id: 11501442309 },
+    });
+    // a IA soube que o card existe
+    const contexto = (t.bot.gerarRespostaIa.mock.calls[0] as unknown[])[2] as string;
+    expect(contexto).toContain('Anúncio da peça unitária deste kit');
+  });
+
+  it('sem card_unitario, ou sem unitário na descrição, não manda card', async () => {
+    const postShop = vi.fn(async () => ({}));
+    const shopee = {
+      getShop: vi.fn(async () => ({
+        response: { item_list: [{ item_id: 1, item_name: 'Bermuda', description: 'sem link' }] },
+      })),
+      postShop,
+    };
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [{ direction: 'INBOUND', conteudo: '[produto: 1]' }],
+      iaTexto: '{"acao":"responder","resposta":"Oi!","motivo":"x","card_unitario":true}',
+      shopee,
+    });
+    await t.svc.processar('e1');
+    expect(t.enviados).toEqual(['Oi!']);
+    expect(postShop).not.toHaveBeenCalled();
   });
 
   it('a loja já falou por último: não manda nada', async () => {

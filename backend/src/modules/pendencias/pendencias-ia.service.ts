@@ -19,6 +19,7 @@ import {
   lerDecisao,
   textoLegivel,
   type AnuncioContexto,
+  unitarioDoAnuncio,
   type MensagemHistorico,
   type TipoPendenciaIa,
 } from './pendencias-ia';
@@ -236,7 +237,7 @@ export class PendenciasIaService implements OnModuleInit {
       if (trava !== 'OK') return 'pulada';
     }
 
-    const { decisao, modelo } = await this.decidir(empresaId, p, tipo, historico);
+    const { decisao, modelo, anuncios } = await this.decidir(empresaId, p, tipo, historico);
 
     // Envia SEMPRE (resposta ou espera): a loja tem a última palavra.
     let erro: string | null = null;
@@ -249,6 +250,8 @@ export class PendenciasIaService implements OnModuleInit {
     } catch (err) {
       erro = (err instanceof Error ? err.message : String(err)).slice(0, 500);
     }
+    if (!erro && decisao.cardUnitario)
+      await this.mandarCardUnitario(empresaId, p.canal, conv.id, anuncios);
     await this.registrar(empresaId, p.id, conv.id, decisao, !erro, erro, modelo);
     if (erro || decisao.acao === 'humano') {
       await this.marcar(p.id, 'AGUARDANDO_HUMANO');
@@ -480,16 +483,50 @@ export class PendenciasIaService implements OnModuleInit {
         item_id_list: [...ids].slice(0, 10).join(','),
       })
       .catch(() => null);
-    return (r?.response?.item_list ?? []).map((i) => ({
-      id: String(i.item_id),
-      nome: i.item_name ?? `anúncio ${i.item_id}`,
-      descricao:
-        i.description ??
-        (i.description_info?.extended_description?.field_list ?? [])
-          .filter((f) => f.field_type === 'text' && f.text)
-          .map((f) => f.text)
-          .join('\n'),
-    }));
+    return (r?.response?.item_list ?? []).map((i) => {
+      const a = {
+        id: String(i.item_id),
+        nome: i.item_name ?? `anúncio ${i.item_id}`,
+        descricao:
+          i.description ??
+          (i.description_info?.extended_description?.field_list ?? [])
+            .filter((f) => f.field_type === 'text' && f.text)
+            .map((f) => f.text)
+            .join('\n'),
+      };
+      return { ...a, unitario: unitarioDoAnuncio(a) };
+    });
+  }
+
+  /**
+   * Card do anúncio da peça unitária, logo depois do texto (Léo, 29/10): só na
+   * Shopee (o Mercado Livre não aceita link), e só se a descrição do kit aponta
+   * o unitário. Falha aqui não desfaz o texto: fica no log.
+   */
+  private async mandarCardUnitario(
+    empresaId: string,
+    canal: string,
+    conversationId: string,
+    anuncios: AnuncioContexto[],
+  ) {
+    if (canal !== 'MARKETPLACE_SHOPEE' || !this.shopee) return;
+    const itemId = anuncios.map((a) => a.unitario).find(Boolean);
+    if (!itemId) return;
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { metadata: true },
+    });
+    const toId = Number((conv?.metadata as Record<string, unknown> | null)?.['shopee_from_id']);
+    if (!toId) return;
+    await this.shopee
+      .postShop(empresaId, '/api/v2/sellerchat/send_message', {
+        to_id: toId,
+        message_type: 'item',
+        content: { item_id: Number(itemId) },
+      })
+      .catch((err) =>
+        this.logger.warn(`[pendências IA] card do unitário ${itemId}: ${String(err)}`),
+      );
   }
 
   private async marcar(pendenciaId: string, estado: 'RESPONDIDA_IA' | 'AGUARDANDO_HUMANO') {

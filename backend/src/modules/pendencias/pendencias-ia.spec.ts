@@ -7,6 +7,7 @@ import {
   clienteTerminou,
   contextoDaPendencia,
   lerDecisao,
+  unitarioDoAnuncio,
 } from './pendencias-ia';
 
 describe('IA das pendências (fase 2, 25/10)', () => {
@@ -17,6 +18,7 @@ describe('IA das pendências (fase 2, 25/10)', () => {
       acao: 'responder',
       resposta: 'Nós que agradecemos!',
       motivo: 'agradecimento',
+      cardUnitario: false,
     });
     expect(lerDecisao('{"acao":"responder","resposta":"","motivo":"x"}')).toMatchObject({
       acao: 'humano',
@@ -107,5 +109,37 @@ describe('IA das pendências (fase 2, 25/10)', () => {
     ]);
     expect(baseParaConversa(base, [])).toHaveLength(3);
     expect(baseParaConversa(base, ['Boné aba reta'])).toHaveLength(3);
+  });
+
+  it('acha o anúncio unitário no link da descrição do kit (Léo, 29/10)', () => {
+    expect(
+      unitarioDoAnuncio({
+        id: '10801442351',
+        descricao: 'acesse este link https://shopee.com.br/product/327263189/11501442309/',
+      }),
+    ).toBe('11501442309');
+    expect(
+      unitarioDoAnuncio({
+        id: '8711614693',
+        descricao:
+          'acesse este link https://shopee.com.br/Shorts-de-Moleton-Plus-Size-i.327263189.12582857765 ok',
+      }),
+    ).toBe('12582857765');
+    // link pro próprio anúncio não é o unitário; sem link, nada
+    expect(
+      unitarioDoAnuncio({ id: '5', descricao: 'https://shopee.com.br/product/327263189/5/' }),
+    ).toBeNull();
+    expect(unitarioDoAnuncio({ id: '5', descricao: 'sem link' })).toBeNull();
+  });
+
+  it('card_unitario só vale numa resposta; ausente ou "humano" é false', () => {
+    expect(
+      lerDecisao('{"acao":"responder","resposta":"a","motivo":"b","card_unitario":true}')
+        .cardUnitario,
+    ).toBe(true);
+    expect(lerDecisao('{"acao":"responder","resposta":"a","motivo":"b"}').cardUnitario).toBe(false);
+    expect(
+      lerDecisao('{"acao":"humano","resposta":"a","motivo":"b","card_unitario":true}').cardUnitario,
+    ).toBeUndefined();
   });
 });
