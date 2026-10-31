@@ -5,6 +5,9 @@
  * CRIAR, PÔR/EDITAR ITEM e ATIVAR mexem na loja de verdade — só com o
  * "pode subir" do Léo pra aquela oferta. Antes de pôr item, leia o estoque
  * com shopee_anuncio_modelos (regra da loja: estoque na campanha = min(10, estoque)).
+ *
+ * Cupons (shopee_cupom_*, 31/10): mesmo escopo, mesma regra — ler é livre;
+ * criar, editar, encerrar e apagar só com o OK do Léo.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -150,6 +153,105 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
     },
     seguro(async ({ flashSaleId, status }: { flashSaleId: number; status: 1 | 2 }) =>
       ok(await api.post(`/shopee-promocoes/flash-sale/${flashSaleId}/status`, { status })),
+    ),
+  );
+
+  // ─── Cupons ───────────────────────────────────────────────────────────
+  const unix = z.number().int().positive().describe("Unix, SEGUNDOS");
+  const cupom = {
+    nome: z.string().min(1).max(100),
+    codigo: z.string().regex(/^[A-Z0-9]{1,5}$/).describe("1 a 5 letras/números; a Shopee põe o prefixo da loja"),
+    inicio: unix,
+    fim: unix,
+    alcance: z.enum(["loja", "produtos"]),
+    itemIds: z.array(id).max(200).optional().describe("Obrigatório quando alcance = produtos"),
+    tipo: z.enum(["valor", "percentual"]),
+    valor: z.number().positive().optional().describe("R$ de desconto (tipo valor)"),
+    percentual: z.number().int().min(1).max(99).optional().describe("% de desconto (tipo percentual)"),
+    teto: z.number().positive().optional().describe("Desconto máximo em R$ (tipo percentual)"),
+    minimoCompra: z.number().min(0).describe("Compra mínima em R$"),
+    quantidade: z.number().int().min(1).describe("Quantos cupons no total"),
+    vitrine: z.boolean().optional().describe("false = escondido, só por código (padrão: aparece)"),
+  };
+
+  server.registerTool(
+    "shopee_cupom_listar",
+    {
+      description: "Cupons da loja Shopee. status: upcoming · ongoing · expired · all. Somente leitura.",
+      inputSchema: {
+        status: z.enum(["upcoming", "ongoing", "expired", "all"]).optional(),
+        pagina: z.number().int().min(1).optional(),
+        porPagina: z.number().int().min(1).max(100).optional(),
+      },
+      annotations: leitura,
+    },
+    seguro(async (a: { status?: string; pagina?: number; porPagina?: number }) => {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(a)) if (v !== undefined) q.set(k, String(v));
+      return ok(await api.get(`/shopee-promocoes/cupons?${q}`));
+    }),
+  );
+
+  server.registerTool(
+    "shopee_cupom_ver",
+    {
+      description: "Um cupom da loja Shopee (regras, uso, datas). Somente leitura.",
+      inputSchema: { voucherId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ voucherId }: { voucherId: number }) =>
+      ok(await api.get(`/shopee-promocoes/cupons/${voucherId}`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_cupom_criar",
+    {
+      description:
+        "CRIA cupom na loja Shopee (valor fixo ou %, loja toda ou produtos). MEXE NA LOJA — só com o OK do Léo pro cupom exato.",
+      inputSchema: cupom,
+      annotations: mexe,
+    },
+    seguro(async (a: Record<string, unknown>) => ok(await api.post("/shopee-promocoes/cupons", a))),
+  );
+
+  server.registerTool(
+    "shopee_cupom_editar",
+    {
+      description:
+        "Edita cupom (mande só o que muda; a Shopee recusa alguns campos depois do início). MEXE NA LOJA — só com o OK do Léo.",
+      inputSchema: {
+        voucherId: id,
+        ...Object.fromEntries(Object.entries(cupom).map(([k, v]) => [k, v.optional()])),
+      },
+      annotations: mexe,
+    },
+    seguro(async ({ voucherId, ...a }: { voucherId: number } & Record<string, unknown>) =>
+      ok(await api.post(`/shopee-promocoes/cupons/${voucherId}/editar`, a)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_cupom_encerrar",
+    {
+      description: "ENCERRA um cupom em andamento. MEXE NA LOJA — só com o OK do Léo.",
+      inputSchema: { voucherId: id },
+      annotations: mexe,
+    },
+    seguro(async ({ voucherId }: { voucherId: number }) =>
+      ok(await api.post(`/shopee-promocoes/cupons/${voucherId}/encerrar`, {})),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_cupom_apagar",
+    {
+      description: "APAGA um cupom que ainda não começou. MEXE NA LOJA — só com o OK do Léo.",
+      inputSchema: { voucherId: id },
+      annotations: mexe,
+    },
+    seguro(async ({ voucherId }: { voucherId: number }) =>
+      ok(await api.post(`/shopee-promocoes/cupons/${voucherId}/apagar`, {})),
     ),
   );
 }
