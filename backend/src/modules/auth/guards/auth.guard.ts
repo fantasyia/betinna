@@ -196,6 +196,7 @@ export class AuthGuard implements CanActivate {
       | 'pedidos'
       | 'financeiro'
       | 'erp'
+      | 'shopee-promocoes'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -265,12 +266,15 @@ export class AuthGuard implements CanActivate {
     // Estoque, compra, corte, envio e fechamento de OP seguem na tela.
     else if (/^\/erp\/(fichas|insumos|faccoes|acabamento|ops)(\/|$)/.test(rel))
       moduloRequerido = 'erp';
+    // Oferta Relâmpago da Shopee (Léo, 31/10): ler e escrever com o escopo
+    // `shopee-promocoes`. Criar/ativar mexe na loja — só com o OK do Léo.
+    else if (/^\/shopee-promocoes(\/|$)/.test(rel)) moduloRequerido = 'shopee-promocoes';
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
           '/conhecimento, /tags, /inbox, /campanhas, /integracoes/email/{status,teste} ' +
           '/vitrine/admin, /precificacao, /erp/encaixe/agente, /pedidos, /financeiro e ' +
-          '/erp/{fichas,insumos,faccoes,acabamento,ops} (leitura) ' +
+          '/erp/{fichas,insumos,faccoes,acabamento,ops} (leitura), /shopee-promocoes ' +
           'e /mullerbot/prompts|persona',
       );
     }

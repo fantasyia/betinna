@@ -281,6 +281,9 @@ export const API_TOKEN_ESCOPOS = [
   // cadastro do insumo (preço de referência). Exige também `erp`. Compra,
   // movimento de estoque e etapas da OP seguem na tela.
   'erp-escrita',
+  // shopee-promocoes (Léo, 31/10): Oferta Relâmpago da Shopee — listar, ver,
+  // horários, criar, pôr/editar itens, ativar. Mexe na loja: só com OK do Léo.
+  'shopee-promocoes',
   // tudo (Léo, 26/10: "o app vira só interface"): qualquer rota da empresa como
   // o dono do token, MENOS as portas de token-tudo.ts (integrações, token,
   // ativar fluxo, disparar campanha, mensagem pra cliente, cobrança/estorno,

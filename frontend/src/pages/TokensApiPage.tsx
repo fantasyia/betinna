@@ -118,6 +118,12 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
       'Produção — GRAVAR ficha técnica, cadastro de insumo e serviços de acabamento (preço de referência; não compra, não mexe em estoque nem em OP · junto com Produção)',
     badge: 'Produção (gravar)',
   },
+  {
+    key: 'shopee-promocoes',
+    label:
+      'Shopee — Oferta Relâmpago (listar, criar, pôr itens e ativar · mexe na loja de verdade)',
+    badge: 'Shopee (ofertas)',
+  },
 ];
 
 const rotuloEscopo = (key: string) =>

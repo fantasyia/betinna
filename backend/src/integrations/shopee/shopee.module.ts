@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ShopeeChatService } from './shopee-chat.service';
 import { ShopeeClientService } from './shopee-client.service';
+import { ShopeeFlashSaleController } from './shopee-flash-sale.controller';
+import { ShopeeFlashSaleService } from './shopee-flash-sale.service';
 import { ShopeeOAuthController } from './shopee-oauth.controller';
 import { ShopeeOAuthService } from './shopee-oauth.service';
 import { ShopeeOrdersService } from './shopee-orders.service';
@@ -21,9 +23,10 @@ import { ShopeeWebhookController } from './shopee-webhook.controller';
  *  - Cron 30 min: fallback returns + orders
  */
 @Module({
-  controllers: [ShopeeOAuthController, ShopeeWebhookController],
+  controllers: [ShopeeOAuthController, ShopeeWebhookController, ShopeeFlashSaleController],
   providers: [
     ShopeeClientService,
+    ShopeeFlashSaleService,
     ShopeeOAuthService,
     ShopeeChatService,
     ShopeeReturnsService,
