@@ -5,6 +5,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { formatMoeda } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -127,6 +128,17 @@ function Titulos({
     q.refetch();
     contas.refetch();
   };
+  const [confirmar, ConfirmDialog] = useConfirm();
+  const excluir = useAcao(pronto, 'Lançamento excluído');
+  async function excluirTitulo(t: Titulo) {
+    const ok = await confirmar({
+      title: 'Excluir lançamento?',
+      message: `"${t.descricao}" some da lista de vez. Isso não pode ser desfeito.`,
+      confirmLabel: 'Excluir',
+      variant: 'danger',
+    });
+    if (ok) await excluir.rodar(() => api.delete(`/financeiro/titulos/${t.id}`));
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -254,6 +266,18 @@ function Titulos({
                                 Editar
                               </Button>
                             )}
+                            {t.status === 'CANCELADO' && t.pago === 0 && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-danger"
+                                disabled={excluir.salvando}
+                                onClick={() => excluirTitulo(t)}
+                                data-testid={`fin-excluir-${t.id}`}
+                              >
+                                Excluir
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -280,6 +304,7 @@ function Titulos({
         />
       )}
       {dlg?.t === 'historico' && <HistoricoDialog titulo={dlg.titulo} onClose={() => setDlg(null)} onPronto={pronto} />}
+      {ConfirmDialog}
     </div>
   );
 }

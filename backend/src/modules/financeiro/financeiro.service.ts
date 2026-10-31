@@ -316,6 +316,41 @@ export class FinanceiroService {
     return { ok: true };
   }
 
+  /**
+   * Excluir de vez (30/10): só lançamento CANCELADO e sem baixa nenhuma —
+   * nem estornada, que a exclusão levaria junto (cascade) e o histórico some.
+   * Recorrente que o job diário geraria de novo é recusado: ajuste o
+   * "começa em" da recorrência antes, senão o lançamento volta no dia seguinte.
+   */
+  async excluir(user: AuthenticatedUser, id: string, agora = new Date()) {
+    const empresaId = await this.empresaLigada(user);
+    const t = await this.tituloDaEmpresa(empresaId, id);
+    if (t.status !== 'CANCELADO') throw regra('Cancele o lançamento antes de excluir');
+    const baixas = await this.prisma.finBaixa.count({ where: { tituloId: id } });
+    if (baixas > 0) throw regra('Lançamento com baixa (mesmo estornada) não se exclui');
+    if (t.recorrenciaId) {
+      const r = await this.prisma.finRecorrencia.findFirst({
+        where: { id: t.recorrenciaId, empresaId, ativo: true },
+      });
+      const hoje = hojePuro(agora);
+      const voltaria =
+        r &&
+        !(r.inicio && t.vencimento < r.inicio) &&
+        [0, 1].some(
+          (m) =>
+            vencimentoNoMes(hoje.getUTCFullYear(), hoje.getUTCMonth() + m, r.dia).getTime() ===
+            t.vencimento.getTime(),
+        );
+      if (voltaria) {
+        throw regra(
+          'A recorrência gera esse vencimento de novo — ponha o "começa em" depois dele antes de excluir',
+        );
+      }
+    }
+    await this.prisma.finTitulo.delete({ where: { id } });
+    return { ok: true };
+  }
+
   private async contaDaEmpresa(empresaId: string, contaId: string) {
     const c = await this.prisma.finConta.findFirst({
       where: { id: contaId, empresaId, ativo: true },

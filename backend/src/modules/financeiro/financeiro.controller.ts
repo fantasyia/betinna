@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -83,6 +83,12 @@ export class FinanceiroController {
   @ApiOperation({ summary: 'Cancela lançamento sem baixa' })
   cancelar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.cancelar(user, id);
+  }
+
+  @Delete('titulos/:id')
+  @ApiOperation({ summary: 'Exclui de vez lançamento cancelado e sem baixa' })
+  excluir(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.excluir(user, id);
   }
 
   @Post('titulos/:id/baixas')

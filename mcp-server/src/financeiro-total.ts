@@ -19,6 +19,9 @@ const valor = z.number().positive().max(100_000_000).describe("Em reais (ex.: 10
 const tipo = z.enum(["RECEBER", "PAGAR"]);
 const forma = z.enum(["PIX", "CARTAO", "BOLETO", "DINHEIRO", "TRANSFERENCIA", "OUTRA"]);
 const tipoConta = z.enum(["BANCO", "ASAAS", "DINHEIRO", "OUTRA"]);
+const inicio = data
+  .optional()
+  .describe("Começa em (AAAA-MM-DD): vencimento antes disso não é gerado. Ausente = mantém o que está");
 
 export function registrarFinanceiroTotal(server: McpServer, { ok, seguro }: Ajudantes) {
   const cria = { readOnlyHint: false, destructiveHint: false, idempotentHint: false } as const;
@@ -78,6 +81,20 @@ export function registrarFinanceiroTotal(server: McpServer, { ok, seguro }: Ajud
     },
     seguro(async ({ tituloId }: { tituloId: string }) =>
       ok(await api.post(`/financeiro/titulos/${seg(tituloId)}/cancelar`, {})),
+    ),
+  );
+
+  server.registerTool(
+    "financeiro_titulo_excluir",
+    {
+      description:
+        "Exclui DE VEZ um título já CANCELADO e sem baixa nenhuma (nem estornada). Recorrente que o sistema geraria de novo é recusado: " +
+        "ajuste antes o 'inicio' da recorrência pra depois do vencimento. Escopo 'financeiro-total'. Só com pedido do Léo.",
+      inputSchema: { tituloId: z.string().max(40) },
+      annotations: mexe,
+    },
+    seguro(async ({ tituloId }: { tituloId: string }) =>
+      ok(await api.delete(`/financeiro/titulos/${seg(tituloId)}`)),
     ),
   );
 
@@ -144,6 +161,7 @@ export function registrarFinanceiroTotal(server: McpServer, { ok, seguro }: Ajud
         dia: z.number().int().min(1).max(31),
         categoriaId: z.string().max(40).optional(),
         contatoNome: z.string().max(120).optional(),
+        inicio,
       },
       annotations: cria,
     },
@@ -164,6 +182,7 @@ export function registrarFinanceiroTotal(server: McpServer, { ok, seguro }: Ajud
         categoriaId: z.string().max(40).optional(),
         contatoNome: z.string().max(120).optional(),
         ativo: z.boolean().optional(),
+        inicio,
       },
       annotations: edita,
     },

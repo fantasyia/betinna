@@ -229,6 +229,76 @@ describe('FinanceiroService', () => {
     expect(prisma.finTitulo.update).not.toHaveBeenCalled();
   });
 
+  describe('excluir (30/10)', () => {
+    const agora = new Date('2026-10-31T12:00:00Z');
+    const titulo = (o: object) => ({
+      id: 't-1',
+      tipo: 'PAGAR',
+      valor: Dc(800),
+      status: 'CANCELADO',
+      vencimento: dataPura('2026-10-30'),
+      recorrenciaId: null,
+      ...o,
+    });
+    const rec = (inicio: string | null) => ({
+      id: 'r1',
+      dia: 30,
+      ativo: true,
+      inicio: inicio && dataPura(inicio),
+    });
+
+    function comExcluir(t: object, r: object | null = null, baixas = 0) {
+      const m = montar();
+      m.prisma.finTitulo.findFirst.mockResolvedValue(t);
+      Object.assign(m.prisma.finTitulo, { delete: vi.fn().mockResolvedValue({}) });
+      Object.assign(m.prisma.finRecorrencia, { findFirst: vi.fn().mockResolvedValue(r) });
+      m.prisma.finBaixa.count.mockResolvedValue(baixas);
+      return m as typeof m & { prisma: { finTitulo: { delete: ReturnType<typeof vi.fn> } } };
+    }
+
+    it('cancelado e sem baixa: apaga', async () => {
+      const { svc, prisma } = comExcluir(titulo({}));
+      expect(await svc.excluir(user as never, 't-1', agora)).toEqual({ ok: true });
+      expect(prisma.finTitulo.delete).toHaveBeenCalledWith({ where: { id: 't-1' } });
+    });
+
+    it('aberto: recusa (cancele antes)', async () => {
+      const { svc, prisma } = comExcluir(titulo({ status: 'ABERTO' }));
+      await expect(svc.excluir(user as never, 't-1', agora)).rejects.toThrow(/Cancele/);
+      expect(prisma.finTitulo.delete).not.toHaveBeenCalled();
+    });
+
+    it('com baixa, mesmo estornada: recusa (o histórico iria junto)', async () => {
+      const { svc, prisma } = comExcluir(titulo({}), null, 1);
+      await expect(svc.excluir(user as never, 't-1', agora)).rejects.toThrow(/baixa/);
+      expect(prisma.finBaixa.count).toHaveBeenCalledWith({ where: { tituloId: 't-1' } });
+      expect(prisma.finTitulo.delete).not.toHaveBeenCalled();
+    });
+
+    it('recorrente que o job geraria de novo: recusa', async () => {
+      const { svc, prisma } = comExcluir(titulo({ recorrenciaId: 'r1' }), rec(null));
+      await expect(svc.excluir(user as never, 't-1', agora)).rejects.toThrow(/começa em/);
+      expect(prisma.finTitulo.delete).not.toHaveBeenCalled();
+    });
+
+    it('recorrente com "começa em" depois do vencimento: apaga (não volta)', async () => {
+      const { svc, prisma } = comExcluir(titulo({ recorrenciaId: 'r1' }), rec('2026-11-30'));
+      expect(await svc.excluir(user as never, 't-1', agora)).toEqual({ ok: true });
+      expect(prisma.finTitulo.delete).toHaveBeenCalled();
+    });
+
+    it('recorrente fora da janela do job (placeholder de 01/10): apaga', async () => {
+      const t = titulo({
+        recorrenciaId: 'r1',
+        vencimento: dataPura('2026-10-01'),
+        valor: Dc(0.01),
+      });
+      const { svc, prisma } = comExcluir(t, rec(null));
+      expect(await svc.excluir(user as never, 't-1', agora)).toEqual({ ok: true });
+      expect(prisma.finTitulo.delete).toHaveBeenCalled();
+    });
+  });
+
   it('saldo da conta = inicial + recebido − pago', async () => {
     const { svc, prisma } = montar();
     prisma.finBaixa.groupBy
