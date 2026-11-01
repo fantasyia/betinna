@@ -41,7 +41,8 @@ type Canal =
   | 'MARKETPLACE_ML'
   | 'MARKETPLACE_SHOPEE'
   | 'MARKETPLACE_AMAZON'
-  | 'MARKETPLACE_TIKTOK';
+  | 'MARKETPLACE_TIKTOK'
+  | 'MARKETPLACE_SHEIN';
 
 type Tipo = 'RECLAMACAO' | 'DEVOLUCAO' | 'MEDIACAO' | 'DISPUTA' | 'CANCELAMENTO';
 
@@ -129,12 +130,14 @@ const CANAL_LABEL: Record<Canal, string> = {
   MARKETPLACE_SHOPEE: 'Shopee',
   MARKETPLACE_AMAZON: 'Amazon',
   MARKETPLACE_TIKTOK: 'TikTok Shop',
+  MARKETPLACE_SHEIN: 'Shein',
 };
 const CANAL_COLOR: Record<Canal, string> = {
   MARKETPLACE_ML: '#facc15',
   MARKETPLACE_SHOPEE: '#ee4d2d',
   MARKETPLACE_AMAZON: '#ff9900',
   MARKETPLACE_TIKTOK: '#000',
+  MARKETPLACE_SHEIN: '#222',
 };
 
 const TIPO_LABEL: Record<Tipo, string> = {

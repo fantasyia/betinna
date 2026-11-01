@@ -10,6 +10,7 @@ const channelEnum = z.enum([
   'MARKETPLACE_SHOPEE',
   'MARKETPLACE_AMAZON',
   'MARKETPLACE_TIKTOK',
+  'MARKETPLACE_SHEIN',
 ]);
 
 const tipoEnum = z.enum(['RECLAMACAO', 'DEVOLUCAO', 'MEDIACAO', 'DISPUTA', 'CANCELAMENTO']);

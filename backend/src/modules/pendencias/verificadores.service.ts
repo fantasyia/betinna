@@ -45,7 +45,11 @@ export class VerificadoresService {
   async levantar(empresaId: string): Promise<Achados> {
     const out: Achados = new Map();
     const conexoes = await this.prisma.integracaoConexao.findMany({
-      where: { empresaId, ativo: true, servico: { in: ['mercadolivre', 'shopee', 'dafiti'] } },
+      where: {
+        empresaId,
+        ativo: true,
+        servico: { in: ['mercadolivre', 'shopee', 'dafiti', 'shein'] },
+      },
       select: { servico: true },
     });
     const tem = new Set(conexoes.map((c) => c.servico));
@@ -65,6 +69,9 @@ export class VerificadoresService {
         await this.tentar('Dafiti', () => this.dafitiDevolucoes(empresaId)),
       );
     }
+    // Shein (01/11): sem chat na API — as pendências são o pós-venda, que o
+    // sincronismo grava em Incidentes (entram logo abaixo).
+    if (tem.has('shein')) out.set('MARKETPLACE_SHEIN', []);
     // Incidentes (todos os canais conectados): o que está esperando a loja.
     const inc = await this.tentar('incidentes', () => this.incidentes(empresaId));
     for (const [canal, lista] of out) {

@@ -13,6 +13,7 @@ import { frontendOrigin } from '@shared/utils/frontend-origin';
 import { conferirNavegador, vincularNavegador } from '@shared/utils/oauth-navegador';
 import { SheinOAuthService } from './shein-oauth.service';
 import { SheinOrdersService } from './shein-orders.service';
+import { SheinPosVendaService } from './shein-pos-venda.service';
 
 const listarSchema = z.object({
   horas: z.coerce.number().int().min(1).max(48).default(48),
@@ -26,6 +27,7 @@ export class SheinController {
   constructor(
     private readonly oauth: SheinOAuthService,
     private readonly pedidos: SheinOrdersService,
+    private readonly posVenda: SheinPosVendaService,
   ) {}
 
   private empresa(user: AuthenticatedUser): string {
@@ -85,6 +87,25 @@ export class SheinController {
   @ApiOperation({ summary: 'Detalhe cru de um pedido da Shein' })
   detalhe(@CurrentUser() user: AuthenticatedUser, @Param('orderNo') orderNo: string) {
     return this.pedidos.detalhe(this.empresa(user), [orderNo]);
+  }
+
+  @Get('pos-venda')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Pós-venda da Shein (cru) das últimas N horas (máx. 48)' })
+  listarPosVenda(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(listarSchema)) q: z.infer<typeof listarSchema>,
+  ) {
+    return this.posVenda.listar(this.empresa(user), q.horas, q.tipo as 1 | 2);
+  }
+
+  @Get('pos-venda/:numero')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Detalhe cru de um pós-venda da Shein' })
+  detalhePosVenda(@CurrentUser() user: AuthenticatedUser, @Param('numero') numero: string) {
+    return this.posVenda.detalhe(this.empresa(user), [numero]);
   }
 
   private html(res: Response, ok: boolean, msg: string): void {

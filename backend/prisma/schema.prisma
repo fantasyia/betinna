@@ -70,6 +70,7 @@ enum PedidoOrigem {
   MARKETPLACE_SHOPEE
   MARKETPLACE_AMAZON
   MARKETPLACE_TIKTOK
+  MARKETPLACE_SHEIN
   EMAIL
   FORMULARIO
   /// Pedido enviado pelo cliente na vitrine pública de atacado (`/v/:slug`).
@@ -249,6 +250,7 @@ enum MessageChannel {
   MARKETPLACE_SHOPEE
   MARKETPLACE_AMAZON
   MARKETPLACE_TIKTOK
+  MARKETPLACE_SHEIN
 }
 
 enum MessageDirection {

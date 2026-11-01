@@ -7,6 +7,7 @@ import { ForbiddenException } from '@shared/errors/app-exception';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { SheinOrdersService } from './shein-orders.service';
+import { SheinPosVendaService } from './shein-pos-venda.service';
 
 const historicoSchema = z.object({
   dias: z.coerce.number().int().min(1).max(90).default(90),
@@ -25,11 +26,15 @@ const historicoSchema = z.object({
 export class SheinHistoricoController {
   private readonly logger = new Logger(SheinHistoricoController.name);
 
-  constructor(private readonly pedidos: SheinOrdersService) {}
+  constructor(
+    private readonly pedidos: SheinOrdersService,
+    private readonly posVenda: SheinPosVendaService,
+  ) {}
 
   @Post('historico')
   @ApiOperation({
-    summary: 'Importa o histórico de pedidos da Shein (até 90 dias), em segundo plano',
+    summary:
+      'Importa o histórico de pedidos e de pós-venda da Shein (até 90 dias), em segundo plano',
   })
   historico(
     @CurrentUser() user: AuthenticatedUser,
@@ -43,6 +48,11 @@ export class SheinHistoricoController {
         this.logger.log(
           `[Shein] histórico ${q.dias} dias: ${r.pedidos} pedidos, ${r.falhas} falhas`,
         ),
+      )
+      // Pós-venda do mesmo período → Incidentes (01/11).
+      .then(() => this.posVenda.sincronizar(user.empresaIdAtiva!, desde, 1))
+      .then((r) =>
+        this.logger.log(`[Shein] pós-venda ${q.dias} dias: ${r.casos} casos, ${r.falhas} falhas`),
       )
       .catch((err) => this.logger.warn(`[Shein] histórico falhou: ${String(err)}`));
     return { iniciado: true, dias: q.dias };

@@ -4,9 +4,10 @@ import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { SheinOrdersService } from './shein-orders.service';
+import { SheinPosVendaService } from './shein-pos-venda.service';
 
 /**
- * Pedidos da Shein a cada 30 min: os que mudaram nas últimas 48 h (uma janela).
+ * Pedidos e pós-venda da Shein a cada 30 min: o que mudou nas últimas 48 h (uma janela).
  * Só loja autorizada (com openKeyId da loja). Roda no worker — o IP de saída
  * dele também precisa estar na lista branca da Shein.
  */
@@ -17,6 +18,7 @@ export class SheinSyncJob {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pedidos: SheinOrdersService,
+    private readonly posVenda: SheinPosVendaService,
     private readonly cronLock: CronLockService,
     private readonly env: EnvService,
   ) {}
@@ -37,6 +39,13 @@ export class SheinSyncJob {
           this.logger.log(`[Shein] ${empresaId}: ${r.pedidos} pedidos, ${r.falhas} falhas`);
         } catch (err) {
           this.logger.warn(`[Shein] ${empresaId} falhou: ${String(err)}`);
+        }
+        // Pós-venda (01/11): o que mudou → Incidentes. Falha aqui não barra os pedidos.
+        try {
+          const r = await this.posVenda.sincronizar(empresaId, desde, 2);
+          this.logger.log(`[Shein] ${empresaId}: ${r.casos} pós-vendas, ${r.falhas} falhas`);
+        } catch (err) {
+          this.logger.warn(`[Shein] pós-venda ${empresaId} falhou: ${String(err)}`);
         }
       }
     } finally {
