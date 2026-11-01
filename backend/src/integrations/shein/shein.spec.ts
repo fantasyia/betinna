@@ -4,6 +4,7 @@ import { vincularNavegador } from '@shared/utils/oauth-navegador';
 import { assinarShein, decifrarSecretKey, horaShein } from './shein-assinatura';
 import { credenciaisShein } from './shein.client';
 import { SheinOrdersService } from './shein-orders.service';
+import { pedidoShein, situacaoShein } from './shein-pedidos';
 
 describe('Shein (01/11)', () => {
   it('assinatura: aleatório + base64(hex do HMAC de id&ts&path com segredo+aleatório)', () => {
@@ -69,7 +70,7 @@ describe('Shein (01/11)', () => {
         orderList: Array.from({ length: 30 }, (_, i) => ({ orderNo: `P${i}` })),
       })
       .mockResolvedValueOnce({ count: 31, orderList: [{ orderNo: 'P30' }] });
-    const svc = new SheinOrdersService({ post } as never);
+    const svc = new SheinOrdersService({} as never, { post } as never);
     const r = await svc.listar('emp1', 200);
     expect(r.total).toBe(31);
     expect(r.pedidos).toHaveLength(31);
@@ -78,5 +79,65 @@ describe('Shein (01/11)', () => {
     const horas = (Date.parse(corpo.endTime) - Date.parse(corpo.startTime)) / 3_600_000;
     expect(horas).toBe(48);
     expect((post.mock.calls[1][2] as { page: number }).page).toBe(2);
+    // Loja do Brasil: sem queryOrderType a Shein só devolve pedido do armazém do vendedor.
+    expect((post.mock.calls[0][2] as { queryOrderType: number }).queryOrderType).toBe(4);
+  });
+
+  it('situação pela documentação; reembolso antes de sair = cancelado; status novo estoura', () => {
+    expect(situacaoShein(1, false)).toBe('A_ENVIAR');
+    expect(situacaoShein(7, false)).toBe('A_ENVIAR');
+    expect(situacaoShein(4, true)).toBe('ENVIADO');
+    expect(situacaoShein(5, true)).toBe('ENTREGUE');
+    expect(situacaoShein(6, false)).toBe('CANCELADO');
+    expect(situacaoShein(6, true)).toBe('EM_DEVOLUCAO');
+    expect(situacaoShein(9, true)).toBe('EM_DEVOLUCAO');
+    expect(() => situacaoShein(10, false)).toThrow(/desconhecido/);
+  });
+
+  it('pedido: valor sem descontos, taxas da Shein, líquido e extrato que fecha; troca que saiu não conta', () => {
+    const p = pedidoShein({
+      orderNo: 'GSO1',
+      orderStatus: 5,
+      orderTime: '2026-10-20T10:00:00.000+0800',
+      pickUpTime: '2026-10-21T10:00:00.000+0800',
+      productTotalPrice: 100,
+      storeDiscountTotalPrice: 10,
+      promotionDiscountTotalPrice: 5,
+      totalCommission: 16,
+      totalPerformanceServiceCharge: 4,
+      sellerShippingFee: 0,
+      estimatedGrossIncome: 65,
+      packageWaybillList: [{ waybillNo: '' }, { waybillNo: 'BR123' }],
+      orderGoodsInfoList: [
+        {
+          goodsId: 1,
+          sellerSku: '2777',
+          goodsTitle: 'Bermuda',
+          sellerCurrencyPrice: 50,
+          commission: 8,
+          performanceServiceCharge: 2,
+        },
+        {
+          goodsId: 2,
+          sellerSku: '2777',
+          goodsTitle: 'Bermuda',
+          sellerCurrencyPrice: 50,
+          commission: 8,
+          performanceServiceCharge: 2,
+        },
+        { goodsId: 3, sellerSku: '9999', goodsTitle: 'Trocada', goodsExchangeTag: 2 },
+      ],
+    });
+    expect(p.situacao).toBe('ENTREGUE');
+    expect(p.valor).toBe(85);
+    expect(p.taxas).toBe(20);
+    expect(p.liquido).toBe(65);
+    expect(p.quantidade).toBe(2);
+    expect(p.itens).toEqual([
+      { sku: '2777', titulo: 'Bermuda', variacao: null, quantidade: 2, precoUnit: 50, taxa: 20 },
+    ]);
+    expect(p.rastreio).toBe('BR123');
+    expect(p.pedidoEm.toISOString()).toBe('2026-10-20T02:00:00.000Z');
+    expect(p.extrato!.reduce((s, l) => s + l.valor, 0)).toBe(65);
   });
 });
