@@ -51,7 +51,15 @@ export class IndexacaoService {
     try {
       // jobId determinístico → re-enfileirar o mesmo item não duplica job pendente.
       // SEM ":" — BullMQ v5 rejeita custom job id com ":" ("Custom Id cannot contain :").
-      await this.queue.add('indexar', data, { ...JOB_OPTS, jobId: `${data.tipo}_${data.id}` });
+      const jobId = `${data.tipo}_${data.id}`;
+      // O BullMQ IGNORA o add se o job de mesmo id ainda está guardado como
+      // concluído/falho (removeOnComplete guarda 500). Sem isto, trecho editado
+      // depois de indexado nunca mais reindexava, nem pelo reconciliador (#08, 01/11).
+      const anterior = await this.queue.getJob(jobId);
+      if (anterior && ((await anterior.isCompleted()) || (await anterior.isFailed()))) {
+        await anterior.remove();
+      }
+      await this.queue.add('indexar', data, { ...JOB_OPTS, jobId });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Falha ao enfileirar indexação ${data.tipo}:${data.id}: ${msg}`);
