@@ -4650,6 +4650,9 @@ model FichaTecnica {
   /// Tamanhos onde cada serviço vale (23/10: capuz infantil 2/4/6 sem cordão nem
   /// ilhós). { servicoId: ["8","10",…] }; serviço ausente = vale em todos.
   acabamentoTamanhos  Json?
+  /// Ficha de costura (#03 Modelista, 01/11): imagens, peças do corte, sequência,
+  /// etiquetas, atenção e medidas. Sai na via da facção da OP. Ver costuraSchema.
+  costura             Json?
   observacoes         String?
   criadoEm            DateTime @default(now())
   atualizadoEm        DateTime @updatedAt

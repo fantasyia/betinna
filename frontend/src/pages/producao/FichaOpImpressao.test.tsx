@@ -59,4 +59,38 @@ describe('FichaOp', () => {
     expect(within(faccao).getByText('Costura reforçada no gancho')).toBeTruthy();
     expect(within(faccao).getByText('Peça deitada')).toBeTruthy(); // observação da tabela (28/10)
   });
+  it('ficha de costura (#03, 01/11): página própria depois da facção, com aviamentos e o que NÃO é da oficina', () => {
+    const comCostura: DadosImpressao = {
+      ...D,
+      fichas: [
+        {
+          ...D.fichas[0],
+          costura: {
+            imagens: [{ url: 'https://x/costura.webp', legenda: 'frente' }],
+            pecasCorte: [{ peca: 'Frente', quantidade: 2, tecido: null, observacao: null }],
+            sequencia: [{ ordem: 1, operacao: 'Fechar gancho', maquina: 'Overloque', observacao: null }],
+            etiquetas: [{ tipo: 'Composição', posicao: 'lateral esquerda' }],
+            atencao: ['Não esticar o elástico'],
+            medidas: [{ ponto: 'Cintura', tolerancia: '±1', valores: { M: 40, G: 'relaxada 74 / esticada 101' } }],
+          },
+          foraDaOficina: [{ nome: 'Passar cordão', tamanhos: ['M', 'G'] }],
+        },
+      ],
+    };
+    const { container } = render(<FichaOp d={comCostura} />);
+    const vias = [...container.querySelectorAll('section.via')] as HTMLElement[];
+    expect(vias).toHaveLength(4);
+    const costura = vias[2];
+    expect(within(costura).getByText('COSTURA')).toBeTruthy();
+    expect(within(costura).getByText('Fechar gancho')).toBeTruthy();
+    expect(within(costura).getByText(/0,76 m no P · 0,84 m no G/)).toBeTruthy();
+    expect(within(costura).getByText(/Passar cordão — só no M, G \(não vai no P\)/)).toBeTruthy();
+    expect(within(costura).getByText('relaxada 74 / esticada 101')).toBeTruthy();
+    expect(within(costura).queryByText('Cordão')).toBeNull();
+  });
+
+  it('grade sem ficha de costura: só as 3 vias', () => {
+    const { container } = render(<FichaOp d={D} />);
+    expect(container.querySelectorAll('section.via')).toHaveLength(3);
+  });
 });

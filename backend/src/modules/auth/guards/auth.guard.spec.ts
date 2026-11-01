@@ -429,6 +429,21 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
       );
     });
 
+    it('ficha de costura (#03, 01/11): lê com "erp", grava e mexe nas imagens com "erp-escrita"', async () => {
+      comEscopos(['erp']);
+      await expect(pedir('GET', '/erp/fichas/ml-1/costura')).resolves.toBe(true);
+      await expect(pedir('PUT', '/erp/fichas/ml-1/costura', {})).rejects.toThrow(/erp-escrita/);
+      await expect(pedir('POST', '/erp/fichas/ml-1/costura/imagens', {})).rejects.toThrow(
+        /erp-escrita/,
+      );
+      comEscopos(['erp', 'erp-escrita']);
+      await expect(pedir('PUT', '/erp/fichas/ml-1/costura', {})).resolves.toBe(true);
+      await expect(pedir('POST', '/erp/fichas/ml-1/costura/imagens', {})).resolves.toBe(true);
+      await expect(pedir('DELETE', '/erp/fichas/ml-1/costura/imagens/abc')).resolves.toBe(true);
+      // Apagar a ficha técnica em si não entra junto.
+      await expect(pedir('DELETE', '/erp/fichas/ml-1')).rejects.toThrow(/O resto é pela tela/);
+    });
+
     it('compra, movimento, OP e estoque CONTINUAM barrados mesmo com erp-escrita', async () => {
       comEscopos(['erp', 'erp-escrita']);
       for (const [m, path] of [

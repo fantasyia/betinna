@@ -381,13 +381,17 @@ export class AuthGuard implements CanActivate {
     const escreverErp =
       moduloRequerido === 'erp' &&
       ((metodo === 'PUT' && /^\/erp\/fichas\/[^/]+\/?$/.test(rel)) ||
+        // Ficha de costura (#03, 01/11): gravar e as imagens dela.
+        (metodo === 'PUT' && /^\/erp\/fichas\/[^/]+\/costura\/?$/.test(rel)) ||
+        (metodo === 'POST' && /^\/erp\/fichas\/[^/]+\/costura\/imagens\/?$/.test(rel)) ||
+        (metodo === 'DELETE' && /^\/erp\/fichas\/[^/]+\/costura\/imagens\/[^/]+\/?$/.test(rel)) ||
         (metodo === 'POST' && /^\/erp\/insumos\/?$/.test(rel)) ||
         (metodo === 'PUT' && /^\/erp\/insumos\/[^/]+\/?$/.test(rel)) ||
         (metodo === 'PUT' && /^\/erp\/acabamento\/?$/.test(rel)));
     if (moduloRequerido === 'erp' && metodo !== 'GET' && !simularOp && !escreverErp) {
       throw new ForbiddenException(
         'Token de API no ERP: lê fichas, insumos, facções, acabamento e OPs (e simula OP); ' +
-          'com o escopo "erp-escrita", grava a ficha técnica, cria/edita insumo e grava o acabamento. O resto é pela tela.',
+          'com o escopo "erp-escrita", grava a ficha técnica e a de costura, cria/edita insumo e grava o acabamento. O resto é pela tela.',
       );
     }
 

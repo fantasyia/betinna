@@ -160,3 +160,62 @@ export const acabamentoSchema = z.object({
   fretePorPeca: z.number().min(0).max(1000).optional(),
 });
 export type AcabamentoDto = z.infer<typeof acabamentoSchema>;
+
+/**
+ * Ficha de COSTURA da grade (#03 Modelista, 01/11): sai na via da facção da
+ * OP, uma página por modelo × linha. SUBSTITUI a ficha inteira. As imagens
+ * sobem por rota própria; aqui só a ordem e a legenda (id ausente = apagada).
+ */
+export const costuraSchema = z.object({
+  imagens: z
+    .array(z.object({ id: z.string().min(1).max(40), legenda: textoOpcional(120) }))
+    .max(8)
+    .default([]),
+  pecasCorte: z
+    .array(
+      z.object({
+        peca: z.string().trim().min(1).max(80),
+        quantidade: z.number().int().min(1).max(50),
+        tecido: textoOpcional(80),
+        observacao: textoOpcional(200),
+      }),
+    )
+    .max(40)
+    .default([]),
+  sequencia: z
+    .array(
+      z.object({
+        ordem: z.number().int().min(1).max(200),
+        operacao: z.string().trim().min(1).max(200),
+        maquina: z.string().trim().min(1).max(60),
+        observacao: textoOpcional(200),
+      }),
+    )
+    .max(80)
+    .default([]),
+  etiquetas: z
+    .array(
+      z.object({
+        tipo: z.string().trim().min(1).max(60),
+        posicao: z.string().trim().min(1).max(200),
+      }),
+    )
+    .max(10)
+    .default([]),
+  atencao: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+  /** Medidas de conferência: valor por tamanho da grade, número (cm) ou texto. */
+  medidas: z
+    .array(
+      z.object({
+        ponto: z.string().trim().min(1).max(80),
+        tolerancia: textoOpcional(40),
+        valores: z.record(
+          z.string().trim().min(1).max(20),
+          z.union([z.number().nonnegative().max(1000), z.string().trim().min(1).max(60)]),
+        ),
+      }),
+    )
+    .max(30)
+    .default([]),
+});
+export type CosturaDto = z.infer<typeof costuraSchema>;

@@ -5,6 +5,8 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { EstoqueService } from './estoque.service';
 import { servicosAcabamento } from './acabamento';
 import { materialDe, rotuloLinhas } from './encaixe.service';
+import { costuraGravada, foraDaOficina } from './ficha-costura';
+import { InsumoFotosService } from './insumo-fotos.service';
 
 /** Linha da ficha como a impressão lê (uma por uso: cós, barra…). */
 export interface LinhaFichaImpressao {
@@ -70,6 +72,7 @@ export class FichaImpressaoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly erp: EstoqueService,
+    private readonly fotos: InsumoFotosService,
   ) {}
 
   async dadosDaOp(user: AuthenticatedUser, opId: string) {
@@ -114,6 +117,8 @@ export class FichaImpressaoService {
           modeloLinhaId: true,
           observacoes: true,
           acabamento: true,
+          acabamentoTamanhos: true,
+          costura: true,
           itens: {
             select: {
               insumoId: true,
@@ -181,12 +186,24 @@ export class FichaImpressaoService {
         const f = fichas.find((x) => x.modeloLinhaId === l);
         const ml = mls.find((x) => x.id === l);
         const ids = Array.isArray(f?.acabamento) ? (f!.acabamento as string[]) : [];
+        const costura = costuraGravada(f?.costura);
+        const acabamento = servicos.filter((s) => ids.includes(s.id));
         return {
           modeloLinhaId: l,
           linha: ml?.linha.nome ?? '',
           observacoes: f?.observacoes ?? null,
           tabelaMedidas: ml?.tabelaMedidas ?? null,
-          acabamento: servicos.filter((s) => ids.includes(s.id)),
+          acabamento,
+          // Ficha de costura (#03, 01/11): uma página por grade na via da facção.
+          costura: costura && {
+            ...costura,
+            imagens: costura.imagens.map((i) => ({
+              legenda: i.legenda,
+              url: this.fotos.urlPublica(i.path),
+            })),
+          },
+          // "NÃO é da oficina": o acabamento, com os tamanhos onde vale.
+          foraDaOficina: foraDaOficina(acabamento, f?.acabamentoTamanhos),
           // Mesmo insumo em duas linhas (cós e barra) sai num total só.
           itens: juntarItensDaFicha(
             (f?.itens ?? []).map((i) => ({

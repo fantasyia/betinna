@@ -5,20 +5,39 @@
  * facções com preço por modelo, serviços de acabamento e OPs. erp_op_simular
  * só CALCULA (não grava nada).
  *
- * ESCRITA (escopo "erp-escrita", junto com "erp"): gravar a ficha técnica de
- * uma grade e criar/editar o cadastro do insumo (preço de referência). Compra,
+ * ESCRITA (escopo "erp-escrita", junto com "erp"): gravar a ficha técnica e a
+ * de costura (01/11) de uma grade e criar/editar o cadastro do insumo (preço de
+ * referência). Compra,
  * movimento de estoque, corte, envio e fechamento de OP ficam na tela.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { extname } from "node:path";
+import sharp from "sharp";
 import { z } from "zod";
 import { api } from "./api.js";
+import { lerPermitido } from "./arquivos.js";
 import { seg } from "./caminho.js";
 import type { Ajudantes } from "./vitrine.js";
 
 const id = z.string().min(1).max(40);
 const preco = z.number().nonnegative().max(1_000_000);
 
-export function registrarProducaoErp(server: McpServer, { ok, seguro }: Ajudantes) {
+// Ficha de costura (#03, 01/11): desenho técnico pede mais resolução que foto.
+const LARGURA_COSTURA = 1800;
+const MAX_IMAGEM_COSTURA = 2 * 1024 * 1024;
+const EXT_IMAGEM = [".jpg", ".jpeg", ".png", ".webp", ".avif", ".tif", ".tiff", ".gif"];
+
+/** WebP até 1800 px de largura, baixando a qualidade até caber em 2 MB. */
+async function prepararImagemCostura(buf: Buffer): Promise<Buffer> {
+  const base = sharp(buf, { failOn: "none" }).rotate().flatten({ background: "#ffffff" });
+  for (let q = 88; q >= 48; q -= 10) {
+    const out = await base.clone().resize({ width: LARGURA_COSTURA, withoutEnlargement: true }).webp({ quality: q }).toBuffer();
+    if (out.length <= MAX_IMAGEM_COSTURA) return out;
+  }
+  throw new Error("mesmo convertida, a imagem passou de 2MB");
+}
+
+export function registrarProducaoErp(server: McpServer, { ok, erro, seguro }: Ajudantes) {
   const leitura = { readOnlyHint: true, destructiveHint: false, idempotentHint: true } as const;
   const escrita = { readOnlyHint: false, destructiveHint: false, idempotentHint: true } as const;
 
@@ -249,6 +268,101 @@ export function registrarProducaoErp(server: McpServer, { ok, seguro }: Ajudante
     },
     seguro(async ({ insumoId, ...a }: { insumoId: string } & Record<string, unknown>) =>
       ok(await api.put(`/erp/insumos/${seg(insumoId)}`, a)),
+    ),
+  );
+
+  // ─── Ficha de costura (#03 Modelista, 01/11) ─────────────────────────────
+
+  server.registerTool(
+    "erp_costura_ver",
+    {
+      description:
+        "Ficha de COSTURA de uma grade (modeloLinhaId): imagens (id, url, legenda), peças do corte, sequência " +
+        "(ordem · operação · máquina), etiquetas, pontos de atenção e medidas por tamanho; e os tamanhos da grade. " +
+        "costura null = ainda não tem. Sai na via da facção da OP, uma página por modelo × linha, junto com os " +
+        "aviamentos da facção e o acabamento da ficha técnica (esses NÃO se digitam aqui). Escopo 'erp'.",
+      inputSchema: { modeloLinhaId: id },
+      annotations: leitura,
+    },
+    seguro(async (a: { modeloLinhaId: string }) =>
+      ok(await api.get(`/erp/fichas/${seg(a.modeloLinhaId)}/costura`)),
+    ),
+  );
+
+  const opcional = (max: number) => z.string().max(max).nullable().optional();
+
+  server.registerTool(
+    "erp_costura_salvar",
+    {
+      description:
+        "GRAVA a ficha de costura de uma grade — SUBSTITUI a ficha INTEIRA (leia antes com erp_costura_ver e mande " +
+        "tudo). As imagens sobem com erp_costura_imagem_subir; aqui vai só a ORDEM e a legenda delas pelo id — id " +
+        "que ficar de fora é APAGADO. Medidas: valor por tamanho da grade, número (cm) ou texto (\"relaxada 74 / " +
+        "esticada 101\"). Escopo 'erp-escrita'.",
+      inputSchema: {
+        modeloLinhaId: id,
+        imagens: z
+          .array(z.object({ id: z.string().min(1).max(40), legenda: opcional(120) }))
+          .max(8)
+          .describe("Ordem e legenda das imagens JÁ subidas (ids do erp_costura_ver)"),
+        pecasCorte: z
+          .array(z.object({ peca: z.string().min(1).max(80), quantidade: z.number().int().min(1).max(50), tecido: opcional(80), observacao: opcional(200) }))
+          .max(40),
+        sequencia: z
+          .array(z.object({ ordem: z.number().int().min(1).max(200), operacao: z.string().min(1).max(200), maquina: z.string().min(1).max(60), observacao: opcional(200) }))
+          .max(80),
+        etiquetas: z.array(z.object({ tipo: z.string().min(1).max(60), posicao: z.string().min(1).max(200) })).max(10),
+        atencao: z.array(z.string().min(1).max(300)).max(20),
+        medidas: z
+          .array(
+            z.object({
+              ponto: z.string().min(1).max(80),
+              tolerancia: opcional(40),
+              valores: z.record(z.string().min(1).max(20), z.union([z.number().nonnegative().max(1000), z.string().min(1).max(60)])),
+            }),
+          )
+          .max(30),
+      },
+      annotations: escrita,
+    },
+    seguro(async ({ modeloLinhaId, ...a }: { modeloLinhaId: string } & Record<string, unknown>) =>
+      ok(await api.put(`/erp/fichas/${seg(modeloLinhaId)}/costura`, a)),
+    ),
+  );
+
+  server.registerTool(
+    "erp_costura_imagem_subir",
+    {
+      description:
+        "Acrescenta UMA imagem (desenho técnico ou foto com marcações) à ficha de costura, a partir de um arquivo " +
+        "local (caminho ABSOLUTO, dentro de BETINNA_MCP_ANEXOS_DIR). Converte pra WebP até 1800 px. Máx 8 por " +
+        "ficha. Cria a ficha de costura se a grade ainda não tem. Escopo 'erp-escrita'.",
+      inputSchema: { modeloLinhaId: id, caminho: z.string().min(1), legenda: z.string().max(120).optional() },
+      annotations: { ...escrita, idempotentHint: false },
+    },
+    seguro(async (a: { modeloLinhaId: string; caminho: string; legenda?: string }) => {
+      if (!EXT_IMAGEM.includes(extname(a.caminho).toLowerCase())) {
+        return erro(`Extensão não aceita (use ${EXT_IMAGEM.join(" ")}). PDF: exporte a página como PNG antes.`);
+      }
+      const lido = await lerPermitido(a.caminho, 40 * 1024 * 1024);
+      if (!lido.ok) return erro(lido.motivo);
+      const webp = await prepararImagemCostura(lido.buf);
+      const form = new FormData();
+      form.append("imagem", new Blob([Uint8Array.from(webp)], { type: "image/webp" }), "imagem.webp");
+      if (a.legenda) form.append("legenda", a.legenda);
+      return ok(await api.postForm(`/erp/fichas/${seg(a.modeloLinhaId)}/costura/imagens`, form));
+    }),
+  );
+
+  server.registerTool(
+    "erp_costura_imagem_excluir",
+    {
+      description: "Apaga uma imagem da ficha de costura (id do erp_costura_ver). Escopo 'erp-escrita'.",
+      inputSchema: { modeloLinhaId: id, imagemId: z.string().min(1).max(40) },
+      annotations: { ...escrita, destructiveHint: true },
+    },
+    seguro(async (a: { modeloLinhaId: string; imagemId: string }) =>
+      ok(await api.delete(`/erp/fichas/${seg(a.modeloLinhaId)}/costura/imagens/${seg(a.imagemId)}`)),
     ),
   );
 }

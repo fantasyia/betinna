@@ -118,7 +118,7 @@ export class InsumoFotosService {
     return { ok: true };
   }
 
-  private validar(arq: ArquivoFoto, max: number, rotulo: string) {
+  validar(arq: ArquivoFoto, max: number, rotulo: string) {
     if (!arq?.buffer?.length) throw new BusinessRuleException(`${rotulo} vazia`);
     if (arq.size > max) {
       throw new BusinessRuleException(`${rotulo} acima de ${Math.round(max / 1024)} KB`);
@@ -126,14 +126,14 @@ export class InsumoFotosService {
     if (!ehWebp(arq.buffer)) throw new BusinessRuleException(`${rotulo} precisa ser WebP`);
   }
 
-  private async subir(path: string, buffer: Buffer): Promise<void> {
+  async subir(path: string, buffer: Buffer): Promise<void> {
     const { error } = await this.storage.storage
       .from(BUCKET_VITRINE)
       .upload(path, buffer, { contentType: 'image/webp', cacheControl: '31536000', upsert: false });
     if (error) throw new IntegrationException(`Falha ao enviar a foto: ${error.message}`);
   }
 
-  private async remover(paths: string[]): Promise<void> {
+  async remover(paths: string[]): Promise<void> {
     if (!paths.length) return;
     const { error } = await this.storage.storage.from(BUCKET_VITRINE).remove(paths);
     if (error) this.logger.warn(`Foto(s) de insumo órfã(s) no bucket: ${error.message}`);

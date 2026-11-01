@@ -8,6 +8,8 @@ import { InsumosService } from './insumos.service';
 import { InsumoFotosService } from './insumo-fotos.service';
 import { FichasController } from './fichas.controller';
 import { FichasService } from './fichas.service';
+import { FichaCosturaController } from './ficha-costura.controller';
+import { FichaCosturaService } from './ficha-costura.service';
 import { OrdensController } from './ordens.controller';
 import { OrdensService } from './ordens.service';
 import { FichaImpressaoService } from './ficha-impressao.service';
@@ -29,6 +31,7 @@ import { EtiquetasService } from './etiquetas.service';
     EstoqueController,
     InsumosController,
     FichasController,
+    FichaCosturaController,
     OrdensController,
     EncaixeController,
     EncaixeAgenteController,
@@ -40,6 +43,7 @@ import { EtiquetasService } from './etiquetas.service';
     InsumosService,
     InsumoFotosService,
     FichasService,
+    FichaCosturaService,
     OrdensService,
     FichaImpressaoService,
     EncaixeService,

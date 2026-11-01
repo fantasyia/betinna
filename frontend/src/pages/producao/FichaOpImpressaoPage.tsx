@@ -37,6 +37,18 @@ interface Ficha {
   tabelaMedidas: { colunas: string[]; linhas: Array<{ tamanho: string; valores: string[] }>; nota?: string } | null;
   acabamento: Array<{ id: string; nome: string; preco: number }>;
   itens: ItemFicha[];
+  /** Ficha de costura (#03 Modelista, 01/11); null = a grade ainda não tem. */
+  costura?: Costura | null;
+  /** Acabamento da grade com os tamanhos onde vale (null = todos). */
+  foraDaOficina?: Array<{ nome: string; tamanhos: string[] | null }>;
+}
+interface Costura {
+  imagens: Array<{ url: string | null; legenda: string | null }>;
+  pecasCorte: Array<{ peca: string; quantidade: number; tecido: string | null; observacao: string | null }>;
+  sequencia: Array<{ ordem: number; operacao: string; maquina: string; observacao: string | null }>;
+  etiquetas: Array<{ tipo: string; posicao: string }>;
+  atencao: string[];
+  medidas: Array<{ ponto: string; tolerancia: string | null; valores: Record<string, number | string> }>;
 }
 interface Risco {
   material: 'TECIDO' | 'RIBANA';
@@ -335,6 +347,174 @@ function ViaFaccao({ d }: { d: DadosImpressao }) {
   );
 }
 
+/** Tamanhos da grade na ordem dela; os que só a ficha tem vão no fim. */
+function ordemDosTamanhos(d: DadosImpressao, chaves: string[]): string[] {
+  const daGrade = [...new Set([...d.grade].sort((a, b) => a.tamanhoOrdem - b.tamanhoOrdem).map((g) => g.tamanho))];
+  return [...daGrade.filter((t) => chaves.includes(t)), ...chaves.filter((t) => !daGrade.includes(t))];
+}
+
+/**
+ * Ficha de COSTURA da grade (#03 Modelista, 01/11): uma página por modelo ×
+ * linha, logo depois da via da facção. Aviamentos e o "NÃO é da oficina" vêm
+ * da ficha técnica — a #03 não digita de novo.
+ */
+function ViaCostura({ d, f }: { d: DadosImpressao; f: Ficha }) {
+  const c = f.costura!;
+  const aviamentos = f.itens.filter((i) => i.etapa === 'FACCAO' && i.tipo === 'AVIAMENTO');
+  const tamMedidas = ordemDosTamanhos(d, [...new Set(c.medidas.flatMap((x) => Object.keys(x.valores)))]);
+  const daOp = ordemDosTamanhos(d, Object.keys(pecasPorTamanho(d.grade, f.modeloLinhaId)));
+  const fora = (f.foraDaOficina ?? []).map((s) => ({
+    ...s,
+    sem: s.tamanhos ? daOp.filter((t) => !s.tamanhos!.includes(t)) : [],
+  }));
+  const valor = (v: number | string | undefined) => (typeof v === 'number' ? formatNumero(v) : (v ?? ''));
+  return (
+    <section className="via">
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-[10px] uppercase text-gray-500">{d.empresa}</div>
+          <h1 className="text-xl font-bold leading-tight">{d.op.numero} · {d.modelo.nome} · {f.linha}</h1>
+          <div className="text-xs">Facção <b>{d.op.faccao ?? '—'}</b> · Prazo <b>{data(d.op.prazo)}</b></div>
+        </div>
+        <div className="border-2 border-black px-3 py-1 text-center">
+          <div className="text-[10px] uppercase">Via</div>
+          <div className="text-lg font-bold">COSTURA</div>
+        </div>
+      </header>
+      {c.imagens.length ? (
+        <div className={`mt-2 grid gap-2 ${c.imagens.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {c.imagens.map((i, k) => (
+            <figure key={k} className="m-0 text-center">
+              {i.url && <img src={i.url} alt={i.legenda ?? ''} className="mx-auto max-h-[90mm] w-auto object-contain" />}
+              {i.legenda && <figcaption className="text-[10px]">{i.legenda}</figcaption>}
+            </figure>
+          ))}
+        </div>
+      ) : null}
+      {c.pecasCorte.length ? (
+        <>
+          <Titulo>Peças do corte</Titulo>
+          <table className="ficha">
+            <thead>
+              <tr>
+                <th className="text-left">Peça</th>
+                <th>Qtd.</th>
+                <th className="text-left">Tecido</th>
+                <th className="text-left">Obs.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.pecasCorte.map((p, k) => (
+                <tr key={k}>
+                  <td className="text-left">{p.peca}</td>
+                  <td>{p.quantidade}</td>
+                  <td className="text-left">{p.tecido ?? ''}</td>
+                  <td className="text-left">{p.observacao ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+      {c.sequencia.length ? (
+        <>
+          <Titulo>Sequência de costura</Titulo>
+          <table className="ficha">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th className="text-left">Operação</th>
+                <th className="text-left">Máquina</th>
+                <th className="text-left">Obs.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.sequencia.map((o) => (
+                <tr key={o.ordem}>
+                  <td>{o.ordem}</td>
+                  <td className="text-left">{o.operacao}</td>
+                  <td className="text-left">{o.maquina}</td>
+                  <td className="text-left">{o.observacao ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+      {aviamentos.length ? (
+        <>
+          <Titulo>Aviamentos da oficina (por peça)</Titulo>
+          <ul className="text-xs list-disc pl-5">
+            {aviamentos.map((i, k) => (
+              <li key={k}>
+                <b>{i.nome}{i.cor ? ` · ${i.cor}` : ''}</b>
+                {i.usos?.length ? ` (${i.usos.join(' + ')})` : ''}:{' '}
+                {i.porTamanho && Object.keys(i.porTamanho).length
+                  ? ordemDosTamanhos(d, Object.keys(i.porTamanho))
+                      .map((t) => `${qtdUn(i.porTamanho![t], i.unidade)} no ${t}`)
+                      .join(' · ')
+                  : qtdUn(i.consumoPorPeca, i.unidade)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {c.etiquetas.length ? (
+        <>
+          <Titulo>Etiquetas</Titulo>
+          <ul className="text-xs list-disc pl-5">
+            {c.etiquetas.map((e, k) => <li key={k}><b>{e.tipo}:</b> {e.posicao}</li>)}
+          </ul>
+        </>
+      ) : null}
+      {c.atencao.length ? (
+        <>
+          <Titulo>Pontos de atenção</Titulo>
+          <ul className="text-xs list-disc pl-5">
+            {c.atencao.map((a, k) => <li key={k}>{a}</li>)}
+          </ul>
+        </>
+      ) : null}
+      {fora.length ? (
+        <>
+          <Titulo>NÃO é da oficina (faz o acabamento)</Titulo>
+          <ul className="text-xs list-disc pl-5">
+            {fora.map((s) => (
+              <li key={s.nome}>
+                {s.nome}
+                {s.tamanhos ? ` — só no ${s.tamanhos.join(', ')}${s.sem.length ? ` (não vai no ${s.sem.join(', ')})` : ''}` : ''}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {c.medidas.length ? (
+        <>
+          <Titulo>Medidas pra conferência (cm)</Titulo>
+          <table className="ficha">
+            <thead>
+              <tr>
+                <th className="text-left">Ponto</th>
+                {tamMedidas.map((t) => <th key={t}>{t}</th>)}
+                <th>Tol.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.medidas.map((x, k) => (
+                <tr key={k}>
+                  <td className="text-left">{x.ponto}</td>
+                  {tamMedidas.map((t) => <td key={t}>{valor(x.valores[t])}</td>)}
+                  <td>{x.tolerancia ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function ViaAcabamento({ d }: { d: DadosImpressao }) {
   const servicos = new Map<string, { nome: string; preco: number }>();
   for (const f of d.fichas) for (const s of f.acabamento) servicos.set(s.id, s);
@@ -409,6 +589,7 @@ export function FichaOp({ d }: { d: DadosImpressao }) {
     <div className="ficha-op">
       <ViaCorte d={d} />
       <ViaFaccao d={d} />
+      {d.fichas.filter((f) => f.costura).map((f) => <ViaCostura key={f.modeloLinhaId} d={d} f={f} />)}
       <ViaAcabamento d={d} />
     </div>
   );
@@ -443,7 +624,7 @@ export default function FichaOpImpressaoPage() {
     <div className="ficha-tela min-h-screen bg-gray-100 py-6">
       <style>{CSS}</style>
       <div className="nao-imprime mx-auto mb-4 flex max-w-[210mm] items-center justify-between gap-3 px-2">
-        <span className="text-sm text-gray-700">3 vias em A4 — corte, facção e acabamento.</span>
+        <span className="text-sm text-gray-700">3 vias em A4 — corte, facção (com a ficha de costura) e acabamento.</span>
         <Button onClick={() => window.print()} disabled={!q.data} data-testid="ficha-op-imprimir">
           <Printer className="h-4 w-4" /> Imprimir / salvar PDF
         </Button>
