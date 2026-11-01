@@ -1,14 +1,4 @@
-import {
-  BadRequestException,
-  Controller,
-  Get,
-  Logger,
-  Param,
-  Post,
-  Query,
-  Req,
-  Res,
-} from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -28,16 +18,11 @@ const listarSchema = z.object({
   horas: z.coerce.number().int().min(1).max(48).default(48),
   tipo: z.coerce.number().int().min(1).max(2).default(1),
 });
-const historicoSchema = z.object({
-  dias: z.coerce.number().int().min(1).max(90).default(90),
-});
 
 /** Shein (01/11): autorização da loja + leitura de pedidos. Diretoria. */
 @ApiTags('integracoes/shein')
 @Controller('integracoes/shein')
 export class SheinController {
-  private readonly logger = new Logger(SheinController.name);
-
   constructor(
     private readonly oauth: SheinOAuthService,
     private readonly pedidos: SheinOrdersService,
@@ -92,33 +77,6 @@ export class SheinController {
     @Query(new ZodValidationPipe(listarSchema)) q: z.infer<typeof listarSchema>,
   ) {
     return this.pedidos.listar(this.empresa(user), q.horas, q.tipo as 1 | 2);
-  }
-
-  /**
-   * Histórico (Léo, 01/11: últimos 90 dias) → Vendas marketplaces. Roda em
-   * segundo plano na api (o IP dela está na lista branca); o resultado vai pro log.
-   */
-  @Post('pedidos/historico')
-  @ApiBearerAuth()
-  @Roles('ADMIN', 'DIRECTOR')
-  @ApiOperation({
-    summary: 'Importa o histórico de pedidos da Shein (até 90 dias), em segundo plano',
-  })
-  historico(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query(new ZodValidationPipe(historicoSchema)) q: z.infer<typeof historicoSchema>,
-  ) {
-    const empresaId = this.empresa(user);
-    const desde = new Date(Date.now() - q.dias * 86_400_000);
-    void this.pedidos
-      .sincronizar(empresaId, desde, 1)
-      .then((r) =>
-        this.logger.log(
-          `[Shein] histórico ${q.dias} dias: ${r.pedidos} pedidos, ${r.falhas} falhas`,
-        ),
-      )
-      .catch((err) => this.logger.warn(`[Shein] histórico falhou: ${String(err)}`));
-    return { iniciado: true, dias: q.dias };
   }
 
   @Get('pedidos/:orderNo')
