@@ -8,6 +8,7 @@ import { KnowledgeSearchService } from '@modules/rag/knowledge-search.service';
 import { TAG_HUMANO } from '@integrations/mercadolivre/ml-resposta-ia.service';
 import { ShopeeClientService } from '@integrations/shopee/shopee-client.service';
 import {
+  ESPERA_PADRAO,
   PROMPT_PENDENCIA,
   SCHEMA_PENDENCIA,
   baseParaConversa,
@@ -17,6 +18,7 @@ import {
   contextoDaPendencia,
   SILENCIO_S,
   lerDecisao,
+  respostaBarrada,
   textoLegivel,
   type AnuncioContexto,
   unitarioDoAnuncio,
@@ -237,7 +239,16 @@ export class PendenciasIaService implements OnModuleInit {
       if (trava !== 'OK') return 'pulada';
     }
 
-    const { decisao, modelo, anuncios } = await this.decidir(empresaId, p, tipo, historico);
+    let { decisao, modelo, anuncios } = await this.decidir(empresaId, p, tipo, historico);
+    // Palavra que o marketplace bloqueia (ou cupom fora da Shopee): gera de novo
+    // UMA vez avisando o porquê; se insistir, vai pra equipe com a espera padrão
+    // — o texto barrado nunca é enviado (Léo, 31/10).
+    let barrada = respostaBarrada(decisao.resposta, p.canal);
+    if (barrada) {
+      ({ decisao, modelo, anuncios } = await this.decidir(empresaId, p, tipo, historico, barrada));
+      barrada = respostaBarrada(decisao.resposta, p.canal);
+      if (barrada) decisao = { acao: 'humano', resposta: ESPERA_PADRAO, motivo: barrada };
+    }
 
     // Envia SEMPRE (resposta ou espera): a loja tem a última palavra.
     let erro: string | null = null;
@@ -281,6 +292,7 @@ export class PendenciasIaService implements OnModuleInit {
     p: { canal: string; titulo: string; pedido: string | null },
     tipo: TipoPendenciaIa,
     historico: MensagemHistorico[],
+    barrada?: string,
   ) {
     const cards = cardsDoHistorico(historico);
     const numeros = [...new Set([...(p.pedido ? [p.pedido] : []), ...cards.pedidos])].slice(0, 3);
@@ -305,9 +317,19 @@ export class PendenciasIaService implements OnModuleInit {
       anuncios,
       historico,
     });
-    const r = await this.bot.gerarRespostaIa(empresaId, PROMPT_PENDENCIA, contexto, [], undefined, {
-      responseFormat: SCHEMA_PENDENCIA,
-    });
+    const aviso = barrada
+      ? `\n\nATENÇÃO: a resposta anterior foi barrada (${barrada}). Escreva de novo sem isso.`
+      : '';
+    const r = await this.bot.gerarRespostaIa(
+      empresaId,
+      PROMPT_PENDENCIA,
+      contexto + aviso,
+      [],
+      undefined,
+      {
+        responseFormat: SCHEMA_PENDENCIA,
+      },
+    );
     return { decisao: lerDecisao(r.texto), modelo: r.modelo, anuncios };
   }
 

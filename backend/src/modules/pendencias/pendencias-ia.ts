@@ -2,8 +2,9 @@
  * IA da aba Pendências (fase 2, Léo 25/10). Regras, PURO:
  * - Se tem a resposta (base de conhecimento, pedido, histórico), a IA responde
  *   direto no marketplace.
- * - Se não tem, ou o assunto pede decisão (reembolso, contestação, avaria,
- *   troca fora da regra), ESCALA pro humano — mas antes manda uma resposta
+ * - Troca, desistência, defeito, peça errada e atraso: responde pela base
+ *   (Léo, 31/10). Reclamação formal, contestação e o que a base não responde
+ *   ESCALAM pro humano — mas antes manda uma resposta
  *   curta de espera, sem prometer nada: a loja SEMPRE tem a última palavra,
  *   em qualquer chat (Léo, 25/10). "Obrigado" do cliente também ganha resposta.
  * - A IA só ESCREVE mensagem. Nunca aceita devolução, reembolsa nem contesta.
@@ -43,12 +44,14 @@ COMO RESPONDER:
 - Quando a descrição do anúncio e a BASE disserem coisas diferentes (composição, medida, gramatura, FPS, quantidade de peças do kit), vale a BASE: é a informação conferida pela loja.
 - Não invente medida, prazo, estoque, cor nem política. Se a informação não está no que você recebeu, não chute.
 - Português do Brasil, simpático e direto, como uma pessoa da loja: 1 a 3 frases, sem emoji, sem markdown, sem "Olá! Recebemos sua mensagem".
-- NUNCA peça desculpas ("desculpa a demora", "lamentamos", "sentimos muito"): vá direto à solução.
+- NUNCA peça desculpas ("desculpa a demora", "lamentamos", "sentimos muito"): vá direto à solução. ÚNICA exceção: em DEFEITO e em PEÇA ERRADA (cor, tamanho ou peça diferente do pedido), comece como a BASE manda ("Sentimos muito por isso." / "Sentimos muito pelo engano.").
+- PALAVRAS PROIBIDAS (o marketplace bloqueia a mensagem): nunca escreva "cancelamento", "cancelar", "cancelado", "devolução", "devolver" nem "devolvido", em nenhuma forma, nem se o cliente usar. Fale em "resolver pela aba de compras".
+- Cupom: só o que a BASE manda e só no canal que ela diz (o DEBEVOLTE é SÓ na Shopee e SÓ em peça errada).
 - Nunca peça nem passe telefone, e-mail, WhatsApp, link ou rede social (o marketplace proíbe).
 
-Se a BASE traz o caminho pro caso (ex.: endereço errado, prazo de envio de pedido Full ou Crossdocking), RESPONDA com ele em vez de passar pra equipe.
+Se a BASE traz o caminho pro caso (ex.: endereço errado, prazo de envio de pedido Full ou Crossdocking), RESPONDA com ele em vez de passar pra equipe. Troca de tamanho ou cor, desistência, erro na compra, defeito, peça errada e atraso no envio: RESPONDA você mesmo com o texto que a BASE traz pra cada caso (acao = "responder").
 
-QUANDO PASSAR PRA EQUIPE ("humano"): cancelamento, troca, devolução, reembolso, defeito, avaria, peça errada ou faltando, atraso, contestação, reclamação, ou pergunta cuja resposta não está no que você recebeu. Nesses casos a "resposta" é uma mensagem curta e humana que mostra que entendeu o caso, sem prometer nada e sem prazo (ex.: "Entendi, você não conseguiu cancelar o pedido. Já passei pra equipe e te respondo por aqui em seguida."). Nunca diga que aceitou, cancelou, trocou ou vai reembolsar.
+QUANDO PASSAR PRA EQUIPE ("humano"): reclamação formal, contestação, ou pergunta cuja resposta não está no que você recebeu. Nesses casos a "resposta" é uma mensagem curta e humana que mostra que entendeu o caso, sem prometer nada e sem prazo (ex.: "Entendi, o pedido chegou com a embalagem aberta. Já passei pra equipe e te respondo por aqui em seguida."). Nunca diga que aceitou, trocou ou vai reembolsar.
 
 Responda em JSON: {"acao": "responder" | "humano", "resposta": "texto pronto pra enviar", "motivo": "por que, em poucas palavras", "card_unitario": true | false}.`;
 
@@ -89,6 +92,23 @@ export function lerDecisao(bruto: string): DecisaoIa {
     // cai no padrão abaixo
   }
   return { acao: 'humano', resposta: ESPERA_PADRAO, motivo: 'resposta da IA ilegível' };
+}
+
+/** Palavras que o marketplace bloqueia no chat (Léo, 31/10): cancelar/devolver em qualquer forma. */
+const PROIBIDAS = /\b(cancel|devol)[a-zçãõáéíóú]*/i;
+
+/**
+ * Motivo pra NÃO enviar a resposta como está (31/10), ou null se pode enviar.
+ * Mensagem com palavra proibida o marketplace bloqueia; cupom DEBEVOLTE é só
+ * da Shopee — no ML é oferta que a loja não fez.
+ */
+export function respostaBarrada(texto: string, canal: string): string | null {
+  const m = PROIBIDAS.exec(texto);
+  if (m) return `palavra proibida no marketplace: "${m[0]}"`;
+  if (canal !== 'MARKETPLACE_SHOPEE' && /debevolte/i.test(texto)) {
+    return 'cupom DEBEVOLTE fora da Shopee';
+  }
+  return null;
 }
 
 export interface MensagemHistorico {

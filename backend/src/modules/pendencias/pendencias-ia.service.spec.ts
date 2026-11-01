@@ -1,3 +1,4 @@
+import { ESPERA_PADRAO } from './pendencias-ia';
 import { describe, expect, it, vi } from 'vitest';
 import { PendenciasIaService } from './pendencias-ia.service';
 
@@ -287,6 +288,46 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
     expect(t.enviados).toEqual(['Olá! Recebemos e já estamos verificando.']);
     expect(t.estados.p1).toBe('AGUARDANDO_HUMANO');
     expect(t.push.enviar).toHaveBeenCalledTimes(1);
+  });
+
+  it('palavra proibida: gera de novo avisando o porquê e envia a versão limpa (31/10)', async () => {
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [{ direction: 'INBOUND', conteudo: 'Veio o tamanho errado' }],
+    });
+    t.bot.gerarRespostaIa
+      .mockResolvedValueOnce({
+        texto:
+          '{"acao":"responder","resposta":"Pode pedir a devolução no app.","motivo":"x","card_unitario":false}',
+        modelo: 'm',
+      } as never)
+      .mockResolvedValueOnce({
+        texto:
+          '{"acao":"responder","resposta":"Sentimos muito pelo engano. Você resolve pela aba de compras.","motivo":"x","card_unitario":false}',
+        modelo: 'm',
+      } as never);
+    expect(await t.svc.processar('e1')).toEqual({ respondidas: 1, humano: 0 });
+    expect(t.bot.gerarRespostaIa).toHaveBeenCalledTimes(2);
+    expect(String((t.bot.gerarRespostaIa.mock.calls as unknown[][])[1][2])).toMatch(
+      /barrada.*devolução/,
+    );
+    expect(t.enviados).toEqual(['Sentimos muito pelo engano. Você resolve pela aba de compras.']);
+  });
+
+  it('palavra proibida duas vezes: o texto barrado NUNCA vai — espera padrão e humano', async () => {
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [{ direction: 'INBOUND', conteudo: 'Quero cancelar' }],
+      iaTexto:
+        '{"acao":"responder","resposta":"Pode cancelar no app.","motivo":"x","card_unitario":false}',
+    });
+    expect(await t.svc.processar('e1')).toEqual({ respondidas: 0, humano: 1 });
+    expect(t.enviados).toEqual([ESPERA_PADRAO]);
+    expect(t.estados.p1).toBe('AGUARDANDO_HUMANO');
+    expect(t.registros[0]).toMatchObject({
+      acao: 'humano',
+      motivo: expect.stringMatching(/proibida/),
+    });
   });
 
   it('envio falhou: registra o erro e passa pro humano (nunca fica "respondida" sem ter ido)', async () => {

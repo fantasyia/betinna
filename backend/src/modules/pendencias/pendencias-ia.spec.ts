@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  respostaBarrada,
   ESPERA_PADRAO,
   baseParaConversa,
   cardsDoHistorico,
@@ -141,5 +142,27 @@ describe('IA das pendências (fase 2, 25/10)', () => {
     expect(
       lerDecisao('{"acao":"humano","resposta":"a","motivo":"b","card_unitario":true}').cardUnitario,
     ).toBeUndefined();
+  });
+});
+
+describe('respostaBarrada (31/10): o que o marketplace bloqueia', () => {
+  it('cancelar/devolver em qualquer forma barra; texto limpo passa', () => {
+    for (const t of [
+      'Faça o cancelamento',
+      'Pode CANCELAR',
+      'pedido cancelado',
+      'a devolução',
+      'devolver',
+      'foi devolvido',
+    ]) {
+      expect(respostaBarrada(t, 'MARKETPLACE_SHOPEE')).toMatch(/proibida/);
+    }
+    expect(respostaBarrada('Você resolve pela aba de compras.', 'MARKETPLACE_SHOPEE')).toBeNull();
+  });
+
+  it('cupom DEBEVOLTE: na Shopee passa, no ML barra', () => {
+    const t = 'Segue um cupom de 5%: DEBEVOLTE.';
+    expect(respostaBarrada(t, 'MARKETPLACE_SHOPEE')).toBeNull();
+    expect(respostaBarrada(t, 'MARKETPLACE_ML')).toMatch(/DEBEVOLTE/);
   });
 });
