@@ -67,6 +67,8 @@ export interface ModeloPub {
   combinaCom?: string[];
   /** Avaliações de clientes aprovadas (25/10): só comentário, estrelas, cores e fotos. */
   avaliacoes?: AvaliacaoPub[];
+  /** Total de avaliações aprovadas do modelo (a lista traz só as 12 mais recentes). */
+  avaliacoesTotal?: number;
 }
 export interface AvaliacaoPub {
   estrelas: number;

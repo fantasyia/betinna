@@ -664,8 +664,8 @@ function Vitrine({
                     onClick={() => setAvaliacoesDe(m)}
                     data-testid={`vt-avaliacoes-${m.id}`}
                   >
-                    <span aria-hidden="true">★★★★★</span> {m.avaliacoes!.length}{' '}
-                    {m.avaliacoes!.length === 1 ? 'avaliação' : 'avaliações'} de clientes
+                    <span aria-hidden="true">★★★★★</span> {totalAvaliacoes(m)}{' '}
+                    {totalAvaliacoes(m) === 1 ? 'avaliação' : 'avaliações'} de clientes
                   </button>
                 )}
                 {!semALinha && <Selo texto={seloDa(l.linhaId)} />}
@@ -841,6 +841,11 @@ function MonteConjunto({
       })}
     </div>
   );
+}
+
+/** Total real de avaliações (a lista traz só as mais recentes). */
+function totalAvaliacoes(m: ModeloPub): number {
+  return Math.max(m.avaliacoesTotal ?? 0, m.avaliacoes?.length ?? 0);
 }
 
 /** Avaliações de clientes do modelo (25/10): comentário, estrelas, cores e fotos. */

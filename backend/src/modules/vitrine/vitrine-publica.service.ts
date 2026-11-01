@@ -239,20 +239,37 @@ export class VitrinePublicaService {
         fotos: string[];
       }>
     >();
+    // Total REAL por modelo (01/11): o número na vitrine era o tamanho da lista
+    // mostrada (até 12, de no máx. 400 no geral) e parava de subir.
+    const totalAvaliacoes = new Map<string, number>();
     try {
-      const rows = await this.prisma.avaliacaoVitrine.findMany({
-        where: { empresaId, status: 'APROVADA', modeloId: { in: publicos.map((m) => m.id) } },
-        orderBy: { criadoEm: 'desc' },
-        take: 400,
-        select: {
-          modeloId: true,
-          estrelas: true,
-          texto: true,
-          autor: true,
-          cores: true,
-          fotos: true,
-        },
+      const ids = publicos.map((m) => m.id);
+      const contagem = await this.prisma.avaliacaoVitrine.groupBy({
+        by: ['modeloId'],
+        where: { empresaId, status: 'APROVADA', modeloId: { in: ids } },
+        _count: { _all: true },
       });
+      for (const c of contagem) totalAvaliacoes.set(c.modeloId, c._count._all);
+      // As 12 mais recentes de CADA modelo (não um corte global).
+      const rows = (
+        await Promise.all(
+          ids.map((modeloId) =>
+            this.prisma.avaliacaoVitrine.findMany({
+              where: { empresaId, status: 'APROVADA', modeloId },
+              orderBy: { criadoEm: 'desc' },
+              take: 12,
+              select: {
+                modeloId: true,
+                estrelas: true,
+                texto: true,
+                autor: true,
+                cores: true,
+                fotos: true,
+              },
+            }),
+          ),
+        )
+      ).flat();
       for (const r of rows) {
         const l = avaliacoes.get(r.modeloId) ?? [];
         if (l.length >= 12) continue;
@@ -304,6 +321,7 @@ export class VitrinePublicaService {
         ...m,
         combinaCom: pares.get(m.id) ?? [],
         avaliacoes: avaliacoes.get(m.id) ?? [],
+        avaliacoesTotal: totalAvaliacoes.get(m.id) ?? 0,
         /** cor → tamanho → disponível. null = vitrine não controla estoque. */
         estoque: respeita ? (estoquePorModelo.get(m.id) ?? {}) : null,
       })),
