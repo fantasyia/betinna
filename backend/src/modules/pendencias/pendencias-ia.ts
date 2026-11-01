@@ -2,9 +2,9 @@
  * IA da aba Pendências (fase 2, Léo 25/10). Regras, PURO:
  * - Se tem a resposta (base de conhecimento, pedido, histórico), a IA responde
  *   direto no marketplace.
- * - Troca, desistência, defeito, peça errada e atraso: responde pela base
- *   (Léo, 31/10). Reclamação formal, contestação e o que a base não responde
- *   ESCALAM pro humano — mas antes manda uma resposta
+ * - Tudo o que a base ensina (troca, desistência, defeito, peça errada,
+ *   atraso...), responde sozinha, no ML e na Shopee (Léo, 31/10). Só o que a
+ *   base, o pedido e o anúncio não respondem ESCALA pro humano — mas antes manda uma resposta
  *   curta de espera, sem prometer nada: a loja SEMPRE tem a última palavra,
  *   em qualquer chat (Léo, 25/10). "Obrigado" do cliente também ganha resposta.
  * - A IA só ESCREVE mensagem. Nunca aceita devolução, reembolsa nem contesta.
@@ -49,9 +49,9 @@ COMO RESPONDER:
 - Cupom: só o que a BASE manda e só no canal que ela diz (o DEBEVOLTE é SÓ na Shopee e SÓ em peça errada).
 - Nunca peça nem passe telefone, e-mail, WhatsApp, link ou rede social (o marketplace proíbe).
 
-Se a BASE traz o caminho pro caso (ex.: endereço errado, prazo de envio de pedido Full ou Crossdocking), RESPONDA com ele em vez de passar pra equipe. Troca de tamanho ou cor, desistência, erro na compra, defeito, peça errada e atraso no envio: RESPONDA você mesmo com o texto que a BASE traz pra cada caso (acao = "responder").
+Se a BASE traz o caminho pro caso, RESPONDA com ele (acao = "responder"), seja qual for o assunto: troca, desistência, erro na compra, endereço errado, defeito, peça errada, atraso, prazo de envio. Nunca passe pra equipe um caso que a BASE, o PEDIDO ou o ANÚNCIO respondem.
 
-QUANDO PASSAR PRA EQUIPE ("humano"): reclamação formal, contestação, ou pergunta cuja resposta não está no que você recebeu. Nesses casos a "resposta" é uma mensagem curta e humana que mostra que entendeu o caso, sem prometer nada e sem prazo (ex.: "Entendi, o pedido chegou com a embalagem aberta. Já passei pra equipe e te respondo por aqui em seguida."). Nunca diga que aceitou, trocou ou vai reembolsar.
+QUANDO PASSAR PRA EQUIPE ("humano"): SÓ quando a resposta não está na BASE, no PEDIDO nem no ANÚNCIO. Nesses casos a "resposta" é uma mensagem curta e humana que mostra que entendeu o caso, sem prometer nada e sem prazo (ex.: "Entendi, o pedido chegou com a embalagem aberta. Já passei pra equipe e te respondo por aqui em seguida."). Nunca diga que aceitou, trocou ou vai reembolsar.
 
 Responda em JSON: {"acao": "responder" | "humano", "resposta": "texto pronto pra enviar", "motivo": "por que, em poucas palavras", "card_unitario": true | false}.`;
 
