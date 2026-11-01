@@ -313,12 +313,12 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     color: '#222222',
     icon: '🛍️',
     description:
-      'Pedidos de venda e devoluções da Shein no app. A Shein libera o acesso à API pelo Open Platform ' +
-      '(open.sheincorp.com) ou pelo contato da loja na Shein: peça o openKeyId e o secretKey da loja e cole aqui.',
+      'Pedidos de venda da Shein no app. No Open Platform (open.sheincorp.com), copie o ID e o segredo ' +
+      'do aplicativo e cole aqui; depois clique em "Autorizar a loja" e aprove na Shein.',
     connectMode: 'credentials',
     credentialFields: [
-      { name: 'openKeyId', label: 'openKeyId da loja' },
-      { name: 'secretKey', label: 'secretKey da loja', type: 'password' },
+      { name: 'appId', label: 'ID do aplicativo (App ID)' },
+      { name: 'appSecret', label: 'Segredo do aplicativo (App Secret)', type: 'password' },
     ],
     atalho: { rotulo: 'Ver os pedidos →', rota: '/pedidos-marketplace' },
   },
@@ -831,6 +831,9 @@ function ServicoCard({
         ) : (
           <>
             {servico === 'tiny' && <SyncTinyButton onDone={onRefetch} />}
+            {servico === 'shein' && (
+              <AutorizarSheinButton autorizada={!!conexao.externalAccountId} onDone={onRefetch} />
+            )}
             {meta.atalho && (
               <a
                 href={meta.atalho.rota}
@@ -925,6 +928,58 @@ function ServicoLinha({
         </span>
       )}
     </div>
+  );
+}
+
+/** Shein: depois do par do aplicativo, a loja aprova o app na Shein (popup). */
+function AutorizarSheinButton({ autorizada, onDone }: { autorizada: boolean; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    function handler(e: MessageEvent) {
+      const d = e.data as { type?: string; ok?: boolean } | null;
+      if (!d || d.type !== 'shein-oauth') return;
+      setBusy(false);
+      if (d.ok) onDone();
+      else setErro('A Shein não autorizou. Veja a mensagem no popup.');
+    }
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [onDone]);
+
+  async function abrir() {
+    setBusy(true);
+    setErro(null);
+    try {
+      const r = await api.get<{ url: string }>('/integracoes/shein/oauth/start');
+      const popup = window.open(r.url, 'shein-oauth', 'width=900,height=760');
+      if (!popup) throw new Error('Não foi possível abrir o popup — desbloqueie no navegador');
+      const t = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(t);
+          setBusy(false);
+        }
+      }, 1000);
+    } catch (err) {
+      setErro(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Falha');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="shein-autorizar"
+        onClick={abrir}
+        disabled={busy}
+        className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+      >
+        {busy ? 'Aguardando a Shein…' : autorizada ? 'Autorizar de novo' : 'Autorizar a loja'}
+      </button>
+      {erro && <span className="text-[11px] self-center text-danger">{erro}</span>}
+    </>
   );
 }
 

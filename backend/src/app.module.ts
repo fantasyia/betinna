@@ -47,6 +47,7 @@ import { PendenciasModule } from '@modules/pendencias/pendencias.module';
 import { PedidosMarketplaceModule } from '@modules/pedidos-marketplace/pedidos-marketplace.module';
 import { KitsModule } from '@modules/kits/kits.module';
 import { DafitiModule } from '@integrations/dafiti/dafiti.module';
+import { SheinModule } from '@integrations/shein/shein.module';
 import { AvaliacoesModule } from '@modules/avaliacoes/avaliacoes.module';
 import { RotasApiModule } from '@modules/rotas-api/rotas-api.module';
 import { AdminModule } from '@modules/admin/admin.module';
@@ -279,6 +280,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     PedidosMarketplaceModule,
     KitsModule,
     DafitiModule,
+    SheinModule,
     AvaliacoesModule,
     RotasApiModule,
     LeadsModule,

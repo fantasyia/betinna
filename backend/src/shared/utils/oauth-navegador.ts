@@ -31,6 +31,9 @@ function stateDaUrl(url: string): string | null {
     // Shopee: o state vai DENTRO do redirect_uri (o provedor preserva e devolve).
     const redirect = u.searchParams.get('redirect') ?? u.searchParams.get('redirect_uri');
     if (redirect) return new URL(redirect).searchParams.get('state');
+    // Shein: a página de autorização é rota de hash (#/empower?...&state=...).
+    const hash = u.hash.split('?')[1];
+    if (hash) return new URLSearchParams(hash).get('state');
   } catch {
     /* URL inválida → sem state */
   }
