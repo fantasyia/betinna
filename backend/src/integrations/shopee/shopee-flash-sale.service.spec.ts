@@ -133,3 +133,41 @@ describe('Oferta Relâmpago Shopee (31/10)', () => {
     );
   });
 });
+
+describe('Preço de anúncio Shopee (01/11)', () => {
+  it('manda price_list por model (sem variação = 0) e devolve aceitos e recusados', async () => {
+    const { svc, shopee } = montar();
+    shopee.postShop.mockResolvedValueOnce({
+      response: {
+        success_list: [{ model_id: 11, original_price: 59.9 }],
+        failure_list: [{ model_id: 12, failed_reason: 'price too low' }],
+      },
+    });
+    const r = await svc.atualizarPreco(user as never, 99, [
+      { model_id: 11, preco: 59.9 },
+      { model_id: 12, preco: 1 },
+    ]);
+    expect(shopee.postShop).toHaveBeenCalledWith('emp1', '/api/v2/product/update_price', {
+      item_id: 99,
+      price_list: [
+        { model_id: 11, original_price: 59.9 },
+        { model_id: 12, original_price: 1 },
+      ],
+    });
+    expect(r.aceitos).toHaveLength(1);
+    expect(r.recusados[0].failed_reason).toBe('price too low');
+    await svc.atualizarPreco(user as never, 5, [{ preco: 30 }]);
+    expect(shopee.postShop.mock.calls[1][2]).toEqual({
+      item_id: 5,
+      price_list: [{ model_id: 0, original_price: 30 }],
+    });
+  });
+
+  it('REP não muda preço (403) e não chama a Shopee', async () => {
+    const { svc, shopee } = montar();
+    await expect(
+      svc.atualizarPreco({ ...user, role: 'REP' } as never, 99, [{ preco: 10 }]),
+    ).rejects.toThrow(/diretor ou admin/);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+});

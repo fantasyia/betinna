@@ -119,6 +119,31 @@ export class ShopeeFlashSaleService {
     });
   }
 
+  /**
+   * Preço de anúncio (product/update_price), por model; anúncio sem variação
+   * usa model_id 0 — 01/11, pra tabela nova da Shopee. MEXE NA LOJA: só com o
+   * "pode subir" do Léo pro plano exato. Devolve o que a Shopee aceitou e recusou.
+   */
+  async atualizarPreco(
+    user: AuthenticatedUser,
+    itemId: number,
+    models: Array<{ model_id?: number; preco: number }>,
+  ) {
+    const r = await this.shopee.postShop<{
+      response?: {
+        success_list?: Array<{ model_id: number; original_price: number }>;
+        failure_list?: Array<{ model_id: number; failed_reason: string }>;
+      };
+    }>(this.empresa(user), '/api/v2/product/update_price', {
+      item_id: itemId,
+      price_list: models.map((m) => ({ model_id: m.model_id ?? 0, original_price: m.preco })),
+    });
+    return {
+      aceitos: r.response?.success_list ?? [],
+      recusados: r.response?.failure_list ?? [],
+    };
+  }
+
   /** 1 = ativa · 2 = desativa. */
   status(user: AuthenticatedUser, flashSaleId: number, status: 1 | 2) {
     return this.shopee.postShop(this.empresa(user), `${P}/update_shop_flash_sale`, {

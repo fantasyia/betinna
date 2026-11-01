@@ -33,6 +33,17 @@ const listarSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 const horariosSchema = z.object({ start_time: id, end_time: id });
+const precoSchema = z.object({
+  models: z
+    .array(
+      z.object({
+        model_id: z.number().int().min(0).optional(),
+        preco: z.number().positive().max(100_000),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
 
 /**
  * Oferta Relâmpago da Shopee (Léo, 31/10). Escopo de token `shopee-promocoes`.
@@ -108,6 +119,16 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(statusSchema)) dto: z.infer<typeof statusSchema>,
   ) {
     return this.svc.status(user, fsId, dto.status);
+  }
+
+  @Post('anuncios/:itemId/preco')
+  @ApiOperation({ summary: 'Muda o preço do anúncio por model (sem variação = model_id 0)' })
+  preco(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(precoSchema)) dto: z.infer<typeof precoSchema>,
+  ) {
+    return this.svc.atualizarPreco(user, itemId, dto.models);
   }
 
   @Get('anuncios/:itemId/modelos')

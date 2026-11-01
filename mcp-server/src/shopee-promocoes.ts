@@ -8,6 +8,9 @@
  *
  * Cupons (shopee_cupom_*, 31/10): mesmo escopo, mesma regra — ler é livre;
  * criar, editar, encerrar e apagar só com o OK do Léo.
+ *
+ * Preço (shopee_preco_atualizar, 01/11): muda o preço do anúncio por model —
+ * só com o "pode subir" do Léo pro plano exato.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -153,6 +156,30 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
     },
     seguro(async ({ flashSaleId, status }: { flashSaleId: number; status: 1 | 2 }) =>
       ok(await api.post(`/shopee-promocoes/flash-sale/${flashSaleId}/status`, { status })),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_preco_atualizar",
+    {
+      description:
+        "MUDA O PREÇO de um anúncio Shopee por model (variação); anúncio sem variação = sem model_id. Responde o que a Shopee aceitou e recusou. Leia antes com shopee_anuncio_modelos. MEXE NA LOJA — só com o OK do Léo pro plano exato (preço antigo → novo).",
+      inputSchema: {
+        itemId: id,
+        models: z
+          .array(
+            z.object({
+              model_id: z.number().int().min(0).optional().describe("Ausente = anúncio sem variação"),
+              preco: z.number().positive().describe("Preço novo em reais (original_price)"),
+            }),
+          )
+          .min(1)
+          .max(50),
+      },
+      annotations: mexe,
+    },
+    seguro(async ({ itemId, models }: { itemId: number; models: unknown[] }) =>
+      ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/preco`, { models })),
     ),
   );
 
