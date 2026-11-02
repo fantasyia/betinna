@@ -95,6 +95,15 @@ describe('PrecificacaoService', () => {
     expect(gravado.marca).toEqual({ nome: 'X' });
   });
 
+  it('salvar taxas: campo ausente fica como está, null apaga', async () => {
+    const { svc, tx } = montar({
+      precificacao: { ativa: true, impostoPct: 6, pixFixoPorPedido: 1.99, cartaoPct: 2.99 },
+    });
+    await svc.salvarTaxas(user as never, { impostoPct: 8.54, cartaoPct: null });
+    const p = tx.empresa.update.mock.calls[0][0].data.config.precificacao;
+    expect(p).toMatchObject({ impostoPct: 8.54, pixFixoPorPedido: 1.99, cartaoPct: null });
+  });
+
   it('o cliente não consegue ligar a flag mandando `ativa`', async () => {
     const { svc, tx } = montar({ precificacao: { ativa: true } });
     await svc.salvarTaxas(user as never, { ativa: false } as never);

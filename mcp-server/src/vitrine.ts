@@ -831,7 +831,8 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
   server.registerTool(
     "precificacao_taxas_atualizar",
     {
-      description: "Taxas da empresa usadas na calculadora (% de 0 a 100; valores em R$).",
+      description:
+        "Taxas da empresa usadas na calculadora (% de 0 a 100; valores em R$). Campo ausente = fica como está; null = apaga.",
       inputSchema: {
         impostoPct: pct,
         pixPct: pct,

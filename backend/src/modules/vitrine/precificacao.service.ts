@@ -172,7 +172,17 @@ export class PrecificacaoService {
       const atual = (rows[0]?.config ?? {}) as Record<string, unknown>;
       const secao = (atual.precificacao ?? {}) as SecaoPrecificacao;
       // `ativa` NÃO vem do cliente: quem liga é a migration.
-      const nova: SecaoPrecificacao = { ...TAXAS_VAZIAS, ...dto, ativa: secao.ativa };
+      // Campo ausente = fica como está; null = apaga (02/11: o MCP mandou só o
+      // imposto e zerou as outras taxas).
+      const enviados = Object.fromEntries(
+        Object.entries(dto).filter(([, v]) => v !== undefined),
+      ) as TaxasPrecificacaoDto;
+      const nova: SecaoPrecificacao = {
+        ...TAXAS_VAZIAS,
+        ...secao,
+        ...enviados,
+        ativa: secao.ativa,
+      };
       await tx.empresa.update({
         where: { id: empresaId },
         data: { config: { ...atual, precificacao: nova } as Prisma.InputJsonValue },
