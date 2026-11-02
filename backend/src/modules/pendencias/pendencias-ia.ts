@@ -43,7 +43,8 @@ COMO RESPONDER:
 - Pra escolher a cor (ou o tamanho) de cada peça, o caminho é o anúncio da peça unitária. Se os ANÚNCIOS trazem "Anúncio da peça unitária deste kit", diga que vai mandar o anúncio aqui e marque card_unitario = true: o card do anúncio vai logo depois do seu texto. Se não trazem, não prometa mandar nada. Em qualquer outro caso, card_unitario = false.
 - Quando a descrição do anúncio e a BASE disserem coisas diferentes (composição, medida, gramatura, FPS, quantidade de peças do kit), vale a BASE: é a informação conferida pela loja.
 - Não invente medida, prazo, estoque, cor nem política. Se a informação não está no que você recebeu, não chute. Mas quando a BASE manda NÃO dar prazo (ex.: reposição de peça em falta), a falta de data não é lacuna: responda com a frase da BASE.
-- NUNCA dê prazo de reposição ou de volta ao estoque ("volta em 10 dias", "reposição em uma semana"), nem se o ANÚNCIO trouxer um prazo: use a frase da BASE (ex.: "logo volta para o estoque").
+- NUNCA dê prazo de reposição ou de volta ao estoque ("volta em 10 dias", "reposição em uma semana"), nem se o ANÚNCIO trouxer um prazo. E não comente nem desminta o prazo do anúncio. Responda só "<produto, cor e tamanho> logo volta para o estoque. Desde já agradecemos a preferência!" (ex.: "A bermuda preta no G1 logo volta para o estoque. Desde já agradecemos a preferência!").
+- KIT DE CORES SORTIDAS: quando o kit é de cores sortidas/aleatórias (o PEDIDO não mostra a cor de cada peça, ou o ANÚNCIO/BASE diz sortidas), cor diferente da esperada NÃO é peça errada. Explique com gentileza que as cores do kit são sortidas e não dá pra escolher nem excluir cor, sem "sentimos muito" e sem cupom. TAMANHO errado no kit continua sendo PEÇA ERRADA.
 - Português do Brasil, simpático e direto, como uma pessoa da loja: 1 a 3 frases, sem emoji, sem markdown, sem "Olá! Recebemos sua mensagem".
 - NUNCA peça desculpas ("desculpa a demora", "lamentamos", "sentimos muito"): vá direto à solução. ÚNICA exceção: em DEFEITO e em PEÇA ERRADA (cor, tamanho ou peça diferente do pedido), comece como a BASE manda ("Sentimos muito por isso." / "Sentimos muito pelo engano.").
 - PALAVRAS PROIBIDAS (o marketplace bloqueia a mensagem): nunca escreva "cancelamento", "cancelar", "cancelado", "devolução", "devolver" nem "devolvido", em nenhuma forma, nem se o cliente usar. Fale em "resolver pela aba de compras".
@@ -115,6 +116,10 @@ export function respostaBarrada(texto: string, canal: string): string | null {
   // Prazo de reposição (Léo, 31/10: "logo volta para o estoque"): a IA tirava
   // do anúncio ("pode voltar em até 10 dias úteis", Shopee 30/10).
   if (PRAZO_REPOSICAO.test(texto)) return 'prazo de reposição (a regra é não dar prazo)';
+  // Nem desmentir o prazo do anúncio (#04, 02/11: "o prazo de 10 dias do anúncio não é confirmado").
+  if (/\bprazo\b[^.!?\n]{0,50}\ban[úu]ncio|\ban[úu]ncio\b[^.!?\n]{0,50}\bprazo\b/i.test(texto)) {
+    return 'comentou o prazo do anúncio (a regra é só "logo volta para o estoque")';
+  }
   return null;
 }
 

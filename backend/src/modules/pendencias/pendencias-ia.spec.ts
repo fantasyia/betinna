@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   respostaBarrada,
+  PROMPT_PENDENCIA,
   ESPERA_PADRAO,
   baseParaConversa,
   cardsDoHistorico,
@@ -180,5 +181,27 @@ describe('respostaBarrada: prazo de reposição (Léo, 31/10)', () => {
     );
     expect(respostaBarrada('Logo volta para o estoque!', 'MARKETPLACE_SHOPEE')).toBeNull();
     expect(respostaBarrada('O envio é feito em até 2 dias úteis.', 'MARKETPLACE_ML')).toBeNull();
+  });
+});
+
+describe('respostaBarrada: não comentar o prazo do anúncio (#04, 02/11)', () => {
+  it('desmentir o prazo do anúncio barra; a frase da regra passa', () => {
+    expect(
+      respostaBarrada(
+        'Logo volta para o estoque. O prazo de 10 dias do anúncio não é confirmado.',
+        'MARKETPLACE_SHOPEE',
+      ),
+    ).toMatch(/prazo do anúncio/);
+    expect(
+      respostaBarrada(
+        'A bermuda preta no G1 logo volta para o estoque. Desde já agradecemos a preferência!',
+        'MARKETPLACE_SHOPEE',
+      ),
+    ).toBeNull();
+  });
+
+  it('o prompt manda kit de cores sortidas NÃO ser peça errada e o fecho da reposição', () => {
+    expect(PROMPT_PENDENCIA).toMatch(/KIT DE CORES SORTIDAS/);
+    expect(PROMPT_PENDENCIA).toMatch(/Desde já agradecemos a preferência/);
   });
 });
