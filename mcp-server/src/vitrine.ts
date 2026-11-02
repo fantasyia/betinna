@@ -865,7 +865,8 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     {
       description:
         "Custo por peça e preços de UMA linha de um modelo (Entrada/Volume/Atacadão e revenda sugerida). " +
-        "O id é o da linha DO MODELO (precificacao_ver ou vitrine_modelo_ver → linhas[].id).",
+        "O id é o da linha DO MODELO (precificacao_ver ou vitrine_modelo_ver → linhas[].id). " +
+        "Campo ausente = fica como está; null = apaga.",
       inputSchema: {
         modeloLinhaId: z.string(),
         custoPorPeca: preco,
@@ -876,8 +877,23 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    seguro(async ({ modeloLinhaId, ...dto }: Record<string, unknown> & { modeloLinhaId: string }) =>
-      ok(await api.put(`/precificacao/linhas/${seg(modeloLinhaId)}`, dto)),
-    ),
+    seguro(async ({ modeloLinhaId, ...dto }: Record<string, unknown> & { modeloLinhaId: string }) => {
+      // A rota grava a linha INTEIRA (ausente vira null): completa com o que já está salvo
+      // (02/11: mandar só o custo apagou os preços da Polo).
+      const atual = (await api.get("/precificacao")) as {
+        modelos: Array<{ linhas: Array<Record<string, unknown> & { id: string; custo: { manual: unknown } }> }>;
+      };
+      const linha = atual.modelos.flatMap((m) => m.linhas).find((l) => l.id === modeloLinhaId);
+      if (!linha) throw new Error(`Linha do modelo ${modeloLinhaId} não encontrada`);
+      const salvo: Record<string, unknown> = {
+        custoPorPeca: linha.custo.manual,
+        precoEntrada: linha.precoEntrada,
+        precoVolume: linha.precoVolume,
+        precoAtacadao: linha.precoAtacadao,
+        precoSugerido: linha.precoSugerido,
+      };
+      for (const [k, v] of Object.entries(dto)) if (v !== undefined) salvo[k] = v;
+      return ok(await api.put(`/precificacao/linhas/${seg(modeloLinhaId)}`, salvo));
+    }),
   );
 }
