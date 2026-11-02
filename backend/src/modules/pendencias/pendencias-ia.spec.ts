@@ -166,3 +166,19 @@ describe('respostaBarrada (31/10): o que o marketplace bloqueia', () => {
     expect(respostaBarrada(t, 'MARKETPLACE_ML')).toMatch(/DEBEVOLTE/);
   });
 });
+
+describe('respostaBarrada: prazo de reposição (Léo, 31/10)', () => {
+  it('barra prazo de volta ao estoque; prazo de envio e "logo volta" passam', () => {
+    expect(
+      respostaBarrada(
+        'A G1 do modelo Liso pode voltar em até 10 dias úteis, conforme informado no anúncio.',
+        'MARKETPLACE_SHOPEE',
+      ),
+    ).toMatch(/reposição/);
+    expect(respostaBarrada('A reposição chega em uma semana.', 'MARKETPLACE_ML')).toMatch(
+      /reposição/,
+    );
+    expect(respostaBarrada('Logo volta para o estoque!', 'MARKETPLACE_SHOPEE')).toBeNull();
+    expect(respostaBarrada('O envio é feito em até 2 dias úteis.', 'MARKETPLACE_ML')).toBeNull();
+  });
+});

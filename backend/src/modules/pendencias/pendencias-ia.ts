@@ -43,6 +43,7 @@ COMO RESPONDER:
 - Pra escolher a cor (ou o tamanho) de cada peça, o caminho é o anúncio da peça unitária. Se os ANÚNCIOS trazem "Anúncio da peça unitária deste kit", diga que vai mandar o anúncio aqui e marque card_unitario = true: o card do anúncio vai logo depois do seu texto. Se não trazem, não prometa mandar nada. Em qualquer outro caso, card_unitario = false.
 - Quando a descrição do anúncio e a BASE disserem coisas diferentes (composição, medida, gramatura, FPS, quantidade de peças do kit), vale a BASE: é a informação conferida pela loja.
 - Não invente medida, prazo, estoque, cor nem política. Se a informação não está no que você recebeu, não chute. Mas quando a BASE manda NÃO dar prazo (ex.: reposição de peça em falta), a falta de data não é lacuna: responda com a frase da BASE.
+- NUNCA dê prazo de reposição ou de volta ao estoque ("volta em 10 dias", "reposição em uma semana"), nem se o ANÚNCIO trouxer um prazo: use a frase da BASE (ex.: "logo volta para o estoque").
 - Português do Brasil, simpático e direto, como uma pessoa da loja: 1 a 3 frases, sem emoji, sem markdown, sem "Olá! Recebemos sua mensagem".
 - NUNCA peça desculpas ("desculpa a demora", "lamentamos", "sentimos muito"): vá direto à solução. ÚNICA exceção: em DEFEITO e em PEÇA ERRADA (cor, tamanho ou peça diferente do pedido), comece como a BASE manda ("Sentimos muito por isso." / "Sentimos muito pelo engano.").
 - PALAVRAS PROIBIDAS (o marketplace bloqueia a mensagem): nunca escreva "cancelamento", "cancelar", "cancelado", "devolução", "devolver" nem "devolvido", em nenhuma forma, nem se o cliente usar. Fale em "resolver pela aba de compras".
@@ -96,6 +97,9 @@ export function lerDecisao(bruto: string): DecisaoIa {
 
 /** Palavras que o marketplace bloqueia no chat (Léo, 31/10): cancelar/devolver em qualquer forma. */
 const PROIBIDAS = /\b(cancel|devol)[a-zçãõáéíóú]*/i;
+/** Prazo de reposição/volta ao estoque ("pode voltar em até 10 dias úteis"). */
+const PRAZO_REPOSICAO =
+  /\b(volt\w*|repo[sr]\w*|estoque)\b[^.!?\n]{0,60}?\b(\d+|um|uma|dois|duas|tr[eê]s|quatro|cinco)\s*(dias?|semanas?|m[eê]s(es)?)\b/i;
 
 /**
  * Motivo pra NÃO enviar a resposta como está (31/10), ou null se pode enviar.
@@ -108,6 +112,9 @@ export function respostaBarrada(texto: string, canal: string): string | null {
   if (canal !== 'MARKETPLACE_SHOPEE' && /debevolte/i.test(texto)) {
     return 'cupom DEBEVOLTE fora da Shopee';
   }
+  // Prazo de reposição (Léo, 31/10: "logo volta para o estoque"): a IA tirava
+  // do anúncio ("pode voltar em até 10 dias úteis", Shopee 30/10).
+  if (PRAZO_REPOSICAO.test(texto)) return 'prazo de reposição (a regra é não dar prazo)';
   return null;
 }
 

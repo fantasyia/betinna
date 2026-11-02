@@ -22,6 +22,7 @@ import { registrarLeituraErp } from "./leitura-erp.js";
 import { registrarFinanceiroTotal } from "./financeiro-total.js";
 import { registrarShopeePromocoes } from "./shopee-promocoes.js";
 import { registrarSheinAnuncios } from "./shein-anuncios.js";
+import { registrarPendenciasIa } from "./pendencias-ia.js";
 import { registrarApiTotal } from "./api-total.js";
 import { registrarProducaoErp } from "./producao-erp.js";
 
@@ -4482,6 +4483,7 @@ registrarLeituraErp(server, { ok, erro, seguro });
 registrarFinanceiroTotal(server, { ok, erro, seguro });
 registrarShopeePromocoes(server, { ok, erro, seguro });
 registrarSheinAnuncios(server, { ok, erro, seguro });
+registrarPendenciasIa(server, { ok, erro, seguro });
 registrarApiTotal(server, { ok, erro, seguro });
 registrarProducaoErp(server, { ok, erro, seguro });
 

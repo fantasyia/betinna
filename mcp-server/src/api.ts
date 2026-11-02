@@ -129,7 +129,12 @@ async function interpretar<T>(res: Response): Promise<T> {
   return json.data as T;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  timeoutMs = TIMEOUT_MS,
+): Promise<T> {
   // H-2 (13/09/2026): recusa path que a URL normalizaria pra outro lugar
   // (`#`, `..`, `//`) — segunda camada, atrás do `seg()` dos call sites.
   const res = await fetch(assertCaminhoSeguro(BASE, path), {
@@ -141,7 +146,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body !== undefined ? JSON.stringify(body) : undefined,
     // Sem timeout, uma API pendurada travava a tool (e o agente) pra sempre
     // (auditoria 13/09, H-6).
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     // A API não redireciona; um 30x só apareceria por proxy/URL errada — e
     // seguir levaria o Bearer junto pro destino (auditoria 29/09/2026).
     redirect: 'error',
@@ -164,6 +169,9 @@ async function postForm<T>(path: string, form: FormData): Promise<T> {
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  /** POST que demora (IA gerando várias respostas): 2 min em vez de 30 s. */
+  postLongo: <T>(path: string, body?: unknown) =>
+    request<T>('POST', path, body, TIMEOUT_UPLOAD_MS),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),

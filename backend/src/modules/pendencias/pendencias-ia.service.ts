@@ -239,16 +239,7 @@ export class PendenciasIaService implements OnModuleInit {
       if (trava !== 'OK') return 'pulada';
     }
 
-    let { decisao, modelo, anuncios } = await this.decidir(empresaId, p, tipo, historico);
-    // Palavra que o marketplace bloqueia (ou cupom fora da Shopee): gera de novo
-    // UMA vez avisando o porquê; se insistir, vai pra equipe com a espera padrão
-    // — o texto barrado nunca é enviado (Léo, 31/10).
-    let barrada = respostaBarrada(decisao.resposta, p.canal);
-    if (barrada) {
-      ({ decisao, modelo, anuncios } = await this.decidir(empresaId, p, tipo, historico, barrada));
-      barrada = respostaBarrada(decisao.resposta, p.canal);
-      if (barrada) decisao = { acao: 'humano', resposta: ESPERA_PADRAO, motivo: barrada };
-    }
+    const { decisao, modelo, anuncios } = await this.decidirFiltrado(empresaId, p, tipo, historico);
 
     // Envia SEMPRE (resposta ou espera): a loja tem a última palavra.
     let erro: string | null = null;
@@ -372,7 +363,7 @@ export class PendenciasIaService implements OnModuleInit {
       const ate = historico.slice(0, fim);
       if (!ate.length) continue;
       try {
-        const { decisao, anuncios } = await this.decidir(
+        const { decisao, anuncios } = await this.decidirFiltrado(
           empresaId,
           p,
           p.tipo as TipoPendenciaIa,
@@ -392,6 +383,72 @@ export class PendenciasIaService implements OnModuleInit {
       }
     }
     return out;
+  }
+
+  /**
+   * `decidir` + o filtro do que o marketplace bloqueia (31/10): texto barrado
+   * gera de novo UMA vez avisando o porquê; se insistir, vai pra equipe com a
+   * espera padrão — o texto barrado nunca é enviado. `barrada` diz o 1º motivo.
+   */
+  private async decidirFiltrado(
+    empresaId: string,
+    p: { canal: string; titulo: string; pedido: string | null },
+    tipo: TipoPendenciaIa,
+    historico: MensagemHistorico[],
+  ) {
+    let r = await this.decidir(empresaId, p, tipo, historico);
+    const primeira = respostaBarrada(r.decisao.resposta, p.canal);
+    if (primeira) {
+      r = await this.decidir(empresaId, p, tipo, historico, primeira);
+      const deNovo = respostaBarrada(r.decisao.resposta, p.canal);
+      if (deNovo)
+        r = { ...r, decisao: { acao: 'humano', resposta: ESPERA_PADRAO, motivo: deNovo } };
+    }
+    return { ...r, barrada: primeira };
+  }
+
+  /**
+   * Casos de TESTE (#04 SAC, 02/11): conversas escritas no pedido, sem
+   * pendência nem conversa real. Mesmo caminho da IA de verdade (base, prompt e
+   * filtro de palavra proibida); nada é enviado nem gravado. Em paralelo, pra
+   * caber no tempo do MCP.
+   */
+  async simularCasos(
+    empresaId: string,
+    casos: Array<{
+      canal: 'MARKETPLACE_SHOPEE' | 'MARKETPLACE_ML';
+      titulo?: string;
+      mensagens: Array<{ de: 'cliente' | 'loja'; texto: string }>;
+    }>,
+  ) {
+    return Promise.all(
+      casos.map(async (c, i) => {
+        const historico = c.mensagens.map((m) => ({ daLoja: m.de === 'loja', texto: m.texto }));
+        const p = { canal: c.canal, titulo: c.titulo ?? `Caso de teste ${i + 1}`, pedido: null };
+        try {
+          const { decisao, barrada } = await this.decidirFiltrado(
+            empresaId,
+            p,
+            'MENSAGEM',
+            historico,
+          );
+          return {
+            caso: i + 1,
+            canal: c.canal,
+            titulo: p.titulo,
+            ...decisao,
+            barradaAntes: barrada,
+          };
+        } catch (err) {
+          return {
+            caso: i + 1,
+            canal: c.canal,
+            titulo: p.titulo,
+            erro: (err instanceof Error ? err.message : String(err)).slice(0, 300),
+          };
+        }
+      }),
+    );
   }
 
   /** Conversa no app que corresponde à pendência. */

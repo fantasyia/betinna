@@ -360,3 +360,36 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
     expect(t.bot.gerarRespostaIa).not.toHaveBeenCalled();
   });
 });
+
+describe('simularCasos (#04 SAC, 02/11): casos de teste no corpo', () => {
+  it('passa pelo filtro, devolve ação/resposta/motivo e NÃO envia nem grava nada', async () => {
+    const t = montar({ pendencias: [] });
+    t.bot.gerarRespostaIa
+      .mockResolvedValueOnce({
+        texto:
+          '{"acao":"responder","resposta":"Pode pedir a devolução no app.","motivo":"troca","card_unitario":false}',
+        modelo: 'm',
+      } as never)
+      .mockResolvedValueOnce({
+        texto:
+          '{"acao":"responder","resposta":"Você resolve pela aba de compras.","motivo":"troca","card_unitario":false}',
+        modelo: 'm',
+      } as never);
+    const r = await t.svc.simularCasos('e1', [
+      {
+        canal: 'MARKETPLACE_ML',
+        mensagens: [{ de: 'cliente', texto: 'Quero trocar o tamanho' }],
+      },
+    ]);
+    expect(r).toEqual([
+      expect.objectContaining({
+        caso: 1,
+        acao: 'responder',
+        resposta: 'Você resolve pela aba de compras.',
+        barradaAntes: expect.stringMatching(/devolução/),
+      }),
+    ]);
+    expect(t.inbox.responderComoBot).not.toHaveBeenCalled();
+    expect(t.registros).toEqual([]);
+  });
+});

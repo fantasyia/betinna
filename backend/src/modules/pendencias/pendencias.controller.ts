@@ -9,6 +9,31 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { PendenciasService } from './pendencias.service';
 
 /** Liga/desliga a IA das pendências (e por tipo). */
+/** Casos de teste da IA (#04 SAC, 02/11): só conversa, nada vai pro marketplace. */
+const simularSchema = z
+  .object({
+    casos: z
+      .array(
+        z.object({
+          canal: z.enum(['MARKETPLACE_SHOPEE', 'MARKETPLACE_ML']),
+          titulo: z.string().trim().max(200).optional(),
+          mensagens: z
+            .array(
+              z.object({
+                de: z.enum(['cliente', 'loja']),
+                texto: z.string().trim().min(1).max(800),
+              }),
+            )
+            .min(1)
+            .max(15)
+            .refine((m) => m[m.length - 1].de === 'cliente', 'A última mensagem é do cliente'),
+        }),
+      )
+      .max(8)
+      .optional(),
+  })
+  .default({});
+
 const iaSchema = z.object({
   ativo: z.boolean(),
   desligados: z.array(z.enum(['PERGUNTA', 'MENSAGEM', 'RECLAMACAO', 'DEVOLUCAO'])).max(4),
@@ -76,10 +101,16 @@ export class PendenciasController {
 
   @Post('ia/simular')
   @ApiOperation({
-    summary: 'Testar a IA: o que ela responderia nas últimas conversas reais (não envia nada)',
+    summary:
+      'Testar a IA: sem corpo, as últimas conversas reais; com `casos`, conversas de teste (não envia nem grava nada)',
   })
-  simularIa(@CurrentUser() user: AuthenticatedUser) {
-    return this.ia.simular(this.empresa(user));
+  simularIa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(simularSchema)) dto: z.infer<typeof simularSchema>,
+  ) {
+    return dto.casos?.length
+      ? this.ia.simularCasos(this.empresa(user), dto.casos)
+      : this.ia.simular(this.empresa(user));
   }
 
   @Post(':id/resolver')
