@@ -69,6 +69,11 @@ export interface ModeloPub {
   avaliacoes?: AvaliacaoPub[];
   /** Total de avaliações aprovadas do modelo (a lista traz só as 12 mais recentes). */
   avaliacoesTotal?: number;
+  /** Este modelo é o OPCIONAL de outro (02/11, "+ emblema emborrachado"). */
+  opcionalDeId?: string | null;
+  opcionalNome?: string | null;
+  /** Opcionais deste modelo base (cada um é um modelo da vitrine). */
+  opcionais?: Array<{ modeloId: string; nome: string }>;
 }
 export interface AvaliacaoPub {
   estrelas: number;
@@ -302,19 +307,67 @@ export function inicioPeloProduto(
   v: Pick<VitrinePub, 'modelos' | 'linhas'>,
   produto: string | undefined,
   busca: string,
-): { modelo: ModeloPub; linhaId: string; corId: string | null } | null {
+): { modelo: ModeloPub; linhaId: string; corId: string | null; opcionalId: string | null } | null {
   if (!produto) return null;
-  const m =
-    v.modelos.find((x) => x.slug === produto) ??
-    v.modelos.find((x) => (x.slugsAntigos ?? []).includes(produto));
-  if (!m || m.linhas.length === 0) return null;
   const q = new URLSearchParams(busca);
+  const doSlug = (s: string | null) =>
+    s
+      ? (v.modelos.find((x) => x.slug === s) ??
+        v.modelos.find((x) => (x.slugsAntigos ?? []).includes(s)))
+      : undefined;
+  let m = doSlug(produto);
+  // Opcional (02/11): o endereço dele (ou ?opcional=) abre o BASE com a escolha marcada.
+  let opcional: ModeloPub | undefined;
+  const base = m ? baseDoOpcional(m, v) : null;
+  if (m && base) {
+    opcional = m;
+    m = base;
+  } else if (m) {
+    const o = doSlug(q.get('opcional'));
+    if (o && o.opcionalDeId === m.id) opcional = o;
+  }
+  if (!m || m.linhas.length === 0) return null;
   const pedida = q.get('linha');
   const linha =
     (pedida && m.linhas.find((l) => slugTexto(l.nome) === slugTexto(pedida))) || m.linhas[0];
   const corPedida = q.get('cor');
   const cor = corPedida ? m.cores.find((c) => slugTexto(c.nome) === slugTexto(corPedida)) : undefined;
-  return { modelo: m, linhaId: linha.linhaId, corId: cor?.id ?? null };
+  return { modelo: m, linhaId: linha.linhaId, corId: cor?.id ?? null, opcionalId: opcional?.id ?? null };
+}
+
+// ─── Opcional do produto (Léo, 02/11: "+ emblema emborrachado") ──────────────
+// O opcional é um MODELO da vitrine (SKU, estoque e preço próprios), mostrado
+// como escolha dentro do base em vez de produto separado.
+
+/** O base de um opcional publicado; null = produto normal. PURO. */
+export function baseDoOpcional(
+  m: ModeloPub,
+  v: Pick<VitrinePub, 'modelos'>,
+): ModeloPub | null {
+  if (!m.opcionalDeId) return null;
+  return v.modelos.find((x) => x.id === m.opcionalDeId) ?? null;
+}
+
+/** Os opcionais publicados de um modelo base. PURO. */
+export function opcionaisDe(m: ModeloPub, v: Pick<VitrinePub, 'modelos'>): ModeloPub[] {
+  return (m.opcionais ?? [])
+    .map((o) => v.modelos.find((x) => x.id === o.modeloId))
+    .filter((x): x is ModeloPub => !!x && x.linhas.length > 0 && x.cores.length > 0);
+}
+
+/** Quanto o opcional soma por peça na linha e faixa; null = sem preço nos dois. PURO. */
+export function acrescimoDoOpcional(
+  base: ModeloPub,
+  op: ModeloPub,
+  linhaId: string,
+  faixa: Faixa = 'entrada',
+): number | null {
+  const lb = base.linhas.find((l) => l.linhaId === linhaId);
+  const lo = op.linhas.find((l) => l.linhaId === linhaId);
+  const pb = lb ? precoNaFaixa(lb, faixa) : null;
+  const po = lo ? precoNaFaixa(lo, faixa) : null;
+  if (pb === null || po === null) return null;
+  return Math.round((po - pb) * 100) / 100;
 }
 
 export function pecasDoModelo(c: Carrinho, modeloId: string, linha?: LinhaPub): number {
@@ -685,7 +738,10 @@ export function sugestoesAntesDePagar(
   // Sem preço em nenhuma linha não entra (PED-0007, 14/10): sugerir peça que
   // não dá pra pagar online só atrapalha o fechamento.
   const comPreco = (m: ModeloPub) => m.linhas.some((l) => precoNaFaixa(l, 'atacadao') !== null);
-  const fora = v.modelos.filter((m) => !noPedido.has(m.id) && m.cores.length > 0 && comPreco(m));
+  // Opcional (02/11) não é sugerido sozinho: ele aparece dentro do base.
+  const fora = v.modelos.filter(
+    (m) => !noPedido.has(m.id) && m.cores.length > 0 && comPreco(m) && !baseDoOpcional(m, v),
+  );
   const complemento = new Set(
     v.modelos.filter((m) => noPedido.has(m.id)).flatMap((m) => m.combinaCom ?? []),
   );

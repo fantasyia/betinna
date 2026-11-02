@@ -19,6 +19,9 @@ import {
   limparCarrinho,
   corDaBolinha,
   abrirPeloRodizio,
+  acrescimoDoOpcional,
+  baseDoOpcional,
+  opcionaisDe,
   corInicial,
   coresPorEstoque,
   fotosDaLinha,
@@ -235,6 +238,10 @@ function Vitrine({
   const [corDe, setCorDe] = useState<Record<string, string>>(() =>
     inicio?.corId ? { [inicio.modelo.id]: inicio.corId } : {},
   );
+  // Opcional escolhido em cada produto base (02/11, "+ emblema"): base → modelo do opcional.
+  const [opcionalDe, setOpcionalDe] = useState<Record<string, string | null>>(() =>
+    inicio?.opcionalId ? { [inicio.modelo.id]: inicio.opcionalId } : {},
+  );
   const [carrinho, setCarrinho] = useState<Carrinho>(() => limparCarrinho(lerCarrinho(slug), v));
   const [pdp, setPdp] = useState<ModeloPub | null>(null);
   const [avaliacoesDe, setAvaliacoesDe] = useState<ModeloPub | null>(null);
@@ -381,8 +388,12 @@ function Vitrine({
   }, []);
 
   const daLinha = useMemo(
-    () => v.modelos.filter((m) => m.linhas.some((l) => l.linhaId === linhaId)),
-    [v.modelos, linhaId],
+    // Opcional (02/11) não é slide próprio: aparece como escolha dentro do base.
+    () =>
+      v.modelos.filter(
+        (m) => m.linhas.some((l) => l.linhaId === linhaId) && !baseDoOpcional(m, v),
+      ),
+    [v, linhaId],
   );
   const categorias = useMemo(() => {
     const map = new Map<string, string>();
@@ -603,16 +614,20 @@ function Vitrine({
       </div>
 
       <div className="vt-feed" ref={feed}>
-        {slides.map((m, i) => {
+        {slides.map((base, i) => {
+          // Com o opcional escolhido, o slide mostra o modelo DELE (fotos, cores,
+          // preço e grade próprios); o lugar no feed segue sendo o do base.
+          const ops = opcionaisDe(base, v).filter((o) => temLinha(o, linhaId));
+          const m = ops.find((o) => o.id === opcionalDe[base.id]) ?? base;
           const cor = corAtual(m);
           const l = linhaNoModelo(m);
-          const semALinha = m === modeloFixado;
+          const semALinha = base === modeloFixado;
           return (
             <article
-              key={m.id}
+              key={base.id}
               className="vt-slide"
-              data-modelo={m.id}
-              data-testid={`vt-slide-${m.id}`}
+              data-modelo={base.id}
+              data-testid={`vt-slide-${base.id}`}
             >
               <div className="vt-stage">
                 {semALinha && (
@@ -656,16 +671,30 @@ function Vitrine({
                     onCor={(id) => setCorDe((s) => ({ ...s, [m.id]: id }))}
                   />
                 </div>
+                {ops.length > 0 && (
+                  <EscolhaOpcional
+                    base={base}
+                    ops={ops}
+                    atual={m}
+                    linhaId={l.linhaId}
+                    onEscolher={(alvo) => {
+                      // Mesma cor da lista no outro modelo, se ele tiver.
+                      const c = alvo.cores.find((x) => x.corId && x.corId === cor.corId);
+                      if (c) setCorDe((s) => ({ ...s, [alvo.id]: c.id }));
+                      setOpcionalDe((s) => ({ ...s, [base.id]: alvo === base ? null : alvo.id }));
+                    }}
+                  />
+                )}
                 <NomeDoModelo nome={m.nome} base={22} />
-                {(m.avaliacoes?.length ?? 0) > 0 && (
+                {(base.avaliacoes?.length ?? 0) > 0 && (
                   <button
                     type="button"
                     className="vt-av-resumo"
-                    onClick={() => setAvaliacoesDe(m)}
-                    data-testid={`vt-avaliacoes-${m.id}`}
+                    onClick={() => setAvaliacoesDe(base)}
+                    data-testid={`vt-avaliacoes-${base.id}`}
                   >
-                    <span aria-hidden="true">★★★★★</span> {totalAvaliacoes(m)}{' '}
-                    {totalAvaliacoes(m) === 1 ? 'avaliação' : 'avaliações'} de clientes
+                    <span aria-hidden="true">★★★★★</span> {totalAvaliacoes(base)}{' '}
+                    {totalAvaliacoes(base) === 1 ? 'avaliação' : 'avaliações'} de clientes
                   </button>
                 )}
                 {!semALinha && <Selo texto={seloDa(l.linhaId)} />}
@@ -807,6 +836,52 @@ const capaDe = (m: ModeloPub): string | undefined => {
 };
 
 /** "Monte o conjunto": o par do modelo, com a mesma grade quando já tem peça. */
+/**
+ * "Sem emblema / Com emblema (+R$ 10,00)" (Léo, 02/11): troca o slide pro
+ * modelo do opcional na hora. O acréscimo é por peça, na faixa de entrada.
+ */
+function EscolhaOpcional({
+  base,
+  ops,
+  atual,
+  linhaId,
+  onEscolher,
+}: {
+  base: ModeloPub;
+  ops: ModeloPub[];
+  atual: ModeloPub;
+  linhaId: string;
+  onEscolher: (m: ModeloPub) => void;
+}) {
+  return (
+    <div className="vt-opcional" role="group" aria-label="Opcional" data-testid={`vt-opcional-${base.id}`}>
+      <button
+        type="button"
+        aria-pressed={atual === base}
+        onClick={() => onEscolher(base)}
+        data-testid={`vt-opcional-sem-${base.id}`}
+      >
+        Sem {ops.length === 1 ? (ops[0].opcionalNome ?? 'opcional') : 'opcional'}
+      </button>
+      {ops.map((o) => {
+        const mais = acrescimoDoOpcional(base, o, linhaId);
+        return (
+          <button
+            key={o.id}
+            type="button"
+            aria-pressed={atual === o}
+            onClick={() => onEscolher(o)}
+            data-testid={`vt-opcional-com-${o.id}`}
+          >
+            Com {o.opcionalNome ?? 'opcional'}
+            {mais !== null && mais > 0 && <small> +{formatMoeda(mais)}</small>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function MonteConjunto({
   pares,
   temPecas,

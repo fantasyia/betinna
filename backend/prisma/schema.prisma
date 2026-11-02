@@ -4246,6 +4246,13 @@ model CatalogoModelo {
   /// Modelos que combinam com este (conjunto: blusa ↔ calça). Vale nos DOIS
   /// sentidos na vitrine — basta ligar de um lado. Upsell, sem desconto.
   combinaCom   String[] @default([])
+  /// OPCIONAL de outro modelo (Léo, 02/11: "+ emblema emborrachado"). Este
+  /// modelo segue inteiro (SKU, EAN, estoque, ficha, fotos, OP), mas a vitrine
+  /// não o mostra sozinho: ele vira a escolha "Com <opcionalNome>" dentro do
+  /// modelo base. null = produto normal.
+  opcionalDeId String?
+  /// Nome da escolha na vitrine (ex.: "emblema emborrachado").
+  opcionalNome String?  @db.VarChar(60)
   ordem        Int      @default(0)
   ativo        Boolean  @default(true)
 
@@ -4286,6 +4293,9 @@ model CatalogoModelo {
 
   /// ERP próprio: ordens de produção deste modelo.
   ordensProducao OrdemProducao[]
+
+  opcionalDe CatalogoModelo?  @relation("ModeloOpcional", fields: [opcionalDeId], references: [id], onDelete: SetNull)
+  opcionais  CatalogoModelo[] @relation("ModeloOpcional")
 
   @@unique([empresaId, slug])
   @@index([empresaId, ativo, ordem])
@@ -5044,20 +5054,20 @@ model FinBaixa {
 
 /// Despesa/receita que se repete todo mês no dia X (aluguel, contador…).
 model FinRecorrencia {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   empresaId   String
   tipo        FinTipo
   descricao   String
-  valor       Decimal  @db.Decimal(14, 2)
+  valor       Decimal   @db.Decimal(14, 2)
   /// Dia do mês (1–28; 29–31 viram o último dia do mês curto).
   dia         Int
   categoriaId String?
   contatoNome String?
-  ativo       Boolean  @default(true)
+  ativo       Boolean   @default(true)
   /// Começa em (29/10): vencimento antes desta data não é gerado — período
   /// grátis, contrato que começa no mês que vem. Null = desde já.
   inicio      DateTime? @db.Date
-  criadoEm    DateTime @default(now())
+  criadoEm    DateTime  @default(now())
 
   categoria FinCategoria? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
   titulos   FinTitulo[]

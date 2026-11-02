@@ -72,6 +72,21 @@ const camposModelo = {
   etiquetas: z.array(z.string().max(40)).max(12).optional().describe('Ex.: ["Proteção UV 50+"]'),
   ordem: z.number().int().min(0).optional(),
   ativo: z.boolean().optional().describe("Publicado na vitrine (false = escondido)"),
+  opcionalDeId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'OPCIONAL de outro modelo (ex.: a versão "com emblema emborrachado"): a vitrine não o mostra sozinho, ' +
+        'e sim como a escolha "Com <opcionalNome>" dentro do modelo base. SKU, estoque, preço, fotos e ficha ' +
+        "continuam DESTE modelo. null = produto normal.",
+    ),
+  opcionalNome: z
+    .string()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe('Nome da escolha na vitrine, ex.: "emblema emborrachado". Obrigatório com opcionalDeId.'),
   tituloMarketplace: z.string().max(60).nullable().optional().describe("Material de divulgação (marketplace)"),
   descricaoMarketplace: z.string().max(8000).nullable().optional().describe("Material de divulgação (marketplace)"),
   composicao: z.string().max(200).nullable().optional().describe('Ex.: "100% poliamida"'),

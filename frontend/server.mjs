@@ -326,13 +326,24 @@ export function minimoEmTexto(m) {
 
 const h = (s) => escapar(s ?? '');
 
+/**
+ * Opcional de outro produto publicado (02/11, "+ emblema emborrachado"): não é
+ * página própria — vira a escolha dentro do base. Fica fora das listas e do
+ * sitemap, e o endereço dele leva pro base. PURO.
+ */
+export function baseDoOpcional(m, v) {
+  if (!m?.opcionalDeId) return null;
+  return (v?.modelos ?? []).find((x) => x.id === m.opcionalDeId) ?? null;
+}
+const listaveis = (v) => (v?.modelos ?? []).filter((m) => !baseDoOpcional(m, v));
+
 /** Conteúdo da RAIZ em HTML puro (vai dentro do #root; o app troca ao carregar). PURO. */
 export function conteudoDaHome(v, { base }) {
   const nome = v?.empresa?.nome || 'Atacado';
   const geo = v?.geo ?? {};
   const linhas = (v?.linhas ?? []).map((l) => (l.selo ? `${l.nome} (${l.selo})` : l.nome));
   const minimo = minimoEmTexto(v?.pedidoMinimo);
-  const produtos = (v?.modelos ?? []).map((m) => {
+  const produtos = listaveis(v).map((m) => {
     const f = faixaDePreco(m);
     const nomeP = m.tituloSeo || m.nome;
     return `<li><a href="${h(new URL(`/p/${m.slug}`, base).toString())}">${h(nomeP)}</a>${f ? ` · a partir de ${h(reais(f.min))}/peça` : ''}</li>`;
@@ -463,7 +474,7 @@ export function llmsTxt(v, { base }) {
     '',
     '## Produtos',
     '',
-    ...(v?.modelos ?? []).map((m) => {
+    ...listaveis(v).map((m) => {
       const f = faixaDePreco(m);
       return `- [${m.tituloSeo || m.nome}](${u(`/p/${m.slug}`)})${f ? `: a partir de ${reais(f.min)}/peça` : ''}`;
     }),
@@ -484,7 +495,7 @@ const xml = (s) =>
 export function sitemapXml(vitrine, base) {
   const urls = [
     `<url><loc>${xml(new URL('/', base).toString())}</loc></url>`,
-    ...(vitrine?.modelos ?? [])
+    ...listaveis(vitrine)
       .filter((m) => m.slug)
       .map((m) => {
         const lastmod = m.atualizadoEm ? `<lastmod>${xml(String(m.atualizadoEm).slice(0, 10))}</lastmod>` : '';
@@ -773,6 +784,15 @@ export function criarServidor({ dist, apiUrl, fetchFn = fetch, ttlMs = 5 * 60_00
         const modelo = v?.modelos?.find((x) => x.slug === prod.produto);
         // Endereço antigo (o nome mudou): 301 pro atual, levando a query.
         const renomeado = !modelo && v?.modelos?.find((x) => (x.slugsAntigos ?? []).includes(prod.produto));
+        // Opcional de outro produto: o endereço é o do base, já com a escolha marcada.
+        const base0 = baseDoOpcional(modelo, v);
+        if (base0?.slug) {
+          const q = new URLSearchParams(url.search);
+          q.set('opcional', modelo.slug);
+          const destino = doTenant ? `/p/${base0.slug}` : `/v/${prod.vitrine}/p/${base0.slug}`;
+          res.writeHead(301, { Location: `${destino}?${q}`, 'Cache-Control': 'public, max-age=3600', ...SEGURANCA });
+          return res.end();
+        }
         if (renomeado) {
           const destino = doTenant ? `/p/${renomeado.slug}` : `/v/${prod.vitrine}/p/${renomeado.slug}`;
           res.writeHead(301, { Location: `${destino}${url.search}`, 'Cache-Control': 'public, max-age=3600', ...SEGURANCA });

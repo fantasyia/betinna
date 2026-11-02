@@ -112,6 +112,9 @@ export interface Rascunho {
   corIds: string[];
   /** Modelos que combinam (conjunto): blusa ↔ calça. */
   combinaCom: string[];
+  /** Opcional de outro modelo (02/11): vazio = produto normal. */
+  opcionalDeId?: string;
+  opcionalNome?: string;
   linhas: Record<string, RascunhoLinha>;
 }
 
@@ -152,6 +155,8 @@ function rascunhoDe(m: Modelo | null, linhas: Linha[]): Rascunho {
     palavrasSeo: (m?.palavrasSeo ?? []).join(', '),
     corIds: m?.cores.map((c) => c.corId) ?? [],
     combinaCom: m?.combinaCom ?? [],
+    opcionalDeId: m?.opcionalDeId ?? '',
+    opcionalNome: m?.opcionalNome ?? '',
     linhas: porLinha,
   };
 }
@@ -238,6 +243,8 @@ export function montarCorpo(
       palavrasSeo: separar(r.palavrasSeo ?? '').filter((p) => p.length >= 2),
       corIds: r.corIds,
       combinaCom: r.combinaCom,
+      opcionalDeId: r.opcionalDeId || null,
+      opcionalNome: r.opcionalDeId ? (r.opcionalNome ?? '').trim() || null : null,
       linhas: linhasCorpo,
     },
   };
@@ -612,6 +619,40 @@ export function ModeloEditor({
                   })}
               </div>
             </Field>
+          )}
+          {modelos.some((x) => x.id !== atual?.id && !x.opcionalDeId) && (
+            <>
+              <Field
+                label="É opcional de"
+                hint="Ex.: a versão com emblema emborrachado. Na vitrine este produto não aparece sozinho: vira a escolha “Com …” dentro do produto escolhido aqui, com preço, fotos, SKU e estoque próprios."
+              >
+                <Select
+                  value={r.opcionalDeId ?? ''}
+                  onChange={(e) => set('opcionalDeId', e.target.value)}
+                  data-testid="vitrine-modelo-opcional-de"
+                >
+                  <option value="">— produto normal —</option>
+                  {modelos
+                    .filter((x) => x.id !== atual?.id && !x.opcionalDeId)
+                    .map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.nome}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+              {r.opcionalDeId && (
+                <Field label="Nome do opcional" hint="Aparece como “Sem …” / “Com …” na vitrine">
+                  <Input
+                    value={r.opcionalNome ?? ''}
+                    maxLength={60}
+                    onChange={(e) => set('opcionalNome', e.target.value)}
+                    placeholder="emblema emborrachado"
+                    data-testid="vitrine-modelo-opcional-nome"
+                  />
+                </Field>
+              )}
+            </>
           )}
           <Field label="Descrição curta (vitrine)" className="sm:col-span-2">
             <Textarea

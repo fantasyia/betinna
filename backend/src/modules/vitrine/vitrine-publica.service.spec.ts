@@ -262,6 +262,19 @@ describe('vitrine que respeita estoque (entrega 5)', () => {
   });
 });
 
+describe('opcionaisDosModelos (02/11, "+ emblema")', () => {
+  it('liga o opcional ao base publicado; sem o base, nada', async () => {
+    const { opcionaisDosModelos } = await import('./vitrine-publica.service');
+    const m = opcionaisDosModelos([
+      { id: 'uv' },
+      { id: 'uv-emb', opcionalDeId: 'uv', opcionalNome: 'emblema emborrachado' },
+      { id: 'orfao', opcionalDeId: 'fora-da-vitrine', opcionalNome: 'x' },
+    ]);
+    expect(m.get('uv')).toEqual([{ modeloId: 'uv-emb', nome: 'emblema emborrachado' }]);
+    expect(m.has('fora-da-vitrine')).toBe(false);
+  });
+});
+
 describe('paresDoConjunto (upsell: blusa ↔ calça)', () => {
   it('ligar de um lado vale nos dois; par fora da vitrine e ele mesmo saem', async () => {
     const { paresDoConjunto } = await import('./vitrine-publica.service');

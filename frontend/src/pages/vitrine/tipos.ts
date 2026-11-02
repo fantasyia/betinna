@@ -129,6 +129,9 @@ export interface Modelo {
   palavrasSeo?: string[];
   /** Modelos que combinam (conjunto) — ligados a partir DESTE modelo. */
   combinaCom?: string[];
+  /** Opcional de outro modelo (02/11, "+ emblema emborrachado"). */
+  opcionalDeId?: string | null;
+  opcionalNome?: string | null;
   cores: ModeloCor[];
   linhas: ModeloLinha[];
   videos: Video[];

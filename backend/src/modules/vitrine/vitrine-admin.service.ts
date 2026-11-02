@@ -517,6 +517,8 @@ export class VitrineAdminService {
   async criarModelo(user: AuthenticatedUser, dto: ModeloDto) {
     const empresaId = await this.empresaComVitrine(user);
     await this.validarReferencias(empresaId, dto);
+    // Modelo novo não tem opcionais próprios; o id vazio nunca bate com o base.
+    await this.validarOpcional(empresaId, '', dto);
     const id = await this.prisma.$transaction(
       async (tx) => {
         // Endereço próprio (/p/<slug>): livre na empresa, fixo dali em diante.
@@ -537,6 +539,8 @@ export class VitrineAdminService {
             descricao: dto.descricao ?? null,
             etiquetas: dto.etiquetas ?? [],
             combinaCom: [...new Set(dto.combinaCom ?? [])],
+            opcionalDeId: dto.opcionalDeId ?? null,
+            opcionalNome: dto.opcionalDeId ? (dto.opcionalNome ?? null) : null,
             ordem: dto.ordem ?? 0,
             ativo: dto.ativo ?? true,
             tituloMarketplace: dto.tituloMarketplace ?? null,
@@ -592,6 +596,7 @@ export class VitrineAdminService {
     const empresaId = await this.empresaComVitrine(user);
     await this.garantirDaEmpresa('catalogoModelo', id, empresaId);
     await this.validarReferencias(empresaId, dto);
+    await this.validarOpcional(empresaId, id, dto);
     await this.prisma.$transaction(
       async (tx) => {
         // Nome mudou → endereço novo (Léo, 23/10); o antigo fica e redireciona.
@@ -606,13 +611,20 @@ export class VitrineAdminService {
               ? { palavrasSeo: [...new Set(dto.palavrasSeo)] }
               : {}),
             ...(dto.categoriaId !== undefined ? { categoriaId: dto.categoriaId } : {}),
-            descricao: dto.descricao ?? null,
+            // Ausente = fica (02/11: o MCP atualiza só um campo; a tela manda sempre).
+            ...(dto.descricao !== undefined ? { descricao: dto.descricao } : {}),
             ...(dto.etiquetas !== undefined ? { etiquetas: dto.etiquetas } : {}),
             ...(dto.combinaCom !== undefined
               ? { combinaCom: [...new Set(dto.combinaCom.filter((x) => x !== id))] }
               : {}),
             ...(dto.ordem !== undefined ? { ordem: dto.ordem } : {}),
             ...(dto.ativo !== undefined ? { ativo: dto.ativo } : {}),
+            ...(dto.opcionalDeId !== undefined
+              ? {
+                  opcionalDeId: dto.opcionalDeId,
+                  opcionalNome: dto.opcionalDeId ? dto.opcionalNome : null,
+                }
+              : {}),
             ...(dto.tituloMarketplace !== undefined
               ? { tituloMarketplace: dto.tituloMarketplace }
               : {}),
@@ -1023,6 +1035,34 @@ export class VitrineAdminService {
   }
 
   // ─── Núcleo: grade e variações ──────────────────────────────────────────
+
+  /**
+   * Opcional (02/11): o base é DESTA empresa, não é ele mesmo, não é opcional
+   * de outro (um nível só) e este não pode ter opcionais próprios.
+   */
+  private async validarOpcional(empresaId: string, id: string, dto: ModeloDto): Promise<void> {
+    if (!dto.opcionalDeId) return;
+    if (dto.opcionalDeId === id) {
+      throw new BusinessRuleException('O produto não pode ser opcional dele mesmo');
+    }
+    const base = await this.prisma.catalogoModelo.findFirst({
+      where: { id: dto.opcionalDeId, empresaId },
+      select: { opcionalDeId: true },
+    });
+    if (!base)
+      throw new BusinessRuleException('Produto base do opcional inválido para esta empresa');
+    if (base.opcionalDeId) {
+      throw new BusinessRuleException(
+        'O produto base já é opcional de outro — escolha o principal',
+      );
+    }
+    const filhos = await this.prisma.catalogoModelo.count({ where: { opcionalDeId: id } });
+    if (filhos > 0) {
+      throw new BusinessRuleException(
+        'Este produto tem opcionais próprios — ele não pode ser opcional',
+      );
+    }
+  }
 
   /**
    * Toda cor, linha e tamanho citado no modelo tem que ser DESTA empresa — e o

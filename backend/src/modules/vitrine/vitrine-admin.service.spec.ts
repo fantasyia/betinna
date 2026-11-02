@@ -233,6 +233,56 @@ describe('VitrineAdminService', () => {
       expect(prisma.catalogoModelo.update.mock.calls[0][0].data.combinaCom).toEqual(['mod-2']);
     });
 
+    it('opcional (02/11): grava o base e o nome; tirar o base apaga o nome', async () => {
+      prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
+      await svc.atualizarModelo(user(), 'mod-1', {
+        nome: 'UV com emblema',
+        opcionalDeId: 'mod-base',
+        opcionalNome: 'emblema emborrachado',
+      });
+      expect(prisma.catalogoModelo.update.mock.calls[0][0].data).toMatchObject({
+        opcionalDeId: 'mod-base',
+        opcionalNome: 'emblema emborrachado',
+      });
+      await svc.atualizarModelo(user(), 'mod-1', { nome: 'UV com emblema', opcionalDeId: null });
+      expect(prisma.catalogoModelo.update.mock.calls[1][0].data).toMatchObject({
+        opcionalDeId: null,
+        opcionalNome: null,
+      });
+    });
+
+    it('opcional: base de outra empresa, base que já é opcional, ele mesmo ou com filhos → recusa', async () => {
+      const op = { nome: 'X', opcionalDeId: 'mod-base', opcionalNome: 'emblema' };
+      // garantirDaEmpresa acha o modelo; o base não é desta empresa.
+      prisma.catalogoModelo.findFirst
+        .mockResolvedValueOnce({ id: 'mod-1' })
+        .mockResolvedValueOnce(null);
+      await expect(svc.atualizarModelo(user(), 'mod-1', op)).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      prisma.catalogoModelo.findFirst
+        .mockResolvedValueOnce({ id: 'mod-1' })
+        .mockResolvedValueOnce({ opcionalDeId: 'outro' });
+      await expect(svc.atualizarModelo(user(), 'mod-1', op)).rejects.toThrow(/já é opcional/);
+      await expect(
+        svc.atualizarModelo(user(), 'mod-1', { ...op, opcionalDeId: 'mod-1' }),
+      ).rejects.toThrow(/dele mesmo/);
+      prisma.catalogoModelo.findFirst
+        .mockResolvedValueOnce({ id: 'mod-1' })
+        .mockResolvedValueOnce({ opcionalDeId: null });
+      prisma.catalogoModelo.count.mockResolvedValueOnce(1);
+      await expect(svc.atualizarModelo(user(), 'mod-1', op)).rejects.toThrow(/opcionais próprios/);
+      expect(prisma.catalogoModelo.update).not.toHaveBeenCalled();
+    });
+
+    it('descrição AUSENTE (MCP) não apaga a gravada; null apaga', async () => {
+      prisma.catalogoModelo.findUniqueOrThrow.mockResolvedValue(modeloParaSync());
+      await svc.atualizarModelo(user(), 'mod-1', { nome: 'Moletom' });
+      expect(prisma.catalogoModelo.update.mock.calls[0][0].data).not.toHaveProperty('descricao');
+      await svc.atualizarModelo(user(), 'mod-1', { nome: 'Moletom', descricao: null });
+      expect(prisma.catalogoModelo.update.mock.calls[1][0].data.descricao).toBeNull();
+    });
+
     it('editar modelo de outra empresa → 404', async () => {
       prisma.catalogoModelo.findFirst.mockResolvedValue(null);
       await expect(svc.atualizarModelo(user(), 'mod-x', { nome: 'X' })).rejects.toBeInstanceOf(

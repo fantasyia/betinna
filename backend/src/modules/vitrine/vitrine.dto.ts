@@ -161,8 +161,22 @@ export const modeloSchema = z
     linhas: z.array(modeloLinhaSchema).max(10).optional(),
     /** Modelos que combinam (conjunto) — vale nos dois sentidos na vitrine. */
     combinaCom: z.array(z.string().min(1)).max(10).optional(),
+    /**
+     * Opcional de outro modelo (02/11, "+ emblema emborrachado"): a vitrine não
+     * mostra este sozinho, e sim como escolha dentro do modelo base. null tira.
+     */
+    opcionalDeId: z.string().min(1).max(40).nullable().optional(),
+    /** Nome da escolha (ex.: "emblema emborrachado"). Obrigatório com opcionalDeId. */
+    opcionalNome: z.string().trim().min(1).max(60).nullable().optional(),
   })
   .superRefine((m, ctx) => {
+    if (m.opcionalDeId && !m.opcionalNome) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['opcionalNome'],
+        message: 'Dê o nome do opcional (ex.: emblema emborrachado)',
+      });
+    }
     const cores = m.corIds ?? [];
     if (new Set(cores).size !== cores.length) {
       ctx.addIssue({ code: 'custom', path: ['corIds'], message: 'Cor repetida' });

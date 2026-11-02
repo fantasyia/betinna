@@ -128,6 +128,10 @@ export class VitrinePublicaService {
         etiquetas: m.etiquetas,
         // Pares do conjunto (os dois sentidos) — ver `paresDoConjunto` abaixo.
         combinaCom: m.combinaCom,
+        // Opcional de outro modelo (02/11): o front não o lista sozinho — ele
+        // vira a escolha "Com <nome>" dentro do base (ver `opcionais`).
+        opcionalDeId: m.opcionalDeId,
+        opcionalNome: m.opcionalNome,
         tituloMarketplace: m.tituloMarketplace,
         descricaoMarketplace: m.descricaoMarketplace,
         composicao: m.composicao,
@@ -227,6 +231,7 @@ export class VitrinePublicaService {
     );
 
     const pares = paresDoConjunto(publicos);
+    const opcionais = opcionaisDosModelos(publicos);
     // Avaliações aprovadas (Shopee, 25/10): só comentário, estrelas, cores e
     // fotos — sem nome. Falha aqui nunca derruba a vitrine.
     const avaliacoes = new Map<
@@ -323,6 +328,7 @@ export class VitrinePublicaService {
       modelos: publicos.map((m) => ({
         ...m,
         combinaCom: pares.get(m.id) ?? [],
+        opcionais: opcionais.get(m.id) ?? [],
         avaliacoes: avaliacoes.get(m.id) ?? [],
         avaliacoesTotal: totalAvaliacoes.get(m.id) ?? 0,
         /** cor → tamanho → disponível. null = vitrine não controla estoque. */
@@ -349,4 +355,22 @@ export function paresDoConjunto<T extends { id: string; combinaCom?: string[] | 
     }
   }
   return new Map([...pares].map(([k, v]) => [k, [...v]]));
+}
+
+/**
+ * Opcionais publicados de cada modelo base (02/11). Só vale com o BASE também
+ * publicado — sem ele, o opcional aparece sozinho no feed, como antes. PURO.
+ */
+export function opcionaisDosModelos<
+  T extends { id: string; opcionalDeId?: string | null; opcionalNome?: string | null },
+>(modelos: T[]): Map<string, Array<{ modeloId: string; nome: string }>> {
+  const ids = new Set(modelos.map((m) => m.id));
+  const out = new Map<string, Array<{ modeloId: string; nome: string }>>();
+  for (const m of modelos) {
+    if (!m.opcionalDeId || !ids.has(m.opcionalDeId)) continue;
+    const l = out.get(m.opcionalDeId) ?? [];
+    l.push({ modeloId: m.id, nome: m.opcionalNome || 'opcional' });
+    out.set(m.opcionalDeId, l);
+  }
+  return out;
 }
