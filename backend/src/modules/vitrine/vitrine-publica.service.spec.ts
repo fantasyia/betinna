@@ -103,6 +103,18 @@ describe('VitrinePublicaService', () => {
     expect(r.modelos.map((m) => m.id)).toEqual(['ok']);
   });
 
+  it('opcional NUNCA sai sozinho: sem o base publicado, sai junto (#01, 02/11)', async () => {
+    const prisma = makePrisma(vitrineNoAr, [
+      modelo({ id: 'uv' }),
+      modelo({ id: 'uv-emb', opcionalDeId: 'uv', opcionalNome: 'emblema' }),
+      modelo({ id: 'polo-emb', opcionalDeId: 'polo-escondida', opcionalNome: 'emblema' }),
+    ]);
+    const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);
+    const r = await svc.carregar('atacado-ribelt');
+    expect(r.modelos.map((m) => m.id)).toEqual(['uv', 'uv-emb']);
+    expect(r.modelos[0].opcionais).toEqual([{ modeloId: 'uv-emb', nome: 'emblema' }]);
+  });
+
   describe('frete ligado: produto sem peso não aparece (Léo, 10/10)', () => {
     const comFrete = {
       ...vitrineNoAr,

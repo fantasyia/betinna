@@ -110,7 +110,7 @@ export class VitrinePublicaService {
     const freteLigado = configFrete(vitrine.empresa.config).ativo === true;
     const vendavel = (t: { pesoGramas: number | null }) => !freteLigado || (t.pesoGramas ?? 0) > 0;
 
-    const publicos = modelos
+    const publicosTodos = modelos
       .map((m) => ({
         id: m.id,
         nome: m.nome,
@@ -184,6 +184,12 @@ export class VitrinePublicaService {
       }))
       // Sem cor com foto ou sem grade: não aparece (§6 da especificação).
       .filter((m) => m.cores.length > 0 && m.linhas.length > 0);
+    // Opcional (02/11) NUNCA é produto sozinho: com o base escondido ou sem
+    // foto, ele sai junto (#01: a Polo com Emborrachado aparecia solta).
+    const idsPublicos = new Set(publicosTodos.map((m) => m.id));
+    const publicos = publicosTodos.filter(
+      (m) => !m.opcionalDeId || idsPublicos.has(m.opcionalDeId),
+    );
 
     // Disponível por cor × tamanho, só com "respeita estoque" e ERP ligado.
     // Nada de id de produto: a chave é a mesma cor/tamanho que a vitrine já mostra.
@@ -359,7 +365,7 @@ export function paresDoConjunto<T extends { id: string; combinaCom?: string[] | 
 
 /**
  * Opcionais publicados de cada modelo base (02/11). Só vale com o BASE também
- * publicado — sem ele, o opcional aparece sozinho no feed, como antes. PURO.
+ * publicado (o `carregar` já tira o opcional sem base do payload). PURO.
  */
 export function opcionaisDosModelos<
   T extends { id: string; opcionalDeId?: string | null; opcionalNome?: string | null },
