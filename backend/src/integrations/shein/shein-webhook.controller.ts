@@ -120,6 +120,19 @@ export class SheinWebhookController {
           this.logger.log(`Webhook Shein: pós-venda ${n} ${ok ? 'gravado' : 'não encontrado'}`);
           return;
         }
+        case 'return_order_push_notice': {
+          // O console (02/11) só oferece este pro pós-venda: traz o número da
+          // DEVOLUÇÃO, não o do caso — puxa os casos que mudaram nas 48 h.
+          const r = await this.posVenda.sincronizar(
+            empresaId,
+            new Date(Date.now() - 47 * 3_600_000),
+            2,
+          );
+          this.logger.log(
+            `Webhook Shein: devolução ${texto(d.returnOrderNo) ?? '?'} → ${r.casos} pós-vendas`,
+          );
+          return;
+        }
         default:
           // Evento assinado no console que o app ainda não trata: aparece no log.
           this.logger.warn(`Webhook Shein evento não-tratado: ${evento} ${JSON.stringify(d)}`);

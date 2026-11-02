@@ -80,6 +80,15 @@ describe('webhook da Shein — controller', () => {
     expect(m.posVenda.sincronizarCaso).toHaveBeenCalledWith('emp1', 'AC1');
   });
 
+  it('devolução: puxa os casos de pós-venda que mudaram', async () => {
+    const m = montar();
+    const posVenda = m.posVenda as unknown as { sincronizar: ReturnType<typeof vi.fn> };
+    posVenda.sincronizar = vi.fn().mockResolvedValue({ casos: 2, falhas: 0 });
+    await chamar(m, 'return_order_push_notice', { returnOrderNo: 'ND67E08VAR' });
+    await esperarFila();
+    expect(posVenda.sincronizar).toHaveBeenCalledWith('emp1', expect.any(Date), 2);
+  });
+
   it('assinatura errada NÃO processa nada', async () => {
     const m = montar();
     const r = await chamar(m, 'order_push_notice', { orderNo: 'GSO1' }, 'segredo-errado-0000');
