@@ -206,3 +206,12 @@ describe('respostaBarrada: não comentar o prazo do anúncio (#04, 02/11)', () =
     expect(PROMPT_PENDENCIA).toMatch(/Desde já agradecemos a preferência/);
   });
 });
+
+describe('jeito de escrever (#04, 02/11)', () => {
+  it('o prompt tem o bloco e a espera padrão não cumprimenta', () => {
+    expect(PROMPT_PENDENCIA).toMatch(/JEITO DE ESCREVER/);
+    expect(PROMPT_PENDENCIA).toMatch(/Cumprimente só na primeira mensagem/);
+    expect(PROMPT_PENDENCIA).toMatch(/Não repita uma frase que você já mandou/);
+    expect(ESPERA_PADRAO).not.toMatch(/^(Oi|Olá)/);
+  });
+});
