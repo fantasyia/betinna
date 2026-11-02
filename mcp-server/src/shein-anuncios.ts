@@ -56,8 +56,9 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
     {
       description:
         "MEXE NA LOJA — só com o \"pode subir\" do Léo pro plano exato. Muda o preço por SKU (skuCode), até 100 " +
-        "por chamada; vários tamanhos da MESMA cor vão juntos na mesma chamada. precoPromocional é OBRIGATÓRIO: " +
-        "a Shein ZERA o promocional que não for mandado — repita o atual (shein_anuncio_ver) ou null pra tirar. " +
+        "por chamada; vários tamanhos da MESMA cor vão juntos na mesma chamada. Na Shein BR só existe UM preço " +
+        "(o de venda): mande SÓ o preco. Se mandar precoPromocional, ELE vira o preço de venda e o cheio é " +
+        "descartado (testado em 02/11) — não há \"de/por\" pelo price/save. " +
         "Site padrão shein-br, moeda BRL. Aumento de preço pede motivoAumento (1 custo · 2 logística · 3 fim de " +
         "campanha · 4 outros · 5 regra logística) e pode ser barrado por campanha. Devolve aceitos, emRevisao " +
         "(a Shein aprova depois; não mande outro preço pro mesmo SKC até sair) e recusados com o motivo.",
@@ -67,7 +68,12 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
             z.object({
               skuCode: z.string().min(1),
               preco: z.number().positive().describe("Preço cheio em reais"),
-              precoPromocional: z.number().positive().nullable().describe("Promocional em reais, ou null = sem"),
+              precoPromocional: z
+                .number()
+                .positive()
+                .nullable()
+                .optional()
+                .describe("Normalmente NÃO mande (Shein BR: ele vira o preço de venda)"),
               site: z.string().optional(),
               moeda: z.string().length(3).optional(),
               motivoAumento: z.number().int().min(1).max(5).optional(),

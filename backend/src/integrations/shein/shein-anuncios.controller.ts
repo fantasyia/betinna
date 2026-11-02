@@ -44,7 +44,9 @@ const precoSchema = z.object({
       z.object({
         skuCode: z.string().trim().min(1).max(60),
         preco: z.number().positive().max(100_000),
-        precoPromocional: z.number().positive().max(100_000).nullable(),
+        // Shein BR (02/11, #02): o especial vira o preço de venda e o cheio é
+        // descartado — o normal é mandar só o preco. Ausente = sem promocional.
+        precoPromocional: z.number().positive().max(100_000).nullable().default(null),
         site: z.string().trim().min(1).max(40).optional(),
         moeda: z.string().trim().length(3).optional(),
         motivoAumento: z.number().int().min(1).max(5).optional(),

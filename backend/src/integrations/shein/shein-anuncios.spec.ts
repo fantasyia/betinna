@@ -139,3 +139,12 @@ describe('campanhas e preço sugerido (02/11, #02)', () => {
     expect(post).not.toHaveBeenCalled();
   });
 });
+
+describe('preço Shein BR (02/11): só o preço de venda', () => {
+  it('sem precoPromocional vai specialPrice 0 (um preço só)', () => {
+    expect(corpoPreco([{ skuCode: 'I1', preco: 39.99 }]).productPriceList[0]).toMatchObject({
+      shopPrice: 39.99,
+      specialPrice: 0,
+    });
+  });
+});

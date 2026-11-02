@@ -82,8 +82,12 @@ export function resumoSpu(s: SheinSpuInfo) {
 export interface PrecoPedido {
   skuCode: string;
   preco: number;
-  /** null = sem preço promocional (a Shein zera). Obrigatório dizer. */
-  precoPromocional: number | null;
+  /**
+   * null/ausente = sem promocional (vai 0). Na Shein BR (autooperação, testes
+   * de 02/11) o especial VIRA o preço de venda e o shopPrice é descartado: lá
+   * só existe um preço, então o normal é mandar só o `preco`.
+   */
+  precoPromocional?: number | null;
   site?: string;
   moeda?: string;
   /** 1 custo · 2 logística · 3 fim de campanha · 4 outros · 5 regra logística (só em aumento). */
@@ -95,7 +99,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 /** Corpo do /product/price/save. Promocional maior ou igual ao preço é recusado antes. */
 export function corpoPreco(itens: PrecoPedido[]) {
   for (const i of itens) {
-    if (i.precoPromocional !== null && i.precoPromocional >= i.preco) {
+    if (i.precoPromocional != null && i.precoPromocional >= i.preco) {
       throw new Error(`${i.skuCode}: o preço promocional tem que ser MENOR que o preço`);
     }
   }
@@ -108,7 +112,7 @@ export function corpoPreco(itens: PrecoPedido[]) {
       currencyCode: i.moeda ?? 'BRL',
       shopPrice: r2(i.preco),
       // Sem mandar, a Shein ZERA o promocional — por isso sempre vai explícito.
-      specialPrice: i.precoPromocional === null ? 0 : r2(i.precoPromocional),
+      specialPrice: i.precoPromocional == null ? 0 : r2(i.precoPromocional),
       riseReason: i.motivoAumento ?? null,
     })),
   };
