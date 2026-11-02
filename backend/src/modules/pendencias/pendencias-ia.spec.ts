@@ -200,8 +200,9 @@ describe('respostaBarrada: não comentar o prazo do anúncio (#04, 02/11)', () =
     ).toBeNull();
   });
 
-  it('o prompt manda kit de cores sortidas NÃO ser peça errada e o fecho da reposição', () => {
-    expect(PROMPT_PENDENCIA).toMatch(/KIT DE CORES SORTIDAS/);
+  it('kit: decide pela variação (sem saber qual → humano) e o fecho da reposição', () => {
+    expect(PROMPT_PENDENCIA).toMatch(/NÃO dá pra saber a variação.*acao = "humano"/);
+    expect(PROMPT_PENDENCIA).toMatch(/variação SORTIDA.*Desde já agradecemos a preferência/);
     expect(PROMPT_PENDENCIA).toMatch(/Desde já agradecemos a preferência/);
   });
 });
