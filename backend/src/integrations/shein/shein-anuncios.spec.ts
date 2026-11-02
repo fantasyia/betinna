@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { SheinAnunciosController } from './shein-anuncios.controller';
 import { consultaPermitida, corpoPreco, resultadoPreco, resumoSpu } from './shein-anuncios';
 
 /** Anúncios da Shein (#05, Léo 01/11). */
@@ -92,5 +93,25 @@ describe('anúncios da Shein', () => {
     expect(consultaPermitida('/open-api/goods/query-attribute-template')).toBe(true);
     expect(consultaPermitida('/open-api/goods/product/partialEdit')).toBe(false);
     expect(consultaPermitida('/open-api/openapi-business-backend/product/price/save')).toBe(false);
+  });
+});
+
+describe('listar anúncios: todas as páginas (02/11, #02)', () => {
+  it('pagina até a página incompleta e devolve o total de cores e anúncios', async () => {
+    const pagina = (n: number, tam: number, spu: string) =>
+      Array.from({ length: tam }, (_, i) => ({ spuName: `${spu}${i % 2}`, skcName: `p${n}-${i}` }));
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ data: pagina(1, 50, 'a') })
+      .mockResolvedValueOnce({ data: pagina(2, 7, 'b') });
+    const ctrl = new SheinAnunciosController({ post } as never);
+    const r = (await ctrl.listar({ empresaIdAtiva: 'emp1' } as never, {
+      pagina: 1,
+      porPagina: 50,
+      todas: '1',
+    })) as { totalCores: number; totalAnuncios: number };
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[1][2]).toMatchObject({ pageNum: 2, pageSize: 50 });
+    expect(r).toMatchObject({ totalCores: 57, totalAnuncios: 4 });
   });
 });

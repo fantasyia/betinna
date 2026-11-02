@@ -17,6 +17,12 @@ import {
 } from './shein-anuncios';
 import { SheinClientService } from './shein.client';
 
+interface SheinSkcLista {
+  spuName?: string;
+  skcName?: string;
+  skuCodeList?: string[];
+}
+
 const listarSchema = z.object({
   pagina: z.coerce.number().int().min(1).default(1),
   porPagina: z.coerce.number().int().min(1).max(100).default(50),
@@ -27,6 +33,8 @@ const listarSchema = z.object({
     .min(1)
     .max(24 * 365)
     .optional(),
+  /** Todas as páginas de uma vez (02/11, #02): a Shein não devolve o total. */
+  todas: z.enum(['1', 'true']).optional(),
 });
 
 const precoSchema = z.object({
@@ -74,16 +82,38 @@ export class SheinAnunciosController {
 
   @Get()
   @ApiOperation({ summary: 'Anúncios aprovados da Shein: SPU → SKC (cor) → SKU (códigos)' })
-  listar(
+  async listar(
     @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(listarSchema)) q: z.infer<typeof listarSchema>,
   ) {
+    const empresaId = this.empresa(user);
     const desde = q.horas ? new Date(Date.now() - q.horas * 3_600_000) : null;
-    return this.shein.post(this.empresa(user), '/open-api/openapi-business-backend/product/query', {
-      pageNum: q.pagina,
-      pageSize: q.porPagina,
-      ...(desde ? { updateTimeStart: horaShein(desde), updateTimeEnd: horaShein(new Date()) } : {}),
-    });
+    const pagina = (n: number, tamanho: number) =>
+      this.shein.post<{ data?: SheinSkcLista[] } | SheinSkcLista[]>(
+        empresaId,
+        '/open-api/openapi-business-backend/product/query',
+        {
+          pageNum: n,
+          pageSize: tamanho,
+          ...(desde
+            ? { updateTimeStart: horaShein(desde), updateTimeEnd: horaShein(new Date()) }
+            : {}),
+        },
+      );
+    if (q.todas === undefined) return pagina(q.pagina, q.porPagina);
+    // Até a página vir incompleta (teto de 100 páginas × 50 = 5.000 cores).
+    const todos: SheinSkcLista[] = [];
+    for (let n = 1; n <= 100; n++) {
+      const r = await pagina(n, 50);
+      const lista = Array.isArray(r) ? r : (r?.data ?? []);
+      todos.push(...lista);
+      if (lista.length < 50) break;
+    }
+    return {
+      totalCores: todos.length,
+      totalAnuncios: new Set(todos.map((x) => x.spuName)).size,
+      data: todos,
+    };
   }
 
   @Get(':spuName')

@@ -19,17 +19,19 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
     {
       description:
         "Anúncios APROVADOS da loja Shein: spuName → skcName (cor) → skuCode (tamanho), só os códigos. " +
-        "Detalhe (cor, tamanho, SKU do vendedor, preço, no ar) com shein_anuncio_ver. Somente leitura.",
+        "Detalhe (cor, tamanho, SKU do vendedor, preço, no ar) com shein_anuncio_ver. A Shein não diz o " +
+        "total: use todas=true pra trazer TODAS as páginas (com totalCores e totalAnuncios). Somente leitura.",
       inputSchema: {
         pagina: z.number().int().min(1).optional(),
         porPagina: z.number().int().min(1).max(100).optional(),
         horas: z.number().int().min(1).optional().describe("Só os atualizados nas últimas N horas"),
+        todas: z.boolean().optional().describe("Todas as páginas de uma vez, com o total"),
       },
       annotations: leitura,
     },
-    seguro(async (a: { pagina?: number; porPagina?: number; horas?: number }) => {
+    seguro(async (a: { pagina?: number; porPagina?: number; horas?: number; todas?: boolean }) => {
       const q = new URLSearchParams();
-      for (const [k, v] of Object.entries(a)) if (v !== undefined) q.set(k, String(v));
+      for (const [k, v] of Object.entries(a)) if (v !== undefined && v !== false) q.set(k, String(v));
       return ok(await api.get(`/marketplace/anuncios/shein?${q}`));
     }),
   );
