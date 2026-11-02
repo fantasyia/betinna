@@ -38,6 +38,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'resend',
   'dafiti',
   'shein',
+  'magis5',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -60,7 +61,8 @@ type ServicoEmpresa =
   | 'ga4_mp'
   | 'resend'
   | 'dafiti'
-  | 'shein';
+  | 'shein'
+  | 'magis5';
 
 interface ServicoMeta {
   nome: string;
@@ -90,7 +92,13 @@ interface ServicoMeta {
   /** OAuth: path do start endpoint */
   oauthStart?: string;
   /** Credentials: campos do formulário */
-  credentialFields?: Array<{ name: string; label: string; type?: 'text' | 'password' }>;
+  credentialFields?: Array<{
+    name: string;
+    label: string;
+    type?: 'text' | 'password';
+    /** Pode ficar vazio (ex.: o usuário do Magis5, se a API não pedir). */
+    opcional?: boolean;
+  }>;
   /** QR: rota interna do app pra fluxo de pareamento */
   qrRoute?: string;
   /** Conectado: o próximo passo mora em outra tela (ex.: Asaas → ativar na vitrine). */
@@ -306,6 +314,22 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     ],
     atalho: { rotulo: 'Ver os pedidos →', rota: '/pedidos-marketplace' },
   },
+  magis5: {
+    nome: 'Magis5',
+    tipo: 'marketplace',
+    obrigatorio: false,
+    color: '#0b5cad',
+    icon: '🔗',
+    description:
+      'Hub dos marketplaces: os pedidos de todos os canais entram pelo Magis5 e o estoque do app vai pra ele, ' +
+      'que repassa aos marketplaces. Por enquanto só guarda a chave — a sincronização é ligada depois, com a ' +
+      'documentação da API em mãos. Cole a chave (e o usuário/ID da conta, se o Magis5 pedir).',
+    connectMode: 'credentials',
+    credentialFields: [
+      { name: 'apiKey', label: 'Chave / token da API', type: 'password' },
+      { name: 'usuario', label: 'Usuário ou ID da conta (se pedir)', opcional: true },
+    ],
+  },
   shein: {
     nome: 'Shein',
     tipo: 'marketplace',
@@ -359,6 +383,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'resend',
   'dafiti',
   'shein',
+  'magis5',
 ];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
@@ -1221,7 +1246,7 @@ function CredentialsConnectModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const faltando = fields.find((f) => form[f.name].trim().length === 0);
+    const faltando = fields.find((f) => !f.opcional && form[f.name].trim().length === 0);
     if (faltando) {
       setError(`Preencha o campo "${faltando.label ?? faltando.name}".`);
       return;

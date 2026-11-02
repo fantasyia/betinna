@@ -43,6 +43,9 @@ export const SERVICOS_EMPRESA = [
   // Marketplaces com chave colada (25/10): pedidos de venda e devoluções no app.
   'dafiti',
   'shein',
+  // Hub de marketplaces (Léo, 02/11): pedidos de todos os canais e o estoque
+  // que o app manda. Só a chave por enquanto — a integração vem com a API.
+  'magis5',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -223,6 +226,13 @@ export const SERVICO_METADATA: Record<
   },
   shein: {
     nome: 'Shein',
+    tipo: 'marketplace',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  magis5: {
+    nome: 'Magis5',
     tipo: 'marketplace',
     escopo: 'empresa',
     obrigatorio: false,
