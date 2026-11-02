@@ -4665,6 +4665,10 @@ model FichaTecnica {
   /// Ficha de costura (#03 Modelista, 01/11): imagens, peças do corte, sequência,
   /// etiquetas, atenção e medidas. Sai na via da facção da OP. Ver costuraSchema.
   costura             Json?
+  /// Ficha de OPCIONAL (02/11, "+ emblema"): { itens, acabamento } A MAIS que a
+  /// ficha do modelo base na mesma linha. Com ele, os itens desta ficha são
+  /// remontados (base + extras) toda vez que a base muda. null = ficha comum.
+  extrasOpcional      Json?
   observacoes         String?
   criadoEm            DateTime @default(now())
   atualizadoEm        DateTime @updatedAt

@@ -41,6 +41,8 @@ interface FichaApi {
     corFixa: { id: string; nome: string; hex: string } | null;
   }>;
   semCusto: string[];
+  /** Opcional (02/11, "+ emblema"): a ficha segue a do produto base + extras. */
+  opcional?: { base: { modeloLinhaId: string; modelo: string } | null } | null;
 }
 
 interface ServicoAcabamento {
@@ -540,9 +542,17 @@ function FichaDaGrade({ modeloLinhaId, nome, insumos }: { modeloLinhaId: string;
         inteira, na unidade do insumo. A OP mede o consumo real e você decide se atualiza aqui.
       </p>
       <div>
-        <Button onClick={salvar} loading={salvando} disabled={!valido} data-testid={`ficha-salvar-${modeloLinhaId}`}>
-          Salvar ficha da grade {nome}
-        </Button>
+        {q.data?.opcional ? (
+          <p className="text-sm text-muted" data-testid={`ficha-segue-base-${modeloLinhaId}`}>
+            Esta ficha segue a de <b>{q.data.opcional.base?.modelo ?? 'o produto base'}</b> + os extras do
+            opcional, e muda sozinha quando a de lá muda. Edite a ficha de{' '}
+            {q.data.opcional.base?.modelo ?? 'o produto base'}.
+          </p>
+        ) : (
+          <Button onClick={salvar} loading={salvando} disabled={!valido} data-testid={`ficha-salvar-${modeloLinhaId}`}>
+            Salvar ficha da grade {nome}
+          </Button>
+        )}
       </div>
     </Card>
   );

@@ -15,6 +15,8 @@ import {
   fichaSchema,
   precosFaccaoSchema,
   regrasEncaixeSchema,
+  extrasOpcionalSchema,
+  type ExtrasOpcionalDto,
 } from './fichas.dto';
 import { FichasService } from './fichas.service';
 
@@ -49,6 +51,26 @@ export class FichasController {
     @Body(new ZodValidationPipe(fichaSchema)) dto: FichaDto,
   ) {
     return this.svc.salvar(user, id, dto);
+  }
+
+  @Get('fichas/:modeloLinhaId/opcional/previa')
+  @ApiOperation({
+    summary: 'Opcional: o que a ficha tem a mais que a do produto base (prévia, não grava)',
+  })
+  previaOpcional(@CurrentUser() user: AuthenticatedUser, @Param('modeloLinhaId') id: string) {
+    return this.svc.previaOpcional(user, id);
+  }
+
+  @Put('fichas/:modeloLinhaId/opcional-extras')
+  @ApiOperation({
+    summary: 'Opcional: a ficha passa a ser a do produto base + estes extras (null solta)',
+  })
+  salvarExtrasOpcional(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('modeloLinhaId') id: string,
+    @Body(new ZodValidationPipe(extrasOpcionalSchema)) dto: ExtrasOpcionalDto,
+  ) {
+    return this.svc.salvarExtrasOpcional(user, id, dto.extras);
   }
 
   @Get('acabamento')

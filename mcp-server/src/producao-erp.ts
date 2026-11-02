@@ -230,6 +230,57 @@ export function registrarProducaoErp(server: McpServer, { ok, erro, seguro }: Aj
     ),
   );
 
+  server.registerTool(
+    "erp_ficha_opcional_previa",
+    {
+      description:
+        "Ficha de OPCIONAL (ex.: a versão 'com Emborrachado'): compara a ficha dele com a do produto BASE na mesma " +
+        "linha e mostra o que ele tem A MAIS (extras: itens + serviços de acabamento) e o que a base tem e ele NÃO " +
+        "(divergencias). Não grava. Use antes de erp_ficha_opcional_extras.",
+      inputSchema: { modeloLinhaId: id.describe("Linha do modelo OPCIONAL") },
+      annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    seguro(async ({ modeloLinhaId }: { modeloLinhaId: string }) =>
+      ok(await api.get(`/erp/fichas/${seg(modeloLinhaId)}/opcional/previa`)),
+    ),
+  );
+
+  server.registerTool(
+    "erp_ficha_opcional_extras",
+    {
+      description:
+        "LIGA a ficha de um OPCIONAL à do produto BASE: ela passa a ser base + estes extras e é REMONTADA sozinha " +
+        "toda vez que a ficha da base muda (a ficha do opcional deixa de aceitar erp_ficha_salvar). extras = " +
+        "{itens (mesmo formato do erp_ficha_salvar), acabamento: [ids de serviço a mais]}; null SOLTA (a ficha " +
+        "fica como está, comum). Escopo 'erp-escrita'. Rode erp_ficha_opcional_previa antes e mostre ao Léo.",
+      inputSchema: {
+        modeloLinhaId: id.describe("Linha do modelo OPCIONAL"),
+        extras: z
+          .object({
+            itens: z
+              .array(
+                z.object({
+                  insumoId: id,
+                  consumoPorPeca: z.number().positive().max(100_000),
+                  porTamanho: z.record(z.string().min(1).max(20), z.number().nonnegative().max(100_000)).nullable().optional(),
+                  etapa: z.enum(["FACCAO", "ACABAMENTO"]).optional(),
+                  observacao: z.string().max(200).nullable().optional(),
+                  corFixaId: id.nullable().optional(),
+                  uso: z.string().max(60).nullable().optional(),
+                }),
+              )
+              .max(100),
+            acabamento: z.array(z.string().min(1).max(60)).max(30).optional(),
+          })
+          .nullable(),
+      },
+      annotations: escrita,
+    },
+    seguro(async ({ modeloLinhaId, extras }: { modeloLinhaId: string; extras: unknown }) =>
+      ok(await api.put(`/erp/fichas/${seg(modeloLinhaId)}/opcional-extras`, { extras })),
+    ),
+  );
+
   const insumoCampos = {
     nome: z.string().min(2).max(120),
     tipo: z.enum(["TECIDO", "AVIAMENTO"]),

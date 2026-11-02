@@ -381,6 +381,8 @@ export class AuthGuard implements CanActivate {
     const escreverErp =
       moduloRequerido === 'erp' &&
       ((metodo === 'PUT' && /^\/erp\/fichas\/[^/]+\/?$/.test(rel)) ||
+        // Extras da ficha do opcional (02/11, "+ emblema").
+        (metodo === 'PUT' && /^\/erp\/fichas\/[^/]+\/opcional-extras\/?$/.test(rel)) ||
         // Ficha de costura (#03, 01/11): gravar e as imagens dela.
         (metodo === 'PUT' && /^\/erp\/fichas\/[^/]+\/costura\/?$/.test(rel)) ||
         (metodo === 'POST' && /^\/erp\/fichas\/[^/]+\/costura\/imagens\/?$/.test(rel)) ||

@@ -21,6 +21,12 @@ import {
   custoCortePorPeca,
   fretePorPeca,
 } from './acabamento';
+import {
+  extrasDaDiferenca,
+  fichaDoOpcional,
+  lerExtras,
+  type ExtrasOpcional,
+} from './ficha-opcional';
 
 const D = (v: number, casas: number) => new Prisma.Decimal(v.toFixed(casas));
 const num = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
@@ -95,13 +101,47 @@ export class FichasService {
       where: { id: modeloLinhaId, modelo: { empresaId } },
       select: {
         id: true,
-        modelo: { select: { id: true, nome: true } },
+        linhaId: true,
+        modelo: { select: { id: true, nome: true, opcionalDeId: true } },
         linha: { select: { nome: true } },
         tamanhos: { select: { tamanho: { select: { nome: true, ordem: true } } } },
       },
     });
     if (!ml) throw new NotFoundException('Linha do modelo', modeloLinhaId);
     return ml;
+  }
+
+  /** Ficha gravada no formato do PUT (pra remontar a do opcional). */
+  private async fichaComoDto(modeloLinhaId: string): Promise<FichaDto | null> {
+    const f = await this.prisma.fichaTecnica.findUnique({
+      where: { modeloLinhaId },
+      include: { itens: { orderBy: { id: 'asc' } } },
+    });
+    if (!f) return null;
+    return {
+      custoFaccaoPrevisto: num(f.custoFaccaoPrevisto),
+      observacoes: f.observacoes,
+      acabamento: Array.isArray(f.acabamento) ? (f.acabamento as string[]) : [],
+      acabamentoTamanhos: lerTamanhosServico(f.acabamentoTamanhos) ?? null,
+      itens: f.itens.map((i) => ({
+        insumoId: i.insumoId,
+        consumoPorPeca: Number(i.consumoPorPeca),
+        porTamanho: (i.porTamanho as Record<string, number> | null) ?? null,
+        etapa: i.etapa as 'FACCAO' | 'ACABAMENTO',
+        observacao: i.observacao,
+        corFixaId: i.corFixaId,
+        uso: i.uso,
+      })),
+    } as FichaDto;
+  }
+
+  /** A grade do MODELO BASE na mesma linha (pra ficha do opcional). */
+  private async gradeDaBase(ml: { linhaId: string; modelo: { opcionalDeId: string | null } }) {
+    if (!ml.modelo.opcionalDeId) return null;
+    return this.prisma.catalogoModeloLinha.findFirst({
+      where: { modeloId: ml.modelo.opcionalDeId, linhaId: ml.linhaId },
+      select: { id: true, modelo: { select: { nome: true } } },
+    });
   }
 
   /** Resumo de todas as grades: tem ficha? quanto custa prevista? */
@@ -190,8 +230,14 @@ export class FichasService {
     const acabamento = Array.isArray(ficha?.acabamento) ? (ficha!.acabamento as string[]) : [];
     const acabamentoTamanhos = lerTamanhosServico(ficha?.acabamentoTamanhos);
     const tamanhosDaGrade = ml.tamanhos.map((t) => t.tamanho.nome);
+    // Opcional (02/11): a ficha segue a do produto base + estes extras.
+    const extras = lerExtras(ficha?.extrasOpcional);
+    const base = extras ? await this.gradeDaBase(ml) : null;
     return {
       modeloLinhaId,
+      opcional: extras
+        ? { base: base ? { modeloLinhaId: base.id, modelo: base.modelo.nome } : null, extras }
+        : null,
       /** Serviços de acabamento marcados nesta grade + a lista da empresa (pra marcar). */
       acabamento,
       /** Tamanhos onde cada serviço vale (23/10); serviço ausente = todos. */
@@ -225,6 +271,28 @@ export class FichasService {
   async salvar(user: AuthenticatedUser, modeloLinhaId: string, dto: FichaDto) {
     const empresaId = await this.erp.empresaLigada(user);
     const ml = await this.linhaDaEmpresa(empresaId, modeloLinhaId);
+    const atual = await this.prisma.fichaTecnica.findUnique({
+      where: { modeloLinhaId },
+      select: { extrasOpcional: true },
+    });
+    if (lerExtras(atual?.extrasOpcional)) {
+      throw new BusinessRuleException(
+        `A ficha de ${ml.modelo.nome} segue a do produto base (opcional): edite a ficha do produto base, ou só os extras do opcional`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    await this.validar(empresaId, ml, dto);
+    await this.prisma.$transaction((tx) => this.escrever(tx, empresaId, modeloLinhaId, dto));
+    await this.propagarOpcionais(empresaId, ml);
+    return this.obter(user, modeloLinhaId);
+  }
+
+  /** Serviços, tamanhos, insumos e cor fixa da ficha — tudo desta empresa e desta grade. */
+  private async validar(
+    empresaId: string,
+    ml: Awaited<ReturnType<FichasService['linhaDaEmpresa']>>,
+    dto: FichaDto,
+  ) {
     if (dto.acabamento?.length) {
       const existe = new Set((await this.servicosDaEmpresa(empresaId)).map((s) => s.id));
       const fora = dto.acabamento.filter((id) => !existe.has(id));
@@ -286,54 +354,162 @@ export class FichasService {
         }
       }
     }
-    await this.prisma.$transaction(async (tx) => {
-      const dados = {
-        custoFaccaoPrevisto: dto.custoFaccaoPrevisto == null ? null : D(dto.custoFaccaoPrevisto, 2),
-        observacoes: dto.observacoes ?? null,
-        ...(dto.acabamentoTamanhos !== undefined
-          ? {
-              acabamentoTamanhos:
-                dto.acabamentoTamanhos && Object.keys(dto.acabamentoTamanhos).length
-                  ? (dto.acabamentoTamanhos as unknown as Prisma.InputJsonValue)
-                  : Prisma.DbNull,
-            }
-          : {}),
-        // Sem o campo (tela antiga): não mexe no que estava marcado.
-        ...(dto.acabamento !== undefined
-          ? {
-              acabamento: dto.acabamento.length
-                ? (dto.acabamento as unknown as Prisma.InputJsonValue)
+  }
+
+  private async escrever(
+    tx: Prisma.TransactionClient,
+    empresaId: string,
+    modeloLinhaId: string,
+    dto: FichaDto,
+    extras?: ExtrasOpcional | null,
+  ) {
+    const dados = {
+      custoFaccaoPrevisto: dto.custoFaccaoPrevisto == null ? null : D(dto.custoFaccaoPrevisto, 2),
+      observacoes: dto.observacoes ?? null,
+      ...(dto.acabamentoTamanhos !== undefined
+        ? {
+            acabamentoTamanhos:
+              dto.acabamentoTamanhos && Object.keys(dto.acabamentoTamanhos).length
+                ? (dto.acabamentoTamanhos as unknown as Prisma.InputJsonValue)
                 : Prisma.DbNull,
-            }
-          : {}),
-      };
-      const ficha = await tx.fichaTecnica.upsert({
-        where: { modeloLinhaId },
-        create: { empresaId, modeloLinhaId, ...dados },
-        update: dados,
-        select: { id: true },
-      });
-      await tx.fichaTecnicaItem.deleteMany({ where: { fichaId: ficha.id } });
-      if (dto.itens.length) {
-        await tx.fichaTecnicaItem.createMany({
-          data: dto.itens.map((i) => ({
-            fichaId: ficha.id,
-            insumoId: i.insumoId,
-            // Por tamanho: o consumo da grade é a MÉDIA (custo previsto).
-            consumoPorPeca: D(
-              temTamanhos(i.porTamanho) ? mediaPorTamanho(i.porTamanho!) : i.consumoPorPeca,
-              4,
-            ),
-            porTamanho: temTamanhos(i.porTamanho) ? i.porTamanho! : Prisma.DbNull,
-            etapa: i.etapa ?? 'FACCAO',
-            observacao: i.observacao ?? null,
-            corFixaId: i.corFixaId ?? null,
-            uso: i.uso ?? null,
-          })),
-        });
-      }
+          }
+        : {}),
+      // Sem o campo (tela antiga): não mexe no que estava marcado.
+      ...(dto.acabamento !== undefined
+        ? {
+            acabamento: dto.acabamento.length
+              ? (dto.acabamento as unknown as Prisma.InputJsonValue)
+              : Prisma.DbNull,
+          }
+        : {}),
+    };
+    // Opcional (02/11): extras guardados à parte; a ficha é remontada da base.
+    const comExtras =
+      extras === undefined
+        ? dados
+        : {
+            ...dados,
+            extrasOpcional: extras ? (extras as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+          };
+    const ficha = await tx.fichaTecnica.upsert({
+      where: { modeloLinhaId },
+      create: { empresaId, modeloLinhaId, ...comExtras },
+      update: comExtras,
+      select: { id: true },
     });
+    await tx.fichaTecnicaItem.deleteMany({ where: { fichaId: ficha.id } });
+    if (dto.itens.length) {
+      await tx.fichaTecnicaItem.createMany({
+        data: dto.itens.map((i) => ({
+          fichaId: ficha.id,
+          insumoId: i.insumoId,
+          // Por tamanho: o consumo da grade é a MÉDIA (custo previsto).
+          consumoPorPeca: D(
+            temTamanhos(i.porTamanho) ? mediaPorTamanho(i.porTamanho!) : i.consumoPorPeca,
+            4,
+          ),
+          porTamanho: temTamanhos(i.porTamanho) ? i.porTamanho! : Prisma.DbNull,
+          etapa: i.etapa ?? 'FACCAO',
+          observacao: i.observacao ?? null,
+          corFixaId: i.corFixaId ?? null,
+          uso: i.uso ?? null,
+        })),
+      });
+    }
+  }
+
+  /**
+   * Salvou a ficha de um modelo BASE: remonta a dos opcionais dele na mesma
+   * linha que seguem a base (02/11) — mudança da Modelista vale nos dois.
+   */
+  private async propagarOpcionais(
+    empresaId: string,
+    ml: { linhaId: string; modelo: { id: string } },
+  ) {
+    const filhos = await this.prisma.catalogoModeloLinha.findMany({
+      where: {
+        linhaId: ml.linhaId,
+        modelo: { empresaId, opcionalDeId: ml.modelo.id },
+        fichaTecnica: { extrasOpcional: { not: Prisma.DbNull } },
+      },
+      select: { id: true },
+    });
+    for (const f of filhos) await this.remontar(empresaId, f.id);
+  }
+
+  /** Ficha do opcional = ficha da base + extras (os gravados ou os novos). */
+  private async remontar(empresaId: string, modeloLinhaId: string, novos?: ExtrasOpcional) {
+    const ml = await this.linhaDaEmpresa(empresaId, modeloLinhaId);
+    const base = await this.gradeDaBase(ml);
+    if (!base) {
+      throw new BusinessRuleException(
+        `${ml.modelo.nome} não é opcional de um produto com a linha ${ml.linha.nome}`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    const extras =
+      novos ??
+      lerExtras(
+        (
+          await this.prisma.fichaTecnica.findUnique({
+            where: { modeloLinhaId },
+            select: { extrasOpcional: true },
+          })
+        )?.extrasOpcional,
+      );
+    if (!extras) return;
+    const daBase = (await this.fichaComoDto(base.id)) ?? ({ itens: [] } as unknown as FichaDto);
+    const dto = fichaDoOpcional(daBase, extras);
+    await this.validar(empresaId, ml, dto);
+    await this.prisma.$transaction((tx) =>
+      this.escrever(tx, empresaId, modeloLinhaId, dto, extras),
+    );
+  }
+
+  /**
+   * Liga (ou troca) os extras do opcional — a ficha passa a ser base + extras.
+   * null solta: a ficha fica como está, como ficha comum.
+   */
+  async salvarExtrasOpcional(
+    user: AuthenticatedUser,
+    modeloLinhaId: string,
+    extras: ExtrasOpcional | null,
+  ) {
+    const empresaId = await this.erp.empresaLigada(user);
+    if (extras === null) {
+      await this.prisma.fichaTecnica.updateMany({
+        where: { modeloLinhaId, empresaId },
+        data: { extrasOpcional: Prisma.DbNull },
+      });
+    } else {
+      await this.remontar(empresaId, modeloLinhaId, extras);
+    }
     return this.obter(user, modeloLinhaId);
+  }
+
+  /**
+   * Prévia pra ligar uma ficha que já existe (copiada da base à mão): o que o
+   * opcional tem a mais vira extra; o que a base tem e ele não, `divergencias`.
+   * Não grava nada.
+   */
+  async previaOpcional(user: AuthenticatedUser, modeloLinhaId: string) {
+    const empresaId = await this.erp.empresaLigada(user);
+    const ml = await this.linhaDaEmpresa(empresaId, modeloLinhaId);
+    const base = await this.gradeDaBase(ml);
+    if (!base) {
+      throw new BusinessRuleException(
+        `${ml.modelo.nome} não é opcional de um produto com a linha ${ml.linha.nome}`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    const daBase = (await this.fichaComoDto(base.id)) ?? ({ itens: [] } as unknown as FichaDto);
+    const doOpcional =
+      (await this.fichaComoDto(modeloLinhaId)) ?? ({ itens: [] } as unknown as FichaDto);
+    return {
+      modelo: ml.modelo.nome,
+      base: { modeloLinhaId: base.id, modelo: base.modelo.nome },
+      ...extrasDaDiferenca(daBase, doOpcional),
+    };
   }
 
   /**

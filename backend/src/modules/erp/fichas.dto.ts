@@ -67,6 +67,17 @@ export const fichaSchema = z.object({
 });
 export type FichaDto = z.infer<typeof fichaSchema>;
 
+/** Extras do opcional (02/11): o que a ficha tem A MAIS que a do produto base. null solta. */
+export const extrasOpcionalSchema = z.object({
+  extras: z
+    .object({
+      itens: fichaSchema.shape.itens,
+      acabamento: z.array(z.string().min(1).max(60)).max(30).default([]),
+    })
+    .nullable(),
+});
+export type ExtrasOpcionalDto = z.infer<typeof extrasOpcionalSchema>;
+
 export const faccaoSchema = z.object({
   nome: z.string().trim().min(2, 'Dê um nome à facção').max(120),
   contato: textoOpcional(120),

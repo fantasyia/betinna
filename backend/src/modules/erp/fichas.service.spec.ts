@@ -459,3 +459,32 @@ describe('FichasService', () => {
     ).toBe(false);
   });
 });
+
+describe('ficha do opcional (02/11): segue a do produto base', () => {
+  it('ficha que segue a base NÃO aceita edição direta', async () => {
+    const { svc, prisma, tx } = montar();
+    prisma.fichaTecnica.findUnique.mockResolvedValueOnce({
+      extrasOpcional: { itens: [], acabamento: [] },
+    } as never);
+    await expect(
+      svc.salvar(user as never, 'ml-1', { itens: [], acabamento: [] } as never),
+    ).rejects.toThrow(/segue a do produto base/);
+    expect(tx.fichaTecnica.upsert).not.toHaveBeenCalled();
+  });
+
+  it('salvar a base remonta os opcionais da mesma linha que seguem ela', async () => {
+    const { svc, prisma } = montar();
+    prisma.fichaTecnica.findUnique.mockResolvedValueOnce(null as never);
+    prisma.catalogoModeloLinha.findMany.mockResolvedValueOnce([{ id: 'ml-emb' }] as never);
+    const remontar = vi
+      .spyOn(svc as unknown as { remontar: () => Promise<void> }, 'remontar')
+      .mockResolvedValue();
+    await svc.salvar(user as never, 'ml-1', { itens: [], acabamento: [] } as never);
+    expect(prisma.catalogoModeloLinha.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ modelo: { empresaId: 'emp-1', opcionalDeId: 'm-1' } }),
+      }),
+    );
+    expect(remontar).toHaveBeenCalledWith('emp-1', 'ml-emb');
+  });
+});
