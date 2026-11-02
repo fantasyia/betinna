@@ -106,6 +106,14 @@ export class SheinOrdersService {
     return { pedidos: n, falhas };
   }
 
+  /** Um pedido só (aviso do webhook): busca o detalhe e grava. */
+  async sincronizarPedido(empresaId: string, orderNo: string): Promise<boolean> {
+    const [o] = (await this.detalhe(empresaId, [orderNo])) ?? [];
+    if (!o) return false;
+    await this.gravar(empresaId, o);
+    return true;
+  }
+
   private async gravar(empresaId: string, o: SheinPedido): Promise<void> {
     const p = pedidoShein(o);
     const c = await custoDosItens(this.prisma, empresaId, 'SHEIN', p.itens);

@@ -24,6 +24,7 @@ export type WebhookProvider =
   | 'erp'
   | 'meta'
   | 'shopee'
+  | 'shein'
   | 'tiktok'
   | 'mercadolivre'
   | 'iugu'

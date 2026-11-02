@@ -7,10 +7,16 @@ import { SheinOAuthService } from './shein-oauth.service';
 import { SheinOrdersService } from './shein-orders.service';
 import { SheinPosVendaService } from './shein-pos-venda.service';
 import { SheinSyncJob } from './shein-sync.job';
+import { SheinWebhookController } from './shein-webhook.controller';
 
 /** Shein (Open API): autorização da loja, pedidos no Vendas marketplaces e pós-venda em Incidentes (01/11). */
 @Module({
-  controllers: [SheinController, SheinHistoricoController, SheinAnunciosController],
+  controllers: [
+    SheinController,
+    SheinHistoricoController,
+    SheinAnunciosController,
+    SheinWebhookController,
+  ],
   providers: [
     SheinClientService,
     SheinOAuthService,

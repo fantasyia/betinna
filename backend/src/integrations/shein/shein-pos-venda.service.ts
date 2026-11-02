@@ -72,6 +72,19 @@ export class SheinPosVendaService {
     });
   }
 
+  /** Um caso só (aviso do webhook): busca o detalhe e grava em Incidentes. */
+  async sincronizarCaso(empresaId: string, numero: string): Promise<boolean> {
+    const [d] = (await this.detalhe(empresaId, [numero])) ?? [];
+    if (!d) return false;
+    await this.incidents.registrarIncidente({
+      empresaId,
+      canal: 'MARKETPLACE_SHEIN',
+      ...incidenteShein(d),
+      metadata: { shein_pos_venda: d },
+    });
+    return true;
+  }
+
   /** Grava em Incidentes tudo de `desde` até agora, de 48 em 48 h. */
   async sincronizar(
     empresaId: string,

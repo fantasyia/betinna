@@ -58,6 +58,24 @@ export class SheinClientService {
     return c;
   }
 
+  /**
+   * Webhook: acha a empresa pelo appid (e openKeyId da loja, quando vier) do
+   * aviso. Poucas conexões Shein — decifra uma a uma e compara.
+   */
+  async resolverPorChaves(
+    appId: string,
+    openKeyId: string | undefined,
+  ): Promise<{ empresaId: string; appSecret: string } | null> {
+    const conexoes = await this.integracoes.listarAtivasPorServico('shein');
+    for (const { empresaId } of conexoes) {
+      const c = await this.credenciais(empresaId).catch(() => null);
+      if (!c || c.appId !== appId) continue;
+      if (openKeyId && c.openKeyId !== openKeyId) continue;
+      return { empresaId, appSecret: c.appSecret };
+    }
+    return null;
+  }
+
   /** POST assinado com as chaves DA LOJA. */
   async post<T>(empresaId: string, path: string, body: unknown): Promise<T> {
     const c = await this.credenciais(empresaId);
