@@ -115,3 +115,27 @@ describe('listar anúncios: todas as páginas (02/11, #02)', () => {
     expect(r).toMatchObject({ totalCores: 57, totalAnuncios: 4 });
   });
 });
+
+describe('campanhas e preço sugerido (02/11, #02)', () => {
+  it('leituras de campanha/preço sugerido liberadas no consultar; escrita só no escrever', async () => {
+    const { consultaPermitida, escritaPermitida } = await import('./shein-anuncios');
+    expect(consultaPermitida('/open-api/campaigns/campaign-list')).toBe(true);
+    expect(consultaPermitida('/open-api/goods-recommend-retail-price/search')).toBe(true);
+    expect(consultaPermitida('/open-api/campaigns/register-campaign')).toBe(false);
+    expect(escritaPermitida('/open-api/campaigns/register-campaign')).toBe(true);
+    expect(escritaPermitida('/open-api/goods-recommend-retail-price/batch-save')).toBe(true);
+    expect(escritaPermitida('/open-api/goods/product/partialEdit')).toBe(false);
+  });
+
+  it('escrever recusa caminho fora da lista sem chamar a Shein', async () => {
+    const post = vi.fn();
+    const ctrl = new SheinAnunciosController({ post } as never);
+    expect(() =>
+      ctrl.escrever({ empresaIdAtiva: 'e1' } as never, {
+        caminho: '/open-api/order/order-list',
+        corpo: {},
+      }),
+    ).toThrow(/não liberado/);
+    expect(post).not.toHaveBeenCalled();
+  });
+});

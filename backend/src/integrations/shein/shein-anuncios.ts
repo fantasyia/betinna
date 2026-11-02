@@ -148,8 +148,31 @@ export const CONSULTAS_SHEIN = [
   '/open-api/goods/transform-pic',
   '/open-api/goods-specs/check-modify-permission',
   '/open-api/goods-specs/modify-logs/search',
+  // Campanhas e preço de varejo sugerido (#02, 02/11) — leitura.
+  '/open-api/campaigns/campaign-list',
+  '/open-api/campaigns/campaign-detail',
+  '/open-api/campaigns/registrable-product-list',
+  '/open-api/campaigns/registration-records',
+  '/open-api/goods-recommend-retail-price/search',
+  '/open-api/goods/query-recommend-retail-price-rule',
+  '/open-api/goods-recommend-retail-price-audit/search',
 ] as const;
 
 export function consultaPermitida(caminho: string): boolean {
   return (CONSULTAS_SHEIN as readonly string[]).includes(caminho);
+}
+
+/**
+ * Escritas liberadas fora do preço/edição (#02, 02/11): inscrever e cancelar
+ * em campanha e enviar preço de varejo sugerido (o "de R$" riscado, com
+ * revisão da Shein). MEXEM NA LOJA — só com o OK do Léo pro plano exato.
+ */
+export const ESCRITAS_SHEIN = [
+  '/open-api/campaigns/register-campaign',
+  '/open-api/campaigns/cancel-registration',
+  '/open-api/goods-recommend-retail-price/batch-save',
+] as const;
+
+export function escritaPermitida(caminho: string): boolean {
+  return (ESCRITAS_SHEIN as readonly string[]).includes(caminho);
 }

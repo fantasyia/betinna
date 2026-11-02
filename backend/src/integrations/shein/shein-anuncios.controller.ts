@@ -11,6 +11,7 @@ import { horaShein } from './shein-assinatura';
 import {
   consultaPermitida,
   corpoPreco,
+  escritaPermitida,
   resultadoPreco,
   resumoSpu,
   type SheinSpuInfo,
@@ -168,6 +169,24 @@ export class SheinAnunciosController {
     @Body(new ZodValidationPipe(editarSchema)) dto: z.infer<typeof editarSchema>,
   ) {
     return this.shein.post(this.empresa(user), '/open-api/goods/product/partialEdit', dto);
+  }
+
+  @Post('escrever')
+  @ApiOperation({
+    summary:
+      'MEXE NA LOJA — inscrever/cancelar em campanha e enviar preço de varejo sugerido (só os caminhos liberados)',
+  })
+  escrever(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(consultarSchema)) dto: z.infer<typeof consultarSchema>,
+  ) {
+    if (!escritaPermitida(dto.caminho)) {
+      throw new BusinessRuleException(
+        `Caminho não liberado pra escrita: ${dto.caminho}`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    return this.shein.post(this.empresa(user), dto.caminho, dto.corpo);
   }
 
   @Post('consultar')

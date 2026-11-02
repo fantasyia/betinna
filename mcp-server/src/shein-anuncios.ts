@@ -109,6 +109,32 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
   );
 
   server.registerTool(
+    "shein_escrever",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pro plano exato. Escritas de campanha e preço sugerido, " +
+        "corpo no formato da documentação da Shein: /open-api/campaigns/register-campaign (inscrever: activityId + " +
+        "goodsInfoList com skc, estoque e preço/desconto por SKU e site — leia antes registrable-product-list) · " +
+        "/open-api/campaigns/cancel-registration · /open-api/goods-recommend-retail-price/batch-save (preço de " +
+        "varejo sugerido, até 10 SKC; SOBRESCREVE tudo do SKC — mande todos os SKUs; leia antes a regra e o atual; " +
+        "passa por revisão: acompanhe em goods-recommend-retail-price-audit/search). Devolve a resposta da Shein " +
+        "(ex.: success_list / failed_list com o motivo).",
+      inputSchema: {
+        caminho: z.enum([
+          "/open-api/campaigns/register-campaign",
+          "/open-api/campaigns/cancel-registration",
+          "/open-api/goods-recommend-retail-price/batch-save",
+        ]),
+        corpo: z.record(z.unknown()),
+      },
+      annotations: mexe,
+    },
+    seguro(async (a: { caminho: string; corpo: Record<string, unknown> }) =>
+      ok(await api.post("/marketplace/anuncios/shein/escrever", { caminho: a.caminho, corpo: a.corpo })),
+    ),
+  );
+
+  server.registerTool(
     "shein_consultar",
     {
       description:
@@ -119,7 +145,12 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
         "product/check-supplierSku-repeated · product/check-edit-permission · " +
         "get-custom-attribute-permission-config · get-associated-attribute-rules · transform-pic (converte " +
         "link de foto pro formato da Shein) · /open-api/goods-specs/check-modify-permission e " +
-        "/open-api/goods-specs/modify-logs/search. Corpo no formato da documentação da Shein.",
+        "/open-api/goods-specs/modify-logs/search. CAMPANHAS: /open-api/campaigns/campaign-list (abertas) · " +
+        "campaign-detail · registrable-product-list (elegíveis) · registration-records (inscrições). PREÇO DE " +
+        "VAREJO SUGERIDO (o \"de R$\" riscado): /open-api/goods-recommend-retail-price/search (atual por SKU) · " +
+        "/open-api/goods/query-recommend-retail-price-rule (regras) · " +
+        "/open-api/goods-recommend-retail-price-audit/search (revisão). Corpo no formato da documentação da Shein " +
+        "(open.sheincorp.com → API Documentation → Marketing Campaign Registration / Price).",
       inputSchema: {
         caminho: z.string().min(1).describe("Ex.: /open-api/goods/query-attribute-template"),
         corpo: z.record(z.unknown()).optional(),
