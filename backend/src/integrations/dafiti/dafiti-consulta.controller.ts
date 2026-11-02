@@ -17,6 +17,9 @@ import { DafitiClientService } from './dafiti.client';
 export const CONSULTAS_DAFITI = [
   '/v2/fulfillment-products/stock-on-hand',
   '/v2/purchase-orders',
+  // Pedidos (02/11): a sincronização volta 0 com pedido no painel — pra diagnosticar.
+  '/v2/orders',
+  '/v2/orders-counters',
 ] as const;
 
 /** Onde cada consulta paginada traz a lista (o resto do corpo é igual). */
@@ -31,6 +34,12 @@ const consultaSchema = z.object({
   size: z.coerce.number().int().min(1).max(100).default(50),
   /** Todas as páginas de uma vez (até 200), juntando a lista. */
   todas: z.enum(['1', 'true']).optional(),
+  /** Só /v2/orders: paginação por limit/offset e os filtros da Dafiti. */
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  section: z.string().max(60).optional(),
+  dateStart: z.string().max(30).optional(),
+  updateDateStart: z.string().max(30).optional(),
 });
 
 interface PaginaDafiti {
@@ -58,6 +67,14 @@ export class DafitiConsultaController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const empresaId = user.empresaIdAtiva;
+    if (q.caminho === '/v2/orders' || q.caminho === '/v2/orders-counters') {
+      const { caminho, limit, offset, section, dateStart, updateDateStart } = q;
+      const filtros = { section, dateStart, updateDateStart };
+      const params: Record<string, string | number> =
+        caminho === '/v2/orders' ? { limit: limit ?? 20, offset: offset ?? 0 } : {};
+      for (const [k, v] of Object.entries(filtros)) if (v) params[k] = v;
+      return this.dafiti.get<unknown>(empresaId, caminho, params);
+    }
     if (q.todas === undefined) {
       return this.dafiti.get<PaginaDafiti>(empresaId, q.caminho, { page: q.page, size: q.size });
     }
