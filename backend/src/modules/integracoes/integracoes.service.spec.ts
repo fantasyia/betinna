@@ -93,6 +93,7 @@ describe('IntegracoesService', () => {
     listar: ReturnType<typeof vi.fn>;
   };
   let resendMock: { isConfigured: ReturnType<typeof vi.fn>; enviar: ReturnType<typeof vi.fn> };
+  let emailMock: { enviarTeste: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     prisma = makePrismaMock();
@@ -108,6 +109,7 @@ describe('IntegracoesService', () => {
       isConfigured: vi.fn().mockReturnValue(true),
       enviar: vi.fn().mockResolvedValue({ id: 're_1', status: 200 }),
     };
+    emailMock = { enviarTeste: vi.fn().mockResolvedValue({ ok: true, id: 're_1' }) };
     service = new IntegracoesService(
       prisma as never,
       env as never,
@@ -115,7 +117,7 @@ describe('IntegracoesService', () => {
       resendMock as never,
       undefined as never, // redis
       undefined as never, // evolution
-      undefined as never, // email
+      emailMock as never,
     );
   });
 
@@ -621,13 +623,17 @@ describe('IntegracoesService', () => {
   });
 
   describe('enviarEmailTeste', () => {
-    it('envia pro próprio usuário e registra sucesso', async () => {
+    it('envia pro próprio usuário PELO CAMINHO DA EMPRESA e registra sucesso', async () => {
       resendMock.isConfigured.mockReturnValue(true);
       const r = await service.enviarEmailTeste(fakeUser(), 123);
       expect(r).toEqual({ ok: true, para: 'admin@betinna.ai' });
-      expect(resendMock.enviar).toHaveBeenCalledWith(
-        expect.objectContaining({ para: 'admin@betinna.ai' }),
+      // Conta e remetente da empresa (01/11) — nunca direto pela do sistema.
+      expect(emailMock.enviarTeste).toHaveBeenCalledWith(
+        'emp-1',
+        'admin@betinna.ai',
+        expect.stringContaining('email-teste:emp-1:'),
       );
+      expect(resendMock.enviar).not.toHaveBeenCalled();
       expect(statusMock.registrarSucesso).toHaveBeenCalledWith('emp-1', 'email');
     });
 
@@ -641,7 +647,7 @@ describe('IntegracoesService', () => {
 
     it('falha no envio registra erro e propaga', async () => {
       resendMock.isConfigured.mockReturnValue(true);
-      resendMock.enviar.mockRejectedValue(new Error('resend 401'));
+      emailMock.enviarTeste.mockResolvedValue({ ok: false, motivo: 'resend 401' });
       await expect(service.enviarEmailTeste(fakeUser(), 123)).rejects.toThrow('resend 401');
       expect(statusMock.registrarErro).toHaveBeenCalledWith('emp-1', 'email', 'resend 401');
     });

@@ -652,6 +652,31 @@ export class TransactionalEmailService {
    * Dados são fictícios de propósito: isto valida LAYOUT, não conteúdo. E a
    * marca é a do tenant de verdade — é o ponto do teste.
    */
+  /**
+   * E-mail de TESTE do painel de Integrações: sai como os e-mails da empresa
+   * (conta Resend própria e remetente dela), pra testar o que de fato vale.
+   */
+  async enviarTeste(
+    empresaId: string,
+    para: string,
+    idempotencyKey: string,
+  ): Promise<{ ok: boolean; motivo?: string; id?: string | null }> {
+    const marca = await this.marcaDeEmail(empresaId);
+    return this.send(
+      para,
+      `Teste de e-mail — ${marca?.empresaNome || 'Betinna.ai'}`,
+      '<div style="font-family:sans-serif;font-size:14px;color:#201554">' +
+        '<h2 style="color:#201554">✅ E-mail transacional funcionando</h2>' +
+        '<p>Se você recebeu esta mensagem, o e-mail da sua empresa está configurado ' +
+        'e enviando normalmente.</p>' +
+        '<p style="color:#6b7280;font-size:12px">Disparado pelo painel de Integrações.</p>' +
+        '</div>',
+      undefined,
+      idempotencyKey,
+      empresaId,
+    );
+  }
+
   async enviarAmostraDeTemplate(
     empresaId: string,
     para: string,

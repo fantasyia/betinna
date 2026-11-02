@@ -190,20 +190,17 @@ export class IntegracoesService {
       return { ok: true, para, template: opcoes.template, assunto: r.assunto };
     }
     try {
-      await this.resend.enviar({
+      // Pelo MESMO caminho dos e-mails da empresa (conta Resend dela, remetente
+      // e nome dela). Antes ia direto pela conta do sistema e chegava como
+      // "Betinna.ai" com a conta da empresa ligada (Léo, 01/11).
+      const r = await this.email.enviarTeste(
+        empresaId,
         para,
-        assunto: 'Teste de e-mail — Betinna.ai',
-        html:
-          '<div style="font-family:sans-serif;font-size:14px;color:#201554">' +
-          '<h2 style="color:#201554">✅ E-mail transacional funcionando</h2>' +
-          '<p>Se você recebeu esta mensagem, a integração de e-mail (Resend) da sua ' +
-          'empresa está configurada e enviando normalmente.</p>' +
-          '<p style="color:#6b7280;font-size:12px">Disparado pelo painel de Integrações do Betinna.ai.</p>' +
-          '</div>',
         // Chave por-clique (timestamp injetado): retries do wrapper deduplicam,
         // mas cada teste manual novo realmente dispara.
-        idempotencyKey: `email-teste:${empresaId}:${user.id}:${agoraMs}`,
-      });
+        `email-teste:${empresaId}:${user.id}:${agoraMs}`,
+      );
+      if (!r.ok) throw new Error(r.motivo ?? 'falha no envio');
       void this.status.registrarSucesso(empresaId, 'email');
       return { ok: true, para };
     } catch (err) {
