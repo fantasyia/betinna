@@ -250,26 +250,29 @@ export class VitrinePublicaService {
         _count: { _all: true },
       });
       for (const c of contagem) totalAvaliacoes.set(c.modeloId, c._count._all);
-      // As 12 mais recentes de CADA modelo (não um corte global).
-      const rows = (
-        await Promise.all(
-          ids.map((modeloId) =>
-            this.prisma.avaliacaoVitrine.findMany({
-              where: { empresaId, status: 'APROVADA', modeloId },
-              orderBy: { criadoEm: 'desc' },
-              take: 12,
-              select: {
-                modeloId: true,
-                estrelas: true,
-                texto: true,
-                autor: true,
-                cores: true,
-                fotos: true,
-              },
-            }),
-          ),
-        )
-      ).flat();
+      // As 12 mais recentes de CADA modelo (não um corte global), numa consulta
+      // só: uma por modelo era N+1 na página pública (Sentry, 02/11).
+      const rows = ids.length
+        ? await this.prisma.$queryRaw<
+            Array<{
+              modeloId: string;
+              estrelas: number;
+              texto: string;
+              autor: string | null;
+              cores: string[];
+              fotos: string[];
+            }>
+          >`
+            SELECT "modeloId", estrelas, texto, autor, cores, fotos FROM (
+              SELECT "modeloId", estrelas, texto, autor, cores, fotos, "criadoEm",
+                     ROW_NUMBER() OVER (PARTITION BY "modeloId" ORDER BY "criadoEm" DESC) AS n
+              FROM "AvaliacaoVitrine"
+              WHERE "empresaId" = ${empresaId} AND status = 'APROVADA'
+                AND "modeloId" = ANY(${ids}::text[])
+            ) t
+            WHERE n <= 12
+            ORDER BY "modeloId", "criadoEm" DESC`
+        : [];
       for (const r of rows) {
         const l = avaliacoes.get(r.modeloId) ?? [];
         if (l.length >= 12) continue;

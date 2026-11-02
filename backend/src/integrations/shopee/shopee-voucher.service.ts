@@ -19,7 +19,7 @@ export interface CupomDto {
   /** loja = vale pra loja toda · produtos = só nos item_ids. */
   alcance: 'loja' | 'produtos';
   itemIds?: number[];
-  /** valor = R$ fixo · percentual = % (com teto opcional). */
+  /** valor = R$ fixo · percentual = % (com teto OBRIGATÓRIO — a Shopee recusa sem). */
   tipo: 'valor' | 'percentual';
   valor?: number;
   percentual?: number;
@@ -86,6 +86,10 @@ export function corpoDoCupom(d: Partial<CupomDto>, edicao = false): Record<strin
   if (!edicao) {
     if (d.tipo === 'valor' && !d.valor) throw regra('Cupom de valor precisa do valor');
     if (d.tipo === 'percentual' && !d.percentual) throw regra('Cupom percentual precisa do %');
+    // A Shopee exige max_price no percentual (31/10: voltava common.error_param).
+    if (d.tipo === 'percentual' && !d.teto) {
+      throw regra('Cupom percentual precisa do teto (desconto máximo em R$)');
+    }
     if (d.alcance === 'produtos' && !d.itemIds?.length) {
       throw regra('Cupom de produtos precisa dos item_ids');
     }

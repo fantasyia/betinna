@@ -195,7 +195,7 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
     tipo: z.enum(["valor", "percentual"]),
     valor: z.number().positive().optional().describe("R$ de desconto (tipo valor)"),
     percentual: z.number().int().min(1).max(99).optional().describe("% de desconto (tipo percentual)"),
-    teto: z.number().positive().optional().describe("Desconto máximo em R$ (tipo percentual)"),
+    teto: z.number().positive().optional().describe("Desconto máximo em R$ — OBRIGATÓRIO no tipo percentual (a Shopee recusa sem)"),
     minimoCompra: z.number().min(0).describe("Compra mínima em R$"),
     quantidade: z.number().int().min(1).describe("Quantos cupons no total"),
     vitrine: z.boolean().optional().describe("false = escondido, só por código (padrão: aparece)"),

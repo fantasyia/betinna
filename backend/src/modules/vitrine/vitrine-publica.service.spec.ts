@@ -203,29 +203,36 @@ describe('VitrinePublicaService', () => {
 describe('avaliações na vitrine (01/11: o número parava de subir)', () => {
   it('total REAL por modelo, e as 12 mais recentes de cada modelo (sem corte global)', async () => {
     const prisma = {
-      ...makePrisma(vitrineNoAr, [modelo()]),
+      ...makePrisma(vitrineNoAr, [modelo(), modelo({ id: 'mod-2' })]),
       avaliacaoVitrine: {
         groupBy: vi.fn().mockResolvedValue([{ modeloId: 'mod-1', _count: { _all: 37 } }]),
-        findMany: vi.fn().mockResolvedValue(
-          Array.from({ length: 12 }, () => ({
-            modeloId: 'mod-1',
-            estrelas: 5,
-            texto: 'ótimo',
-            autor: null,
-            cores: [],
-            fotos: [],
-          })),
-        ),
+        findMany: vi.fn(),
       },
+      $queryRaw: vi.fn().mockResolvedValue(
+        Array.from({ length: 12 }, () => ({
+          modeloId: 'mod-1',
+          estrelas: 5,
+          texto: 'ótimo',
+          autor: null,
+          cores: [],
+          fotos: [],
+        })),
+      ),
     };
     const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);
     const r = await svc.carregar('atacado-ribelt');
     const m = r.modelos.find((x) => x.id === 'mod-1')!;
     expect(m.avaliacoesTotal).toBe(37);
     expect(m.avaliacoes).toHaveLength(12);
-    const args = prisma.avaliacaoVitrine.findMany.mock.calls[0][0];
-    expect(args.where).toMatchObject({ modeloId: 'mod-1', status: 'APROVADA' });
-    expect(args.take).toBe(12);
+    // 02/11 (Sentry, N+1): UMA consulta pra todos os modelos, corte de 12 POR modelo.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.avaliacaoVitrine.findMany).not.toHaveBeenCalled();
+    const [partes, ...valores] = prisma.$queryRaw.mock.calls[0];
+    const sql = (partes as string[]).join('?');
+    expect(sql).toMatch(/PARTITION BY "modeloId"/);
+    expect(sql).toMatch(/n <= 12/);
+    expect(sql).toMatch(/status = 'APROVADA'/);
+    expect(valores).toContainEqual(['mod-1', 'mod-2']);
   });
 });
 

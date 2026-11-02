@@ -79,6 +79,8 @@ describe('Cupons Shopee (31/10)', () => {
   it('regras: produtos sem itens, percentual sem %, fim antes do início — recusa', () => {
     expect(() => corpoDoCupom({ ...BASE, alcance: 'produtos' })).toThrow(/item_ids/);
     expect(() => corpoDoCupom({ ...BASE, percentual: undefined })).toThrow(/%/);
+    // 31/10: a Shopee recusa percentual sem max_price — barra antes de chamar.
+    expect(() => corpoDoCupom({ ...BASE, teto: undefined })).toThrow(/teto/);
     expect(() => corpoDoCupom({ ...BASE, fim: BASE.inicio })).toThrow(/depois do início/);
   });
 
