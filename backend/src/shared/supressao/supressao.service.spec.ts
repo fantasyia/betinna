@@ -129,6 +129,41 @@ describe('SupressaoService.emailSuprimido — o ILIKE do Postgres não dobra ace
 });
 
 /**
+ * Têxtil, 02/11: sem a tag "E-mail inválido ⛔" no tenant, a busca por "mail"
+ * caía na 1ª tag qualquer — "saiu-nutricao-email" — e tratava quem saiu da
+ * régua como e-mail queimado. Só a tag de bounce (ou renomeação dela) vale.
+ */
+describe('SupressaoService.emailSuprimido — outra tag com "mail" no nome não é bounce', () => {
+  const ilike = (h: string, n: string) => h.toLowerCase().includes(n.toLowerCase());
+  const montar = (tags: Array<{ id: string; nome: string }>) => {
+    const prisma = makePrisma();
+    prisma.tag.findMany.mockImplementation(
+      async (args: { where: { nome: { contains: string } } }) =>
+        tags.filter((t) => ilike(t.nome, args.where.nome.contains)),
+    );
+    prisma.leadTag.count.mockResolvedValue(1);
+    return { prisma, svc: new SupressaoService(prisma as never, makeRef() as never) };
+  };
+
+  it('só "saiu-nutricao-email" no tenant → ninguém está queimado', async () => {
+    const { prisma, svc } = montar([{ id: 'saiu', nome: 'saiu-nutricao-email' }]);
+    expect(await svc.emailSuprimido('emp-1', 'teste@exemplo.com')).toBe(false);
+    expect(prisma.leadTag.count).not.toHaveBeenCalled();
+  });
+
+  it('renomeada pra "email invalido" ainda vale; e ganha da outra', async () => {
+    const { prisma, svc } = montar([
+      { id: 'saiu', nome: 'saiu-nutricao-email' },
+      { id: 'mail', nome: 'Email invalido' },
+    ]);
+    expect(await svc.emailSuprimido('emp-1', 'morta@exemplo.com')).toBe(true);
+    expect(prisma.leadTag.count).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tagId: 'mail' }) }),
+    );
+  });
+});
+
+/**
  * Auditoria 13/09/2026 (C-4): bounce/reclamação só marcava LEAD, e o gate
  * `emailSuprimido` só olhava LeadTag — campanha mira CLIENTE.
  */

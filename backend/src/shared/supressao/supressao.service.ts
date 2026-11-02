@@ -497,7 +497,15 @@ export class SupressaoService {
       where: { empresaId, nome: { contains: fragmento, mode: 'insensitive' } },
       select: { id: true, nome: true },
     });
-    return candidatas.find((t) => this.normalizar(t.nome) === alvoNorm) ?? candidatas[0] ?? null;
+    // Renomeação razoável ainda casa ("email invalido"); qualquer OUTRA tag com o
+    // fragmento, não. O `?? candidatas[0]` pegava "saiu-nutricao-email" como se
+    // fosse bounce e calava o e-mail de quem só saiu da régua (Têxtil, 02/11).
+    const essencia = alvoNorm.replace(/^e /, '').replace(/\s+/g, '');
+    return (
+      candidatas.find((t) => this.normalizar(t.nome) === alvoNorm) ??
+      candidatas.find((t) => this.normalizar(t.nome).replace(/\s+/g, '').includes(essencia)) ??
+      null
+    );
   }
 
   /**
