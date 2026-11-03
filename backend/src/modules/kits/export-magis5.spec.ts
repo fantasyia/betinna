@@ -28,6 +28,9 @@ const peca = (over: Partial<PecaBase> = {}): PecaBase => ({
   linha: 'Regular',
   tamanho: 'M',
   composicao: '100% algodão',
+  descricao: 'Bermuda de moletom',
+  preco: 79.99,
+  custo: 16.29,
   ncm: '61034200',
   fiscal: {
     origem: '0',

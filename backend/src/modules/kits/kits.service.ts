@@ -62,7 +62,16 @@ export class KitsService {
           skuSecundario: true,
           ean: true,
           semGtin: true,
-          modelo: { select: { nome: true, composicao: true, ncm: true, fiscal: true } },
+          modelo: {
+            select: {
+              nome: true,
+              composicao: true,
+              descricao: true,
+              descricaoMarketplace: true,
+              ncm: true,
+              fiscal: true,
+            },
+          },
           modeloCor: {
             select: {
               cor: { select: { nome: true } },
@@ -72,7 +81,14 @@ export class KitsService {
               },
             },
           },
-          modeloLinha: { select: { linhaId: true, linha: { select: { nome: true } } } },
+          modeloLinha: {
+            select: {
+              linhaId: true,
+              precoSugerido: true,
+              custoPorPeca: true,
+              linha: { select: { nome: true } },
+            },
+          },
           modeloTamanho: { select: { pesoGramas: true, tamanho: { select: { nome: true } } } },
         },
       }),
@@ -95,6 +111,9 @@ export class KitsService {
           linha: v.modeloLinha.linha.nome,
           tamanho: v.modeloTamanho.tamanho.nome,
           composicao: v.modelo.composicao,
+          descricao: v.modelo.descricaoMarketplace ?? v.modelo.descricao,
+          preco: v.modeloLinha.precoSugerido?.toNumber() ?? null,
+          custo: v.modeloLinha.custoPorPeca?.toNumber() ?? null,
           ncm: v.modelo.ncm,
           fiscal: v.modelo.fiscal as FiscalProduto | null,
           pesoGramas: v.modeloTamanho.pesoGramas,

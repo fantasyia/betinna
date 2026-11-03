@@ -321,9 +321,8 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     color: '#0b5cad',
     icon: '🔗',
     description:
-      'Hub dos marketplaces: os pedidos de todos os canais entram pelo Magis5 e o estoque do app vai pra ele, ' +
-      'que repassa aos marketplaces. Por enquanto só guarda a chave — a sincronização é ligada depois, com a ' +
-      'documentação da API em mãos. Cole a chave (e o usuário/ID da conta, se o Magis5 pedir).',
+      'Hub dos marketplaces: os pedidos de todos os canais ficam no Magis5 e o app lê de lá. O estoque é do ' +
+      'app; o envio do saldo ainda não está ligado. Cole a chave da API do Magis5.',
     connectMode: 'credentials',
     credentialFields: [
       { name: 'apiKey', label: 'Chave / token da API', type: 'password' },

@@ -406,6 +406,7 @@ model Empresa {
   tags                  Tag[]
   marketplaceMsgs       MarketplaceMsg[]
   marketplaceOrders     MarketplaceOrder[]
+  magis5Pedidos         Magis5Pedido[]
   conversations         Conversation[]
   marketplaceIncidents  MarketplaceIncident[]
   notificacoes          Notificacao[]
@@ -2996,6 +2997,26 @@ model MarketplaceOrder {
   @@unique([plataforma, numeroExterno])
   @@index([empresaId])
   @@index([status])
+}
+
+/// Espelho dos pedidos do Magis5 (Fase 1, 03/11): só leitura, sem efeito em
+/// estoque nem em `MarketplaceOrder`. `dados` é o pedido inteiro como veio.
+model Magis5Pedido {
+  id           String    @id @default(cuid())
+  empresaId    String
+  /// completeOrderNumber (ou id).
+  numero       String
+  canal        String?
+  status       String?
+  pedidoEm     DateTime?
+  dados        Json
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, numero])
+  @@index([empresaId, pedidoEm])
 }
 
 /// SKU do marketplace → produto do cadastro (24/10): pro custo de kit ("Kit 2

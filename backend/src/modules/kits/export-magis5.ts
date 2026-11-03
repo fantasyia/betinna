@@ -22,6 +22,9 @@ export interface PecaBase {
   linha: string;
   tamanho: string;
   composicao: string | null;
+  descricao: string | null;
+  preco: number | null;
+  custo: number | null;
   ncm: string | null;
   fiscal: FiscalProduto | null;
   pesoGramas: number | null;
@@ -60,8 +63,15 @@ interface Embalagem {
   alturaCm: number | null;
 }
 
-export interface PecaExportada extends Fiscal {
+/** O Magis5 quer `origin` inteiro. */
+const origemNumero = (o: string | null) => (o === null ? null : Number(o));
+
+export interface PecaExportada extends Omit<Fiscal, 'origem'> {
   tipo: 'peca';
+  origem: number | null;
+  descricao: string | null;
+  preco: number | null;
+  custo: number | null;
   sku: string | null;
   skuSecundario: string | null;
   ean: string | null;
@@ -78,8 +88,9 @@ export interface PecaExportada extends Fiscal {
   faltando: string[];
 }
 
-export interface KitExportado extends Fiscal {
+export interface KitExportado extends Omit<Fiscal, 'origem'> {
   tipo: 'kit';
+  origem: number | null;
   sku: string;
   skuSecundario: string | null;
   nome: string;
@@ -153,6 +164,10 @@ export function exportarPeca(p: PecaBase, empresa: FiscalEmpresa | null): PecaEx
     embalagem,
     fotos: p.fotos,
     ...fiscal,
+    origem: origemNumero(fiscal.origem),
+    descricao: p.descricao,
+    preco: p.preco,
+    custo: p.custo,
     faltando,
   };
 }
@@ -207,6 +222,7 @@ export function exportarKit(
       ? itens.map((i) => ({ sku: i.peca.sku as string, quantidade: i.quantidade }))
       : null,
     ...fiscal,
+    origem: origemNumero(fiscal.origem),
     faltando,
   };
 }
@@ -223,6 +239,9 @@ const VAZIA: PecaBase = {
   linha: '',
   tamanho: '',
   composicao: null,
+  descricao: null,
+  preco: null,
+  custo: null,
   ncm: null,
   fiscal: null,
   pesoGramas: null,
