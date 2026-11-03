@@ -17,6 +17,8 @@ export interface Titulo {
   observacoes: string | null;
   recorrente: boolean;
   automatico: boolean;
+  /** Pedido do título foi cancelado (com recebimento: alguém decide a devolução). */
+  pedidoCancelado?: boolean;
 }
 
 export interface Lista {

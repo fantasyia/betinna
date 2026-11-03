@@ -202,6 +202,18 @@ export class FinanceiroService {
         },
       },
     });
+    // Pedido cancelado com recebimento (03/11): a linha avisa pra alguém decidir a devolução.
+    const idsPedido = [...new Set(titulos.map((t) => t.pedidoId).filter((x): x is string => !!x))];
+    const cancelados = new Set(
+      idsPedido.length
+        ? (
+            await this.prisma.pedido.findMany({
+              where: { id: { in: idsPedido }, empresaId, status: 'CANCELADO' },
+              select: { id: true },
+            })
+          ).map((p) => p.id)
+        : [],
+    );
     const linhas = titulos.map((t) => {
       const valorC = centavos(Number(t.valor));
       const pagoC = t.baixas.reduce((s, b) => s + centavos(Number(b.valor)), 0);
@@ -223,6 +235,7 @@ export class FinanceiroService {
         totalParcelas: t.totalParcelas,
         recorrente: Boolean(t.recorrenciaId),
         automatico: Boolean(t.pedidoId || t.opEntregaId || t.opSaldoId || t.insumoMovimentoId),
+        pedidoCancelado: Boolean(t.pedidoId && cancelados.has(t.pedidoId)),
       };
     });
     // Totais da empresa toda (não só do filtro): o topo da tela.
@@ -453,6 +466,44 @@ export class FinanceiroService {
       }
     });
     return { baixados: n };
+  }
+
+  /**
+   * Pedido CANCELADO que já tinha recebido (Léo, 03/11, opção A): quem cancela
+   * decide se houve devolução. Este botão estorna todas as baixas dos títulos a
+   * receber do pedido e cancela os títulos — o dinheiro sai do "recebido".
+   */
+  async estornarRecebimentoDoPedido(user: AuthenticatedUser, pedidoId: string) {
+    const empresaId = await this.empresaLigada(user);
+    const pedido = await this.prisma.pedido.findFirst({
+      where: { id: pedidoId, empresaId },
+      select: { id: true, status: true },
+    });
+    if (!pedido) throw new NotFoundException('Pedido', pedidoId);
+    if (pedido.status !== 'CANCELADO')
+      throw regra('Só pedido cancelado tem o recebimento estornado');
+    return this.prisma.$transaction(async (tx) => {
+      const titulos = await tx.finTitulo.findMany({
+        where: { empresaId, pedidoId, tipo: 'RECEBER', status: { not: 'CANCELADO' } },
+        select: {
+          id: true,
+          baixas: { where: { estornadaEm: null }, select: { id: true, valor: true } },
+        },
+      });
+      let estornadoC = 0;
+      const agora = new Date();
+      for (const t of titulos) {
+        for (const b of t.baixas) estornadoC += centavos(Number(b.valor));
+        if (t.baixas.length) {
+          await tx.finBaixa.updateMany({
+            where: { tituloId: t.id, estornadaEm: null },
+            data: { estornadaEm: agora },
+          });
+        }
+        await tx.finTitulo.update({ where: { id: t.id }, data: { status: 'CANCELADO' } });
+      }
+      return { titulos: titulos.length, estornado: reais(estornadoC) };
+    });
   }
 
   /** Desfaz uma baixa lançada errado (fica no histórico como estornada). */

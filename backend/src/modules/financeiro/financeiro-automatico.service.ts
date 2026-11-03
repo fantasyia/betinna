@@ -320,19 +320,22 @@ export class FinanceiroAutomaticoService {
    * Pedido cancelado → títulos cancelados (todas as parcelas). Parcela que já
    * recebeu NÃO cancela (devolução é decisão de gente): fica no log.
    */
-  async aoCancelarPedido(pedidoId: string): Promise<void> {
+  async aoCancelarPedido(pedidoId: string): Promise<{ recebido: number }> {
+    let recebidoC = 0;
     try {
       const ts = await this.prisma.finTitulo.findMany({
         where: { pedidoId, tipo: 'RECEBER' },
         select: {
           id: true,
           status: true,
-          baixas: { where: { estornadaEm: null }, select: { id: true } },
+          baixas: { where: { estornadaEm: null }, select: { id: true, valor: true } },
         },
       });
       for (const t of ts) {
         if (t.status === 'CANCELADO') continue;
         if (t.baixas.length > 0) {
+          // Quem cancelou decide (03/11): o pedido avisa e oferece "estornar recebimento".
+          recebidoC += t.baixas.reduce((s, b) => s + Math.round(Number(b.valor) * 100), 0);
           this.logger.warn(
             `[financeiro] pedido ${pedidoId} cancelado com recebimento no título ${t.id} — confira a devolução`,
           );
@@ -345,6 +348,7 @@ export class FinanceiroAutomaticoService {
         `[financeiro] título do pedido ${pedidoId} não foi cancelado: ${String(err)}`,
       );
     }
+    return { recebido: recebidoC / 100 };
   }
 
   /** Pedido reativado (voltou a RASCUNHO): o título cancelado reabre. */

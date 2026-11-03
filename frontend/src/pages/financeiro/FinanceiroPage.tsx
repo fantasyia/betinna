@@ -242,6 +242,11 @@ function Titulos({
                           {t.contatoNome && <span className="text-muted"> · {t.contatoNome}</span>}
                           {t.recorrente && <Badge variant="outline" size="sm" className="ml-1.5">recorrente</Badge>}
                           {t.automatico && <Badge variant="info" size="sm" className="ml-1.5">automático</Badge>}
+                          {t.pedidoCancelado && t.status !== 'CANCELADO' && t.pago > 0 && (
+                            <Badge variant="danger" size="sm" className="ml-1.5" title="Pedido cancelado com recebimento: estorne no pedido se houve devolução">
+                              pedido cancelado
+                            </Badge>
+                          )}
                         </td>
                         <td className="px-2 py-2 text-muted">{t.categoria?.nome ?? '—'}</td>
                         <td className="px-2 py-2 text-right">{formatMoeda(t.valor)}</td>

@@ -778,7 +778,10 @@ export class PedidosService {
           this.logger.error(`Pedido ${existing.numero}: liberar reserva falhou — ${String(err)}`);
         });
     }
-    if (this.fin) await this.fin.aoCancelarPedido(id);
+    if (this.fin) {
+      const { recebido } = await this.fin.aoCancelarPedido(id);
+      this.avisarRecebidoNoCancelamento(existing.empresaId, id, existing.numero, recebido);
+    }
 
     if (existing.numeroErp) {
       this.logger.warn(
@@ -955,7 +958,7 @@ export class PedidosService {
         include: {
           solicitante: { select: { id: true, nome: true } },
           decididoPor: { select: { id: true, nome: true } },
-          pedido: { select: { id: true, numero: true, status: true } },
+          pedido: { select: { id: true, numero: true, status: true, empresaId: true } },
         },
       });
     });
@@ -979,9 +982,43 @@ export class PedidosService {
             );
           });
       }
-      if (this.fin) await this.fin.aoCancelarPedido(solicitacao.pedido.id);
+      if (this.fin) {
+        const { recebido } = await this.fin.aoCancelarPedido(solicitacao.pedido.id);
+        this.avisarRecebidoNoCancelamento(
+          solicitacao.pedido.empresaId,
+          solicitacao.pedido.id,
+          solicitacao.pedido.numero,
+          recebido,
+        );
+      }
     }
     return updated;
+  }
+
+  /**
+   * Pedido cancelado que já tinha recebido (Léo, 03/11, opção A): o título
+   * fica quitado e quem cancelou decide se houve devolução — avisa a gestão.
+   */
+  private avisarRecebidoNoCancelamento(
+    empresaId: string,
+    pedidoId: string,
+    numero: string | number,
+    recebido: number,
+  ) {
+    if (recebido <= 0) return;
+    void this.notificacoes
+      .criarParaRole({
+        empresaId,
+        roles: ['ADMIN', 'DIRECTOR'],
+        tipo: 'GENERICO',
+        prioridade: 'ALTA',
+        titulo: `Pedido ${numero} cancelado com ${recebido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} recebido`,
+        mensagem:
+          'O recebimento continua no Financeiro. Se o dinheiro foi devolvido ao cliente, use "Estornar recebimento" no pedido.',
+        link: `/pedidos/${pedidoId}`,
+        metadata: { pedidoId, origem: 'CANCELAMENTO_COM_RECEBIMENTO' },
+      })
+      .catch(() => undefined);
   }
 
   // ─── B2 — Ações em massa (best-effort) ──────────────────────────────────

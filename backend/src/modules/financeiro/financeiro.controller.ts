@@ -122,6 +122,12 @@ export class FinanceiroController {
     return this.svc.estornarBaixa(user, id);
   }
 
+  @Post('pedidos/:pedidoId/estornar-recebimento')
+  @ApiOperation({ summary: 'Pedido cancelado: estorna o que foi recebido e cancela os títulos' })
+  estornarRecebimento(@CurrentUser() user: AuthenticatedUser, @Param('pedidoId') pedidoId: string) {
+    return this.svc.estornarRecebimentoDoPedido(user, pedidoId);
+  }
+
   @Get('categorias')
   @ApiOperation({ summary: 'Categorias de receita e despesa' })
   categorias(@CurrentUser() user: AuthenticatedUser) {

@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Wallet } from 'lucide-react';
+import { AlertTriangle, Wallet } from 'lucide-react';
 import { formatMoeda } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
-import { Badge, Card } from '@/components/ui';
+import { api, ApiError } from '@/lib/api';
+import { Badge, Button, Card } from '@/components/ui';
 import { dataBr, rotuloSituacao, type Lista } from './tipos';
 
 /**
@@ -31,9 +33,66 @@ export function ContaDoPedido({ pedidoId, numero }: { pedidoId: string; numero: 
     ligado ? `/financeiro/titulos?tipo=RECEBER&situacao=TODOS&pedidoId=${encodeURIComponent(pedidoId)}` : null,
   );
   const t = q.data?.titulos[0];
+  const [confirmando, setConfirmando] = useState(false);
+  const [estornando, setEstornando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   if (!ligado || !q.data) return null;
+  // Cancelado com dinheiro recebido (03/11, opção A): quem cancela decide a devolução.
+  const recebidoNoCancelado = !!t && t.pedidoCancelado === true && t.status !== 'CANCELADO' && t.pago > 0;
+  async function estornar() {
+    setEstornando(true);
+    setErro(null);
+    try {
+      await api.post(`/financeiro/pedidos/${encodeURIComponent(pedidoId)}/estornar-recebimento`);
+      setConfirmando(false);
+      q.refetch();
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : 'Não deu pra estornar');
+    } finally {
+      setEstornando(false);
+    }
+  }
   return (
     <Card className="p-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" data-testid="fin-conta-pedido">
+      {recebidoNoCancelado && (
+        <div
+          className="basis-full flex flex-wrap items-center gap-2 px-3 py-2 rounded-md bg-danger/10 border border-danger/30"
+          data-testid="fin-cancelado-com-recebimento"
+        >
+          <AlertTriangle className="h-4 w-4 text-danger" aria-hidden />
+          <span className="text-danger">
+            Pedido cancelado com <b className="tabular-nums">{formatMoeda(t.pago)}</b> já recebido. Se o dinheiro foi
+            devolvido ao cliente, estorne o recebimento.
+          </span>
+          {confirmando ? (
+            <span className="ml-auto inline-flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setConfirmando(false)} disabled={estornando}>
+                Voltar
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={estornar}
+                disabled={estornando}
+                data-testid="fin-estornar-confirmar"
+              >
+                {estornando ? 'Estornando…' : `Confirmar estorno de ${formatMoeda(t.pago)}`}
+              </Button>
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="ml-auto"
+              onClick={() => setConfirmando(true)}
+              data-testid="fin-estornar-recebimento"
+            >
+              Estornar recebimento
+            </Button>
+          )}
+          {erro && <span className="basis-full text-danger">{erro}</span>}
+        </div>
+      )}
       <span className="inline-flex items-center gap-1.5 font-medium">
         <Wallet className="h-4 w-4 text-muted" aria-hidden /> Financeiro
       </span>
