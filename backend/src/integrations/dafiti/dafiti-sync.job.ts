@@ -5,6 +5,12 @@ import { EnvService } from '@config/env.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { DafitiOrdersService } from './dafiti-orders.service';
 
+/**
+ * Desligado (Léo, 02/11): a API só conta os pedidos do galpão, não entrega o
+ * conteúdo. Volta quando a Dafiti liberar as Coletas — aí é só trocar pra true.
+ */
+const SINCRONIZAR_DAFITI = false;
+
 /** Pedidos da Dafiti a cada 30 min (os que mudaram nos últimos 3 dias). */
 @Injectable()
 export class DafitiSyncJob {
@@ -19,7 +25,7 @@ export class DafitiSyncJob {
 
   @Cron('0 */30 * * * *', { name: 'dafiti-sync', timeZone: 'America/Sao_Paulo' })
   async rodar(): Promise<void> {
-    if (this.env.get('NODE_ENV') === 'test') return;
+    if (!SINCRONIZAR_DAFITI || this.env.get('NODE_ENV') === 'test') return;
     if (!(await this.cronLock.acquire('dafiti-sync', 25 * 60))) return;
     try {
       const conexoes = await this.prisma.integracaoConexao.findMany({
