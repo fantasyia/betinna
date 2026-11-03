@@ -139,11 +139,11 @@ describe('exportação pro Magis5: kit (03/11)', () => {
     expect(r.embalagem).toEqual({ comprimentoCm: 36, larguraCm: 26, alturaCm: 13 });
   });
 
-  it('4 peças ou mais: sem medida definida, aponta a pendência', () => {
+  it('4 e 5 peças: 40 × 32 × 3, sem pendência', () => {
     const componentes = [{ variacaoId: 'v1', quantidade: 4 }];
     const r = exportarKit(kit({ componentes }), mapa(v1), EMPRESA, PADRAO);
-    expect(r.embalagem).toBeNull();
-    expect(r.faltando).toContain('embalagem');
+    expect(r.embalagem).toEqual({ comprimentoCm: 40, larguraCm: 32, alturaCm: 3 });
+    expect(r.faltando).not.toContain('embalagem');
   });
 
   it('aleatório sem composição sai sem composição e sem peso', () => {

@@ -181,6 +181,8 @@ export function exportarPeca(
 
 /** Até aqui o kit vai na embalagem individual, só mais alta (Léo, 03/11). */
 const MAX_PECAS_NA_INDIVIDUAL = 3;
+/** Kit de 4 e 5 peças (Léo, 03/11). */
+const EMBALAGEM_KIT_GRANDE: Embalagem = { comprimentoCm: 40, larguraCm: 32, alturaCm: 3 };
 
 /**
  * Kit herda das peças só o que TODAS têm igual; divergiu, sai null e entra em
@@ -230,14 +232,16 @@ export function exportarKit(
 
   // Altura = soma das peças; a medida própria do modelo (moletom = 5) vence a padrão.
   const totalPecas = itens.reduce((soma, i) => soma + i.quantidade, 0);
-  const cabe = totalPecas > 0 && totalPecas <= MAX_PECAS_NA_INDIVIDUAL;
+  const naIndividual = totalPecas > 0 && totalPecas <= MAX_PECAS_NA_INDIVIDUAL;
   const alturas = itens.map(
     (i) => (i.peca.fiscal?.embalagemAlturaCm ?? padrao?.alturaCm ?? 0) * i.quantidade,
   );
   const embalagem =
-    cabe && padrao?.comprimentoCm && padrao.larguraCm && alturas.every(Boolean)
-      ? { ...padrao, alturaCm: alturas.reduce((a, b) => a + b, 0) }
-      : null;
+    totalPecas > MAX_PECAS_NA_INDIVIDUAL
+      ? EMBALAGEM_KIT_GRANDE
+      : naIndividual && padrao?.comprimentoCm && padrao.larguraCm && alturas.every(Boolean)
+        ? { ...padrao, alturaCm: alturas.reduce((a, b) => a + b, 0) }
+        : null;
   if (totalPecas > 0 && !embalagem) faltando.push('embalagem');
 
   return {
