@@ -13,6 +13,11 @@ const listarSchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
 });
 
+const exportarSchema = z.object({
+  tipo: z.enum(['pecas', 'kits']),
+  page: z.coerce.number().int().min(1).optional(),
+});
+
 /** Kits dos marketplaces no ERP — fora da vitrine (25/10). */
 @ApiTags('kits')
 @ApiBearerAuth()
@@ -27,6 +32,17 @@ export class KitsController {
     @Query(new ZodValidationPipe(listarSchema)) q: z.infer<typeof listarSchema>,
   ) {
     return this.svc.listar(user, { ...q, semComposicao: q.semComposicao === 'true' });
+  }
+
+  @Get('export-magis5')
+  @ApiOperation({
+    summary: 'Catálogo por SKU pro cadastro no Magis5, com o que falta (só leitura)',
+  })
+  exportarMagis5(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(exportarSchema)) q: z.infer<typeof exportarSchema>,
+  ) {
+    return this.svc.exportarMagis5(user, q);
   }
 
   @Get('itens/:id')

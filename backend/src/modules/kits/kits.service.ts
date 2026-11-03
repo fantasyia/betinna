@@ -2,6 +2,9 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import type { FiscalEmpresa, FiscalProduto } from '@modules/vitrine/fiscal';
+import { VitrineFotosService } from '@modules/vitrine/vitrine-fotos.service';
+import { exportarKit, exportarPeca, resumirFaltas, type PecaBase } from './export-magis5';
 
 /** Um kit pronto pra gravar (montado pelo plano de importação). */
 export interface KitPlanejado {
@@ -28,13 +31,132 @@ export interface KitPlanejado {
  */
 @Injectable()
 export class KitsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fotos: VitrineFotosService,
+  ) {}
 
   private empresa(user: AuthenticatedUser): string {
     if (!['ADMIN', 'DIRECTOR'].includes(user.role) || !user.empresaIdAtiva) {
       throw new ForbiddenException('Só diretor ou admin vê os kits');
     }
     return user.empresaIdAtiva;
+  }
+
+  /**
+   * Catálogo pro cadastro no Magis5 (03/11): cada SKU com a herança resolvida e
+   * o que falta. Só leitura; quem envia é o script da sessão Magis5. Peças
+   * inativas ficam fora da lista, mas o kit ainda as enxerga pra apontar o problema.
+   */
+  async exportarMagis5(user: AuthenticatedUser, q: { tipo: 'pecas' | 'kits'; page?: number }) {
+    const empresaId = this.empresa(user);
+    const [empresa, variacoes] = await Promise.all([
+      this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
+      this.prisma.catalogoVariacao.findMany({
+        where: { empresaId, modelo: { ativo: true } },
+        orderBy: [{ sku: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          ativo: true,
+          sku: true,
+          skuSecundario: true,
+          ean: true,
+          semGtin: true,
+          modelo: { select: { nome: true, composicao: true, ncm: true, fiscal: true } },
+          modeloCor: {
+            select: {
+              cor: { select: { nome: true } },
+              fotos: {
+                orderBy: { ordem: 'asc' },
+                select: { storagePath: true, linhaId: true },
+              },
+            },
+          },
+          modeloLinha: { select: { linhaId: true, linha: { select: { nome: true } } } },
+          modeloTamanho: { select: { pesoGramas: true, tamanho: { select: { nome: true } } } },
+        },
+      }),
+    ]);
+    const fiscalEmpresa =
+      (((empresa?.config ?? {}) as Record<string, unknown>).fiscal as FiscalEmpresa | undefined) ??
+      null;
+    const pecas = new Map<string, PecaBase>(
+      variacoes.map((v) => [
+        v.id,
+        {
+          id: v.id,
+          ativa: v.ativo,
+          sku: v.sku,
+          skuSecundario: v.skuSecundario,
+          ean: v.ean,
+          semGtin: v.semGtin,
+          modelo: v.modelo.nome,
+          cor: v.modeloCor.cor.nome,
+          linha: v.modeloLinha.linha.nome,
+          tamanho: v.modeloTamanho.tamanho.nome,
+          composicao: v.modelo.composicao,
+          ncm: v.modelo.ncm,
+          fiscal: v.modelo.fiscal as FiscalProduto | null,
+          pesoGramas: v.modeloTamanho.pesoGramas,
+          fotos: v.modeloCor.fotos
+            .filter((f) => !f.linhaId || f.linhaId === v.modeloLinha.linhaId)
+            .flatMap((f) => this.fotos.urlPublica(f.storagePath) ?? []),
+        },
+      ]),
+    );
+
+    const itens =
+      q.tipo === 'pecas'
+        ? [...pecas.values()].filter((p) => p.ativa).map((p) => exportarPeca(p, fiscalEmpresa))
+        : (
+            await this.prisma.catalogoKit.findMany({
+              where: { empresaId, ativo: true },
+              orderBy: [{ produto: 'asc' }, { modelo: 'asc' }, { combinacao: 'asc' }],
+              select: {
+                produto: true,
+                modelo: true,
+                combinacao: true,
+                aleatorio: true,
+                itens: {
+                  where: { ativo: true },
+                  orderBy: { sku: 'asc' },
+                  select: {
+                    sku: true,
+                    skuSecundario: true,
+                    tamanho: true,
+                    composicaoOk: true,
+                    componentes: { select: { variacaoId: true, quantidade: true } },
+                  },
+                },
+              },
+            })
+          ).flatMap((k) =>
+            k.itens.map((i) =>
+              exportarKit(
+                {
+                  sku: i.sku,
+                  skuSecundario: i.skuSecundario,
+                  nome: `${k.produto} ${k.modelo} ${k.combinacao} ${i.tamanho}`,
+                  tamanho: i.tamanho,
+                  aleatorio: k.aleatorio,
+                  composicaoOk: i.composicaoOk,
+                  componentes: i.componentes,
+                },
+                pecas,
+                fiscalEmpresa,
+              ),
+            ),
+          );
+
+    const limit = 500;
+    const page = Math.max(q.page ?? 1, 1);
+    return {
+      resumo: resumirFaltas(itens),
+      page,
+      limit,
+      paginas: Math.ceil(itens.length / limit),
+      itens: itens.slice((page - 1) * limit, page * limit),
+    };
   }
 
   async listar(
