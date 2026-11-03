@@ -110,13 +110,40 @@ describe('exportação pro Magis5: kit (03/11)', () => {
     ]);
     expect(r.pesoGramas).toBe(860);
     expect(r.ncm).toBe('61034200');
+    expect(r.faltando).toEqual(['embalagem']);
+  });
+
+  const PADRAO = { comprimentoCm: 36, larguraCm: 26, alturaCm: 3 };
+
+  it('NCM diferente entre as peças: vale o da peça de maior valor no kit', () => {
+    const cara = peca({ id: 'v2', ncm: '61103000', preco: 120 });
+    const r = exportarKit(
+      kit({
+        componentes: [
+          { variacaoId: 'v1', quantidade: 1 },
+          { variacaoId: 'v2', quantidade: 1 },
+        ],
+      }),
+      mapa(v1, cara),
+      EMPRESA,
+      PADRAO,
+    );
+    expect(r.ncm).toBe('61103000');
     expect(r.faltando).toEqual([]);
   });
 
-  it('NCM diferente entre as peças não escolhe um: fica null e aponta', () => {
-    const r = exportarKit(kit(), mapa(v1, peca({ id: 'v2', ncm: '61046200' })), EMPRESA);
-    expect(r.ncm).toBeNull();
-    expect(r.faltando).toEqual(['ncm diverge entre as peças']);
+  it('até 3 peças: 36 × 26 e altura somada, com a medida própria do moletom', () => {
+    const moletom = peca({ id: 'v2', fiscal: { ...peca().fiscal, embalagemAlturaCm: 5 } });
+    const semMedida = peca({ fiscal: { ...peca().fiscal, embalagemAlturaCm: null } });
+    const r = exportarKit(kit(), mapa(semMedida, moletom), EMPRESA, PADRAO);
+    expect(r.embalagem).toEqual({ comprimentoCm: 36, larguraCm: 26, alturaCm: 13 });
+  });
+
+  it('4 peças ou mais: sem medida definida, aponta a pendência', () => {
+    const componentes = [{ variacaoId: 'v1', quantidade: 4 }];
+    const r = exportarKit(kit({ componentes }), mapa(v1), EMPRESA, PADRAO);
+    expect(r.embalagem).toBeNull();
+    expect(r.faltando).toContain('embalagem');
   });
 
   it('aleatório sem composição sai sem composição e sem peso', () => {

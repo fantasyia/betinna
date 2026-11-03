@@ -181,6 +181,7 @@ export class KitsService {
                 },
                 pecas,
                 fiscalEmpresa,
+                padrao,
               ),
             ),
           );

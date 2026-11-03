@@ -97,6 +97,7 @@ export interface KitExportado extends Omit<Fiscal, 'origem'> {
   tamanho: string;
   aleatorio: boolean;
   pesoGramas: number | null;
+  embalagem: Embalagem | null;
   /** Só existe quando as peças fecham; a % de cada item ainda não foi definida. */
   composicao: Array<{ sku: string; quantidade: number }> | null;
   faltando: string[];
@@ -178,14 +179,19 @@ export function exportarPeca(
   };
 }
 
+/** Até aqui o kit vai na embalagem individual, só mais alta (Léo, 03/11). */
+const MAX_PECAS_NA_INDIVIDUAL = 3;
+
 /**
  * Kit herda das peças só o que TODAS têm igual; divergiu, sai null e entra em
- * `faltando` como `<campo> diverge entre as peças`.
+ * `faltando` como `<campo> diverge entre as peças`. NCM e CEST são a exceção:
+ * vale o da peça principal, a de maior valor no kit (Léo, 03/11).
  */
 export function exportarKit(
   k: KitBase,
   pecas: Map<string, PecaBase>,
   empresa: FiscalEmpresa | null,
+  padrao: Embalagem | null = null,
 ): KitExportado {
   const itens = k.componentes.flatMap((c) => {
     const peca = pecas.get(c.variacaoId);
@@ -194,8 +200,16 @@ export function exportarKit(
   const fiscais = itens.map((i) => fiscalDaPeca(i.peca, empresa));
   const faltando: string[] = [];
   const fiscal = {} as Fiscal;
+  const valorNoKit = (i: (typeof itens)[number]) => (i.peca.preco ?? 0) * i.quantidade;
+  const principal = itens.length
+    ? itens.reduce((maior, i) => (valorNoKit(i) > valorNoKit(maior) ? i : maior))
+    : null;
   for (const campo of Object.keys(fiscalDaPeca(VAZIA, empresa)) as Array<keyof Fiscal>) {
     const valores = [...new Set(fiscais.map((f) => f[campo]))];
+    if (valores.length > 1 && principal && (campo === 'ncm' || campo === 'cest')) {
+      fiscal[campo] = fiscalDaPeca(principal.peca, empresa)[campo];
+      continue;
+    }
     fiscal[campo] = valores.length === 1 ? valores[0] : null;
     if (valores.length > 1) faltando.push(`${campo} diverge entre as peças`);
   }
@@ -214,6 +228,18 @@ export function exportarKit(
   const semPeso = !itens.length || itens.some((i) => !i.peca.pesoGramas);
   if (semPeso) faltando.push('pesoGramas');
 
+  // Altura = soma das peças; a medida própria do modelo (moletom = 5) vence a padrão.
+  const totalPecas = itens.reduce((soma, i) => soma + i.quantidade, 0);
+  const cabe = totalPecas > 0 && totalPecas <= MAX_PECAS_NA_INDIVIDUAL;
+  const alturas = itens.map(
+    (i) => (i.peca.fiscal?.embalagemAlturaCm ?? padrao?.alturaCm ?? 0) * i.quantidade,
+  );
+  const embalagem =
+    cabe && padrao?.comprimentoCm && padrao.larguraCm && alturas.every(Boolean)
+      ? { ...padrao, alturaCm: alturas.reduce((a, b) => a + b, 0) }
+      : null;
+  if (totalPecas > 0 && !embalagem) faltando.push('embalagem');
+
   return {
     tipo: 'kit',
     sku: k.sku,
@@ -224,6 +250,7 @@ export function exportarKit(
     pesoGramas: semPeso
       ? null
       : itens.reduce((soma, i) => soma + (i.peca.pesoGramas ?? 0) * i.quantidade, 0),
+    embalagem,
     composicao: composicaoFechada
       ? itens.map((i) => ({ sku: i.peca.sku as string, quantidade: i.quantidade }))
       : null,
