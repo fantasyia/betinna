@@ -4,7 +4,13 @@ import { PrismaService } from '@database/prisma.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { FiscalEmpresa, FiscalProduto } from '@modules/vitrine/fiscal';
 import { VitrineFotosService } from '@modules/vitrine/vitrine-fotos.service';
-import { exportarKit, exportarPeca, resumirFaltas, type PecaBase } from './export-magis5';
+import {
+  exportarKit,
+  exportarPeca,
+  resumirFaltas,
+  type Embalagem,
+  type PecaBase,
+} from './export-magis5';
 
 /** Um kit pronto pra gravar (montado pelo plano de importação). */
 export interface KitPlanejado {
@@ -96,6 +102,16 @@ export class KitsService {
     const fiscalEmpresa =
       (((empresa?.config ?? {}) as Record<string, unknown>).fiscal as FiscalEmpresa | undefined) ??
       null;
+    const individual = (
+      (empresa?.config ?? {}) as { frete?: { embalagemIndividual?: Partial<Embalagem> | null } }
+    ).frete?.embalagemIndividual;
+    const padrao: Embalagem | null = individual
+      ? {
+          comprimentoCm: individual.comprimentoCm ?? null,
+          larguraCm: individual.larguraCm ?? null,
+          alturaCm: individual.alturaCm ?? null,
+        }
+      : null;
     const pecas = new Map<string, PecaBase>(
       variacoes.map((v) => [
         v.id,
@@ -126,7 +142,9 @@ export class KitsService {
 
     const itens =
       q.tipo === 'pecas'
-        ? [...pecas.values()].filter((p) => p.ativa).map((p) => exportarPeca(p, fiscalEmpresa))
+        ? [...pecas.values()]
+            .filter((p) => p.ativa)
+            .map((p) => exportarPeca(p, fiscalEmpresa, padrao))
         : (
             await this.prisma.catalogoKit.findMany({
               where: { empresaId, ativo: true },

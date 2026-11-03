@@ -57,7 +57,7 @@ interface Fiscal {
   ibsCbsClassTrib: string | null;
 }
 
-interface Embalagem {
+export interface Embalagem {
   comprimentoCm: number | null;
   larguraCm: number | null;
   alturaCm: number | null;
@@ -102,12 +102,14 @@ export interface KitExportado extends Omit<Fiscal, 'origem'> {
   faltando: string[];
 }
 
-/** Campos que o cadastro da nota precisa. CEST, IBS/CBS e CRT não entram: nem todo item usa. */
+/**
+ * Campos que o cadastro da nota precisa. CEST, IBS/CBS e CRT não entram: nem todo
+ * item usa. Marca e EAN também não (Léo, 03/11): a peça sobe sem marca e sem EAN.
+ */
 const OBRIGATORIOS: Array<keyof Fiscal> = [
   'ncm',
   'origem',
   'unidade',
-  'marca',
   'csosn',
   'cfopDentro',
   'cfopFora',
@@ -134,16 +136,20 @@ function fiscalDaPeca(p: PecaBase, empresa: FiscalEmpresa | null): Fiscal {
 
 const faltaFiscal = (f: Fiscal) => OBRIGATORIOS.filter((c) => !f[c]) as string[];
 
-export function exportarPeca(p: PecaBase, empresa: FiscalEmpresa | null): PecaExportada {
+export function exportarPeca(
+  p: PecaBase,
+  empresa: FiscalEmpresa | null,
+  /** Embalagem individual do frete: vale quando o produto não tem medida própria. */
+  padrao: Embalagem | null = null,
+): PecaExportada {
   const fiscal = fiscalDaPeca(p, empresa);
   const embalagem = {
-    comprimentoCm: p.fiscal?.embalagemComprimentoCm ?? null,
-    larguraCm: p.fiscal?.embalagemLarguraCm ?? null,
-    alturaCm: p.fiscal?.embalagemAlturaCm ?? null,
+    comprimentoCm: p.fiscal?.embalagemComprimentoCm ?? padrao?.comprimentoCm ?? null,
+    larguraCm: p.fiscal?.embalagemLarguraCm ?? padrao?.larguraCm ?? null,
+    alturaCm: p.fiscal?.embalagemAlturaCm ?? padrao?.alturaCm ?? null,
   };
   const faltando = [
     ...(p.sku ? [] : ['sku']),
-    ...(p.ean || p.semGtin ? [] : ['ean']),
     ...(p.pesoGramas ? [] : ['pesoGramas']),
     ...(Object.values(embalagem).some((v) => !v) ? ['embalagem'] : []),
     ...faltaFiscal(fiscal),

@@ -84,9 +84,17 @@ describe('exportação pro Magis5: peça (03/11)', () => {
     );
   });
 
-  it('sem GTIN marcado não cobra EAN; sem marcar, cobra', () => {
-    expect(exportarPeca(peca({ ean: null, semGtin: true }), EMPRESA).faltando).toEqual([]);
-    expect(exportarPeca(peca({ ean: null }), EMPRESA).faltando).toEqual(['ean']);
+  it('sem EAN e sem marca sobe sem pendência (Léo, 03/11)', () => {
+    const fiscal = { ...peca().fiscal, marca: null };
+    expect(exportarPeca(peca({ ean: null, fiscal }), EMPRESA).faltando).toEqual([]);
+  });
+
+  it('sem medida própria usa a embalagem individual; a do produto vence', () => {
+    const padrao = { comprimentoCm: 36, larguraCm: 26, alturaCm: 3 };
+    const semMedida = peca({ fiscal: { origem: '0', unidade: 'UN' } });
+    expect(exportarPeca(semMedida, EMPRESA, padrao).embalagem).toEqual(padrao);
+    expect(exportarPeca(semMedida, EMPRESA, padrao).faltando).toEqual([]);
+    expect(exportarPeca(peca(), EMPRESA, padrao).embalagem.comprimentoCm).toBe(30);
   });
 });
 
