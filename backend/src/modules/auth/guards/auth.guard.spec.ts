@@ -70,6 +70,52 @@ describe('AuthGuard — token de API deixa rastro de QUAL token entrou', () => {
   });
 });
 
+describe('AuthGuard — chave da integração Magis5 (só escopo magis5, Léo 03/11)', () => {
+  const guardCom = (escopo: string[]) =>
+    new AuthGuard(
+      { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector,
+      {} as never,
+      {
+        kanbanApiToken: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'tok-m5',
+            nome: 'Magis5',
+            empresaId: 'emp-1',
+            usuarioId: 'u1',
+            escopo,
+            revogado: false,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        usuario: { findUnique: vi.fn().mockResolvedValue(bktUser) },
+      } as never,
+      {
+        get: vi.fn().mockResolvedValue(null),
+        setNxEx: vi.fn().mockResolvedValue(true),
+        setEx: vi.fn().mockResolvedValue(undefined),
+      } as never,
+      { get: () => 300 } as never,
+    );
+
+  it.each([
+    ['GET', '/kanban/boards'],
+    ['GET', '/kits/export-magis5'],
+    ['GET', '/contatos'],
+    ['GET', '/pedidos'],
+    ['GET', '/financeiro/titulos'],
+    ['GET', '/vitrine/admin/modelos'],
+    ['GET', '/qualquer/rota/nova'],
+    ['POST', '/kanban/cards'],
+  ])('não abre %s %s', async (method, path) => {
+    const ctx = fakeContext({
+      method,
+      path,
+      headers: { authorization: 'Bearer bkt_magis5' },
+    });
+    await expect(guardCom(['magis5']).canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+});
+
 describe('AuthGuard — token de API (bkt_) em /funis', () => {
   let guard: AuthGuard;
   let prisma: {

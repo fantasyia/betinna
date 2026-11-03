@@ -214,6 +214,10 @@ export type CalendarioQueryDto = z.infer<typeof calendarioQuerySchema>;
 /** Escopos válidos de um PAT de plataforma (módulos que o token acessa). */
 export const API_TOKEN_ESCOPOS = [
   'kanban',
+  // magis5 = chave da integração Magis5 (Léo, 03/11). Vai SOZINHA, sem `kanban`,
+  // e hoje não abre rota nenhuma: o Magis5 ainda não disse que URL chama. Quando
+  // disser, a rota entra no guard com este escopo. Revoga na tela de tokens.
+  'magis5',
   'fluxos',
   'funis',
   'contatos',

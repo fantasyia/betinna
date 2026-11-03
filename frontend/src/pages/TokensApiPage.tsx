@@ -37,6 +37,11 @@ interface ApiToken {
  */
 const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
   {
+    key: 'magis5',
+    label: 'Integração Magis5 — chave só dela, sem nenhum outro acesso (nem Quadros)',
+    badge: 'Magis5',
+  },
+  {
     key: 'tudo',
     label:
       'TUDO — o app inteiro pelo chat (menos: conectar integração, gerar token, ativar fluxo, disparar campanha, mandar mensagem pra cliente e cobrança/estorno)',
@@ -126,6 +131,10 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
   },
 ];
 
+/** Chave do Magis5 é entregue a terceiro: vai sozinha, sem Quadros nem outro módulo. */
+const escopoDoToken = (escopos: string[]) =>
+  escopos.includes('magis5') ? ['magis5'] : ['kanban', ...escopos];
+
 const rotuloEscopo = (key: string) =>
   ESCOPOS.find((e) => e.key === key)?.badge ?? (key === 'kanban' ? 'Quadros' : key);
 
@@ -159,7 +168,7 @@ export default function TokensApiPage() {
     setSalvando(true);
     try {
       // Kanban sempre incluso; demais módulos opcionais (PAT de plataforma).
-      const escopo = ['kanban', ...escopos];
+      const escopo = escopoDoToken(escopos);
       const criado = await api.post<ApiToken & { token: string }>('/kanban/api-tokens', {
         nome: nome.trim(),
         escopo,
@@ -200,7 +209,7 @@ export default function TokensApiPage() {
     setSalvando(true);
     try {
       await api.patch(`/kanban/api-tokens/${editandoEscopo.id}`, {
-        escopo: ['kanban', ...escopos],
+        escopo: escopoDoToken(escopos),
       });
       toast.success('Acesso do token atualizado', 'O valor do token continua o mesmo.');
       setEditandoEscopo(null);
@@ -393,9 +402,9 @@ export default function TokensApiPage() {
                 }}
               />
             </Field>
-            <Field label="Acesso do token" hint="Quadros vem sempre; marque os módulos extras que o token pode ler/operar">
+            <Field label="Acesso do token" hint="Quadros vem sempre, menos na chave do Magis5; marque os módulos extras que o token pode ler/operar">
               <div className="flex flex-col gap-1.5">
-                <Checkbox label="Quadros (Kanban)" checked disabled />
+                <Checkbox label="Quadros (Kanban)" checked={!escopos.includes('magis5')} disabled />
                 {ESCOPOS.map((e) => (
                   <Checkbox
                     key={e.key}
@@ -444,7 +453,7 @@ export default function TokensApiPage() {
           </p>
           <Field label="Acesso do token" hint="Quadros vem sempre">
             <div className="flex flex-col gap-1.5">
-              <Checkbox label="Quadros (Kanban)" checked disabled />
+              <Checkbox label="Quadros (Kanban)" checked={!escopos.includes('magis5')} disabled />
               {ESCOPOS.map((e) => (
                 <Checkbox
                   key={e.key}
