@@ -1,7 +1,8 @@
 /**
  * Monta o pedido da vitrine no formato do `POST /orders` do Magis5 (Fase 4, 03/11).
- * PURO. Provado em 04/11: sem `status` volta 400. O POST ignora a logística; ela
- * entra por PATCH depois (`corpoLogistica`).
+ * PURO. Provado em 04/11: sem `status` volta 400, e `logistic.logisticId` é o id
+ * do serviço do Melhor Envio. Sem ele o pedido para em "Ag. logística" (Api-null);
+ * com ele o Magis5 acha a transportadora sozinho (31 = Loggi Express).
  */
 
 export interface PedidoVitrine {
@@ -20,7 +21,7 @@ export interface PedidoVitrine {
     cidade: string;
     uf: string;
     /** Serviço escolhido no checkout: o id do Melhor Envio. */
-    servico: { id: number; nome?: string };
+    servico: { id: number };
     volumes?: unknown[];
   };
 }
@@ -59,6 +60,8 @@ export function montarPedidoMagis5(p: PedidoVitrine, canal: string) {
     })),
     payments: [{ status: 'approved', total_paid_amount: p.total, shipping_cost: p.frete }],
     shipping: {
+      logistic: { logisticId: String(p.entrega.servico.id) },
+      shipping_option: { list_cost: p.frete, cost: p.frete },
       receiver_address: {
         street_name: p.entrega.endereco,
         street_number: p.entrega.numero,
@@ -70,23 +73,4 @@ export function montarPedidoMagis5(p: PedidoVitrine, canal: string) {
       },
     },
   };
-}
-
-/**
- * Tira o pedido de "Ag. logística". Provado em 04/11: o PATCH só pega depois de
- * uns 6 min do POST (antes responde "Api-null" sem erro), e o Magis5 cota sozinho
- * pelo Melhor Envio: mandamos SEDEX e ele escolheu Loggi. O serviço enviado só
- * destrava, não escolhe a transportadora.
- */
-export const corpoLogistica = (servico: { id: number; nome?: string }) => ({
-  shipping: {
-    shipping_mode: servico.nome || 'Melhor Envio',
-    logistic: { logisticId: String(servico.id) },
-  },
-});
-
-export function logisticaResolvida(resposta: unknown): boolean {
-  const modo = (resposta as { shipping?: { shipping_mode?: unknown } } | null)?.shipping
-    ?.shipping_mode;
-  return typeof modo === 'string' && modo.startsWith('Melhor Envio');
 }
