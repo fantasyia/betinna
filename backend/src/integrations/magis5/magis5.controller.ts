@@ -17,6 +17,15 @@ export class Magis5Controller {
     private readonly prisma: PrismaService,
   ) {}
 
+  @Get('sessao-teste')
+  @ApiOperation({ summary: 'Testa o login do usuário no Magis5 (sem expor credencial)' })
+  sessaoTeste(@CurrentUser() user: AuthenticatedUser) {
+    if (!['ADMIN', 'DIRECTOR'].includes(user.role) || !user.empresaIdAtiva) {
+      throw new ForbiddenException('Só diretor ou admin vê o Magis5');
+    }
+    return this.client.testarSessao(user.empresaIdAtiva);
+  }
+
   @Get('status')
   @ApiOperation({ summary: 'Testa a chave do Magis5 e mostra o que já foi lido' })
   async status(@CurrentUser() user: AuthenticatedUser) {

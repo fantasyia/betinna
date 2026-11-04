@@ -343,7 +343,9 @@ export class IntegracoesService {
     // DIRECTOR — nem ADMIN bypassa. ERP é a primeira (afeta dados
     // fiscais/contábeis críticos, decisão contratual do diretor).
     this.assertDirectorRequerido(user, dto.servico);
-    const enc = this.crypto.encrypt(JSON.stringify(dto.credenciais));
+    const enc = this.crypto.encrypt(
+      JSON.stringify(await this.credenciaisParaSalvar(empresaId, dto)),
+    );
 
     const conexao = await this.prisma.integracaoConexao.upsert({
       where: { empresaId_servico: { empresaId, servico: dto.servico } },
@@ -363,6 +365,23 @@ export class IntegracoesService {
     this.invalidarCache(empresaId, dto.servico);
     this.logger.log(`[${dto.servico}] conexão criada/atualizada para empresa ${empresaId}`);
     return this.toPublic(conexao);
+  }
+
+  /** Magis5: campo em branco mantém o valor salvo; a tela não mostra os segredos de volta. */
+  private async credenciaisParaSalvar(empresaId: string, dto: ConectarDto) {
+    if (dto.servico !== 'magis5') return dto.credenciais;
+    const atual = await this.prisma.integracaoConexao.findUnique({
+      where: { empresaId_servico: { empresaId, servico: 'magis5' } },
+      select: { credenciais: true },
+    });
+    const salvas = atual?.credenciais
+      ? (JSON.parse(this.crypto.decrypt(atual.credenciais as unknown as string)) as Record<
+          string,
+          unknown
+        >)
+      : {};
+    const novas = Object.entries(dto.credenciais).filter(([, v]) => v !== '' && v != null);
+    return { ...salvas, ...Object.fromEntries(novas) };
   }
 
   /**

@@ -77,6 +77,52 @@ export class Magis5ClientService {
     return r.json().catch(() => null);
   }
 
+  /**
+   * Diagnóstico da sessão do usuário (04/11): a rota interna de notas responde 401
+   * à chave da API. Devolve só status e nomes de campos, nunca token ou senha.
+   */
+  async testarSessao(empresaId: string) {
+    const conn = await this.integracoes.obterCredenciaisInternas(empresaId, 'magis5');
+    const { loginUsuario, loginSenha } = conn.credenciais as {
+      loginUsuario?: string;
+      loginSenha?: string;
+    };
+    if (!loginUsuario || !loginSenha) return { login: 'sem usuário e senha em Integrações' };
+    const r = await fetch(`${API}/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ login: loginUsuario, password: loginSenha }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const corpo = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    const cookies = r.headers.getSetCookie().map((c) => c.split(';')[0]);
+    const token = Object.entries(corpo).find(
+      ([k, v]) => /token/i.test(k) && typeof v === 'string',
+    )?.[1] as string | undefined;
+    const lista = async (headers: Record<string, string>) => {
+      const x = await fetch('https://app.magis5.com.br/ordermanagement/ordersInvoices/invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...headers,
+        },
+        body: JSON.stringify({ page: 1, pageSize: 1, status: '', channels: [] }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      return x.status;
+    };
+    return {
+      login: r.status,
+      campos: Object.keys(corpo),
+      cookies: cookies.map((c) => c.split('=')[0]),
+      comCookie: cookies.length ? await lista({ Cookie: cookies.join('; ') }) : null,
+      comBearer: token ? await lista({ Authorization: `Bearer ${token}` }) : null,
+      comToken: token ? await lista({ Authorization: token }) : null,
+    };
+  }
+
   /** Percorre as páginas até vir uma incompleta. */
   async listar(
     empresaId: string,

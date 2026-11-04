@@ -325,8 +325,11 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
       'app; o envio do saldo ainda não está ligado. Cole a chave da API do Magis5.',
     connectMode: 'credentials',
     credentialFields: [
-      { name: 'apiKey', label: 'Chave / token da API', type: 'password' },
+      // Campo vazio mantém o que já está salvo.
+      { name: 'apiKey', label: 'Chave / token da API', type: 'password', opcional: true },
       { name: 'usuario', label: 'Código do canal da vitrine (api-…)', opcional: true },
+      { name: 'loginUsuario', label: 'Usuário do Magis5 (cancelar nota)', opcional: true },
+      { name: 'loginSenha', label: 'Senha desse usuário', type: 'password', opcional: true },
     ],
   },
   shein: {
