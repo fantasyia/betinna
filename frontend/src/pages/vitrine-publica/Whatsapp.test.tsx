@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import { BotaoWhatsapp, linkWhatsapp } from './Whatsapp';
+import { BotaoWhatsapp, linkCompartilhar, linkWhatsapp } from './Whatsapp';
 
 /** Ícone do WhatsApp no topo da vitrine (Léo, 14/10). */
 
@@ -19,5 +19,13 @@ describe('WhatsApp da vitrine', () => {
     expect(a.target).toBe('_blank');
     expect(a.rel).toContain('noopener');
     expect(a.getAttribute('aria-label')).toBe('Falar com a Ribelt no WhatsApp');
+  });
+});
+
+describe('compartilhar produto', () => {
+  it('leva nome e link do produto no texto', () => {
+    expect(linkCompartilhar('Bermuda', 'https://x.com/p/bermuda')).toBe(
+      'https://wa.me/?text=Bermuda%0Ahttps%3A%2F%2Fx.com%2Fp%2Fbermuda',
+    );
   });
 });

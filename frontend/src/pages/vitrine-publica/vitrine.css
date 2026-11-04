@@ -112,6 +112,8 @@
 .vt-info { padding: 12px 16px 90px; display: grid; gap: 10px; background: var(--creme); border-radius: 22px 22px 0 0; margin-top: -22px; position: relative; box-shadow: 0 -10px 30px rgba(26, 45, 56, .06); }
 .vt-name { font-family: var(--f-title); font-weight: 500; line-height: 1.05; letter-spacing: -.01em; text-wrap: balance; margin: 0; font-size: 26px; }
 .vt-over { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--oliva); font-weight: 600; }
+.vt-row .vt-cta { margin-left: auto; }
+.vt-compartilhar { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid #e3d8bf; border-radius: 50%; color: var(--petroleo); }
 .vt-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 /* Card do feed: só as bolinhas na linha, à direita (sem o rótulo da linha, 10/10). */
 .vt-row-cores { justify-content: flex-end; }

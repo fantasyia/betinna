@@ -51,7 +51,7 @@ import {
   type VitrinePub,
 } from './calculo';
 import { VisorFotos, voltaDoArrasto } from './VisorFotos';
-import { BotaoWhatsapp } from './Whatsapp';
+import { BotaoCompartilhar, BotaoWhatsapp } from './Whatsapp';
 import { baixarKit, copiarTexto } from './kit';
 import {
   Entrega,
@@ -718,6 +718,12 @@ function Vitrine({
                   >
                     Ficha técnica
                   </button>
+                  {m.slug && (
+                    <BotaoCompartilhar
+                      nome={m.nome}
+                      url={`${window.location.origin}${baseUrl}/p/${m.slug}`}
+                    />
+                  )}
                   <button
                     type="button"
                     className="vt-cta"
