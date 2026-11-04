@@ -11,7 +11,7 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
-import { eanUsadosAte, prefixoGs1, proximosEans, skuSugerido } from './codigos-produto';
+import { eanUsadosAte, prefixoGs1, proximosEans, skuNumerico } from './codigos-produto';
 import { configClarity, type ClarityConfigDto } from './clarity';
 import { slugDoNome, slugLivre } from './slug-modelo';
 import { configGeo, type GeoConfigDto } from './geo';
@@ -1000,20 +1000,12 @@ export class VitrineAdminService {
       throw new BusinessRuleException(err instanceof Error ? err.message : String(err));
     }
     const eanDe = new Map(semEan.map((v, i) => [v.id, novosEans[i]!]));
-    const gravados: Array<{ id: string; sku?: string; ean?: string }> = [];
+    const gravados: Array<{ id: string; sku?: string; skuAntigo?: string | null; ean?: string }> =
+      [];
     for (const v of variacoes) {
-      const sku =
-        querSku && !v.sku
-          ? skuSugerido(
-              {
-                modelo: v.modelo.nome,
-                cor: v.modeloCor.cor.nome,
-                linha: v.modeloLinha.linha.nome,
-                tamanho: v.modeloTamanho.tamanho.nome,
-              },
-              skusUsados,
-            )
-          : undefined;
+      // `renumerar` troca só SKU de texto; número existente nunca muda.
+      const trocar = querSku && (!v.sku || (dto.renumerar && !/^\d+$/.test(v.sku)));
+      const sku = trocar ? skuNumerico(skusUsados) : undefined;
       const ean = eanDe.get(v.id);
       if (!sku && !ean) continue;
       await this.prisma.$transaction(async (tx) => {
@@ -1023,7 +1015,11 @@ export class VitrineAdminService {
           data: { ...(sku ? { sku } : {}), ...(ean ? { ean } : {}) },
         });
       });
-      gravados.push({ id: v.id, ...(sku ? { sku } : {}), ...(ean ? { ean } : {}) });
+      gravados.push({
+        id: v.id,
+        ...(sku ? { sku, skuAntigo: v.sku } : {}),
+        ...(ean ? { ean } : {}),
+      });
     }
     return {
       variacoes: variacoes.length,

@@ -6,7 +6,7 @@ import {
   prefixoGs1,
   proximosEans,
   proximosEansInternos,
-  skuSugerido,
+  skuNumerico,
 } from './codigos-produto';
 
 describe('EAN-13', () => {
@@ -61,17 +61,14 @@ describe('prefixo GS1 da empresa (22/10)', () => {
   });
 });
 
-describe('skuSugerido', () => {
-  it('modelo-cor-linha-tamanho, sem acento, sem repetir', () => {
-    const usados = new Set<string>();
-    const p = {
-      modelo: 'Bermuda Moletom Summer',
-      cor: 'Verde-Militar',
-      linha: 'Plus Size',
-      tamanho: 'G1',
-    };
-    expect(skuSugerido(p, usados)).toBe('BERMUDA-MOLETOM-SUMMER-VERDE-MILITAR-PLUS-SIZE-G1');
-    expect(skuSugerido(p, usados)).toBe('BERMUDA-MOLETOM-SUMMER-VERDE-MILITAR-PLUS-SIZE-G1-2');
-    expect(skuSugerido({ ...p, cor: 'Açaí' }, usados)).toContain('-ACAI-');
+describe('skuNumerico', () => {
+  it('continua a série 1113, sem repetir e sem usar texto', () => {
+    const usados = new Set(['1113001500', '1005', 'MOLETOM-PRETO-M']);
+    expect(skuNumerico(usados)).toBe('1113001501');
+    expect(skuNumerico(usados)).toBe('1113001502');
+  });
+
+  it('sem nada na série, começa depois do maior da Ribelt', () => {
+    expect(skuNumerico(new Set())).toBe('1113001421');
   });
 });

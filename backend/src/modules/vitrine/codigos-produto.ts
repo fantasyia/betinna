@@ -67,31 +67,15 @@ export function proximosEans(
 export const proximosEansInternos = (usados: Iterable<string>, n: number) =>
   proximosEans(usados, n, null);
 
-/** "Bermuda Moletom Summer" → "BERMUDA-MOLETOM-SUMMER" (sem acento, até `max`). */
-function parte(texto: string, max: number): string {
-  return texto
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, max)
-    .replace(/-$/, '');
-}
+/** Maior SKU da série longa da Ribelt quando nada foi usado ainda nela. */
+const SERIE_SKU = 1113001420;
 
-/**
- * SKU legível modelo-cor-linha-tamanho, sem repetir os já usados (sufixo -2,
- * -3…). Cabe nos 60 caracteres do campo.
- */
-export function skuSugerido(
-  p: { modelo: string; cor: string; linha: string; tamanho: string },
-  usados: Set<string>,
-): string {
-  const base = [parte(p.modelo, 24), parte(p.cor, 14), parte(p.linha, 10), parte(p.tamanho, 6)]
-    .filter(Boolean)
-    .join('-');
-  let sku = base;
-  for (let k = 2; usados.has(sku); k++) sku = `${base}-${k}`;
+/** SKU é sempre numérico (Léo, 03/11): continua a série 1113…, sem repetir. */
+export function skuNumerico(usados: Set<string>): string {
+  const serie = [...usados].filter((u) => /^1113\d{6}$/.test(u)).map(Number);
+  let n = Math.max(SERIE_SKU, ...serie) + 1;
+  while (usados.has(String(n))) n++;
+  const sku = String(n);
   usados.add(sku);
   return sku;
 }

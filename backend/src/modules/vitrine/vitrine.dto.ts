@@ -210,6 +210,8 @@ export const gerarCodigosSchema = z.object({
   modeloId: z.string().min(1).max(40).optional(),
   sku: z.boolean().optional(),
   ean: z.boolean().optional(),
+  /** Troca os SKUs de texto por numéricos (03/11). */
+  renumerar: z.boolean().optional(),
 });
 export type GerarCodigosDto = z.infer<typeof gerarCodigosSchema>;
 

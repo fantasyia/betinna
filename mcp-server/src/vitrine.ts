@@ -601,7 +601,7 @@ export function registrarVitrine(server: McpServer, { ok, erro, seguro }: Ajudan
     "vitrine_codigos_gerar",
     {
       description:
-        "Gera o SKU (modelo-cor-linha-tamanho) e o EAN-13 que FALTAM nas variações — nunca troca código existente. " +
+        "Gera o SKU numérico (série 1113…) e o EAN-13 que FALTAM nas variações — nunca troca código existente. " +
         "O EAN continua a numeração do prefixo GS1 da empresa a partir do MAIOR já cadastrado — carregue a planilha ANTES de gerar, " +
         "senão um número da planilha pode ser repetido. Sem prefixo configurado, usa a faixa interna (começa com 2). " +
         "Sem modeloId = o catálogo todo. sku=false ou ean=false pula aquele código.",
