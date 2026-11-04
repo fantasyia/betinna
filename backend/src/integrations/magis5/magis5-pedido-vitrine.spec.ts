@@ -20,13 +20,27 @@ const PEDIDO: PedidoVitrine = {
     bairro: 'Centro',
     cidade: 'São Paulo',
     uf: 'SP',
+    servico: { id: 31 },
   },
 };
 
 describe('pedido da vitrine no Magis5 (03/11)', () => {
+  it('com CNPJ vai a razão social inteira, sem sobrenome', () => {
+    const r = montarPedidoMagis5(
+      {
+        ...PEDIDO,
+        cliente: { ...PEDIDO.cliente, nome: 'LGHB Confeccoes Ltda', cnpj: '45.999.770/0001-28' },
+      },
+      'api-1',
+    );
+    expect(r.buyer).toMatchObject({ first_name: 'LGHB Confeccoes Ltda', last_name: '' });
+  });
+
   it('leva canal, SKU, unidade e endereço sem máscara', () => {
     const r = montarPedidoMagis5(PEDIDO, 'api-1');
     expect(r.channel).toBe('api-1');
+    expect(r.status).toBe('approved');
+    expect(r.shipping.logistic.logisticId).toBe('31');
     expect(r.id).toBe('PED-1');
     expect(r.order_items[0]).toMatchObject({
       quantity: 2,

@@ -1,7 +1,8 @@
 /**
  * Monta o pedido da vitrine no formato do `POST /orders` do Magis5 (Fase 4, 03/11).
- * PURO. A documentação lista os campos sem dizer quais são exigidos: este corpo
- * só se prova no primeiro pedido de teste.
+ * PURO. Provado em 04/11: sem `status` volta 400, e `logistic.logisticId` é o id
+ * do serviço do Melhor Envio. Sem ele o pedido para em "Ag. logística" (Api-null);
+ * com ele o Magis5 acha a transportadora sozinho (31 = Loggi Express).
  */
 
 export interface PedidoVitrine {
@@ -19,6 +20,9 @@ export interface PedidoVitrine {
     bairro: string;
     cidade: string;
     uf: string;
+    /** Serviço escolhido no checkout: o id do Melhor Envio. */
+    servico: { id: number };
+    volumes?: unknown[];
   };
 }
 
@@ -28,16 +32,23 @@ export const canalValido = (canal: unknown): canal is string =>
 
 export function montarPedidoMagis5(p: PedidoVitrine, canal: string) {
   const nomes = p.cliente.nome.trim().split(/\s+/);
+  const doc = p.cliente.cnpj?.replace(/\D/g, '');
+  // Com CNPJ o Magis5 troca o first_name pela razão social e mantém o last_name:
+  // mandar sobrenome repete o nome ("LGHB CONFECCOES LTDA Confeccoes Ltda", 04/11).
+  const empresa = doc?.length === 14;
   return {
     id: p.numero,
     dateCreated: p.criadoEm.toISOString(),
     channel: canal,
+    status: 'approved',
+    quantityPackage: p.entrega.volumes?.length || 1,
+    invoiceVolume: p.entrega.volumes?.length || 1,
     buyer: {
-      first_name: nomes[0],
-      last_name: nomes.slice(1).join(' '),
+      first_name: empresa ? p.cliente.nome.trim() : nomes[0],
+      last_name: empresa ? '' : nomes.slice(1).join(' '),
       full_name: p.cliente.nome.trim(),
       email: p.cliente.email ?? undefined,
-      billing_info: { doc_number: p.cliente.cnpj?.replace(/\D/g, '') },
+      billing_info: { doc_number: doc },
       phone: { number: p.cliente.telefone?.replace(/\D/g, '') },
     },
     order_items: p.itens.map((i) => ({
@@ -49,6 +60,8 @@ export function montarPedidoMagis5(p: PedidoVitrine, canal: string) {
     })),
     payments: [{ status: 'approved', total_paid_amount: p.total, shipping_cost: p.frete }],
     shipping: {
+      logistic: { logisticId: String(p.entrega.servico.id) },
+      shipping_option: { list_cost: p.frete, cost: p.frete },
       receiver_address: {
         street_name: p.entrega.endereco,
         street_number: p.entrega.numero,
