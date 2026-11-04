@@ -430,6 +430,8 @@
    investimento e lucro no pedido como apoio. */
 .vt-sim { border: 1px solid #e3d8bf; border-radius: 14px; background: var(--branco); overflow: hidden; }
 .vt-sim small { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--oliva); font-weight: 600; white-space: nowrap; }
+.vt-preco-prod.vt-sim-topo { padding: 2px 0; }
+.vt-sim-grade { margin: 0 16px 8px; flex: none; }
 .vt-sim-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px 6px; }
 .vt-sim-unit { display: flex; align-items: baseline; gap: 4px; }
 .vt-sim-unit b { font-family: var(--f-title); font-weight: 600; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; color: var(--petroleo); white-space: nowrap; }
@@ -442,7 +444,7 @@
 .vt-sim-btns button[aria-pressed='true'] { background: var(--petroleo); color: var(--creme); }
 .vt-sim-faixas { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; padding: 0 12px 7px; font-size: 11.5px; color: var(--oliva); }
 .vt-sim-faixas b { color: var(--petroleo); font-weight: 700; font-variant-numeric: tabular-nums; }
-.vt-sim-meta { display: grid; gap: 4px; padding: 7px 12px 8px; border-top: 1px solid #eee4ce; font-size: 12px; color: var(--petroleo); }
+.vt-sim-meta { margin: 0; padding: 7px 12px 8px; border-top: 1px solid #eee4ce; font-size: 12px; color: var(--petroleo); }
 .vt-sim-meta .vt-bar { margin: 0; }
 .vt-sim .vt-sim-min { font-size: 10.5px; letter-spacing: 0; text-transform: none; font-weight: 500; }
 .vt-sim-r { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid #eee4ce; }

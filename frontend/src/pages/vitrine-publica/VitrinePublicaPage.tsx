@@ -33,7 +33,6 @@ import {
   lucroNaProximaFaixa,
   progressoFaixa,
   quadroDePreco,
-  textoDasFaixas,
   pecasDoModelo,
   inicioPeloProduto,
   precoNaFaixa,
@@ -707,13 +706,7 @@ function Vitrine({
                     ))}
                   </div>
                 )}
-                <QuadroPreco
-                  l={l}
-                  f={v.faixas}
-                  minimo={v.pedidoMinimo}
-                  pecasDoProduto={pecasDoModelo(carrinho, m.id, l)}
-                  pecasDoPedido={totalPecas(carrinho)}
-                />
+                <PrecoProduto l={l} f={v.faixas} pecasDoPedido={totalPecas(carrinho)} />
                 <div className="vt-row">
                   {/* A página do produto abre só por aqui — a foto só desliza (Léo, 07/10).
                       O Material de divulgação está lá dentro. */}
@@ -754,7 +747,6 @@ function Vitrine({
           cor={corAtual(pdp)}
           l={linhaNoModelo(pdp)}
           f={v.faixas}
-          minimo={v.pedidoMinimo}
           selo={seloDa(linhaNoModelo(pdp).linhaId)}
           visitante={visitante}
           onCor={(id) => setCorDe((s) => ({ ...s, [pdp.id]: id }))}
@@ -766,7 +758,6 @@ function Vitrine({
           onKit={() => setKit(pdp)}
           pares={paresDe(pdp, v)}
           temPecas={pecasDoModelo(carrinho, pdp.id) > 0}
-          pecasDoProduto={pecasDoModelo(carrinho, pdp.id, linhaNoModelo(pdp))}
           pecasDoPedido={totalPecas(carrinho)}
           onConjunto={(par) => montarConjunto(pdp, par)}
         />
@@ -777,6 +768,8 @@ function Vitrine({
           m={grade}
           linhaInicial={linhaNoModelo(grade)}
           carrinho={carrinho}
+          f={v.faixas}
+          minimo={v.pedidoMinimo}
           onMudar={setCarrinho}
           pares={paresDe(grade, v)}
           onConjunto={(par) => montarConjunto(grade, par)}
@@ -1284,10 +1277,27 @@ function AmostraCor({ c }: { c: CorPub }) {
  * revenda e lucro numa linha; as faixas de cima numa linha fina embaixo.
  * A página do modelo mostra o bloco completo (lucro por faixa etc.).
  */
-/**
- * Quadro de preço (Léo, 04/11): a quantidade vem da grade de cor e tamanho. As
- * faixas são só informação, e os 3 números e a barra seguem as peças escolhidas.
- */
+/** Preço da tela do produto (Léo, 04/11): o produto é o protagonista, a conta fica na grade. */
+function PrecoProduto({ l, f, pecasDoPedido }: { l: LinhaPub; f: Faixas; pecasDoPedido: number }) {
+  const q = quadroDePreco(l, f, null, 0, pecasDoPedido);
+  if (q.preco === null) return <span className="vt-na">Preço sob consulta</span>;
+  const lucroPeca = q.revenda !== null ? Math.round((q.revenda - q.preco) * 100) / 100 : null;
+  return (
+    <div className="vt-sim-topo vt-preco-prod" data-testid="vt-preco">
+      <div className="vt-sim-unit">
+        <b data-testid="vt-sim-unitario">{formatMoeda(q.preco)}</b>
+        <span>/peça</span>
+      </div>
+      {lucroPeca !== null && lucroPeca > 0 && (
+        <div className="vt-sim-rev">
+          <em>lucro {formatMoeda(lucroPeca)}/peça</em>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A conta do pedido, dentro da grade: segue as peças escolhidas. */
 function QuadroPreco({
   l,
   f,
@@ -1302,58 +1312,18 @@ function QuadroPreco({
   pecasDoPedido: number;
 }) {
   const q = quadroDePreco(l, f, minimo, pecasDoProduto, pecasDoPedido);
-  if (q.preco === null) {
-    return (
-      <div className="vt-sim" data-testid="vt-preco">
-        <span className="vt-na">Preço sob consulta</span>
-      </div>
-    );
-  }
-  const lucroPeca = q.revenda !== null ? Math.round((q.revenda - q.preco) * 100) / 100 : null;
-  const faixas = textoDasFaixas(l, f);
-  const partesMinimo = [
-    minimo?.quantidadeMin ? `${formatNumero(minimo.quantidadeMin)} peças` : null,
-    minimo?.valorMin ? formatMoeda(minimo.valorMin) : null,
-  ].filter(Boolean);
+  if (q.preco === null || pecasDoProduto <= 0) return null;
   return (
-    <div className="vt-sim" data-testid="vt-preco">
-      <div className="vt-sim-topo">
-        <div className="vt-sim-unit">
-          <b data-testid="vt-sim-unitario">{formatMoeda(q.preco)}</b>
-          <span>/peça</span>
-        </div>
-        {q.revenda !== null && (
-          <div className="vt-sim-rev">
-            <span>revenda {formatMoeda(q.revenda)}</span>
-            {lucroPeca !== null && lucroPeca > 0 && <em>lucro {formatMoeda(lucroPeca)}/peça</em>}
-          </div>
-        )}
-      </div>
-      {faixas.length > 1 && (
-        <p className="vt-sim-faixas" data-testid="vt-sim-faixas">
-          {faixas.map((x) => (
-            <span key={x.rotulo}>
-              {x.rotulo} <b>{formatMoeda(x.preco)}</b>
-            </span>
-          ))}
-        </p>
-      )}
-      <div className="vt-sim-q">
-        <small data-testid="vt-sim-qtd">
-          {q.exemplo
-            ? `Exemplo com ${formatNumero(q.qtd)} peças`
-            : `Com suas ${formatNumero(q.qtd)} peças`}
-        </small>
-      </div>
+    <div className="vt-sim vt-sim-grade" data-testid="vt-quadro">
       <div className={q.lucro === null ? 'vt-sim-r vt-sim-so' : 'vt-sim-r'}>
         <div>
-          <small>Você investe</small>
+          <small>Investe</small>
           <b data-testid="vt-sim-investe">{formatMoeda(q.investe ?? 0)}</b>
         </div>
         {q.lucro !== null && (
           <>
             <div>
-              <small>Recebe vendendo tudo</small>
+              <small>Recebe</small>
               <b data-testid="vt-sim-recebe">{formatMoeda(q.vende ?? 0)}</b>
             </div>
             <div className="vt-win">
@@ -1363,26 +1333,11 @@ function QuadroPreco({
           </>
         )}
       </div>
-      <div className="vt-sim-meta" data-testid="vt-sim-meta">
-        {q.proxima && (
-          <div className="vt-bar">
-            <i style={{ width: `${q.barra.pct}%` }} />
-          </div>
-        )}
-        <span>
-          {!q.proxima
-            ? 'Você está no melhor preço'
-            : q.proxima.preco !== null && q.proxima.desconto
-              ? `Faltam ${formatNumero(q.proxima.faltam)} peças pra pagar ${formatMoeda(q.proxima.preco)} a peça (${formatMoeda(q.proxima.desconto)} a menos)`
-              : `Faltam ${formatNumero(q.proxima.faltam)} peças pra próxima faixa`}
-        </span>
-        {partesMinimo.length > 0 && (
-          <small className="vt-sim-min" data-testid="vt-sim-minimo">
-            Pedido mínimo: {partesMinimo.join(minimo?.modo === 'E' ? ' e ' : ' ou ')}, somando
-            todos os produtos
-          </small>
-        )}
-      </div>
+      <p className="vt-sim-meta" data-testid="vt-sim-meta">
+        {formatMoeda(q.preco)}/peça
+        {q.proxima?.preco != null &&
+          ` · faltam ${formatNumero(q.proxima.faltam)} peças pra ${formatMoeda(q.proxima.preco)}`}
+      </p>
     </div>
   );
 }
@@ -1392,7 +1347,6 @@ function PaginaModelo({
   cor,
   l,
   f,
-  minimo,
   selo,
   visitante,
   onCor,
@@ -1401,7 +1355,6 @@ function PaginaModelo({
   onKit,
   pares,
   temPecas,
-  pecasDoProduto,
   pecasDoPedido,
   onConjunto,
 }: {
@@ -1409,7 +1362,6 @@ function PaginaModelo({
   cor: CorPub;
   l: LinhaPub;
   f: Faixas;
-  minimo: VitrinePub['pedidoMinimo'];
   selo: string | null;
   visitante: string;
   onCor: (id: string) => void;
@@ -1420,7 +1372,6 @@ function PaginaModelo({
   pares: ModeloPub[];
   /** Já tem peça deste modelo no pedido (o par vem com a mesma grade). */
   temPecas: boolean;
-  pecasDoProduto: number;
   pecasDoPedido: number;
   onConjunto: (par: ModeloPub) => void;
 }) {
@@ -1454,13 +1405,7 @@ function PaginaModelo({
             ))}
           </div>
         )}
-        <QuadroPreco
-          l={l}
-          f={f}
-          minimo={minimo}
-          pecasDoProduto={pecasDoProduto}
-          pecasDoPedido={pecasDoPedido}
-        />
+        <PrecoProduto l={l} f={f} pecasDoPedido={pecasDoPedido} />
         <div className="vt-gl">
           {m.linhas.map((x) => (
             <div key={x.id}>
@@ -1659,6 +1604,8 @@ function FolhaGrade({
   m,
   linhaInicial,
   carrinho,
+  f,
+  minimo,
   onMudar,
   onFechar,
   pares = [],
@@ -1667,6 +1614,8 @@ function FolhaGrade({
   m: ModeloPub;
   linhaInicial: LinhaPub;
   carrinho: Carrinho;
+  f: Faixas;
+  minimo?: VitrinePub['pedidoMinimo'];
   onMudar: (c: Carrinho) => void;
   onFechar: () => void;
   /** Modelos que combinam: "Monte o conjunto" embaixo da grade. */
@@ -1798,6 +1747,13 @@ function FolhaGrade({
             />
           )}
         </div>
+        <QuadroPreco
+          l={linha}
+          f={f}
+          minimo={minimo}
+          pecasDoProduto={pecasDoModelo(carrinho, m.id, linha)}
+          pecasDoPedido={totalPecas(carrinho)}
+        />
         <div className="vt-sh-foot">
           <div>
             <strong>{pecasDoModelo(carrinho, m.id)} peças</strong>
