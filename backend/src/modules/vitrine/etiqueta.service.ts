@@ -51,6 +51,8 @@ interface EntregaPedido {
   valor?: number;
   volumes?: Array<{ embalagem: string; pecas: number; pesoKg: number }>;
   etiqueta?: EstadoEtiqueta;
+  /** Pedido já no Magis5: a etiqueta é paga e gerada lá. */
+  magis5?: { id: string; enviadoEm: string };
 }
 
 /**
@@ -95,6 +97,7 @@ export class EtiquetaService {
     }
     const entrega = (pedido.entrega ?? {}) as EntregaPedido;
     if (entrega.retirada) throw regra('Pedido com retirada em mãos não tem etiqueta');
+    if (entrega.magis5) throw regra('Este pedido está no Magis5: a etiqueta sai por lá');
     if (entrega.freteAConfirmar || !entrega.servico?.id || !entrega.volumes?.length) {
       throw regra(
         'Pedido sem frete do Melhor Envio (frete a combinar) — não dá pra emitir etiqueta',

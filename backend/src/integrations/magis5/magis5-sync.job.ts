@@ -4,8 +4,9 @@ import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { Magis5OrdersService } from './magis5-orders.service';
+import { Magis5VitrineService } from './magis5-vitrine.service';
 
-/** Pedidos do Magis5 a cada 5 min (Léo, 03/11): só o que mudou. Sem webhook na API. */
+/** A cada 5 min (Léo, 03/11): vitrine paga sobe e o que mudou no Magis5 desce. Sem webhook na API. */
 @Injectable()
 export class Magis5SyncJob {
   private readonly logger = new Logger(Magis5SyncJob.name);
@@ -13,6 +14,7 @@ export class Magis5SyncJob {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pedidos: Magis5OrdersService,
+    private readonly vitrine: Magis5VitrineService,
     private readonly cronLock: CronLockService,
     private readonly env: EnvService,
   ) {}
@@ -27,6 +29,12 @@ export class Magis5SyncJob {
         select: { empresaId: true },
       });
       for (const { empresaId } of conexoes) {
+        try {
+          const n = await this.vitrine.enviarPagos(empresaId);
+          if (n) this.logger.log(`[Magis5] ${empresaId}: ${n} pedidos da vitrine enviados`);
+        } catch (err) {
+          this.logger.warn(`[Magis5] vitrine ${empresaId} falhou: ${String(err)}`);
+        }
         try {
           const r = await this.pedidos.sincronizar(empresaId);
           if (r.pedidos || r.falhas) {

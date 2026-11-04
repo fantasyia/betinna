@@ -326,7 +326,7 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     connectMode: 'credentials',
     credentialFields: [
       { name: 'apiKey', label: 'Chave / token da API', type: 'password' },
-      { name: 'usuario', label: 'Usuário ou ID da conta (se pedir)', opcional: true },
+      { name: 'usuario', label: 'Código do canal da vitrine (api-…)', opcional: true },
     ],
   },
   shein: {

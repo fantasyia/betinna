@@ -9,8 +9,8 @@ const LIMITE = 100;
 const MAX_PAGINAS = 200;
 
 /**
- * Cliente da API do Magis5: SÓ LEITURA por construção (não existe método de
- * escrita aqui). 600 req/min por chave + IP; passou, 429 e espera crescente.
+ * Cliente da API do Magis5: lê, e a única escrita é criar o pedido da vitrine.
+ * 600 req/min por chave + IP; passou, 429 e espera crescente.
  */
 @Injectable()
 export class Magis5ClientService {
@@ -54,6 +54,27 @@ export class Magis5ClientService {
       }
       return r.json();
     }
+  }
+
+  async post(empresaId: string, path: string, corpo: unknown): Promise<unknown> {
+    const r = await fetch(`${API}${path}`, {
+      method: 'POST',
+      headers: {
+        'X-MAGIS5-APIKEY': await this.chave(empresaId),
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(corpo),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!r.ok) {
+      const resposta = (await r.text().catch(() => '')).slice(0, 300);
+      throw new IntegrationException(
+        `Magis5 POST ${path} HTTP ${r.status}: ${resposta}`,
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    return r.json().catch(() => null);
   }
 
   /** Percorre as páginas até vir uma incompleta. */
