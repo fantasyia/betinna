@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Film, GripVertical, ImagePlus, Shuffle, Star, Trash2 } from 'lucide-react';
+import { Film, GripVertical, ImagePlus, RefreshCw, Shuffle, Star, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useToast } from '@/components/toast';
@@ -92,6 +92,27 @@ export function FotosDaCor({
       onMudou();
     } catch (err) {
       toast.error('Não foi possível marcar a foto', apiErrorMessage(err));
+    }
+  }
+
+  async function substituir(foto: Foto, arquivo: File | undefined) {
+    if (!arquivo) return;
+    if (!window.confirm('Substituir esta foto? A imagem atual será apagada.')) return;
+    try {
+      setEnviando('Otimizando e substituindo a foto…');
+      const p = await prepararFoto(arquivo);
+      const form = new FormData();
+      form.append('foto', p.foto, 'foto.webp');
+      form.append('thumb', p.thumb, 'thumb.webp');
+      form.append('largura', String(p.largura));
+      form.append('altura', String(p.altura));
+      await api.upload(`/vitrine/admin/fotos/${foto.id}/substituir`, form);
+      toast.success('Foto substituída');
+    } catch (err) {
+      toast.error('Não foi possível substituir', apiErrorMessage(err));
+    } finally {
+      setEnviando(null);
+      onMudou();
     }
   }
 
@@ -230,6 +251,23 @@ export function FotosDaCor({
                 >
                   <Shuffle size={14} />
                 </button>
+                <label
+                  aria-label="Substituir foto"
+                  title="Substituir: troca a imagem e mantém a posição"
+                  className="cursor-pointer text-muted hover:text-text"
+                >
+                  <RefreshCw size={14} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    data-testid={`foto-substituir-${f.id}`}
+                    onChange={(e) => {
+                      void substituir(f, e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
                 <button
                   type="button"
                   onClick={() => void excluir(f)}

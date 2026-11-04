@@ -112,6 +112,31 @@ export class VitrineMidiaController {
     return this.fotos.definirAmostra(user, modeloCorId, dto.ponto);
   }
 
+  @Post('fotos/:id/substituir')
+  @ApiOperation({ summary: 'Troca o arquivo da foto e mantém a posição dela' })
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'foto', maxCount: 1 },
+        { name: 'thumb', maxCount: 1 },
+      ],
+      { limits: { fileSize: 2 * 1024 * 1024, files: 2 } },
+    ),
+  )
+  substituirFoto(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @UploadedFiles() arquivos: { foto?: ArquivoRecebido[]; thumb?: ArquivoRecebido[] } | undefined,
+    @Body() body: { largura?: string; altura?: string },
+  ) {
+    const foto = arquivos?.foto?.[0];
+    if (!foto) throw new BusinessRuleException('Nenhuma foto enviada');
+    return this.fotos.substituir(user, id, foto, arquivos?.thumb?.[0], {
+      largura: dimSchema.parse(body?.largura),
+      altura: dimSchema.parse(body?.altura),
+    });
+  }
+
   @Put('fotos/:id/rodizio')
   @ApiOperation({
     summary: 'Foto no rodízio da abertura (cada cliente vê uma das marcadas primeiro)',

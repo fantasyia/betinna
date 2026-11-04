@@ -134,6 +134,57 @@ describe('VitrineFotosService', () => {
     expect(storageFns.remove).toHaveBeenCalledWith([expect.stringMatching(/\.webp$/)]);
   });
 
+  describe('substituir', () => {
+    const atual = {
+      id: 'f-1',
+      modeloCorId: 'mc-1',
+      linhaId: 'l-1',
+      storagePath: 'velha.webp',
+      thumbPath: 'velha_thumb.webp',
+      modeloCor: { modeloId: 'mod-1' },
+    };
+
+    it('troca os arquivos, mantém a foto e só então apaga os antigos', async () => {
+      prisma.catalogoFoto.findFirst.mockResolvedValue(atual);
+      prisma.catalogoFoto.update.mockResolvedValue({ ...atual, storagePath: 'nova.webp' });
+      await svc.substituir(user(), 'f-1', webp(), webp(500), { largura: 1080 });
+      const dados = prisma.catalogoFoto.update.mock.calls[0][0].data;
+      expect(dados).not.toHaveProperty('ordem');
+      expect(dados).not.toHaveProperty('rodizio');
+      expect(dados.storagePath).toMatch(/\.webp$/);
+      expect(storageFns.remove).toHaveBeenCalledWith(['velha.webp', 'velha_thumb.webp']);
+    });
+
+    it('banco falhou: mantém os arquivos antigos e limpa os novos', async () => {
+      prisma.catalogoFoto.findFirst.mockResolvedValue(atual);
+      prisma.catalogoFoto.update.mockRejectedValue(new Error('banco fora'));
+      await expect(svc.substituir(user(), 'f-1', webp(), undefined, {})).rejects.toThrow();
+      expect(storageFns.remove).toHaveBeenCalledTimes(1);
+      expect(storageFns.remove.mock.calls[0][0]).not.toContain('velha.webp');
+    });
+
+    it('capa geral trocada zera o ponto da bolinha', async () => {
+      const geral = { ...atual, linhaId: null };
+      prisma.catalogoFoto.findFirst
+        .mockResolvedValueOnce(geral)
+        .mockResolvedValueOnce({ id: 'f-1' });
+      prisma.catalogoFoto.update.mockResolvedValue(geral);
+      await svc.substituir(user(), 'f-1', webp(), undefined, {});
+      expect(prisma.catalogoModeloCor.update).toHaveBeenCalledWith({
+        where: { id: 'mc-1' },
+        data: { amostraX: null, amostraY: null },
+      });
+    });
+
+    it('foto de outra empresa não é encontrada', async () => {
+      prisma.catalogoFoto.findFirst.mockResolvedValue(null);
+      await expect(svc.substituir(user(), 'alheia', webp(), undefined, {})).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(storageFns.upload).not.toHaveBeenCalled();
+    });
+  });
+
   it('reordenar exige EXATAMENTE as fotos daquela cor', async () => {
     prisma.catalogoFoto.findMany.mockResolvedValue([{ id: 'f-1' }, { id: 'f-2' }]);
     await expect(svc.reordenar(user(), 'mc-1', ['f-1', 'f-de-outra-cor'])).rejects.toBeInstanceOf(

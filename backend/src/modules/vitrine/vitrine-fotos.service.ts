@@ -170,6 +170,63 @@ export class VitrineFotosService implements OnModuleInit {
     }
   }
 
+  /**
+   * Troca o arquivo da foto e mantém posição, linha e rodízio (Léo, 04/11).
+   * Grava os arquivos novos primeiro: falhou, a foto antiga continua no ar.
+   */
+  async substituir(
+    user: AuthenticatedUser,
+    fotoId: string,
+    foto: ArquivoWebp,
+    thumb: ArquivoWebp | undefined,
+    dims: { largura?: number; altura?: number },
+  ) {
+    const empresaId = this.requireEmpresa(user);
+    const atual = await this.prisma.catalogoFoto.findFirst({
+      where: { id: fotoId, modeloCor: { modelo: { empresaId } } },
+      include: { modeloCor: { select: { modeloId: true } } },
+    });
+    if (!atual) throw new NotFoundException('Foto', fotoId);
+    this.validar(foto, MAX_FOTO_BYTES, 'Foto');
+    if (thumb) this.validar(thumb, MAX_THUMB_BYTES, 'Miniatura');
+
+    const base = `${empresaId}/${atual.modeloCor.modeloId}/${Date.now()}_${randomBytes(6).toString('hex')}`;
+    const storagePath = `${base}.webp`;
+    const thumbPath = thumb ? `${base}_thumb.webp` : null;
+    const novos = [storagePath, ...(thumbPath ? [thumbPath] : [])];
+    await this.subir(storagePath, foto.buffer);
+    let salva;
+    try {
+      if (thumb && thumbPath) await this.subir(thumbPath, thumb.buffer);
+      salva = await this.prisma.catalogoFoto.update({
+        where: { id: fotoId },
+        data: {
+          storagePath,
+          thumbPath,
+          largura: dims.largura ?? null,
+          altura: dims.altura ?? null,
+        },
+      });
+    } catch (err) {
+      await this.remover(novos);
+      throw err;
+    }
+    const capa = await this.prisma.catalogoFoto.findFirst({
+      where: { modeloCorId: atual.modeloCorId, linhaId: atual.linhaId },
+      orderBy: { ordem: 'asc' },
+      select: { id: true },
+    });
+    // A capa GERAL mudou de imagem: o ponto da bolinha era da foto antiga.
+    if (!atual.linhaId && capa?.id === fotoId) {
+      await this.prisma.catalogoModeloCor.update({
+        where: { id: atual.modeloCorId },
+        data: { amostraX: null, amostraY: null },
+      });
+    }
+    await this.remover([atual.storagePath, ...(atual.thumbPath ? [atual.thumbPath] : [])]);
+    return this.comUrls(salva);
+  }
+
   /** Foto de linha só pra linha que o modelo TEM (senão ninguém a veria). */
   private async linhaDoModelo(modeloId: string, linhaId: string | null) {
     if (!linhaId) return;
