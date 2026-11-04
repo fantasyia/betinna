@@ -40,7 +40,8 @@ describe('pedido da vitrine no Magis5 (03/11)', () => {
     const r = montarPedidoMagis5(PEDIDO, 'api-1');
     expect(r.channel).toBe('api-1');
     expect(r.status).toBe('approved');
-    expect(r.shipping.logistic.logisticId).toBe('31');
+    expect(r.shipping.shipping_mode).toBe('ME-31');
+    expect(r.intermediary.paymentDocument).toBe('19540550000121');
     expect(r.id).toBe('PED-1');
     expect(r.order_items[0]).toMatchObject({
       quantity: 2,

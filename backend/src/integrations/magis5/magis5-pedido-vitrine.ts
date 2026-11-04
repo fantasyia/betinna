@@ -1,9 +1,15 @@
 /**
  * Monta o pedido da vitrine no formato do `POST /orders` do Magis5 (Fase 4, 03/11).
- * PURO. Provado em 04/11: sem `status` volta 400, e `logistic.logisticId` é o id
- * do serviço do Melhor Envio. Sem ele o pedido para em "Ag. logística" (Api-null);
- * com ele o Magis5 acha a transportadora sozinho (31 = Loggi Express).
+ * PURO. Provado em 04/11: sem `status` volta 400. O frete do cliente vai em
+ * `shipping_mode` como `ME-<id do serviço>`: a aba Envio da loja mapeia cada um
+ * pro serviço do Melhor Envio. Sem o mapa o Magis5 escolhe o mais barato.
  */
+
+/** A nota exige o intermediador; a vitrine cobra pelo Asaas (Léo, 04/11). */
+const ASAAS = {
+  documento: '19540550000121',
+  nome: 'ASAAS GESTAO FINANCEIRA INSTITUICAO DE PAGAMENTO S.A.',
+};
 
 export interface PedidoVitrine {
   numero: string;
@@ -41,6 +47,12 @@ export function montarPedidoMagis5(p: PedidoVitrine, canal: string) {
     dateCreated: p.criadoEm.toISOString(),
     channel: canal,
     status: 'approved',
+    intermediary: {
+      salesDocument: ASAAS.documento,
+      salesName: ASAAS.nome,
+      paymentDocument: ASAAS.documento,
+      paymentName: ASAAS.nome,
+    },
     quantityPackage: p.entrega.volumes?.length || 1,
     invoiceVolume: p.entrega.volumes?.length || 1,
     buyer: {
@@ -60,8 +72,7 @@ export function montarPedidoMagis5(p: PedidoVitrine, canal: string) {
     })),
     payments: [{ status: 'approved', total_paid_amount: p.total, shipping_cost: p.frete }],
     shipping: {
-      logistic: { logisticId: String(p.entrega.servico.id) },
-      shipping_option: { list_cost: p.frete, cost: p.frete },
+      shipping_mode: `ME-${p.entrega.servico.id}`,
       receiver_address: {
         street_name: p.entrega.endereco,
         street_number: p.entrega.numero,
