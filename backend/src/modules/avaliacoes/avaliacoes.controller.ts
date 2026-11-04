@@ -17,8 +17,16 @@ export class AvaliacoesController {
 
   @Get()
   @ApiOperation({ summary: 'Avaliações importadas (com o veredito da IA)' })
-  listar(@CurrentUser() user: AuthenticatedUser, @Query('status') status?: string) {
-    return this.svc.listar(user, status && /^[A-Z]{1,20}$/.test(status) ? status : undefined);
+  listar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('status') status?: string,
+    @Query('limite') limite?: string,
+  ) {
+    return this.svc.listar(
+      user,
+      status && /^[A-Z]{1,20}$/.test(status) ? status : undefined,
+      Number(limite) || undefined,
+    );
   }
 
   @Patch(':id')

@@ -256,12 +256,12 @@ export class AvaliacoesService {
 
   // ─── Tela de revisão ────────────────────────────────────────────────────
 
-  async listar(user: AuthenticatedUser, status?: string) {
+  async listar(user: AuthenticatedUser, status?: string, limite = 200) {
     const empresaId = this.empresa(user);
     const rows = await this.prisma.avaliacaoVitrine.findMany({
       where: { empresaId, ...(status ? { status } : {}) },
       orderBy: { criadoEm: 'desc' },
-      take: 200,
+      take: Math.min(Math.max(limite, 1), 5000),
     });
     const modelos = new Map(
       (

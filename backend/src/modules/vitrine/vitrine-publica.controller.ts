@@ -95,6 +95,19 @@ export class VitrinePublicaController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 60, ttl: seconds(60) } })
+  @Header('Cache-Control', 'public, max-age=60')
+  @Get(':slug/avaliacoes/:modeloId')
+  @ApiOperation({ summary: 'Próximas avaliações de um modelo (a folha mostra todas aos poucos)' })
+  avaliacoes(
+    @Param('slug', new ZodValidationPipe(slugSchema)) slug: string,
+    @Param('modeloId') modeloId: string,
+    @Query('depois') depois?: string,
+  ) {
+    return this.svc.avaliacoesDoModelo(slug, modeloId.slice(0, 40), Number(depois) || 0);
+  }
+
+  @Public()
   // Modo interno (19/10): a visita é da equipe? Sem cache — depende do IP/aparelho.
   @Throttle({ default: { limit: 30, ttl: seconds(60) } })
   @Header('Cache-Control', 'no-store')

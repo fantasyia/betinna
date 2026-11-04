@@ -740,7 +740,7 @@ function Vitrine({
       </div>
 
       {avaliacoesDe && (
-        <FolhaAvaliacoes m={avaliacoesDe} onFechar={() => setAvaliacoesDe(null)} />
+        <FolhaAvaliacoes m={avaliacoesDe} slug={slug} onFechar={() => setAvaliacoesDe(null)} />
       )}
       {pdp && (
         <PaginaModelo
@@ -924,8 +924,36 @@ function totalAvaliacoes(m: ModeloPub): number {
 }
 
 /** Avaliações de clientes do modelo (25/10): comentário, estrelas, cores e fotos. */
-function FolhaAvaliacoes({ m, onFechar }: { m: ModeloPub; onFechar: () => void }) {
-  const lista = m.avaliacoes ?? [];
+function FolhaAvaliacoes({
+  m,
+  slug,
+  onFechar,
+}: {
+  m: ModeloPub;
+  slug: string;
+  onFechar: () => void;
+}) {
+  const [lista, setLista] = useState(m.avaliacoes ?? []);
+  const [carregando, setCarregando] = useState(false);
+  const [falhou, setFalhou] = useState(false);
+  const total = totalAvaliacoes(m);
+
+  async function verMais() {
+    setCarregando(true);
+    setFalhou(false);
+    try {
+      const mais = await api.get<NonNullable<ModeloPub['avaliacoes']>>(
+        `/public/vitrine/${encodeURIComponent(slug)}/avaliacoes/${m.id}?depois=${lista.length}`,
+        { skipAuth: true },
+      );
+      setLista((l) => [...l, ...mais]);
+    } catch {
+      setFalhou(true);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
   return (
     <>
       <div className="vt-scrim" onClick={onFechar} />
@@ -956,6 +984,21 @@ function FolhaAvaliacoes({ m, onFechar }: { m: ModeloPub; onFechar: () => void }
               )}
             </article>
           ))}
+          {lista.length < total && (
+            <button
+              type="button"
+              className="vt-cta vt-cta-sec"
+              onClick={() => void verMais()}
+              disabled={carregando}
+              data-testid="vt-avaliacoes-mais"
+            >
+              {carregando
+                ? 'Carregando…'
+                : falhou
+                  ? 'Não carregou. Tentar de novo'
+                  : `Ver mais (${lista.length} de ${total})`}
+            </button>
+          )}
         </div>
         <div className="vt-sh-foot">
           <button type="button" className="vt-cta vt-cta-sec" onClick={onFechar}>

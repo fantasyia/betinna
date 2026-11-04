@@ -38,10 +38,11 @@ export default function AvaliacoesPage() {
   const toast = useToast();
   const [status, setStatus] = useState<Status>('APROVADA');
   const [importando, setImportando] = useState(false);
+  const [limite, setLimite] = useState(200);
   const { data, loading, error, refetch } = useApiQuery<{
     data: Avaliacao[];
     contagem: Partial<Record<Status, number>>;
-  }>(`/vitrine/admin/avaliacoes?status=${status}`);
+  }>(`/vitrine/admin/avaliacoes?status=${status}&limite=${limite}`);
 
   async function decidir(id: string, novo: 'APROVADA' | 'RECUSADA') {
     try {
@@ -132,6 +133,17 @@ export default function AvaliacoesPage() {
               </li>
             ))}
           </ul>
+        )}
+        {(data?.contagem[status] ?? 0) > (data?.data.length ?? 0) && (
+          <div className="mt-4 flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => setLimite((l) => l + 200)}
+              data-testid="avaliacoes-ver-mais"
+            >
+              Ver mais ({data!.data.length} de {data!.contagem[status]})
+            </Button>
+          </div>
         )}
       </StateView>
     </PageLayout>

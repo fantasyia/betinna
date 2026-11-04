@@ -57,6 +57,23 @@ export class VitrinePublicaService {
     return v?.empresaId ?? null;
   }
 
+  /** Avaliações aprovadas depois das `depois` primeiras: a vitrine traz só 12 de cada modelo. */
+  async avaliacoesDoModelo(slug: string, modeloId: string, depois: number) {
+    const empresaId = await this.empresaDoSlug(slug);
+    if (!empresaId) return [];
+    const rows = await this.prisma.avaliacaoVitrine.findMany({
+      where: { empresaId, status: 'APROVADA', modeloId },
+      orderBy: [{ criadoEm: 'desc' }, { id: 'asc' }],
+      skip: Math.max(0, Math.trunc(depois)),
+      take: 20,
+      select: { estrelas: true, texto: true, autor: true, cores: true, fotos: true },
+    });
+    return rows.map((r) => ({
+      ...r,
+      fotos: r.fotos.map((f) => this.fotos.urlPublica(f)).filter((u): u is string => !!u),
+    }));
+  }
+
   async carregar(slug: string) {
     const vitrine = await this.prisma.vitrine.findUnique({
       where: { slug },
