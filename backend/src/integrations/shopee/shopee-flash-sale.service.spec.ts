@@ -50,9 +50,53 @@ describe('Oferta Relâmpago Shopee (31/10)', () => {
       preco_atual: 39.9,
       preco_original: 49.9,
       estoque: 7,
+      sku: null,
       estoque_vendedor: null,
       estoque_full: null,
     });
+  });
+
+  it('trocarSku: manda só o SKU e pula divergente, Full e desconhecido', async () => {
+    const { svc, shopee } = montar();
+    const estoque = (full: number) => ({
+      seller_stock: [{ stock: 0 }],
+      shopee_stock: [{ stock: full }],
+    });
+    shopee.getShop.mockResolvedValueOnce({
+      response: {
+        model: [
+          { model_id: 1, model_sku: 'A', stock_info_v2: estoque(0) },
+          { model_id: 2, model_sku: 'X', stock_info_v2: estoque(0) },
+          { model_id: 3, model_sku: 'C', stock_info_v2: estoque(5) },
+          { model_id: 4, model_sku: 'D' },
+        ],
+      },
+    });
+    shopee.postShop.mockResolvedValueOnce({
+      response: { success_list: [{ model_id: 1, model_sku: 'A2' }] },
+    });
+    const r = await svc.trocarSku(user as never, 99, [
+      { model_id: 1, sku_atual: 'A', sku_novo: 'A2' },
+      { model_id: 2, sku_atual: 'B', sku_novo: 'B2' },
+      { model_id: 3, sku_atual: 'C', sku_novo: 'C2' },
+      { model_id: 4, sku_atual: 'D', sku_novo: 'D2' },
+      { model_id: 5, sku_atual: 'E', sku_novo: 'E2' },
+    ]);
+    expect(shopee.postShop).toHaveBeenCalledWith('emp1', '/api/v2/product/update_model', {
+      item_id: 99,
+      model: [{ model_id: 1, model_sku: 'A2' }],
+    });
+    expect(r.aceitos).toHaveLength(1);
+    expect(r.pulados.map((p) => p.model_id)).toEqual([2, 3, 4, 5]);
+  });
+
+  it('trocarSku: sem model liberado, não chama a Shopee', async () => {
+    const { svc, shopee } = montar();
+    const r = await svc.trocarSku(user as never, 99, [
+      { model_id: 11, sku_atual: 'nao-bate', sku_novo: 'x' },
+    ]);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+    expect(r.pulados).toHaveLength(1);
   });
 
   it('modelos: separa vendedor de Full e não trata lista ausente como zero', async () => {

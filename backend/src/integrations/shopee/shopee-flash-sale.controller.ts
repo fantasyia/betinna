@@ -33,6 +33,18 @@ const listarSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 const horariosSchema = z.object({ start_time: id, end_time: id });
+const skuSchema = z.object({
+  models: z
+    .array(
+      z.object({
+        model_id: z.number().int().positive(),
+        sku_atual: z.string().trim().min(1).max(100),
+        sku_novo: z.string().trim().min(1).max(100),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
 const precoSchema = z.object({
   models: z
     .array(
@@ -129,6 +141,16 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(precoSchema)) dto: z.infer<typeof precoSchema>,
   ) {
     return this.svc.atualizarPreco(user, itemId, dto.models);
+  }
+
+  @Post('anuncios/:itemId/skus')
+  @ApiOperation({ summary: 'MEXE NA LOJA: troca só o SKU dos models, pulando Full' })
+  skus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(skuSchema)) dto: z.infer<typeof skuSchema>,
+  ) {
+    return this.svc.trocarSku(user, itemId, dto.models);
   }
 
   @Get('anuncios/:itemId/modelos')

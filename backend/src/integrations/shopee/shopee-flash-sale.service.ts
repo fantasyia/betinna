@@ -30,6 +30,7 @@ export interface ItemOferta {
 
 interface Model {
   model_id: number;
+  model_sku?: string;
   price_info?: Array<{ current_price?: number; original_price?: number }>;
   stock_info_v2?: {
     summary_info?: { total_available_stock?: number };
@@ -102,6 +103,7 @@ export class ShopeeFlashSaleService {
     return (r.response?.model ?? []).map((m) => ({
       model_id: m.model_id,
       nome: m.model_name ?? null,
+      sku: m.model_sku ?? null,
       preco_atual: m.price_info?.[0]?.current_price ?? null,
       preco_original: m.price_info?.[0]?.original_price ?? null,
       estoque: m.stock_info_v2?.summary_info?.total_available_stock ?? null,
@@ -110,6 +112,48 @@ export class ShopeeFlashSaleService {
       estoque_vendedor: somarEstoque(m.stock_info_v2?.seller_stock),
       estoque_full: somarEstoque(m.stock_info_v2?.shopee_stock),
     }));
+  }
+
+  /**
+   * Troca só o SKU dos models (Léo, 04/11). Lê o estado na hora: recusa se o SKU
+   * atual divergir e pula quem tem Full ou estoque desconhecido. MEXE NA LOJA.
+   */
+  async trocarSku(
+    user: AuthenticatedUser,
+    itemId: number,
+    models: Array<{ model_id: number; sku_atual: string; sku_novo: string }>,
+  ) {
+    const atuais = new Map((await this.modelos(user, itemId)).map((m) => [m.model_id, m]));
+    const pulados: Array<{ model_id: number; motivo: string }> = [];
+    const liberados = models.filter((m) => {
+      const a = atuais.get(m.model_id);
+      const motivo = !a
+        ? 'model não existe no anúncio'
+        : a.sku !== m.sku_atual
+          ? `SKU atual é ${a.sku ?? 'vazio'}`
+          : a.estoque_full === null
+            ? 'estoque Full desconhecido'
+            : a.estoque_full > 0
+              ? 'tem estoque Full'
+              : null;
+      if (motivo) pulados.push({ model_id: m.model_id, motivo });
+      return !motivo;
+    });
+    if (liberados.length === 0) return { aceitos: [], recusados: [], pulados };
+    const r = await this.shopee.postShop<{
+      response?: {
+        success_list?: Array<{ model_id: number; model_sku?: string }>;
+        failure_list?: Array<{ model_id: number; failed_reason: string }>;
+      };
+    }>(this.empresa(user), '/api/v2/product/update_model', {
+      item_id: itemId,
+      model: liberados.map((m) => ({ model_id: m.model_id, model_sku: m.sku_novo })),
+    });
+    return {
+      aceitos: r.response?.success_list ?? [],
+      recusados: r.response?.failure_list ?? [],
+      pulados,
+    };
   }
 
   async adicionarItens(user: AuthenticatedUser, flashSaleId: number, itens: ItemOferta[]) {
