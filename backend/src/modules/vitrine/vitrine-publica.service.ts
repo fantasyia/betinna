@@ -173,7 +173,8 @@ export class VitrinePublicaService {
           })),
         })),
         linhas: m.linhas
-          .filter((l) => l.tamanhos.some(vendavel))
+          // Linha sem preço de entrada some, sem apagar o cadastro (Léo, 04/11).
+          .filter((l) => l.precoEntrada !== null && l.tamanhos.some(vendavel))
           .sort((a, b) => a.linha.ordem - b.linha.ordem || a.linha.nome.localeCompare(b.linha.nome))
           .map((l) => ({
             id: l.id,

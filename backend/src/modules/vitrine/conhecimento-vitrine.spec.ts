@@ -61,7 +61,7 @@ describe('fichaDoModelo (24/10)', () => {
     expect(f.conteudo).toContain(`M: cintura 40, comprimento 50. (${nota})`);
   });
 
-  it('sem preço = sob consulta; sem domínio = sem link', () => {
+  it('linha sem preço fica de fora; sem domínio = sem link', () => {
     const f = fichaDoModelo(
       {
         ...modelo,
@@ -72,7 +72,7 @@ describe('fichaDoModelo (24/10)', () => {
       { minimoEntrada: null, minimoVolume: null, minimoAtacadao: null },
       null,
     );
-    expect(f.conteudo).toContain('preço sob consulta');
+    expect(f.conteudo).not.toContain(`Linha ${modelo.linhas[0].linha.nome}`);
     expect(f.conteudo).not.toContain('Link do produto');
   });
 });

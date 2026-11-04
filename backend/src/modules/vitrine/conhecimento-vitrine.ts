@@ -53,7 +53,8 @@ export function fichaDoModelo(
   const cores = m.cores.map((c) => c.cor.nome).filter(Boolean);
   if (cores.length) partes.push(`Cores: ${cores.join(', ')}.`);
 
-  for (const l of m.linhas) {
+  // Linha sem preço de entrada não é vendida: fica fora da base (Léo, 04/11).
+  for (const l of m.linhas.filter((x) => num(x.precoEntrada) !== null)) {
     const tam = [...l.tamanhos]
       .sort((a, b) => a.tamanho.ordem - b.tamanho.ordem)
       .map((t) => t.tamanho.nome);
@@ -68,8 +69,7 @@ export function fichaDoModelo(
     if (ent !== null) precos.push(`${brl(ent)} por peça ${faixa(faixas.minimoEntrada, 'Entrada')}`);
     if (vol !== null) precos.push(`${brl(vol)} ${faixa(faixas.minimoVolume, 'Volume')}`);
     if (ata !== null) precos.push(`${brl(ata)} ${faixa(faixas.minimoAtacadao, 'Atacadão')}`);
-    if (precos.length) bloco.push(`preço no atacado: ${precos.join('; ')}`);
-    else bloco.push('preço sob consulta');
+    bloco.push(`preço no atacado: ${precos.join('; ')}`);
     const rev = num(l.precoSugerido);
     if (rev !== null) {
       bloco.push(`preço sugerido de revenda ${brl(rev)}`);

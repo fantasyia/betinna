@@ -152,6 +152,19 @@ describe('VitrinePublicaService', () => {
       expect(JSON.stringify(r)).not.toContain('pesoGramas');
     });
 
+    it('linha sem preço de entrada sai; modelo só com ela sai (Léo, 04/11)', async () => {
+      const semPreco = { ...linha('reg', [300]), precoEntrada: null };
+      const prisma = makePrisma(comFrete, [
+        modelo({ id: 'oversize', linhas: [semPreco, linha('plus', [300])] }),
+        modelo({ id: 'sem-preco', linhas: [semPreco] }),
+      ]);
+      const svc = new VitrinePublicaService(prisma as never, fotosSvc as never);
+      const r = await svc.carregar('atacado-ribelt');
+
+      expect(r.modelos.map((m) => m.id)).toEqual(['oversize']);
+      expect(r.modelos[0].linhas.map((l) => l.nome)).toEqual(['plus']);
+    });
+
     it('frete DESLIGADO: peso não importa, tudo aparece como antes', async () => {
       const prisma = makePrisma(vitrineNoAr, [
         modelo({ id: 'sem-peso', linhas: [linha('reg', [null, null])] }),

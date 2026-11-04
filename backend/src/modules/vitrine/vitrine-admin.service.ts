@@ -721,7 +721,7 @@ export class VitrineAdminService {
         }),
         this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
       ]);
-      if (!m || !m.ativo) {
+      if (!m || !m.ativo || !m.linhas.some((l) => l.precoEntrada !== null)) {
         await this.prisma.knowledgeChunk.updateMany({
           where: { empresaId, fonte: 'CONFIG', refId },
           data: { ativo: false },
