@@ -4362,6 +4362,9 @@ model CatalogoFoto {
   /// Rodízio da abertura (Léo, 07/10): entre as fotos marcadas, cada cliente
   /// vê UMA primeiro — sempre a mesma pra ele. Nenhuma marcada = abre na 1ª.
   rodizio     Boolean @default(false)
+  /// Conta como apagada em todo o app, inclusive no painel (Léo, 04/11). O
+  /// registro e o arquivo só ficam até a exclusão definitiva.
+  oculta      Boolean @default(false)
 
   criadoEm DateTime @default(now())
 

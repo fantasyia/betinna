@@ -81,7 +81,7 @@ const modeloInclude = {
     orderBy: { ordem: 'asc' },
     include: {
       cor: true,
-      fotos: { orderBy: { ordem: 'asc' } },
+      fotos: { where: { oculta: false }, orderBy: { ordem: 'asc' } },
     },
   },
   linhas: {

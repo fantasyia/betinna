@@ -83,6 +83,7 @@ export class KitsService {
             select: {
               cor: { select: { nome: true } },
               fotos: {
+                where: { oculta: false },
                 orderBy: { ordem: 'asc' },
                 select: { storagePath: true, linhaId: true },
               },

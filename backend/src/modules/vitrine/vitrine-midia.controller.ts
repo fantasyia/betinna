@@ -29,6 +29,10 @@ const ordemSchema = z.object({
   /** Grupo cor × linha; ausente/null = as fotos gerais da cor. */
   linhaId: z.string().min(1).nullable().optional(),
 });
+const ocultarSchema = z.object({
+  ids: z.array(z.string().min(1).max(40)).min(1).max(500),
+  oculta: z.boolean(),
+});
 const linhaIdSchema = z
   .string()
   .trim()
@@ -135,6 +139,15 @@ export class VitrineMidiaController {
       largura: dimSchema.parse(body?.largura),
       altura: dimSchema.parse(body?.altura),
     });
+  }
+
+  @Post('fotos/ocultar')
+  @ApiOperation({ summary: 'Marca fotos como apagadas em todo o app, mantendo registro e arquivo' })
+  ocultar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(ocultarSchema)) dto: z.infer<typeof ocultarSchema>,
+  ) {
+    return this.fotos.ocultar(user, dto.ids, dto.oculta);
   }
 
   @Put('fotos/:id/rodizio')

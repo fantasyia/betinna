@@ -129,7 +129,10 @@ export class VitrineFotosService implements OnModuleInit {
     if (thumb) this.validar(thumb, MAX_THUMB_BYTES, 'Miniatura');
 
     // Teto e ordem são por cor × linha (a linha tem capa própria).
-    const qtd = await this.prisma.catalogoFoto.count({ where: { modeloCorId, linhaId } });
+    // Oculta conta como apagada: não ocupa o teto de fotos.
+    const qtd = await this.prisma.catalogoFoto.count({
+      where: { modeloCorId, linhaId, oculta: false },
+    });
     if (qtd >= MAX_FOTOS_POR_COR) {
       throw new BusinessRuleException(
         `No máximo ${MAX_FOTOS_POR_COR} fotos por cor${linhaId ? ' nesta linha' : ''}`,
@@ -212,7 +215,7 @@ export class VitrineFotosService implements OnModuleInit {
       throw err;
     }
     const capa = await this.prisma.catalogoFoto.findFirst({
-      where: { modeloCorId: atual.modeloCorId, linhaId: atual.linhaId },
+      where: { modeloCorId: atual.modeloCorId, linhaId: atual.linhaId, oculta: false },
       orderBy: { ordem: 'asc' },
       select: { id: true },
     });
@@ -225,6 +228,19 @@ export class VitrineFotosService implements OnModuleInit {
     }
     await this.remover([atual.storagePath, ...(atual.thumbPath ? [atual.thumbPath] : [])]);
     return this.comUrls(salva);
+  }
+
+  /**
+   * Oculta conta como apagada em todo o app, inclusive no painel (Léo, 04/11).
+   * O registro e o arquivo ficam até a exclusão definitiva.
+   */
+  async ocultar(user: AuthenticatedUser, ids: string[], oculta: boolean) {
+    const empresaId = this.requireEmpresa(user);
+    const r = await this.prisma.catalogoFoto.updateMany({
+      where: { id: { in: ids }, modeloCor: { modelo: { empresaId } } },
+      data: { oculta },
+    });
+    return { alteradas: r.count };
   }
 
   /** Foto de linha só pra linha que o modelo TEM (senão ninguém a veria). */
@@ -279,7 +295,7 @@ export class VitrineFotosService implements OnModuleInit {
   ) {
     await this.corDoModelo(user, modeloCorId);
     const fotos = await this.prisma.catalogoFoto.findMany({
-      where: { modeloCorId, linhaId },
+      where: { modeloCorId, linhaId, oculta: false },
       orderBy: { ordem: 'asc' },
       select: { id: true },
     });
@@ -310,7 +326,7 @@ export class VitrineFotosService implements OnModuleInit {
   async listar(user: AuthenticatedUser, modeloCorId: string) {
     await this.corDoModelo(user, modeloCorId);
     const fotos = await this.prisma.catalogoFoto.findMany({
-      where: { modeloCorId },
+      where: { modeloCorId, oculta: false },
       orderBy: { ordem: 'asc' },
     });
     return fotos.map((f) => this.comUrls(f));
@@ -323,7 +339,7 @@ export class VitrineFotosService implements OnModuleInit {
     });
     if (!foto) throw new NotFoundException('Foto', fotoId);
     const capa = await this.prisma.catalogoFoto.findFirst({
-      where: { modeloCorId: foto.modeloCorId, linhaId: foto.linhaId },
+      where: { modeloCorId: foto.modeloCorId, linhaId: foto.linhaId, oculta: false },
       orderBy: { ordem: 'asc' },
       select: { id: true },
     });

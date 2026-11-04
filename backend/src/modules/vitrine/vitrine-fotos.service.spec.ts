@@ -58,6 +58,7 @@ function makePrisma() {
       findFirst: vi.fn(),
       delete: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     catalogoVideo: {
       count: vi.fn().mockResolvedValue(0),
@@ -132,6 +133,28 @@ describe('VitrineFotosService', () => {
     prisma.catalogoFoto.create.mockRejectedValue(new Error('banco fora'));
     await expect(svc.enviar(user(), 'mc-1', webp(), undefined, {})).rejects.toThrow('banco fora');
     expect(storageFns.remove).toHaveBeenCalledWith([expect.stringMatching(/\.webp$/)]);
+  });
+
+  it('ocultar: só muda fotos da empresa do usuário e não apaga nada', async () => {
+    prisma.catalogoFoto.updateMany.mockResolvedValue({ count: 2 });
+    const r = await svc.ocultar(user(), ['a', 'b', 'alheia'], true);
+    expect(r).toEqual({ alteradas: 2 });
+    expect(prisma.catalogoFoto.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['a', 'b', 'alheia'] },
+        modeloCor: { modelo: { empresaId: expect.any(String) } },
+      },
+      data: { oculta: true },
+    });
+    expect(prisma.catalogoFoto.delete).not.toHaveBeenCalled();
+    expect(storageFns.remove).not.toHaveBeenCalled();
+  });
+
+  it('oculta conta como apagada: fora da lista e do teto de fotos', async () => {
+    await svc.listar(user(), 'mc-1');
+    expect(prisma.catalogoFoto.findMany.mock.calls[0][0].where).toMatchObject({ oculta: false });
+    await svc.enviar(user(), 'mc-1', webp(), undefined, {});
+    expect(prisma.catalogoFoto.count.mock.calls[0][0].where).toMatchObject({ oculta: false });
   });
 
   describe('substituir', () => {
@@ -247,7 +270,7 @@ describe('VitrineFotosService', () => {
       prisma.catalogoFoto.count.mockResolvedValue(3);
       await svc.enviar(user(), 'mc-1', webp(), undefined, {}, 'lin-plus');
       expect(prisma.catalogoFoto.count).toHaveBeenCalledWith({
-        where: { modeloCorId: 'mc-1', linhaId: 'lin-plus' },
+        where: { modeloCorId: 'mc-1', linhaId: 'lin-plus', oculta: false },
       });
       expect(prisma.catalogoFoto.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -259,7 +282,7 @@ describe('VitrineFotosService', () => {
     it('sem linha = foto geral (o comportamento de antes)', async () => {
       await svc.enviar(user(), 'mc-1', webp(), undefined, {});
       expect(prisma.catalogoFoto.count).toHaveBeenCalledWith({
-        where: { modeloCorId: 'mc-1', linhaId: null },
+        where: { modeloCorId: 'mc-1', linhaId: null, oculta: false },
       });
       expect(prisma.catalogoModeloLinha.findFirst).not.toHaveBeenCalled();
     });
@@ -276,7 +299,9 @@ describe('VitrineFotosService', () => {
       prisma.catalogoFoto.findMany.mockResolvedValue([{ id: 'f-1' }, { id: 'f-2' }]);
       await svc.reordenar(user(), 'mc-1', ['f-2', 'f-1'], 'lin-plus');
       expect(prisma.catalogoFoto.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { modeloCorId: 'mc-1', linhaId: 'lin-plus' } }),
+        expect.objectContaining({
+          where: { modeloCorId: 'mc-1', linhaId: 'lin-plus', oculta: false },
+        }),
       );
       expect(prisma.catalogoModeloCor.update).not.toHaveBeenCalled();
     });

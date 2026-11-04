@@ -106,8 +106,8 @@ export class VitrinePublicaService {
         categoria: true,
         cores: {
           orderBy: { ordem: 'asc' },
-          where: { cor: { ativo: true }, fotos: { some: {} } },
-          include: { cor: true, fotos: { orderBy: { ordem: 'asc' } } },
+          where: { cor: { ativo: true }, fotos: { some: { oculta: false } } },
+          include: { cor: true, fotos: { where: { oculta: false }, orderBy: { ordem: 'asc' } } },
         },
         linhas: {
           where: { linha: { ativo: true } },

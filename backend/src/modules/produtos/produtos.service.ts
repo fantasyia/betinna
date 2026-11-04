@@ -51,7 +51,7 @@ export class ProdutosService {
     });
     if (!vs.length) return out;
     const fotos = await this.prisma.catalogoFoto.findMany({
-      where: { modeloCorId: { in: [...new Set(vs.map((v) => v.modeloCorId))] } },
+      where: { modeloCorId: { in: [...new Set(vs.map((v) => v.modeloCorId))] }, oculta: false },
       select: { modeloCorId: true, linhaId: true, storagePath: true, thumbPath: true },
       orderBy: { ordem: 'asc' },
     });

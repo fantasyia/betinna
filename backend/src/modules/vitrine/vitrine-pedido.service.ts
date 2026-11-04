@@ -207,7 +207,7 @@ export class VitrinePedidoService {
         ativo: true,
         OR: itens.map((i) => ({ modeloCorId: i.corId, modeloTamanhoId: i.tamanhoId })),
         modelo: { ativo: true },
-        modeloCor: { cor: { ativo: true }, fotos: { some: {} } },
+        modeloCor: { cor: { ativo: true }, fotos: { some: { oculta: false } } },
         modeloLinha: { linha: { ativo: true }, precoEntrada: { not: null } },
         modeloTamanho: { tamanho: { ativo: true } },
       },

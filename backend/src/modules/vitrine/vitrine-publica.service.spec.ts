@@ -87,7 +87,10 @@ describe('VitrinePublicaService', () => {
 
     const args = prisma.catalogoModelo.findMany.mock.calls[0][0];
     expect(args.where).toEqual({ empresaId: 'emp-1', ativo: true });
-    expect(args.include.cores.where).toEqual({ cor: { ativo: true }, fotos: { some: {} } });
+    expect(args.include.cores.where).toEqual({
+      cor: { ativo: true },
+      fotos: { some: { oculta: false } },
+    });
     expect(args.include.linhas.where).toEqual({ linha: { ativo: true } });
     expect(args.include.linhas.include.tamanhos.where).toEqual({ tamanho: { ativo: true } });
   });
