@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   abrirPeloRodizio,
   gradeDoCarrinho,
+  quadroDePreco,
   quantidadesDoSimulador,
+  textoDasFaixas,
   simularPedido,
   corDaBolinha,
   corInicial,
@@ -615,5 +617,45 @@ describe('pedido como tabela (Léo, 07/10)', () => {
       ['Bege', [1, 3], 4],
     ]);
     expect(g[0].total).toBe(6);
+  });
+});
+
+describe('quadro de preço (Léo, 04/11)', () => {
+  const fx = { minimoEntrada: null, minimoVolume: 200, minimoAtacadao: 1000 };
+  const l = {
+    precoEntrada: 18.99,
+    precoVolume: 16.99,
+    precoAtacadao: 14.99,
+    precoSugerido: 49.99,
+  } as unknown as Parameters<typeof quadroDePreco>[0];
+  const min = { quantidadeMin: 50, valorMin: 600, modo: 'OU' as const };
+
+  it('sem peça é exemplo do mínimo: investe, recebe e lucro do card', () => {
+    const q = quadroDePreco(l, fx, min, 0, 0);
+    expect(q).toMatchObject({ exemplo: true, qtd: 50, investe: 949.5, vende: 2499.5, lucro: 1550 });
+    expect(q.proxima).toEqual({ faltam: 150, preco: 16.99, desconto: 2 });
+  });
+
+  it('mínimo só em valor: o exemplo é a quantidade que chega em R$ 600', () => {
+    const q = quadroDePreco(l, fx, { quantidadeMin: null, valorMin: 600, modo: 'OU' }, 0, 0);
+    expect(q).toMatchObject({ exemplo: true, qtd: 32, investe: 607.68 });
+  });
+
+  it('a faixa conta o pedido todo; os números, só este produto', () => {
+    const q = quadroDePreco(l, fx, min, 10, 200);
+    expect(q).toMatchObject({ exemplo: false, qtd: 10, preco: 16.99, investe: 169.9, vende: 499.9 });
+    expect(q.proxima?.faltam).toBe(800);
+  });
+
+  it('na última faixa não há próxima', () => {
+    expect(quadroDePreco(l, fx, min, 1000, 1000).proxima).toBeNull();
+  });
+
+  it('as faixas viram texto, sem quantidade fechada', () => {
+    expect(textoDasFaixas(l, fx).map((x) => x.rotulo)).toEqual([
+      'até 199 peças',
+      'a partir de 200',
+      'a partir de 1.000',
+    ]);
   });
 });

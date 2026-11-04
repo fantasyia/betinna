@@ -226,8 +226,8 @@ export function quantidadesDoSimulador(f: Faixas, minimo?: MinimoPub | null): nu
  * por quanto vende (revenda sugerida) e o lucro. Em centavos (sem resto de
  * float). `preco` null = sob consulta; `vende`/`lucro` null = sem revenda. PURO.
  */
-export function simularPedido(l: LinhaPub, f: Faixas, qtd: number) {
-  const faixa = faixaDoTotal(qtd, f);
+export function simularPedido(l: LinhaPub, f: Faixas, qtd: number, pecasDoPedido = qtd) {
+  const faixa = faixaDoTotal(pecasDoPedido, f);
   const preco = precoNaFaixa(l, faixa);
   const investeC = preco === null ? null : Math.round(preco * 100) * qtd;
   const vendeC = l.precoSugerido === null ? null : Math.round(l.precoSugerido * 100) * qtd;
@@ -542,6 +542,62 @@ export function proximaFaixa(pecas: number, f: Faixas): { faixa: Faixa; faltam: 
   if (f.minimoAtacadao && pecas < f.minimoAtacadao)
     return { faixa: 'atacadao', faltam: f.minimoAtacadao - pecas };
   return null;
+}
+
+/**
+ * Quadro de preço do produto (Léo, 04/11). A faixa conta as peças do PEDIDO todo,
+ * como em `resumoPedido`; os 3 números são das peças DESTE produto. Sem peça
+ * escolhida, é o exemplo do pedido mínimo. PURO.
+ */
+export function quadroDePreco(
+  l: LinhaPub,
+  f: Faixas,
+  minimo: MinimoPub | null | undefined,
+  pecasDoProduto: number,
+  pecasDoPedido: number,
+) {
+  // Mínimo só em valor (04/11): o exemplo é a quantidade que chega nele a este preço.
+  const precoBase = precoNaFaixa(l, 'entrada');
+  const base =
+    !minimo?.quantidadeMin && minimo?.valorMin && precoBase
+      ? Math.ceil(minimo.valorMin / precoBase)
+      : quantidadesDoSimulador(f, minimo)[0];
+  const exemplo = pecasDoProduto <= 0;
+  const qtd = exemplo ? base : pecasDoProduto;
+  const total = exemplo ? Math.max(base, pecasDoPedido) : pecasDoPedido;
+  const s = simularPedido(l, f, qtd, total);
+  const prox = proximaFaixa(total, f);
+  const precoProx = prox ? precoNaFaixa(l, prox.faixa) : null;
+  const desconto =
+    precoProx !== null && s.preco !== null
+      ? Math.round((s.preco - precoProx) * 100) / 100
+      : null;
+  return {
+    ...s,
+    exemplo,
+    barra: progressoFaixa(total, f),
+    proxima: prox ? { faltam: prox.faltam, preco: precoProx, desconto } : null,
+  };
+}
+
+/** "até 199 peças", "a partir de 200": a faixa escrita como informação. */
+export function textoDasFaixas(
+  l: LinhaPub,
+  f: Faixas,
+): Array<{ rotulo: string; preco: number }> {
+  const faixas = precosPorFaixa(l, f);
+  return faixas.map((x, i) => {
+    const seguinte = faixas[i + 1]?.minimo;
+    return {
+      rotulo:
+        x.faixa !== 'entrada'
+          ? `a partir de ${(x.minimo ?? 0).toLocaleString('pt-BR')}`
+          : seguinte
+            ? `até ${(seguinte - 1).toLocaleString('pt-BR')} peças`
+            : 'por peça',
+      preco: x.preco,
+    };
+  });
 }
 
 export const NOME_FAIXA: Record<Faixa, string> = {

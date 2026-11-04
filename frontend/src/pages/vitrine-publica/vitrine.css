@@ -440,11 +440,17 @@
 .vt-sim-btns { display: flex; gap: 4px; margin-left: auto; }
 .vt-sim-btns button { min-width: 42px; height: 26px; padding: 0 8px; border-radius: 999px; background: var(--linho); color: var(--oliva); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .vt-sim-btns button[aria-pressed='true'] { background: var(--petroleo); color: var(--creme); }
-.vt-sim-r { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #eee4ce; }
+.vt-sim-faixas { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; padding: 0 12px 7px; font-size: 11.5px; color: var(--oliva); }
+.vt-sim-faixas b { color: var(--petroleo); font-weight: 700; font-variant-numeric: tabular-nums; }
+.vt-sim-meta { display: grid; gap: 4px; padding: 7px 12px 8px; border-top: 1px solid #eee4ce; font-size: 12px; color: var(--petroleo); }
+.vt-sim-meta .vt-bar { margin: 0; }
+.vt-sim .vt-sim-min { font-size: 10.5px; letter-spacing: 0; text-transform: none; font-weight: 500; }
+.vt-sim-r { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid #eee4ce; }
 .vt-sim-r.vt-sim-so { grid-template-columns: 1fr; }
-.vt-sim-r > div { padding: 5px 12px 6px; display: grid; min-width: 0; }
+.vt-sim-r > div { padding: 5px 8px 6px; display: grid; align-content: space-between; min-width: 0; }
 .vt-sim-r > div + div { border-left: 1px solid #eee4ce; }
 .vt-sim-r b { font-family: var(--f-title); font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vt-sim-r small { white-space: normal; line-height: 1.2; overflow: visible; }
 .vt-sim-r .vt-win { background: #f3eedd; }
 .vt-sim-r .vt-win small, .vt-sim-r .vt-win b { color: var(--lucro); }
 .vt-sim .vt-na { display: block; padding: 10px; font-size: 12.5px; font-weight: 500; color: var(--terracota); }
@@ -458,7 +464,7 @@
   .vt-slide .vt-sim-topo { padding: 6px 12px 4px; }
   .vt-slide .vt-sim-unit b { font-size: 25px; }
   .vt-slide .vt-sim-q { padding: 4px 10px; }
-  .vt-slide .vt-sim-r > div { padding: 4px 12px 5px; }
+  .vt-slide .vt-sim-r > div { padding: 3px 8px 4px; }
   .vt-slide .vt-cta { height: 38px; }
   /* Topo mais baixo: a foto começa mais cedo. */
   .vt-top { padding-top: 6px; }
@@ -468,9 +474,9 @@
   .vt-counter { top: 73px; }
   .vt-top[data-cats] + .vt-feed .vt-slide .vt-fotos { top: 100px; }
   .vt-top[data-cats] + .vt-feed .vt-counter { top: 108px; }
-  /* Investe | Lucro no pedido fica só na Ficha técnica; o preço e o "Se você
-     levar" continuam. O aviso "deslize" também sai. */
-  .vt-slide .vt-sim-r { display: none; }
+  /* Tela baixa: os 3 números ficam, as faixas e o mínimo vão pra Ficha técnica.
+     O aviso "deslize" também sai. */
+  .vt-slide .vt-sim-faixas, .vt-slide .vt-sim-min { display: none; }
   .vt-slide .vt-hint { display: none; }
 }
 

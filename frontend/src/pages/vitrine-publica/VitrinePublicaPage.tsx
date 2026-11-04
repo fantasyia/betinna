@@ -32,8 +32,8 @@ import {
   sugestoesAntesDePagar,
   lucroNaProximaFaixa,
   progressoFaixa,
-  quantidadesDoSimulador,
-  simularPedido,
+  quadroDePreco,
+  textoDasFaixas,
   pecasDoModelo,
   inicioPeloProduto,
   precoNaFaixa,
@@ -707,7 +707,13 @@ function Vitrine({
                     ))}
                   </div>
                 )}
-                <SimuladorPedido l={l} f={v.faixas} minimo={v.pedidoMinimo} />
+                <QuadroPreco
+                  l={l}
+                  f={v.faixas}
+                  minimo={v.pedidoMinimo}
+                  pecasDoProduto={pecasDoModelo(carrinho, m.id, l)}
+                  pecasDoPedido={totalPecas(carrinho)}
+                />
                 <div className="vt-row">
                   {/* A página do produto abre só por aqui — a foto só desliza (Léo, 07/10).
                       O Material de divulgação está lá dentro. */}
@@ -760,6 +766,8 @@ function Vitrine({
           onKit={() => setKit(pdp)}
           pares={paresDe(pdp, v)}
           temPecas={pecasDoModelo(carrinho, pdp.id) > 0}
+          pecasDoProduto={pecasDoModelo(carrinho, pdp.id, linhaNoModelo(pdp))}
+          pecasDoPedido={totalPecas(carrinho)}
           onConjunto={(par) => montarConjunto(pdp, par)}
         />
       )}
@@ -1277,72 +1285,102 @@ function AmostraCor({ c }: { c: CorPub }) {
  * A página do modelo mostra o bloco completo (lucro por faixa etc.).
  */
 /**
- * Simulador do pedido (Léo, 07/10 — no lugar de Entrada / Revenda / Seu lucro):
- * "Se você levar" 50 · 100 · 200 · 1.000 → quanto investe, por quanto vende e
- * o LUCRO NO PEDIDO. O preço da peça acompanha a faixa da quantidade.
+ * Quadro de preço (Léo, 04/11): a quantidade vem da grade de cor e tamanho. As
+ * faixas são só informação, e os 3 números e a barra seguem as peças escolhidas.
  */
-function SimuladorPedido({
+function QuadroPreco({
   l,
   f,
   minimo,
+  pecasDoProduto,
+  pecasDoPedido,
 }: {
   l: LinhaPub;
   f: Faixas;
   minimo?: VitrinePub['pedidoMinimo'];
+  pecasDoProduto: number;
+  pecasDoPedido: number;
 }) {
-  const qtds = quantidadesDoSimulador(f, minimo);
-  const [qtd, setQtd] = useState(qtds[0]);
-  const s = simularPedido(l, f, qtds.includes(qtd) ? qtd : qtds[0]);
-  if (s.preco === null) {
+  const q = quadroDePreco(l, f, minimo, pecasDoProduto, pecasDoPedido);
+  if (q.preco === null) {
     return (
       <div className="vt-sim" data-testid="vt-preco">
         <span className="vt-na">Preço sob consulta</span>
       </div>
     );
   }
-  const lucroPeca = s.revenda !== null ? Math.round((s.revenda - s.preco) * 100) / 100 : null;
-  // Preço DA PEÇA em destaque (Léo, 07/10: "precisa ter o preço unitário em mais
-  // destaque"); muda com a faixa da quantidade escolhida. O resto é apoio.
+  const lucroPeca = q.revenda !== null ? Math.round((q.revenda - q.preco) * 100) / 100 : null;
+  const faixas = textoDasFaixas(l, f);
+  const partesMinimo = [
+    minimo?.quantidadeMin ? `${formatNumero(minimo.quantidadeMin)} peças` : null,
+    minimo?.valorMin ? formatMoeda(minimo.valorMin) : null,
+  ].filter(Boolean);
   return (
     <div className="vt-sim" data-testid="vt-preco">
       <div className="vt-sim-topo">
         <div className="vt-sim-unit">
-          <b data-testid="vt-sim-unitario">{formatMoeda(s.preco)}</b>
+          <b data-testid="vt-sim-unitario">{formatMoeda(q.preco)}</b>
           <span>/peça</span>
         </div>
-        {s.revenda !== null && (
+        {q.revenda !== null && (
           <div className="vt-sim-rev">
-            <span>revenda {formatMoeda(s.revenda)}</span>
+            <span>revenda {formatMoeda(q.revenda)}</span>
             {lucroPeca !== null && lucroPeca > 0 && <em>lucro {formatMoeda(lucroPeca)}/peça</em>}
           </div>
         )}
       </div>
-      <div className="vt-sim-q">
-        <small>Se você levar</small>
-        <div className="vt-sim-btns" role="group" aria-label="Quantidade">
-          {qtds.map((n) => (
-            <button
-              key={n}
-              type="button"
-              aria-pressed={n === s.qtd}
-              onClick={() => setQtd(n)}
-              data-testid={`vt-sim-${n}`}
-            >
-              {formatNumero(n)}
-            </button>
+      {faixas.length > 1 && (
+        <p className="vt-sim-faixas" data-testid="vt-sim-faixas">
+          {faixas.map((x) => (
+            <span key={x.rotulo}>
+              {x.rotulo} <b>{formatMoeda(x.preco)}</b>
+            </span>
           ))}
-        </div>
+        </p>
+      )}
+      <div className="vt-sim-q">
+        <small data-testid="vt-sim-qtd">
+          {q.exemplo
+            ? `Exemplo com ${formatNumero(q.qtd)} peças`
+            : `Com suas ${formatNumero(q.qtd)} peças`}
+        </small>
       </div>
-      <div className={s.lucro === null ? 'vt-sim-r vt-sim-so' : 'vt-sim-r'}>
+      <div className={q.lucro === null ? 'vt-sim-r vt-sim-so' : 'vt-sim-r'}>
         <div>
-          <small>Investe</small>
-          <b>{formatMoeda(s.investe ?? 0)}</b>
+          <small>Você investe</small>
+          <b data-testid="vt-sim-investe">{formatMoeda(q.investe ?? 0)}</b>
         </div>
-        {s.lucro !== null && (
-          <div className="vt-win">
-            <small>Lucro no pedido</small>
-            <b data-testid="vt-sim-lucro">{formatMoeda(s.lucro)}</b>
+        {q.lucro !== null && (
+          <>
+            <div>
+              <small>Recebe vendendo tudo</small>
+              <b data-testid="vt-sim-recebe">{formatMoeda(q.vende ?? 0)}</b>
+            </div>
+            <div className="vt-win">
+              <small>Seu lucro</small>
+              <b data-testid="vt-sim-lucro">{formatMoeda(q.lucro)}</b>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="vt-sim-meta" data-testid="vt-sim-meta">
+        {q.proxima && (
+          <div className="vt-bar">
+            <i style={{ width: `${q.barra.pct}%` }} />
           </div>
+        )}
+        <span>
+          {!q.proxima
+            ? 'Você está no melhor preço'
+            : q.proxima.preco !== null && q.proxima.desconto
+              ? `Faltam ${formatNumero(q.proxima.faltam)} peças pra pagar ${formatMoeda(q.proxima.preco)} a peça (${formatMoeda(q.proxima.desconto)} a menos)`
+              : `Faltam ${formatNumero(q.proxima.faltam)} peças pra próxima faixa`}
+        </span>
+        {partesMinimo.length > 0 && (
+          <small className="vt-sim-min" data-testid="vt-sim-minimo">
+            Pedido mínimo: {partesMinimo.join(minimo?.modo === 'E' ? ' e ' : ' ou ')}, somando
+            todos os produtos
+          </small>
         )}
       </div>
     </div>
@@ -1363,6 +1401,8 @@ function PaginaModelo({
   onKit,
   pares,
   temPecas,
+  pecasDoProduto,
+  pecasDoPedido,
   onConjunto,
 }: {
   m: ModeloPub;
@@ -1380,6 +1420,8 @@ function PaginaModelo({
   pares: ModeloPub[];
   /** Já tem peça deste modelo no pedido (o par vem com a mesma grade). */
   temPecas: boolean;
+  pecasDoProduto: number;
+  pecasDoPedido: number;
   onConjunto: (par: ModeloPub) => void;
 }) {
   const [guia, setGuia] = useState(false);
@@ -1412,7 +1454,13 @@ function PaginaModelo({
             ))}
           </div>
         )}
-        <SimuladorPedido l={l} f={f} minimo={minimo} />
+        <QuadroPreco
+          l={l}
+          f={f}
+          minimo={minimo}
+          pecasDoProduto={pecasDoProduto}
+          pecasDoPedido={pecasDoPedido}
+        />
         <div className="vt-gl">
           {m.linhas.map((x) => (
             <div key={x.id}>
