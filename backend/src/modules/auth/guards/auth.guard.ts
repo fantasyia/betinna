@@ -10,7 +10,7 @@ import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-ex
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { SupabaseAuthService } from '../supabase-auth.service';
-import { bloqueioDoTudo } from './token-tudo';
+import { bloqueioDoTudo, ehResponderConversa } from './token-tudo';
 
 /**
  * Cache hit body: { id, email, nome, role, status, empresaIds }
@@ -172,7 +172,11 @@ export class AuthGuard implements CanActivate {
     // bloqueioDoTudo. Os @Roles e o filtro por empresa dos controllers seguem.
     if (row.escopo.includes('tudo')) {
       const relTudo = path.replace(/^\/api\/v[0-9]+/, '');
-      const motivo = bloqueioDoTudo(relTudo, request.method ?? 'GET', request.body);
+      const responderComEscopo =
+        row.escopo.includes('inbox-responder') && ehResponderConversa(relTudo, request.method);
+      const motivo = responderComEscopo
+        ? null
+        : bloqueioDoTudo(relTudo, request.method ?? 'GET', request.body);
       if (motivo) throw new ForbiddenException(motivo);
       return this.donoDoToken(request, row, { soNaEmpresa: true });
     }
@@ -319,6 +323,10 @@ export class AuthGuard implements CanActivate {
       }
     }
 
+    // RESPONDER cliente (Léo, 04/11, SAC): só texto e só com o escopo próprio
+    // `inbox-responder`, conferido abaixo junto do `inbox`.
+    const responderConversa = moduloRequerido === 'inbox' && ehResponderConversa(rel, metodo);
+
     // DISPARO de campanha nunca por token. Escrever e revisar o e-mail é
     // trabalho de agente; apertar o botão que manda pra base real é decisão de
     // gente — sai mensagem pra cliente e não existe desfazer. Bloqueio por ROTA
@@ -409,6 +417,7 @@ export class AuthGuard implements CanActivate {
       (request.method ?? 'GET').toUpperCase() !== 'GET' &&
       !zerarConversa &&
       !fecharConversa &&
+      !responderConversa &&
       !lancarCusto &&
       !financeiroTotal
     ) {
@@ -445,6 +454,12 @@ export class AuthGuard implements CanActivate {
     if (fecharConversa && !row.escopo.includes('inbox-status')) {
       throw new ForbiddenException(
         'Token sem escopo "inbox-status" (fechar conversa). Ajuste o escopo em Quadros → Tokens de API.',
+      );
+    }
+
+    if (responderConversa && !row.escopo.includes('inbox-responder')) {
+      throw new ForbiddenException(
+        'Token sem escopo "inbox-responder" (responder cliente). Ajuste o escopo em Quadros → Tokens de API.',
       );
     }
 

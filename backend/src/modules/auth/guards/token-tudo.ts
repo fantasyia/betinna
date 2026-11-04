@@ -18,6 +18,11 @@
  * com pedido explícito do Léo.
  */
 
+/** Envio de texto ao cliente pelo inbox: só com o escopo próprio `inbox-responder`. */
+export function ehResponderConversa(rel: string, metodo = 'GET'): boolean {
+  return metodo.toUpperCase() === 'POST' && /^\/inbox\/[^/]+\/responder\/?$/i.test(rel);
+}
+
 /** Motivo do bloqueio, ou null se o escopo `tudo` alcança a rota. */
 export function bloqueioDoTudo(rel: string, metodo: string, corpo?: unknown): string | null {
   const m = metodo.toUpperCase();

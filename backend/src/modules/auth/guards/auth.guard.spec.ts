@@ -229,6 +229,19 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
       ).resolves.toBe(true);
     });
 
+    it('POST /inbox/:id/responder: só com inbox + inbox-responder (Léo, 04/11)', async () => {
+      comEscopos(['inbox']);
+      await expect(pedir('POST', '/inbox/conv-1/responder', { texto: 'oi' })).rejects.toThrow();
+      comEscopos(['inbox', 'inbox-responder']);
+      await expect(pedir('POST', '/inbox/conv-1/responder', { texto: 'oi' })).resolves.toBe(true);
+      await expect(pedir('POST', '/inbox/conv-1/responder-midia', {})).rejects.toThrow();
+    });
+
+    it('escopo tudo não responde cliente sem o inbox-responder', async () => {
+      comEscopos(['tudo']);
+      await expect(pedir('POST', '/inbox/conv-1/responder', { texto: 'oi' })).rejects.toThrow();
+    });
+
     it('só com "inbox" (leitura) é RECUSADO — o escopo de fechar é à parte', async () => {
       comEscopos(['inbox']);
       await expect(pedir('PATCH', '/inbox/conv-1/status', { status: 'RESOLVIDA' })).rejects.toThrow(
@@ -249,7 +262,7 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     it('responder e atribuir CONTINUAM bloqueados mesmo com inbox-status', async () => {
       comEscopos(['inbox', 'inbox-status']);
       await expect(pedir('POST', '/inbox/conv-1/responder', { texto: 'oi' })).rejects.toThrow(
-        /só faz leitura/,
+        /inbox-responder/,
       );
       await expect(pedir('PATCH', '/inbox/conv-1/atribuir', { atribuidoId: null })).rejects.toThrow(
         /só faz leitura/,
@@ -516,7 +529,7 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
       headers: { authorization: 'Bearer bkt_abc' },
     });
 
-    await expect(guard.canActivate(ctx)).rejects.toThrow(/só faz leitura/);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(/inbox-responder/);
   });
 
   it('DELETE em /inbox/whatsapp/limpar CONTINUA bloqueado — o nuke da empresa não é por token', async () => {

@@ -1063,11 +1063,15 @@ export class InboxService {
     user: AuthenticatedUser,
     conversationId: string,
     dto: ResponderDto,
+    /** Nome do token de API, quando o envio não veio da tela. */
+    viaToken?: string,
   ): Promise<Message> {
     const conv = await this.findById(user, conversationId);
     const adapter = this.registry.obter(conv.canal);
     if (!adapter) {
-      throw new BusinessRuleException(`Canal ${conv.canal} não tem adapter registrado`);
+      throw new BusinessRuleException(
+        `O canal ${conv.canal} não tem chat pelo app: responda pelo painel do canal`,
+      );
     }
     const disponivel = await adapter.estaDisponivel(conv.empresaId, conv.proprietarioId);
     if (!disponivel) {
@@ -1093,6 +1097,12 @@ export class InboxService {
       // sem externalId (msg só local/pendente) → ignora o quote, envia normal
     }
 
+    // Referência da msg citada (id local) — a UI renderiza o trecho na bolha.
+    const meta = {
+      ...(dto.respondendoA ? { respondendoA: dto.respondendoA } : {}),
+      ...(viaToken ? { viaToken } : {}),
+    };
+
     // Cria mensagem PENDING primeiro pra ter id local mesmo se o envio falhar
     const msg = await this.prisma.message.create({
       data: {
@@ -1102,8 +1112,7 @@ export class InboxService {
         conteudo: dto.texto,
         status: MessageStatus.PENDING,
         autorUsuarioId: user.id,
-        // Referência da msg citada (id local) — a UI renderiza o trecho na bolha.
-        ...(dto.respondendoA ? { meta: { respondendoA: dto.respondendoA } } : {}),
+        ...(Object.keys(meta).length ? { meta } : {}),
       },
     });
     this.emitirEvento(conv, 'mensagem');
@@ -1140,11 +1149,8 @@ export class InboxService {
       this.logger.warn(`Falha enviando msg ${msg.id} em ${conv.canal}: ${m}`);
       await this.prisma.message.update({
         where: { id: msg.id },
-        // Merge: preserva o respondendoA (citação) já gravado no create.
-        data: {
-          status: MessageStatus.FAILED,
-          meta: { ...(dto.respondendoA ? { respondendoA: dto.respondendoA } : {}), erro: m },
-        },
+        // Merge: preserva o que já foi gravado no create.
+        data: { status: MessageStatus.FAILED, meta: { ...meta, erro: m } },
       });
       throw new BusinessRuleException(`Falha ao enviar pelo canal ${conv.canal}: ${m}`);
     }

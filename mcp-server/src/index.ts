@@ -4122,6 +4122,30 @@ server.registerTool(
 );
 
 server.registerTool(
+  "inbox_responder",
+  {
+    description:
+      "ENVIA texto ao cliente pela conversa do inbox, pelo mesmo caminho da tela: Shopee, " +
+      "Mercado Livre, WhatsApp e demais canais com chat. Canal sem chat (Shein) devolve erro. " +
+      "Fica no histórico como da equipe, com o nome do token, e tira a pendência de humano. " +
+      "⛔ Vai para o cliente de verdade e não tem desfazer: use SÓ o texto exato aprovado pelo " +
+      'Léo no chat. Escopos "inbox" + "inbox-responder".',
+    inputSchema: {
+      conversationId: z.string().min(1),
+      texto: z.string().trim().min(1),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  },
+  seguro(async ({ conversationId, texto }: { conversationId: string; texto: string }) => {
+    const r = await api.post<unknown>(
+      `/inbox/${encodeURIComponent(conversationId)}/responder`,
+      { texto },
+    );
+    return ok(r);
+  }),
+);
+
+server.registerTool(
   "inbox_conversa_zerar",
   {
     description:
@@ -4501,6 +4525,6 @@ await server.connect(transport);
 console.error(
   "[betinna-kanban-mcp] conectado — kanban_* + fluxos_* + funis_/contatos_/crm + prompts_* + " +
     "bot_config_* + usuarios_* + conhecimento_* (base do RAG) + tags_* (etiquetas de LEAD) + " +
-    "inbox_* (SÓ leitura) + campanha_* (conteúdo; NÃO dispara) + vitrine_*/precificacao_* " +
+    "inbox_* (leitura; inbox_responder envia ao cliente) + campanha_* (conteúdo; NÃO dispara) + vitrine_*/precificacao_* " +
     "(cadastro da vitrine de atacado)",
 );

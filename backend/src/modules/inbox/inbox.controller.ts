@@ -12,6 +12,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Sse,
 } from '@nestjs/common';
 import { type Observable, interval, merge } from 'rxjs';
@@ -336,8 +337,9 @@ export class InboxController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(responderSchema)) dto: ResponderDto,
+    @Req() req: { apiToken?: { nome: string } },
   ) {
-    return this.svc.responder(user, id, dto);
+    return this.svc.responder(user, id, dto, req.apiToken?.nome);
   }
 
   @Patch(':id/atribuir')

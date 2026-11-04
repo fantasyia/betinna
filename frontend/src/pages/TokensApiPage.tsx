@@ -70,6 +70,11 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     badge: 'Inbox (fechar)',
   },
   {
+    key: 'inbox-responder',
+    label: 'Inbox — RESPONDER cliente (envia texto de verdade · junto com Inbox)',
+    badge: 'Inbox (responder)',
+  },
+  {
     key: 'campanhas',
     label: 'Campanhas — escrita de conteúdo (template e rascunho; NÃO dispara)',
     badge: 'Campanhas',

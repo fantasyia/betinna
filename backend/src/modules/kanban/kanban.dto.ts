@@ -243,6 +243,10 @@ export const API_TOKEN_ESCOPOS = [
   // em lote (`POST /inbox/bulk/status`). Exige também o escopo `inbox`.
   // Responder, atribuir, notas e reabrir seguem barrados no guard.
   'inbox-status',
+  // inbox-responder = enviar TEXTO a cliente (`POST /inbox/:id/responder`, Léo
+  // 04/11, SAC). Fala com cliente de verdade e não tem desfazer: escopo próprio,
+  // nunca incluído no `tudo`. O texto segue sendo aprovado pelo Léo antes.
+  'inbox-responder',
   // campanhas = conteúdo de e-mail marketing (/campanhas): template e rascunho.
   // ESCRITA liberada — é o e-mail que o agente escreve e sobe pro app. Disparar,
   // agendar e reenviar seguem barrados no guard: fazem e-mail sair pra base real
