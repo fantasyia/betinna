@@ -53,13 +53,14 @@ export class KitsService {
    * Catálogo pro cadastro no Magis5 (03/11): cada SKU com a herança resolvida e
    * o que falta. Só leitura; quem envia é o script da sessão Magis5. Peças
    * inativas ficam fora da lista, mas o kit ainda as enxerga pra apontar o problema.
+   * Modelo inativo entra (Léo, 03/11): inativo é só fora da vitrine, o SKU existe.
    */
   async exportarMagis5(user: AuthenticatedUser, q: { tipo: 'pecas' | 'kits'; page?: number }) {
     const empresaId = this.empresa(user);
     const [empresa, variacoes] = await Promise.all([
       this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
       this.prisma.catalogoVariacao.findMany({
-        where: { empresaId, modelo: { ativo: true } },
+        where: { empresaId },
         orderBy: [{ sku: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
