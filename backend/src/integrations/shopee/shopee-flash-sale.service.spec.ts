@@ -50,7 +50,34 @@ describe('Oferta Relâmpago Shopee (31/10)', () => {
       preco_atual: 39.9,
       preco_original: 49.9,
       estoque: 7,
+      estoque_vendedor: null,
+      estoque_full: null,
     });
+  });
+
+  it('modelos: separa vendedor de Full e não trata lista ausente como zero', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValueOnce({
+      response: {
+        model: [
+          {
+            model_id: 12,
+            stock_info_v2: {
+              summary_info: { total_available_stock: 15 },
+              seller_stock: [{ location_id: 'A', stock: 0 }],
+              shopee_stock: [
+                { location_id: 'B', stock: 10 },
+                { location_id: 'C', stock: 5 },
+              ],
+            },
+          },
+          { model_id: 13, stock_info_v2: { seller_stock: [{ stock: 2 }] } },
+        ],
+      },
+    });
+    const r = await svc.modelos(user as never, 99);
+    expect(r[0]).toMatchObject({ estoque_vendedor: 0, estoque_full: 15 });
+    expect(r[1]).toMatchObject({ estoque_vendedor: 2, estoque_full: null });
   });
 
   it('adicionar: desconto vira preço sobre o preço ATUAL; preço final passa direto', async () => {

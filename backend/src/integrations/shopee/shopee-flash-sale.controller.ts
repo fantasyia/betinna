@@ -132,7 +132,7 @@ export class ShopeeFlashSaleController {
   }
 
   @Get('anuncios/:itemId/modelos')
-  @ApiOperation({ summary: 'Preço e estoque atuais de cada model do anúncio' })
+  @ApiOperation({ summary: 'Preço e estoque atuais de cada model, com vendedor e Full separados' })
   modelos(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
     return this.svc.modelos(user, itemId);
   }

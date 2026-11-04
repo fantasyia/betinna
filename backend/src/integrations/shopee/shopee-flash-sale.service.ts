@@ -31,11 +31,19 @@ export interface ItemOferta {
 interface Model {
   model_id: number;
   price_info?: Array<{ current_price?: number; original_price?: number }>;
-  stock_info_v2?: { summary_info?: { total_available_stock?: number } };
+  stock_info_v2?: {
+    summary_info?: { total_available_stock?: number };
+    seller_stock?: Array<{ location_id?: string; stock?: number }>;
+    shopee_stock?: Array<{ location_id?: string; stock?: number }>;
+  };
   model_name?: string;
 }
 
 const P = '/api/v2/shop_flash_sale';
+
+function somarEstoque(lista?: Array<{ stock?: number }>): number | null {
+  return lista ? lista.reduce((soma, l) => soma + (l.stock ?? 0), 0) : null;
+}
 
 @Injectable()
 export class ShopeeFlashSaleService {
@@ -97,6 +105,10 @@ export class ShopeeFlashSaleService {
       preco_atual: m.price_info?.[0]?.current_price ?? null,
       preco_original: m.price_info?.[0]?.original_price ?? null,
       estoque: m.stock_info_v2?.summary_info?.total_available_stock ?? null,
+      // Separados pra nunca confundir Full com o estoque do vendedor (04/11).
+      // Sem a lista, fica null: desconhecido não pode virar zero.
+      estoque_vendedor: somarEstoque(m.stock_info_v2?.seller_stock),
+      estoque_full: somarEstoque(m.stock_info_v2?.shopee_stock),
     }));
   }
 
