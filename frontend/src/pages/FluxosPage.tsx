@@ -102,6 +102,7 @@ const TRIGGERS: Record<TriggerTipo, string> = {
   CARRINHO_ABANDONADO: 'Carrinho abandonado (20 min)',
   PEDIDO_RASTREIO_DISPONIVEL: 'Rastreio disponível',
   LEAD_REENGAJOU_SITE: 'Lead voltou pelo site',
+  LEAD_FORMULARIO_META: 'Formulário do Meta recebido',
   OCORRENCIA_ABERTA: 'Ocorrência aberta',
   CLIENTE_INATIVO_30D: 'Cliente inativo 30 dias',
   AMOSTRA_FOLLOWUP: 'Amostra follow-up',

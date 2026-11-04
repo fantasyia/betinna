@@ -63,6 +63,7 @@ const build = (
   const captura = {
     acharLeadAberto: vi.fn().mockResolvedValue(opts.dedup ?? null),
     aplicarAtribuicaoEmLeadExistente: vi.fn().mockResolvedValue(undefined),
+    avisarFormularioMeta: vi.fn().mockResolvedValue(true),
   };
   const queue = { add: vi.fn().mockResolvedValue({}) };
   const oauth = {
@@ -173,6 +174,24 @@ describe('MetaLeadgenService', () => {
         // não é mais 'SITE' fixo
         canalOrigem: 'FACEBOOK',
       });
+    });
+
+    it('avisa o formulário em lead novo e em lead que já existia', async () => {
+      const novo = build();
+      await novo.svc.processar(JOB);
+      expect(novo.captura.avisarFormularioMeta).toHaveBeenCalledWith(
+        'emp-1',
+        expect.any(String),
+        expect.objectContaining({ formId: 'form-9', jaExistia: false }),
+      );
+
+      const antigo = build({ dedup: 'lead-velho' });
+      await antigo.svc.processar(JOB);
+      expect(antigo.captura.avisarFormularioMeta).toHaveBeenCalledWith(
+        'emp-1',
+        'lead-velho',
+        expect.objectContaining({ formId: 'form-9', jaExistia: true }),
+      );
     });
 
     it('formulário preenchido no Instagram → canalOrigem INSTAGRAM', async () => {

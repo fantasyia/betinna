@@ -2301,6 +2301,9 @@ enum FluxoTriggerTipo {
   /// pedindo orçamento. Sem este gatilho esse segundo toque era invisível —
   /// LEAD_CRIADO não dispara em update.
   LEAD_REENGAJOU_SITE
+  /// Formulário do Meta preenchido, por lead novo OU que já existia (03/11).
+  /// Mesmo lead e mesmo formulário só repetem depois de 24 h.
+  LEAD_FORMULARIO_META
   OCORRENCIA_ABERTA
   CLIENTE_INATIVO_30D // cron-driven — clientes sem pedido há ≥ N dias
   AMOSTRA_FOLLOWUP // cron-driven — amostras no prazo de follow-up

@@ -1638,6 +1638,7 @@ const FLUXO_TRIGGER_TIPO = z.enum([
   // avisaria depois de a encomenda ter chegado.
   "PEDIDO_RASTREIO_DISPONIVEL",
   "LEAD_REENGAJOU_SITE",
+  "LEAD_FORMULARIO_META",
   "OCORRENCIA_ABERTA",
   "CLIENTE_INATIVO_30D",
   "AMOSTRA_FOLLOWUP",

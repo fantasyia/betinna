@@ -1053,13 +1053,21 @@ export class LeadsService {
       );
     }
 
-    await this.prisma.$transaction([
-      this.prisma.conversation.updateMany({
-        where: { leadId: id, empresaId: existing.empresaId },
-        data: { leadId: null },
-      }),
-      this.prisma.lead.deleteMany({ where: { id, empresaId: existing.empresaId } }),
-    ]);
+    try {
+      await this.prisma.$transaction([
+        this.prisma.conversation.updateMany({
+          where: { leadId: id, empresaId: existing.empresaId },
+          data: { leadId: null },
+        }),
+        this.prisma.lead.deleteMany({ where: { id, empresaId: existing.empresaId } }),
+      ]);
+    } catch (err) {
+      // O cliente do lead tem pedido: a tela mostrava o erro cru do banco (03/11).
+      if (/foreign key|P2003/i.test(String(err))) {
+        throw new ConflictException('Este contato tem pedidos e não pode ser excluído.');
+      }
+      throw err;
+    }
   }
 
   /**

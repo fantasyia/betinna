@@ -156,6 +156,11 @@ export class MetaLeadgenService {
         cidade: this.primeiro(campos, CIDADE),
         uf: this.primeiro(campos, UF),
       });
+      await this.captura.avisarFormularioMeta(resolved.empresaId, existente, {
+        formId,
+        campanha: atribuicao.ultimo?.utmCampaign,
+        jaExistia: true,
+      });
       this.logger.log(
         `Lead Ads ${data.leadgenId}: lead já existia (${existente}) — toque registrado`,
       );
@@ -203,6 +208,12 @@ export class MetaLeadgenService {
       origemCadastro: 'meta_lead_ads',
       formularioOrigem: 'lead_ads',
       canalOrigem,
+    });
+
+    await this.captura.avisarFormularioMeta(resolved.empresaId, lead.id, {
+      formId,
+      campanha: atribuicao.ultimo?.utmCampaign,
+      jaExistia: false,
     });
 
     this.logger.log(

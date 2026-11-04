@@ -35,6 +35,16 @@ const RL_MAX_POR_DIA = 2_000;
  *
  * 401 uniforme pra chave inexistente/inativa (sem oráculo de existência).
  */
+/** Mesmo formulário nas últimas 24 h? */
+export function formularioRecente(
+  enviados: Record<string, string> | undefined,
+  formId: string,
+  agora: Date,
+): boolean {
+  const ultimo = enviados?.[formId];
+  return !!ultimo && agora.getTime() - new Date(ultimo).getTime() < 24 * 3_600_000;
+}
+
 @Injectable()
 export class LeadCaptureService {
   private readonly logger = new Logger(LeadCaptureService.name);
@@ -425,6 +435,48 @@ ${carimbo}`
       formulario: normalizarFormulario(dto.formulario) ?? null,
       mensagem: dto.mensagem?.trim() ?? null,
     });
+  }
+
+  /**
+   * Formulário do Meta recebido (03/11): acende o gatilho próprio pra lead novo
+   * e pra quem já existia. O mesmo lead no mesmo formulário só repete depois de
+   * 24 h. Best-effort: o lead já foi gravado, e o evento não pode derrubá-lo.
+   */
+  async avisarFormularioMeta(
+    empresaId: string,
+    leadId: string,
+    t: { formId?: string; campanha?: string | null; jaExistia: boolean },
+  ): Promise<boolean> {
+    try {
+      const lead = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { variaveis: true },
+      });
+      const vars = (lead?.variaveis ?? {}) as { metaFormularios?: Record<string, string> };
+      const chave = t.formId ?? 'sem-formulario';
+      const agora = new Date();
+      if (formularioRecente(vars.metaFormularios, chave, agora)) {
+        this.logger.log(`Formulário ${chave} repetido em 24 h: lead ${leadId} não redispara`);
+        return false;
+      }
+      const merge = { metaFormularios: { ...vars.metaFormularios, [chave]: agora.toISOString() } };
+      await this.prisma.$executeRaw`
+        UPDATE "Lead"
+        SET variaveis = COALESCE(variaveis, '{}'::jsonb) || ${JSON.stringify(merge)}::jsonb
+        WHERE id = ${leadId} AND "empresaId" = ${empresaId}
+      `;
+      void this.bus.disparar(empresaId, 'LEAD_FORMULARIO_META', {
+        leadId,
+        origemCadastro: 'meta_lead_ads',
+        formId: t.formId ?? null,
+        campanha: t.campanha ?? null,
+        jaExistia: t.jaExistia,
+      });
+      return true;
+    } catch (err) {
+      this.logger.warn(`Falha avisando formulário do lead ${leadId}: ${String(err)}`);
+      return false;
+    }
   }
 
   async aplicarAtribuicaoEmLeadExistente(leadId: string, atribuicao?: Atribuicao): Promise<void> {
