@@ -42,6 +42,12 @@ interface Model {
 
 const P = '/api/v2/shop_flash_sale';
 
+export interface CampoDescricao {
+  field_type: string;
+  text?: string;
+  image_info?: { image_id?: string };
+}
+
 function somarEstoque(lista?: Array<{ stock?: number }>): number | null {
   return lista ? lista.reduce((soma, l) => soma + (l.stock ?? 0), 0) : null;
 }
@@ -154,6 +160,59 @@ export class ShopeeFlashSaleService {
       recusados: r.response?.failure_list ?? [],
       pulados,
     };
+  }
+
+  /** Descrição atual, normal ou estendida (com os blocos de imagem). */
+  async descricao(user: AuthenticatedUser, itemId: number) {
+    const r = await this.shopee.getShop<{
+      response?: {
+        item_list?: Array<{
+          description?: string;
+          description_type?: string;
+          description_info?: { extended_description?: { field_list?: CampoDescricao[] } };
+        }>;
+      };
+    }>(this.empresa(user), '/api/v2/product/get_item_base_info', { item_id_list: itemId });
+    const item = r.response?.item_list?.[0];
+    if (!item) throw new BusinessRuleException(`Anúncio ${itemId} não encontrado na Shopee`);
+    return {
+      tipo: item.description_type ?? 'normal',
+      descricao: item.description ?? null,
+      campos: item.description_info?.extended_description?.field_list ?? null,
+    };
+  }
+
+  /**
+   * Troca SÓ a descrição (Léo, 04/11). MEXE NA LOJA. Na estendida com imagem,
+   * exige `campos`: texto solto apagaria os blocos de imagem do anúncio.
+   */
+  async atualizarDescricao(
+    user: AuthenticatedUser,
+    itemId: number,
+    dto: { descricao?: string; campos?: CampoDescricao[] },
+  ) {
+    const atual = await this.descricao(user, itemId);
+    const estendida = atual.tipo === 'extended';
+    const temImagem = atual.campos?.some((c) => c.field_type !== 'text') ?? false;
+    if (estendida && temImagem && !dto.campos) {
+      throw new BusinessRuleException('Descrição estendida com imagem: mande `campos`, não texto');
+    }
+    if (!estendida && !dto.descricao) {
+      throw new BusinessRuleException('Descrição normal: mande `descricao`');
+    }
+    const corpo = estendida
+      ? {
+          item_id: itemId,
+          description_type: 'extended',
+          description_info: {
+            extended_description: {
+              field_list: dto.campos ?? [{ field_type: 'text', text: dto.descricao }],
+            },
+          },
+        }
+      : { item_id: itemId, description: dto.descricao };
+    await this.shopee.postShop(this.empresa(user), '/api/v2/product/update_item', corpo);
+    return this.descricao(user, itemId);
   }
 
   async adicionarItens(user: AuthenticatedUser, flashSaleId: number, itens: ItemOferta[]) {

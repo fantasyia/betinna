@@ -45,6 +45,22 @@ const skuSchema = z.object({
     .min(1)
     .max(50),
 });
+const descricaoSchema = z
+  .object({
+    descricao: z.string().trim().min(1).max(5000).optional(),
+    campos: z
+      .array(
+        z.object({
+          field_type: z.enum(['text', 'image']),
+          text: z.string().min(1).max(5000).optional(),
+          image_info: z.object({ image_id: z.string().min(1) }).optional(),
+        }),
+      )
+      .min(1)
+      .max(50)
+      .optional(),
+  })
+  .refine((d) => !d.descricao !== !d.campos, { message: 'Mande descricao OU campos' });
 const precoSchema = z.object({
   models: z
     .array(
@@ -151,6 +167,22 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(skuSchema)) dto: z.infer<typeof skuSchema>,
   ) {
     return this.svc.trocarSku(user, itemId, dto.models);
+  }
+
+  @Get('anuncios/:itemId/descricao')
+  @ApiOperation({ summary: 'Descrição atual do anúncio, normal ou estendida' })
+  descricao(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
+    return this.svc.descricao(user, itemId);
+  }
+
+  @Post('anuncios/:itemId/descricao')
+  @ApiOperation({ summary: 'MEXE NA LOJA: troca só a descrição do anúncio' })
+  atualizarDescricao(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(descricaoSchema)) dto: z.infer<typeof descricaoSchema>,
+  ) {
+    return this.svc.atualizarDescricao(user, itemId, dto);
   }
 
   @Get('anuncios/:itemId/modelos')

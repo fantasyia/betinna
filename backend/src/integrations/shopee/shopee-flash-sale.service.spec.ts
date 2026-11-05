@@ -90,6 +90,54 @@ describe('Oferta Relâmpago Shopee (31/10)', () => {
     expect(r.pulados.map((p) => p.model_id)).toEqual([2, 3, 4, 5]);
   });
 
+  describe('descrição', () => {
+    const item = (extra: object) => ({ response: { item_list: [extra] } });
+
+    it('normal: manda só o item e a descrição', async () => {
+      const { svc, shopee } = montar();
+      shopee.getShop.mockResolvedValue(item({ description_type: 'normal', description: 'velha' }));
+      await svc.atualizarDescricao(user as never, 99, { descricao: 'nova' });
+      expect(shopee.postShop).toHaveBeenCalledWith('emp1', '/api/v2/product/update_item', {
+        item_id: 99,
+        description: 'nova',
+      });
+    });
+
+    it('estendida só com texto: vira um bloco de texto', async () => {
+      const { svc, shopee } = montar();
+      shopee.getShop.mockResolvedValue(
+        item({
+          description_type: 'extended',
+          description_info: {
+            extended_description: { field_list: [{ field_type: 'text', text: 'velha' }] },
+          },
+        }),
+      );
+      await svc.atualizarDescricao(user as never, 99, { descricao: 'nova' });
+      expect(shopee.postShop.mock.calls[0][2]).toEqual({
+        item_id: 99,
+        description_type: 'extended',
+        description_info: {
+          extended_description: { field_list: [{ field_type: 'text', text: 'nova' }] },
+        },
+      });
+    });
+
+    it('estendida com imagem: recusa texto solto e não chama a Shopee', async () => {
+      const { svc, shopee } = montar();
+      shopee.getShop.mockResolvedValue(
+        item({
+          description_type: 'extended',
+          description_info: { extended_description: { field_list: [{ field_type: 'image' }] } },
+        }),
+      );
+      await expect(
+        svc.atualizarDescricao(user as never, 99, { descricao: 'nova' }),
+      ).rejects.toThrow('campos');
+      expect(shopee.postShop).not.toHaveBeenCalled();
+    });
+  });
+
   it('trocarSku: sem model liberado, não chama a Shopee', async () => {
     const { svc, shopee } = montar();
     const r = await svc.trocarSku(user as never, 99, [

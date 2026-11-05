@@ -183,6 +183,48 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
     ),
   );
 
+  server.registerTool(
+    "shopee_anuncio_descricao",
+    {
+      description:
+        "Descrição atual de um anúncio Shopee: tipo (normal ou extended), texto e blocos da estendida. Somente leitura.",
+      inputSchema: { itemId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ itemId }: { itemId: number }) =>
+      ok(await api.get(`/shopee-promocoes/anuncios/${itemId}/descricao`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_descricao_atualizar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pro texto exato. Troca SÓ a descrição; preço, estoque e título não mudam. " +
+        "Leia antes com shopee_anuncio_descricao. Normal: mande descricao. Estendida sem imagem: descricao vira um bloco de texto. " +
+        "Estendida com imagem: mande campos com TODOS os blocos, senão a rota recusa. Devolve a descrição lida de volta; erro da Shopee volta como erro.",
+      inputSchema: {
+        itemId: id,
+        descricao: z.string().min(1).max(5000).optional(),
+        campos: z
+          .array(
+            z.object({
+              field_type: z.enum(["text", "image"]),
+              text: z.string().min(1).max(5000).optional(),
+              image_info: z.object({ image_id: z.string().min(1) }).optional(),
+            }),
+          )
+          .min(1)
+          .max(50)
+          .optional(),
+      },
+      annotations: mexe,
+    },
+    seguro(async ({ itemId, ...corpo }: { itemId: number; descricao?: string; campos?: unknown[] }) =>
+      ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/descricao`, corpo)),
+    ),
+  );
+
   // ─── Cupons ───────────────────────────────────────────────────────────
   const unix = z.number().int().positive().describe("Unix, SEGUNDOS");
   const cupom = {
