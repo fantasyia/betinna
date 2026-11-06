@@ -294,6 +294,17 @@ describe('Ficha e tabela de medidas Shopee (05/11)', () => {
     expect(r.conferido).toBe(false);
   });
 
+  it('ficha: valor livre diferente não passa como conferido', async () => {
+    const { svc, shopee } = montar();
+    const livre = (nome: string) => ({
+      attribute_id: 3,
+      attribute_value_list: [{ value_id: 0, original_value_name: nome }],
+    });
+    shopee.getShop.mockResolvedValue(base({ attribute_list: [livre('Elastano')] }));
+    const r = await svc.atualizarFicha(user as never, 99, [livre('Algodão')]);
+    expect(r.conferido).toBe(false);
+  });
+
   it('ficha: atributo repetido nem chega na Shopee', async () => {
     const { svc, shopee } = montar();
     await expect(svc.atualizarFicha(user as never, 99, [tecido, tecido])).rejects.toThrow(

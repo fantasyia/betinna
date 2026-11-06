@@ -295,8 +295,10 @@ export class ShopeeFlashSaleService {
     const depois = (await this.itemBase(user, itemId)).attribute_list ?? [];
     const conferido = atributos.every((a) => {
       const lido = depois.find((d) => d.attribute_id === a.attribute_id);
-      const ids = (l: ValorAtributo[]) => l.map((v) => v.value_id).sort((x, y) => x - y);
-      return !!lido && iguais(ids(lido.attribute_value_list), ids(a.attribute_value_list));
+      // Valor livre tem value_id 0: só o nome diferencia um do outro.
+      const chaves = (l: ValorAtributo[]) =>
+        l.map((v) => v.value_id || `livre:${v.original_value_name}`).sort();
+      return !!lido && iguais(chaves(lido.attribute_value_list), chaves(a.attribute_value_list));
     });
     return { antes, depois, conferido, aviso };
   }
