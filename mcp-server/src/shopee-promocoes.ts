@@ -274,6 +274,73 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
   );
 
   server.registerTool(
+    "shopee_anuncio_marca",
+    {
+      description: "Marca atual de um anúncio Shopee e a categoria dele. Somente leitura.",
+      inputSchema: { itemId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ itemId }: { itemId: number }) =>
+      ok(await api.get(`/shopee-promocoes/anuncios/${itemId}/marca`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_marcas_listar",
+    {
+      description:
+        "Marcas aceitas numa categoria Shopee, 100 por página: use proxima como offset. status 1 normal, 2 pendente. Somente leitura.",
+      inputSchema: {
+        categoriaId: id,
+        offset: z.number().int().min(0).optional(),
+        status: z.union([z.literal(1), z.literal(2)]).optional(),
+      },
+      annotations: leitura,
+    },
+    seguro(
+      async ({
+        categoriaId,
+        offset,
+        status,
+      }: {
+        categoriaId: number;
+        offset?: number;
+        status?: 1 | 2;
+      }) => {
+        const q = new URLSearchParams();
+        if (offset !== undefined) q.set("offset", String(offset));
+        if (status !== undefined) q.set("status", String(status));
+        const qs = q.toString() ? `?${q}` : "";
+        return ok(await api.get(`/shopee-promocoes/categorias/${categoriaId}/marcas${qs}`));
+      },
+    ),
+  );
+
+  server.registerTool(
+    "shopee_marca_atualizar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pra marca exata. Troca SÓ a marca; nenhum outro campo do anúncio vai. Devolve antes, depois e conferido.",
+      inputSchema: {
+        itemId: id,
+        brand_id: z.number().int().min(0),
+        original_brand_name: z.string().min(1).max(200).optional(),
+      },
+      annotations: mexe,
+    },
+    seguro(
+      async ({
+        itemId,
+        ...marca
+      }: {
+        itemId: number;
+        brand_id: number;
+        original_brand_name?: string;
+      }) => ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/marca`, marca)),
+    ),
+  );
+
+  server.registerTool(
     "shopee_anuncio_tabela_medidas",
     {
       description:

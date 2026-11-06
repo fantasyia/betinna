@@ -103,6 +103,14 @@ const tabelaSchema = z
     modeloId: z.number().int().positive().optional(),
   })
   .refine((d) => !d.imagemId !== !d.modeloId, { message: 'Mande imagemId OU modeloId' });
+const marcaSchema = z.object({
+  brand_id: z.number().int().min(0),
+  original_brand_name: z.string().trim().min(1).max(200).optional(),
+});
+const marcasQuerySchema = z.object({
+  offset: z.coerce.number().int().min(0).optional(),
+  status: z.union([z.literal('1'), z.literal('2')]).optional(),
+});
 const TIPOS_IMAGEM = ['image/jpeg', 'image/png'];
 const precoSchema = z.object({
   models: z
@@ -242,6 +250,35 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(fichaSchema)) dto: z.infer<typeof fichaSchema>,
   ) {
     return this.svc.atualizarFicha(user, itemId, dto.atributos);
+  }
+
+  @Get('anuncios/:itemId/marca')
+  @ApiOperation({ summary: 'Marca atual do anúncio' })
+  marca(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
+    return this.svc.marca(user, itemId);
+  }
+
+  @Post('anuncios/:itemId/marca')
+  @ApiOperation({ summary: 'Troca só a marca — MEXE NA LOJA' })
+  atualizarMarca(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(marcaSchema)) dto: z.infer<typeof marcaSchema>,
+  ) {
+    return this.svc.atualizarMarca(user, itemId, dto);
+  }
+
+  @Get('categorias/:categoriaId/marcas')
+  @ApiOperation({ summary: 'Marcas aceitas na categoria' })
+  marcasDaCategoria(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('categoriaId', ParseIntPipe) categoriaId: number,
+    @Query(new ZodValidationPipe(marcasQuerySchema)) q: z.infer<typeof marcasQuerySchema>,
+  ) {
+    return this.svc.marcasDaCategoria(user, categoriaId, {
+      offset: q.offset,
+      status: q.status === '2' ? 2 : 1,
+    });
   }
 
   @Get('anuncios/:itemId/tabela-medidas')

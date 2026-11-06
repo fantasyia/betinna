@@ -58,6 +58,11 @@ export interface AtributoFicha {
   attribute_value_list: ValorAtributo[];
 }
 
+export interface MarcaAnuncio {
+  brand_id: number;
+  original_brand_name?: string;
+}
+
 interface ItemBase {
   category_id?: number;
   description?: string;
@@ -70,6 +75,8 @@ interface ItemBase {
   size_chart?: string;
   /** Modelo de tabela da loja. */
   size_chart_id?: number;
+  /** brand_id 0 é "sem marca" na Shopee. */
+  brand?: MarcaAnuncio;
 }
 
 const iguais = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -253,6 +260,51 @@ export class ShopeeFlashSaleService {
       ? iguais(depois.campos, blocos)
       : depois.descricao === dto.descricao;
     return { antes, depois, conferido, aviso };
+  }
+
+  /** Marca atual do anúncio e a categoria, pra buscar as aceitas. */
+  async marca(user: AuthenticatedUser, itemId: number) {
+    const item = await this.itemBase(user, itemId);
+    return { categoria: item.category_id ?? null, marca: item.brand ?? null };
+  }
+
+  /** Marcas aceitas na categoria. status 1 = normal, 2 = pendente de registro. */
+  async marcasDaCategoria(
+    user: AuthenticatedUser,
+    categoriaId: number,
+    q: { offset?: number; status?: 1 | 2 },
+  ) {
+    const r = await this.shopee.getShop<{
+      response?: {
+        brand_list?: Array<{
+          brand_id: number;
+          original_brand_name?: string;
+          display_brand_name?: string;
+        }>;
+        has_next_page?: boolean;
+        next_offset?: number;
+        is_mandatory?: boolean;
+      };
+    }>(this.empresa(user), '/api/v2/product/get_brand_list', {
+      category_id: categoriaId,
+      offset: q.offset ?? 0,
+      page_size: 100,
+      status: q.status ?? 1,
+      language: 'pt-BR',
+    });
+    return {
+      marcas: r.response?.brand_list ?? [],
+      proxima: r.response?.has_next_page ? (r.response.next_offset ?? null) : null,
+      obrigatoria: r.response?.is_mandatory ?? null,
+    };
+  }
+
+  /** Troca SÓ a marca (Léo, 05/11). MEXE NA LOJA. */
+  async atualizarMarca(user: AuthenticatedUser, itemId: number, nova: MarcaAnuncio) {
+    const antes = (await this.itemBase(user, itemId)).brand ?? null;
+    const aviso = await this.gravarItem(user, itemId, { brand: nova });
+    const depois = (await this.itemBase(user, itemId)).brand ?? null;
+    return { antes, depois, conferido: depois?.brand_id === nova.brand_id, aviso };
   }
 
   /** Atributos da ficha e, da categoria, os aceitos com seus value_id. */

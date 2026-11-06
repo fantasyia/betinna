@@ -269,6 +269,52 @@ describe('Ficha e tabela de medidas Shopee (05/11)', () => {
   const corpoEnviado = (shopee: ReturnType<typeof montar>['shopee']) =>
     shopee.postShop.mock.calls[0][2] as Record<string, unknown>;
 
+  it('marca: manda só a marca e confere pela leitura', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ brand: { brand_id: 0, original_brand_name: 'NoBrand' } }))
+      .mockResolvedValueOnce(base({ brand: { brand_id: 7, original_brand_name: 'Ribelt' } }));
+    shopee.postShop.mockResolvedValue({ warning: '' });
+    const r = await svc.atualizarMarca(user as never, 99, {
+      brand_id: 7,
+      original_brand_name: 'Ribelt',
+    });
+    expect(corpoEnviado(shopee)).toEqual({
+      item_id: 99,
+      brand: { brand_id: 7, original_brand_name: 'Ribelt' },
+    });
+    expect(r).toMatchObject({ antes: { brand_id: 0 }, depois: { brand_id: 7 }, conferido: true });
+  });
+
+  it('marca: conferido falso se a leitura não mostrar a marca nova', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValue(base({ brand: { brand_id: 0 } }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.atualizarMarca(user as never, 99, { brand_id: 7 });
+    expect(r.conferido).toBe(false);
+  });
+
+  it('marcas: pede a categoria e devolve a próxima página', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValue({
+      response: {
+        brand_list: [{ brand_id: 7, original_brand_name: 'Ribelt' }],
+        has_next_page: true,
+        next_offset: 100,
+        is_mandatory: false,
+      },
+    });
+    const r = await svc.marcasDaCategoria(user as never, 5, {});
+    expect(shopee.getShop.mock.calls[0][2]).toEqual({
+      category_id: 5,
+      offset: 0,
+      page_size: 100,
+      status: 1,
+      language: 'pt-BR',
+    });
+    expect(r).toMatchObject({ proxima: 100, obrigatoria: false });
+  });
+
   it('ficha: troca o pedido, reenvia o resto e não leva mais campo nenhum', async () => {
     const { svc, shopee } = montar();
     const novo = { attribute_id: 2, attribute_value_list: [{ value_id: 21 }] };
