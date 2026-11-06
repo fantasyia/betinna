@@ -63,6 +63,19 @@ export interface MarcaAnuncio {
   original_brand_name?: string;
 }
 
+export interface OpcaoPadrao {
+  variation_option_id?: number;
+  variation_option_name?: string;
+  image_id?: string;
+  image_url?: string;
+}
+export interface VariacaoPadrao {
+  variation_id?: number;
+  variation_name?: string;
+  variation_group_id?: number;
+  variation_option_list?: OpcaoPadrao[];
+}
+
 export interface CanalLogistica {
   logistic_id: number;
   enabled?: boolean;
@@ -361,15 +374,67 @@ export class ShopeeFlashSaleService {
     return { resposta: r.response ?? null, aviso: r.warning || null };
   }
 
-  /** Estrutura das variações, com o índice de cada model. */
-  async variacoes(user: AuthenticatedUser, itemId: number) {
+  private async listaModelos(user: AuthenticatedUser, itemId: number) {
     const r = await this.shopee.getShop<{
       response?: {
         tier_variation?: unknown[];
-        standardise_tier_variation?: unknown[];
+        standardise_tier_variation?: VariacaoPadrao[];
         model?: Array<{ model_id: number; model_sku?: string; tier_index?: number[] }>;
       };
     }>(this.empresa(user), '/api/v2/product/get_model_list', { item_id: itemId });
+    return r.response ?? {};
+  }
+
+  /**
+   * Renomeia uma opção ou troca a imagem dela. MEXE NA LOJA. A Shopee recebe a
+   * estrutura inteira, lida na hora, com cada model no mesmo índice: SKU, preço e
+   * estoque não vão. Anúncio com Full fica de fora.
+   */
+  async atualizarOpcao(
+    user: AuthenticatedUser,
+    itemId: number,
+    dto: { nivel: number; indice: number; nome?: string; imagemId?: string },
+  ) {
+    await this.exigirSemFull(user, itemId, await this.itemBase(user, itemId));
+    const atual = await this.listaModelos(user, itemId);
+    const estrutura = (atual.standardise_tier_variation ?? []).map((v) => ({
+      ...v,
+      variation_option_list: (v.variation_option_list ?? []).map(({ image_url: _url, ...o }) => o),
+    }));
+    const opcao = estrutura[dto.nivel]?.variation_option_list[dto.indice];
+    if (!opcao) throw new BusinessRuleException('Opção não existe nesse anúncio');
+    const antes = { ...opcao };
+    if (dto.nome !== undefined && dto.nome !== opcao.variation_option_name) {
+      opcao.variation_option_name = dto.nome;
+      // Id de opção padrão só vale pro nome padrão; nome novo vai como texto livre.
+      opcao.variation_option_id = 0;
+    }
+    if (dto.imagemId !== undefined) opcao.image_id = dto.imagemId;
+    const r = await this.shopee.postShop<{ warning?: string }>(
+      this.empresa(user),
+      '/api/v2/product/update_tier_variation',
+      {
+        item_id: itemId,
+        model_list: (atual.model ?? []).map((m) => ({
+          model_id: m.model_id,
+          tier_index: m.tier_index,
+        })),
+        standardise_tier_variation: estrutura,
+      },
+    );
+    const lida = (await this.listaModelos(user, itemId)).standardise_tier_variation ?? [];
+    const depois = lida[dto.nivel]?.variation_option_list?.[dto.indice] ?? null;
+    const conferido =
+      lida.flatMap((v) => v.variation_option_list ?? []).length ===
+        estrutura.flatMap((v) => v.variation_option_list).length &&
+      (dto.nome === undefined || depois?.variation_option_name === dto.nome) &&
+      (dto.imagemId === undefined || depois?.image_id === dto.imagemId);
+    return { antes, depois, conferido, aviso: r?.warning || null };
+  }
+
+  /** Estrutura das variações, com o índice de cada model. */
+  async variacoes(user: AuthenticatedUser, itemId: number) {
+    const r = { response: await this.listaModelos(user, itemId) };
     return {
       variacoes: r.response?.tier_variation ?? [],
       padronizadas: r.response?.standardise_tier_variation ?? [],

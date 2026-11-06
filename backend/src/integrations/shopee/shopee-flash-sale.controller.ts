@@ -104,6 +104,16 @@ const tabelaSchema = z
   })
   .refine((d) => !d.imagemId !== !d.modeloId, { message: 'Mande imagemId OU modeloId' });
 const tituloSchema = z.object({ titulo: z.string().trim().min(1).max(255) });
+const opcaoSchema = z
+  .object({
+    nivel: z.number().int().min(0).max(1),
+    indice: z.number().int().min(0).max(100),
+    nome: z.string().trim().min(1).max(30).optional(),
+    imagemId: z.string().trim().min(1).max(100).optional(),
+  })
+  .refine((d) => d.nome !== undefined || d.imagemId !== undefined, {
+    message: 'Mande nome ou imagemId',
+  });
 const videoSchema = z.object({ videoId: z.string().trim().min(1).max(100).nullable() });
 const promocaoSchema = z.record(z.string(), z.unknown());
 const imagensSchema = z.object({
@@ -323,6 +333,16 @@ export class ShopeeFlashSaleController {
   @ApiOperation({ summary: 'Estrutura das variações e índice de cada model' })
   variacoes(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
     return this.svc.variacoes(user, itemId);
+  }
+
+  @Post('anuncios/:itemId/variacoes/opcao')
+  @ApiOperation({ summary: 'Renomeia opção ou troca a imagem, recusa Full — MEXE NA LOJA' })
+  atualizarOpcao(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(opcaoSchema)) dto: z.infer<typeof opcaoSchema>,
+  ) {
+    return this.svc.atualizarOpcao(user, itemId, dto);
   }
 
   @Post('videos')

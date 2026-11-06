@@ -334,6 +334,25 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
   );
 
   server.registerTool(
+    "shopee_opcao_atualizar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pro valor exato. Renomeia uma opção de variação ou troca a imagem dela. nivel 0 é a primeira variação; indice é a posição em padronizadas de shopee_anuncio_variacoes. SKU, preço e estoque não vão; recusa anúncio com Full. Devolve antes, depois e conferido.",
+      inputSchema: {
+        itemId: id,
+        nivel: z.number().int().min(0).max(1),
+        indice: z.number().int().min(0).max(100),
+        nome: z.string().min(1).max(30).optional(),
+        imagemId: z.string().min(1).max(100).optional(),
+      },
+      annotations: mexe,
+    },
+    seguro(async ({ itemId, ...corpo }: { itemId: number }) =>
+      ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/variacoes/opcao`, corpo)),
+    ),
+  );
+
+  server.registerTool(
     "shopee_video_situacao",
     {
       description: "Situação do processamento de um vídeo subido na Shopee. Somente leitura.",

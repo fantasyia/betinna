@@ -296,6 +296,102 @@ describe('Ficha e tabela de medidas Shopee (05/11)', () => {
     expect(r.resposta).toEqual({ discount_id: 9 });
   });
 
+  describe('opção de variação', () => {
+    const models = (imagem = 'img1', nome = 'Preto') => ({
+      response: {
+        standardise_tier_variation: [
+          {
+            variation_id: 1,
+            variation_name: 'Cor',
+            variation_option_list: [
+              {
+                variation_option_id: 5,
+                variation_option_name: nome,
+                image_id: imagem,
+                image_url: 'http://x',
+              },
+              { variation_option_id: 0, variation_option_name: 'Azul', image_id: 'img2' },
+            ],
+          },
+        ],
+        model: [
+          {
+            model_id: 1,
+            model_sku: 'A',
+            tier_index: [0],
+            stock_info_v2: { seller_stock: [], shopee_stock: [] },
+          },
+          {
+            model_id: 2,
+            model_sku: 'B',
+            tier_index: [1],
+            stock_info_v2: { seller_stock: [], shopee_stock: [] },
+          },
+        ],
+      },
+    });
+
+    it('renomeia sem levar SKU, preço, estoque nem a imagem do resto mudada', async () => {
+      const { svc, shopee } = montar();
+      shopee.getShop
+        .mockResolvedValueOnce(base({}))
+        .mockResolvedValueOnce(models())
+        .mockResolvedValueOnce(models())
+        .mockResolvedValueOnce(models('img1', 'Preto Fosco'));
+      shopee.postShop.mockResolvedValue({});
+      const r = await svc.atualizarOpcao(user as never, 99, {
+        nivel: 0,
+        indice: 0,
+        nome: 'Preto Fosco',
+      });
+      expect(shopee.postShop.mock.calls[0][1]).toBe('/api/v2/product/update_tier_variation');
+      expect(corpoEnviado(shopee)).toEqual({
+        item_id: 99,
+        model_list: [
+          { model_id: 1, tier_index: [0] },
+          { model_id: 2, tier_index: [1] },
+        ],
+        standardise_tier_variation: [
+          {
+            variation_id: 1,
+            variation_name: 'Cor',
+            variation_option_list: [
+              { variation_option_id: 0, variation_option_name: 'Preto Fosco', image_id: 'img1' },
+              { variation_option_id: 0, variation_option_name: 'Azul', image_id: 'img2' },
+            ],
+          },
+        ],
+      });
+      expect(r.conferido).toBe(true);
+    });
+
+    it('recusa Full antes de escrever', async () => {
+      const { svc, shopee } = montar();
+      const comFull = models();
+      comFull.response.model[0].stock_info_v2 = {
+        seller_stock: [],
+        shopee_stock: [{ stock: 1 }] as never,
+      };
+      shopee.getShop.mockResolvedValueOnce(base({})).mockResolvedValueOnce(comFull);
+      await expect(
+        svc.atualizarOpcao(user as never, 99, { nivel: 0, indice: 0, nome: 'X' }),
+      ).rejects.toThrow(/Full/);
+      expect(shopee.postShop).not.toHaveBeenCalled();
+    });
+
+    it('opção que não existe não chega na Shopee', async () => {
+      const { svc, shopee } = montar();
+      shopee.getShop
+        .mockResolvedValueOnce(base({}))
+        .mockResolvedValueOnce(models())
+        .mockResolvedValueOnce(models());
+      await expect(
+        svc.atualizarOpcao(user as never, 99, { nivel: 0, indice: 9, nome: 'X' }),
+      ).rejects.toThrow(/não existe/);
+      expect(shopee.postShop).not.toHaveBeenCalled();
+    });
+  });
+
   it('vídeo: null tira o vídeo do anúncio', async () => {
     const { svc, shopee } = montar();
     shopee.getShop
