@@ -104,6 +104,48 @@ const tabelaSchema = z
   })
   .refine((d) => !d.imagemId !== !d.modeloId, { message: 'Mande imagemId OU modeloId' });
 const tituloSchema = z.object({ titulo: z.string().trim().min(1).max(255) });
+const imagensSchema = z.object({
+  imagens: z.array(z.string().trim().min(1).max(100)).min(1).max(12),
+});
+const pesoSchema = z
+  .object({
+    pesoKg: z.number().positive().max(1000).optional(),
+    altura: z.number().int().positive().max(1000).optional(),
+    largura: z.number().int().positive().max(1000).optional(),
+    comprimento: z.number().int().positive().max(1000).optional(),
+  })
+  .refine((d) => d.pesoKg !== undefined || d.altura !== undefined, {
+    message: 'Mande pesoKg ou as medidas',
+  })
+  .refine(
+    (d) =>
+      (d.altura === undefined) === (d.largura === undefined) &&
+      (d.altura === undefined) === (d.comprimento === undefined),
+    { message: 'Medidas vão juntas: altura, largura e comprimento' },
+  );
+const preparoSchema = z.object({
+  dias: z.number().int().min(1).max(60),
+  preEncomenda: z.boolean(),
+});
+const logisticaSchema = z.object({
+  canais: z
+    .array(
+      z.object({
+        logistic_id: z.number().int().positive(),
+        enabled: z.boolean().optional(),
+        shipping_fee: z.number().min(0).optional(),
+        size_id: z.number().int().min(0).optional(),
+        is_free: z.boolean().optional(),
+      }),
+    )
+    .min(1)
+    .max(30),
+});
+const categoriaSchema = z.object({ categoriaId: z.number().int().positive() });
+const listadoSchema = z.object({ listado: z.boolean() });
+const atributosRemoverSchema = z.object({
+  atributos: z.array(z.number().int().positive()).min(1).max(50),
+});
 const marcaSchema = z.object({
   brand_id: z.number().int().min(0),
   original_brand_name: z.string().trim().min(1).max(200).optional(),
@@ -251,6 +293,89 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(fichaSchema)) dto: z.infer<typeof fichaSchema>,
   ) {
     return this.svc.atualizarFicha(user, itemId, dto.atributos);
+  }
+
+  @Get('logistica/canais')
+  @ApiOperation({ summary: 'Canais de envio da loja' })
+  canaisLogistica(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.canaisLogistica(user);
+  }
+
+  @Get('anuncios/:itemId/resumo')
+  @ApiOperation({ summary: 'Título, status, peso, preparo, imagens, vídeo e logística' })
+  resumo(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
+    return this.svc.resumo(user, itemId);
+  }
+
+  @Post('anuncios/:itemId/imagens')
+  @ApiOperation({ summary: 'Troca e ordena as imagens — MEXE NA LOJA' })
+  atualizarImagens(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(imagensSchema)) dto: z.infer<typeof imagensSchema>,
+  ) {
+    return this.svc.atualizarImagens(user, itemId, dto.imagens);
+  }
+
+  @Post('anuncios/:itemId/peso')
+  @ApiOperation({ summary: 'Troca peso e medidas, recusa Full — MEXE NA LOJA' })
+  atualizarPeso(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(pesoSchema)) dto: z.infer<typeof pesoSchema>,
+  ) {
+    return this.svc.atualizarPeso(user, itemId, dto);
+  }
+
+  @Post('anuncios/:itemId/preparo')
+  @ApiOperation({ summary: 'Troca os dias de preparo — MEXE NA LOJA' })
+  atualizarPreparo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(preparoSchema)) dto: z.infer<typeof preparoSchema>,
+  ) {
+    return this.svc.atualizarPreparo(user, itemId, dto);
+  }
+
+  @Post('anuncios/:itemId/logistica')
+  @ApiOperation({ summary: 'Ajusta canais de envio — MEXE NA LOJA' })
+  atualizarLogistica(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(logisticaSchema)) dto: z.infer<typeof logisticaSchema>,
+  ) {
+    return this.svc.atualizarLogistica(user, itemId, dto.canais);
+  }
+
+  @Post('anuncios/:itemId/categoria')
+  @ApiOperation({ summary: 'Troca a categoria — MEXE NA LOJA' })
+  atualizarCategoria(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(categoriaSchema)) dto: z.infer<typeof categoriaSchema>,
+  ) {
+    return this.svc.atualizarCategoria(user, itemId, dto.categoriaId);
+  }
+
+  @Post('anuncios/:itemId/status')
+  @ApiOperation({ summary: 'Lista ou deslista, recusa Full — MEXE NA LOJA' })
+  atualizarStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(listadoSchema)) dto: z.infer<typeof listadoSchema>,
+  ) {
+    return this.svc.atualizarStatus(user, itemId, dto.listado);
+  }
+
+  @Post('anuncios/:itemId/ficha/remover')
+  @ApiOperation({ summary: 'Apaga atributos da ficha — MEXE NA LOJA' })
+  removerAtributos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(atributosRemoverSchema))
+    dto: z.infer<typeof atributosRemoverSchema>,
+  ) {
+    return this.svc.removerAtributos(user, itemId, dto.atributos);
   }
 
   @Get('anuncios/:itemId/titulo')

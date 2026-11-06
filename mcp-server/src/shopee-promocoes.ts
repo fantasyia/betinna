@@ -274,6 +274,98 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
   );
 
   server.registerTool(
+    "shopee_anuncio_resumo",
+    {
+      description:
+        "Resumo de um anúncio Shopee: título, status, categoria, peso, medidas, preparo, imagens, vídeo e logística. Somente leitura.",
+      inputSchema: { itemId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ itemId }: { itemId: number }) =>
+      ok(await api.get(`/shopee-promocoes/anuncios/${itemId}/resumo`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_logistica_canais",
+    {
+      description: "Canais de envio da loja Shopee, com logistics_channel_id. Somente leitura.",
+      inputSchema: {},
+      annotations: leitura,
+    },
+    seguro(async () => ok(await api.get(`/shopee-promocoes/logistica/canais`))),
+  );
+
+  const escrita = (nome: string, rota: string, description: string, inputSchema: object) =>
+    server.registerTool(
+      nome,
+      {
+        description: `MEXE NA LOJA — só com o "pode subir" do Léo pro valor exato. ${description} Devolve antes, depois e conferido.`,
+        inputSchema: { itemId: id, ...inputSchema },
+        annotations: mexe,
+      },
+      seguro(async ({ itemId, ...corpo }: { itemId: number }) =>
+        ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/${rota}`, corpo)),
+      ),
+    );
+
+  escrita(
+    "shopee_imagens_atualizar",
+    "imagens",
+    "Troca e ordena as imagens do anúncio, com image_id do shopee_imagem_subir (cena normal). A primeira é a capa.",
+    { imagens: z.array(z.string().min(1).max(100)).min(1).max(12) },
+  );
+  escrita(
+    "shopee_peso_atualizar",
+    "peso",
+    "Troca peso (kg) e medidas (cm) da embalagem. Sobrescreve todos os models; recusa anúncio com Full. Medidas vão as três juntas.",
+    {
+      pesoKg: z.number().positive().max(1000).optional(),
+      altura: z.number().int().positive().max(1000).optional(),
+      largura: z.number().int().positive().max(1000).optional(),
+      comprimento: z.number().int().positive().max(1000).optional(),
+    },
+  );
+  escrita("shopee_preparo_atualizar", "preparo", "Troca os dias de preparo.", {
+    dias: z.number().int().min(1).max(60),
+    preEncomenda: z.boolean(),
+  });
+  escrita(
+    "shopee_logistica_atualizar",
+    "logistica",
+    "Liga, desliga ou ajusta canais de envio do anúncio; os canais não citados são reenviados iguais.",
+    {
+      canais: z
+        .array(
+          z.object({
+            logistic_id: id,
+            enabled: z.boolean().optional(),
+            shipping_fee: z.number().min(0).optional(),
+            size_id: z.number().int().min(0).optional(),
+            is_free: z.boolean().optional(),
+          }),
+        )
+        .min(1)
+        .max(30),
+    },
+  );
+  escrita("shopee_categoria_atualizar", "categoria", "Troca a categoria do anúncio.", {
+    categoriaId: id,
+  });
+  escrita(
+    "shopee_status_atualizar",
+    "status",
+    "Lista (true) ou deslista (false) o anúncio. Recusa anúncio com Full.",
+    { listado: z.boolean() },
+  );
+  escrita(
+    "shopee_ficha_remover",
+    "ficha/remover",
+    "Apaga atributos da ficha; os demais são reenviados iguais.",
+    { atributos: z.array(id).min(1).max(50) },
+  );
+
+  server.registerTool(
     "shopee_anuncio_titulo",
     {
       description: "Título atual de um anúncio Shopee. Somente leitura.",

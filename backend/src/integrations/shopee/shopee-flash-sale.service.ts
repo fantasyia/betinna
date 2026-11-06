@@ -63,8 +63,31 @@ export interface MarcaAnuncio {
   original_brand_name?: string;
 }
 
+export interface CanalLogistica {
+  logistic_id: number;
+  enabled?: boolean;
+  shipping_fee?: number;
+  size_id?: number;
+  is_free?: boolean;
+}
+export interface Pacote {
+  package_height?: number;
+  package_length?: number;
+  package_width?: number;
+}
+
 interface ItemBase {
   item_name?: string;
+  item_status?: string;
+  has_model?: boolean;
+  /** A Shopee devolve o peso como texto, em kg. */
+  weight?: string | number;
+  dimension?: Pacote;
+  pre_order?: { is_pre_order?: boolean; days_to_ship?: number };
+  image?: { image_id_list?: string[]; image_url_list?: string[]; image_ratio?: string };
+  video_info?: Array<{ video_url?: string; thumbnail_url?: string; duration?: number }>;
+  logistic_info?: CanalLogistica[];
+  stock_info_v2?: { shopee_stock?: Array<{ stock?: number }> };
   category_id?: number;
   description?: string;
   description_type?: string;
@@ -273,6 +296,183 @@ export class ShopeeFlashSaleService {
     const aviso = await this.gravarItem(user, itemId, { item_name: titulo });
     const depois = await this.titulo(user, itemId);
     return { antes, depois, conferido: depois.titulo === titulo, aviso };
+  }
+
+  /** Tudo que as rotas de anúncio trocam, num GET só. */
+  async resumo(user: AuthenticatedUser, itemId: number) {
+    const i = await this.itemBase(user, itemId);
+    return {
+      titulo: i.item_name ?? null,
+      status: i.item_status ?? null,
+      categoria: i.category_id ?? null,
+      tem_variacao: i.has_model ?? null,
+      peso_kg: i.weight === undefined ? null : Number(i.weight),
+      dimensao: i.dimension ?? null,
+      preparo: i.pre_order ?? null,
+      imagens: i.image?.image_id_list ?? [],
+      imagens_url: i.image?.image_url_list ?? [],
+      proporcao: i.image?.image_ratio ?? null,
+      video: i.video_info ?? [],
+      logistica: i.logistic_info ?? [],
+    };
+  }
+
+  /** Canais de envio da loja, com os ids que a logística do anúncio pede. */
+  async canaisLogistica(user: AuthenticatedUser) {
+    const r = await this.shopee.getShop<{ response?: { logistics_channel_list?: unknown[] } }>(
+      this.empresa(user),
+      '/api/v2/logistics/get_channel_list',
+      {},
+    );
+    return r.response?.logistics_channel_list ?? [];
+  }
+
+  /** Mudança no nível do item alcança todos os models: com Full, não entra. */
+  private async exigirSemFull(user: AuthenticatedUser, itemId: number, item: ItemBase) {
+    const modelos = await this.modelos(user, itemId);
+    const fulls = modelos.length
+      ? modelos.map((m) => m.estoque_full)
+      : [somarEstoque(item.stock_info_v2?.shopee_stock)];
+    if (fulls.some((f) => f === null || f > 0)) {
+      throw new BusinessRuleException('Anúncio com Full ou estoque Full desconhecido: não mexi');
+    }
+  }
+
+  /** Troca e reordena as imagens: a primeira da lista é a capa. MEXE NA LOJA. */
+  async atualizarImagens(user: AuthenticatedUser, itemId: number, imagens: string[]) {
+    const antes = (await this.resumo(user, itemId)).imagens;
+    const aviso = await this.gravarItem(user, itemId, { image: { image_id_list: imagens } });
+    const depois = (await this.resumo(user, itemId)).imagens;
+    return { antes, depois, conferido: iguais(depois, imagens), aviso };
+  }
+
+  /**
+   * Peso e medidas da embalagem. MEXE NA LOJA. A Shopee sobrescreve os de todos
+   * os models, então anúncio com Full fica de fora.
+   */
+  async atualizarPeso(
+    user: AuthenticatedUser,
+    itemId: number,
+    dto: { pesoKg?: number; altura?: number; largura?: number; comprimento?: number },
+  ) {
+    const item = await this.itemBase(user, itemId);
+    await this.exigirSemFull(user, itemId, item);
+    const dimensao =
+      dto.altura === undefined
+        ? undefined
+        : {
+            package_height: dto.altura,
+            package_width: dto.largura,
+            package_length: dto.comprimento,
+          };
+    const antes = { peso_kg: Number(item.weight), dimensao: item.dimension ?? null };
+    const aviso = await this.gravarItem(user, itemId, {
+      ...(dto.pesoKg === undefined ? {} : { weight: dto.pesoKg }),
+      ...(dimensao ? { dimension: dimensao } : {}),
+    });
+    const lido = await this.itemBase(user, itemId);
+    const depois = { peso_kg: Number(lido.weight), dimensao: lido.dimension ?? null };
+    const conferido =
+      (dto.pesoKg === undefined || depois.peso_kg === dto.pesoKg) &&
+      (!dimensao ||
+        (lido.dimension?.package_height === dimensao.package_height &&
+          lido.dimension?.package_width === dimensao.package_width &&
+          lido.dimension?.package_length === dimensao.package_length));
+    return { antes, depois, conferido, aviso };
+  }
+
+  /** Dias de preparo. MEXE NA LOJA. */
+  async atualizarPreparo(
+    user: AuthenticatedUser,
+    itemId: number,
+    dto: { dias: number; preEncomenda: boolean },
+  ) {
+    const antes = (await this.itemBase(user, itemId)).pre_order ?? null;
+    const aviso = await this.gravarItem(user, itemId, {
+      pre_order: { days_to_ship: dto.dias, is_pre_order: dto.preEncomenda },
+    });
+    const depois = (await this.itemBase(user, itemId)).pre_order ?? null;
+    const conferido =
+      depois?.days_to_ship === dto.dias && !!depois?.is_pre_order === dto.preEncomenda;
+    return { antes, depois, conferido, aviso };
+  }
+
+  /**
+   * Liga, desliga ou ajusta canais de envio. MEXE NA LOJA. A Shopee recebe a lista
+   * inteira, lida na hora: quem não veio no pedido é reenviado igual.
+   */
+  async atualizarLogistica(user: AuthenticatedUser, itemId: number, canais: CanalLogistica[]) {
+    const antes = (await this.itemBase(user, itemId)).logistic_info ?? [];
+    const pedidos = new Map(canais.map((c) => [c.logistic_id, c]));
+    const lista = [
+      ...antes.map((a) => ({ ...a, ...pedidos.get(a.logistic_id) })),
+      ...canais.filter((c) => !antes.some((a) => a.logistic_id === c.logistic_id)),
+    ].map((c) => ({
+      logistic_id: c.logistic_id,
+      enabled: c.enabled,
+      ...(c.shipping_fee === undefined ? {} : { shipping_fee: c.shipping_fee }),
+      ...(c.size_id === undefined ? {} : { size_id: c.size_id }),
+      ...(c.is_free === undefined ? {} : { is_free: c.is_free }),
+    }));
+    const aviso = await this.gravarItem(user, itemId, { logistic_info: lista });
+    const depois = (await this.itemBase(user, itemId)).logistic_info ?? [];
+    const conferido = canais.every((c) => {
+      const lido = depois.find((d) => d.logistic_id === c.logistic_id);
+      return !!lido && (c.enabled === undefined || lido.enabled === c.enabled);
+    });
+    return { antes, depois, conferido, aviso };
+  }
+
+  /** Muda a categoria. MEXE NA LOJA. Atributos da nova ficam a cargo de quem pede. */
+  async atualizarCategoria(user: AuthenticatedUser, itemId: number, categoriaId: number) {
+    const antes = (await this.itemBase(user, itemId)).category_id ?? null;
+    const aviso = await this.gravarItem(user, itemId, { category_id: categoriaId });
+    const depois = (await this.itemBase(user, itemId)).category_id ?? null;
+    return { antes, depois, conferido: depois === categoriaId, aviso };
+  }
+
+  /** Lista ou deslista. MEXE NA LOJA. Anúncio com Full fica de fora. */
+  async atualizarStatus(user: AuthenticatedUser, itemId: number, listado: boolean) {
+    const item = await this.itemBase(user, itemId);
+    await this.exigirSemFull(user, itemId, item);
+    const r = await this.shopee.postShop<{
+      response?: { failure_list?: Array<{ failed_reason?: string }> };
+    }>(this.empresa(user), '/api/v2/product/unlist_item', {
+      item_list: [{ item_id: itemId, unlist: !listado }],
+    });
+    const falha = r.response?.failure_list?.[0];
+    if (falha) throw new BusinessRuleException(falha.failed_reason ?? 'Shopee recusou');
+    const depois = (await this.itemBase(user, itemId)).item_status ?? null;
+    return {
+      antes: item.item_status ?? null,
+      depois,
+      conferido: depois === (listado ? 'NORMAL' : 'UNLIST'),
+    };
+  }
+
+  /** Apaga atributos da ficha. MEXE NA LOJA. Reenvia os demais, lidos na hora. */
+  async removerAtributos(user: AuthenticatedUser, itemId: number, atributos: number[]) {
+    const antes = (await this.itemBase(user, itemId)).attribute_list ?? [];
+    const sai = new Set(atributos);
+    const faltando = atributos.filter((a) => !antes.some((x) => x.attribute_id === a));
+    if (faltando.length) {
+      throw new BusinessRuleException(`Atributo fora da ficha: ${faltando.join(', ')}`);
+    }
+    const aviso = await this.gravarItem(user, itemId, {
+      attribute_list: antes
+        .filter((a) => !sai.has(a.attribute_id))
+        .map((a) => ({
+          attribute_id: a.attribute_id,
+          attribute_value_list: a.attribute_value_list,
+        })),
+    });
+    const depois = (await this.itemBase(user, itemId)).attribute_list ?? [];
+    return {
+      antes,
+      depois,
+      conferido: !depois.some((d) => sai.has(d.attribute_id)),
+      aviso,
+    };
   }
 
   /** Marca atual do anúncio e a categoria, pra buscar as aceitas. */

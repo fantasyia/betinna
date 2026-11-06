@@ -269,6 +269,120 @@ describe('Ficha e tabela de medidas Shopee (05/11)', () => {
   const corpoEnviado = (shopee: ReturnType<typeof montar>['shopee']) =>
     shopee.postShop.mock.calls[0][2] as Record<string, unknown>;
 
+  it('imagens: manda a lista na ordem pedida', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ image: { image_id_list: ['a', 'b'] } }))
+      .mockResolvedValueOnce(base({ image: { image_id_list: ['b', 'a'] } }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.atualizarImagens(user as never, 99, ['b', 'a']);
+    expect(corpoEnviado(shopee)).toEqual({ item_id: 99, image: { image_id_list: ['b', 'a'] } });
+    expect(r.conferido).toBe(true);
+  });
+
+  it('peso: recusa anúncio com Full antes de escrever', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValueOnce(base({ weight: '0.3' })).mockResolvedValueOnce({
+      response: {
+        model: [{ model_id: 1, stock_info_v2: { seller_stock: [], shopee_stock: [{ stock: 2 }] } }],
+      },
+    });
+    await expect(svc.atualizarPeso(user as never, 99, { pesoKg: 0.5 })).rejects.toThrow(/Full/);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('peso: estoque Full desconhecido também não passa', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ weight: '0.3' }))
+      .mockResolvedValueOnce({ response: { model: [{ model_id: 1 }] } });
+    await expect(svc.atualizarPeso(user as never, 99, { pesoKg: 0.5 })).rejects.toThrow(/Full/);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('peso: sem Full manda só o que veio no pedido', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ weight: '0.3' }))
+      .mockResolvedValueOnce({
+        response: {
+          model: [{ model_id: 1, stock_info_v2: { seller_stock: [], shopee_stock: [] } }],
+        },
+      })
+      .mockResolvedValueOnce(base({ weight: '0.5' }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.atualizarPeso(user as never, 99, { pesoKg: 0.5 });
+    expect(corpoEnviado(shopee)).toEqual({ item_id: 99, weight: 0.5 });
+    expect(r.conferido).toBe(true);
+  });
+
+  it('logística: reenvia o canal não citado igual', async () => {
+    const { svc, shopee } = montar();
+    const canal = (id: number, ligado: boolean) => ({
+      logistic_id: id,
+      enabled: ligado,
+      is_free: false,
+    });
+    shopee.getShop
+      .mockResolvedValueOnce(base({ logistic_info: [canal(1, true), canal(2, true)] }))
+      .mockResolvedValueOnce(base({ logistic_info: [canal(1, true), canal(2, false)] }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.atualizarLogistica(user as never, 99, [{ logistic_id: 2, enabled: false }]);
+    expect(corpoEnviado(shopee)).toEqual({
+      item_id: 99,
+      logistic_info: [canal(1, true), canal(2, false)],
+    });
+    expect(r.conferido).toBe(true);
+  });
+
+  it('status: deslistar usa unlist_item e confere a leitura', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ item_status: 'NORMAL' }))
+      .mockResolvedValueOnce({
+        response: {
+          model: [{ model_id: 1, stock_info_v2: { seller_stock: [], shopee_stock: [] } }],
+        },
+      })
+      .mockResolvedValueOnce(base({ item_status: 'UNLIST' }));
+    shopee.postShop.mockResolvedValue({ response: { failure_list: [] } });
+    const r = await svc.atualizarStatus(user as never, 99, false);
+    expect(shopee.postShop.mock.calls[0][1]).toBe('/api/v2/product/unlist_item');
+    expect(corpoEnviado(shopee)).toEqual({ item_list: [{ item_id: 99, unlist: true }] });
+    expect(r).toMatchObject({ antes: 'NORMAL', depois: 'UNLIST', conferido: true });
+  });
+
+  it('status: falha da Shopee vira erro', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValueOnce(base({ item_status: 'NORMAL' })).mockResolvedValueOnce({
+      response: {
+        model: [{ model_id: 1, stock_info_v2: { seller_stock: [], shopee_stock: [] } }],
+      },
+    });
+    shopee.postShop.mockResolvedValue({
+      response: { failure_list: [{ failed_reason: 'em promoção' }] },
+    });
+    await expect(svc.atualizarStatus(user as never, 99, false)).rejects.toThrow(/em promoção/);
+  });
+
+  it('ficha: remover reenvia o resto e sem o atributo pedido', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ attribute_list: [cor, tecido] }))
+      .mockResolvedValueOnce(base({ attribute_list: [tecido] }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.removerAtributos(user as never, 99, [1]);
+    expect(corpoEnviado(shopee)).toEqual({ item_id: 99, attribute_list: [tecido] });
+    expect(r.conferido).toBe(true);
+  });
+
+  it('ficha: remover atributo que não está na ficha nem chega na Shopee', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValueOnce(base({ attribute_list: [cor] }));
+    await expect(svc.removerAtributos(user as never, 99, [7])).rejects.toThrow(/fora da ficha/);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
   it('título: manda só o item_name e confere pela leitura', async () => {
     const { svc, shopee } = montar();
     shopee.getShop
