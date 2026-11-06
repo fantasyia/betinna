@@ -48,6 +48,32 @@ export interface CampoDescricao {
   image_info?: { image_id?: string };
 }
 
+export interface ValorAtributo {
+  value_id: number;
+  original_value_name?: string;
+  value_unit?: string;
+}
+export interface AtributoFicha {
+  attribute_id: number;
+  attribute_value_list: ValorAtributo[];
+}
+
+interface ItemBase {
+  category_id?: number;
+  description?: string;
+  description_type?: string;
+  description_info?: { extended_description?: { field_list?: CampoDescricao[] } };
+  attribute_list?: Array<
+    AtributoFicha & { original_attribute_name?: string; is_mandatory?: boolean }
+  >;
+  /** URL da imagem da tabela de medidas. */
+  size_chart?: string;
+  /** Modelo de tabela da loja. */
+  size_chart_id?: number;
+}
+
+const iguais = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
 function somarEstoque(lista?: Array<{ stock?: number }>): number | null {
   return lista ? lista.reduce((soma, l) => soma + (l.stock ?? 0), 0) : null;
 }
@@ -162,19 +188,30 @@ export class ShopeeFlashSaleService {
     };
   }
 
-  /** Descrição atual, normal ou estendida (com os blocos de imagem). */
-  async descricao(user: AuthenticatedUser, itemId: number) {
-    const r = await this.shopee.getShop<{
-      response?: {
-        item_list?: Array<{
-          description?: string;
-          description_type?: string;
-          description_info?: { extended_description?: { field_list?: CampoDescricao[] } };
-        }>;
-      };
-    }>(this.empresa(user), '/api/v2/product/get_item_base_info', { item_id_list: itemId });
+  private async itemBase(user: AuthenticatedUser, itemId: number): Promise<ItemBase> {
+    const r = await this.shopee.getShop<{ response?: { item_list?: ItemBase[] } }>(
+      this.empresa(user),
+      '/api/v2/product/get_item_base_info',
+      { item_id_list: itemId },
+    );
     const item = r.response?.item_list?.[0];
     if (!item) throw new BusinessRuleException(`Anúncio ${itemId} não encontrado na Shopee`);
+    return item;
+  }
+
+  /** update_item com só o campo pedido. A prova de que mudou é a leitura de volta. */
+  private async gravarItem(user: AuthenticatedUser, itemId: number, campo: object) {
+    const r = await this.shopee.postShop<{ warning?: string }>(
+      this.empresa(user),
+      '/api/v2/product/update_item',
+      { item_id: itemId, ...campo },
+    );
+    return r?.warning || null;
+  }
+
+  /** Descrição atual, normal ou estendida (com os blocos de imagem). */
+  async descricao(user: AuthenticatedUser, itemId: number) {
+    const item = await this.itemBase(user, itemId);
     return {
       tipo: item.description_type ?? 'normal',
       descricao: item.description ?? null,
@@ -183,36 +220,185 @@ export class ShopeeFlashSaleService {
   }
 
   /**
-   * Troca SÓ a descrição (Léo, 04/11). MEXE NA LOJA. Na estendida com imagem,
-   * exige `campos`: texto solto apagaria os blocos de imagem do anúncio.
+   * Troca SÓ a descrição (Léo, 04/11). MEXE NA LOJA. Mantém o tipo do anúncio. Na
+   * estendida com imagem, exige `campos`: texto solto apagaria os blocos de imagem.
    */
   async atualizarDescricao(
     user: AuthenticatedUser,
     itemId: number,
     dto: { descricao?: string; campos?: CampoDescricao[] },
   ) {
-    const atual = await this.descricao(user, itemId);
-    const estendida = atual.tipo === 'extended';
-    const temImagem = atual.campos?.some((c) => c.field_type !== 'text') ?? false;
+    const antes = await this.descricao(user, itemId);
+    const estendida = antes.tipo === 'extended';
+    const temImagem = antes.campos?.some((c) => c.field_type !== 'text') ?? false;
     if (estendida && temImagem && !dto.campos) {
       throw new BusinessRuleException('Descrição estendida com imagem: mande `campos`, não texto');
     }
     if (!estendida && !dto.descricao) {
       throw new BusinessRuleException('Descrição normal: mande `descricao`');
     }
-    const corpo = estendida
-      ? {
-          item_id: itemId,
-          description_type: 'extended',
-          description_info: {
-            extended_description: {
-              field_list: dto.campos ?? [{ field_type: 'text', text: dto.descricao }],
-            },
-          },
-        }
-      : { item_id: itemId, description: dto.descricao };
-    await this.shopee.postShop(this.empresa(user), '/api/v2/product/update_item', corpo);
-    return this.descricao(user, itemId);
+    const blocos = dto.campos ?? [{ field_type: 'text', text: dto.descricao }];
+    const aviso = await this.gravarItem(
+      user,
+      itemId,
+      estendida
+        ? {
+            description_type: 'extended',
+            description_info: { extended_description: { field_list: blocos } },
+          }
+        : { description: dto.descricao },
+    );
+    const depois = await this.descricao(user, itemId);
+    const conferido = estendida
+      ? iguais(depois.campos, blocos)
+      : depois.descricao === dto.descricao;
+    return { antes, depois, conferido, aviso };
+  }
+
+  /** Atributos da ficha e, da categoria, os aceitos com seus value_id. */
+  async ficha(user: AuthenticatedUser, itemId: number) {
+    const item = await this.itemBase(user, itemId);
+    const arvore = item.category_id
+      ? await this.shopee.getShop<{ response?: { list?: Array<{ attribute_tree?: unknown[] }> } }>(
+          this.empresa(user),
+          '/api/v2/product/get_attribute_tree',
+          { category_id_list: item.category_id, language: 'pt-BR' },
+        )
+      : null;
+    return {
+      categoria: item.category_id ?? null,
+      atributos: item.attribute_list ?? [],
+      opcoes: arvore?.response?.list?.[0]?.attribute_tree ?? [],
+    };
+  }
+
+  /**
+   * Troca SÓ os atributos pedidos. MEXE NA LOJA. A Shopee recebe a lista inteira,
+   * lida na hora: mandar só os alterados arriscaria apagar o resto da ficha.
+   */
+  async atualizarFicha(user: AuthenticatedUser, itemId: number, atributos: AtributoFicha[]) {
+    const pedidos = new Set(atributos.map((a) => a.attribute_id));
+    if (pedidos.size !== atributos.length) {
+      throw new BusinessRuleException('Atributo repetido no pedido');
+    }
+    const item = await this.itemBase(user, itemId);
+    const antes = item.attribute_list ?? [];
+    const mantidos = antes
+      .filter((a) => !pedidos.has(a.attribute_id))
+      .map((a) => ({
+        attribute_id: a.attribute_id,
+        attribute_value_list: a.attribute_value_list,
+      }));
+    const aviso = await this.gravarItem(user, itemId, {
+      attribute_list: [...mantidos, ...atributos],
+    });
+    const depois = (await this.itemBase(user, itemId)).attribute_list ?? [];
+    const conferido = atributos.every((a) => {
+      const lido = depois.find((d) => d.attribute_id === a.attribute_id);
+      const ids = (l: ValorAtributo[]) => l.map((v) => v.value_id).sort((x, y) => x - y);
+      return !!lido && iguais(ids(lido.attribute_value_list), ids(a.attribute_value_list));
+    });
+    return { antes, depois, conferido, aviso };
+  }
+
+  private estadoTabela(item: ItemBase) {
+    return { imagem: item.size_chart || null, modelo_id: item.size_chart_id || null };
+  }
+
+  /** Tabela ligada ao anúncio, o conteúdo do modelo e o que a categoria aceita. */
+  async tabelaMedidas(user: AuthenticatedUser, itemId: number) {
+    const e = this.empresa(user);
+    const item = await this.itemBase(user, itemId);
+    const atual = this.estadoTabela(item);
+    let modelo: unknown = null;
+    let modeloErro: string | null = null;
+    if (atual.modelo_id) {
+      // Modelo fechado não pode esconder a imagem e a categoria da resposta.
+      try {
+        const r = await this.shopee.getShop<{ response?: unknown }>(
+          e,
+          '/api/v2/product/get_size_chart_detail',
+          { size_chart_id: atual.modelo_id },
+        );
+        modelo = r.response ?? null;
+      } catch (err) {
+        modeloErro = err instanceof Error ? err.message : String(err);
+      }
+    }
+    return {
+      categoria: item.category_id ?? null,
+      ...atual,
+      modelo,
+      modelo_erro: modeloErro,
+      limites: await this.limitesTabela(user, item.category_id),
+    };
+  }
+
+  private async limitesTabela(user: AuthenticatedUser, categoria?: number) {
+    if (!categoria) return null;
+    const r = await this.shopee.getShop<{
+      response?: {
+        size_chart_limit?: {
+          size_chart_mandatory?: boolean;
+          support_image_size_chart?: boolean;
+          support_template_size_chart?: boolean;
+        };
+      };
+    }>(this.empresa(user), '/api/v2/product/get_item_limit', { category_id: categoria });
+    const limite = r.response?.size_chart_limit;
+    return {
+      obrigatoria: limite?.size_chart_mandatory ?? null,
+      aceita_imagem: limite?.support_image_size_chart ?? null,
+      aceita_modelo: limite?.support_template_size_chart ?? null,
+    };
+  }
+
+  /** Modelos de tabela da loja numa categoria. */
+  tabelasDaCategoria(user: AuthenticatedUser, categoria: number, cursor?: string) {
+    return this.shopee.getShop(this.empresa(user), '/api/v2/product/get_size_chart_list', {
+      category_id: categoria,
+      page_size: 50,
+      cursor,
+    });
+  }
+
+  /** Só guarda a imagem no media space da Shopee. Nenhum anúncio muda. */
+  subirImagem(
+    user: AuthenticatedUser,
+    arquivo: { buffer: Buffer; nome: string; tipo: string },
+    cena: 'normal' | 'desc',
+  ) {
+    this.empresa(user);
+    return this.shopee.subirImagem(arquivo, cena);
+  }
+
+  /**
+   * Troca SÓ a tabela de medidas. MEXE NA LOJA. Se o anúncio usa modelo, a imagem
+   * vai com `size_chart_id: 0`: pela Shopee, com os dois preenchidos, fica o modelo.
+   */
+  async atualizarTabelaMedidas(
+    user: AuthenticatedUser,
+    itemId: number,
+    dto: { imagemId?: string; modeloId?: number },
+  ) {
+    const item = await this.itemBase(user, itemId);
+    const antes = this.estadoTabela(item);
+    const limites = await this.limitesTabela(user, item.category_id);
+    if (dto.imagemId && limites?.aceita_imagem === false) {
+      throw new BusinessRuleException('A categoria deste anúncio não aceita tabela em imagem');
+    }
+    if (dto.modeloId && limites?.aceita_modelo === false) {
+      throw new BusinessRuleException('A categoria deste anúncio não aceita modelo de tabela');
+    }
+    const size_chart_info = dto.modeloId
+      ? { size_chart_id: dto.modeloId }
+      : { size_chart: dto.imagemId, ...(antes.modelo_id ? { size_chart_id: 0 } : {}) };
+    const aviso = await this.gravarItem(user, itemId, { size_chart_info });
+    const depois = this.estadoTabela(await this.itemBase(user, itemId));
+    const conferido = dto.modeloId
+      ? depois.modelo_id === dto.modeloId
+      : !depois.modelo_id && !!depois.imagem && depois.imagem !== antes.imagem;
+    return { antes, depois, conferido, aviso };
   }
 
   async adicionarItens(user: AuthenticatedUser, flashSaleId: number, itens: ItemOferta[]) {

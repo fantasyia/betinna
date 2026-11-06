@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { IntegrationException } from '@shared/errors/app-exception';
 import { HttpClientError } from '@shared/http/http-client.types';
 import { ShopeeClientService } from './shopee-client.service';
@@ -103,5 +103,44 @@ describe('ShopeeClientService', () => {
 
       expect(r.shopId).toBe('999');
     });
+  });
+});
+
+describe('ShopeeClientService.subirImagem (05/11)', () => {
+  const montar = () =>
+    new ShopeeClientService(
+      {} as never,
+      { get: (k: string) => (k === 'SHOPEE_PARTNER_ID' ? '123' : 'chave') } as never,
+      { baseUrl: () => 'https://shopee.test' } as never,
+    );
+  const arquivo = { buffer: Buffer.from('x'), nome: 'tabela.png', tipo: 'image/png' };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('vai em multipart, sem token, e devolve o image_id', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ response: { image_info: { image_id: 'img1' } } })),
+      );
+    vi.stubGlobal('fetch', f);
+    await expect(montar().subirImagem(arquivo, 'desc')).resolves.toBe('img1');
+    const [url, init] = f.mock.calls[0] as [string, { body: FormData }];
+    expect(url).toContain('https://shopee.test/api/v2/media_space/upload_image?partner_id=123');
+    expect(url).not.toContain('access_token');
+    expect(init.body.get('scene')).toBe('desc');
+    expect(init.body.get('image')).toBeInstanceOf(Blob);
+  });
+
+  it('erro da Shopee vem como erro', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ error: 'error_param', message: 'imagem ruim' })),
+        ),
+    );
+    await expect(montar().subirImagem(arquivo, 'desc')).rejects.toThrow(/imagem ruim/);
   });
 });

@@ -110,6 +110,59 @@ export class ShopeeClientService {
     }
   }
 
+  /**
+   * Sobe imagem no media space. API pública: assina sem token e vai em multipart,
+   * que o HttpClient não serializa. Não toca em anúncio nenhum.
+   */
+  async subirImagem(
+    arquivo: { buffer: Buffer; nome: string; tipo: string },
+    cena: 'normal' | 'desc',
+  ): Promise<string> {
+    const path = '/api/v2/media_space/upload_image';
+    const partnerId = this.env.get('SHOPEE_PARTNER_ID');
+    const signer = new ShopeeSigner(partnerId, this.env.get('SHOPEE_PARTNER_KEY'));
+    const { sign, timestamp } = signer.signPublic(path);
+    const params = new URLSearchParams({
+      partner_id: partnerId,
+      timestamp: String(timestamp),
+      sign,
+    });
+    const form = new FormData();
+    form.append(
+      'image',
+      new Blob([new Uint8Array(arquivo.buffer)], { type: arquivo.tipo }),
+      arquivo.nome,
+    );
+    form.append('scene', cena);
+    const res = await fetch(`${this.oauth.baseUrl()}${path}?${params}`, {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(60_000),
+    });
+    const texto = await res.text();
+    let data: {
+      error?: string;
+      message?: string;
+      response?: { image_info?: { image_id?: string } };
+    };
+    try {
+      data = JSON.parse(texto) as typeof data;
+    } catch {
+      throw new IntegrationException(
+        `Shopee upload_image HTTP ${res.status}: ${texto.slice(0, 200)}`,
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    const imageId = data.response?.image_info?.image_id;
+    if (data.error || !imageId) {
+      throw new IntegrationException(
+        `Shopee upload_image (${data.error ?? 'sem image_id'}): ${data.message ?? '?'}`,
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    return imageId;
+  }
+
   /** Expose pra services consultarem shopId/accessToken sem chamar API. */
   async getCredenciais(empresaId: string) {
     return this.oauth.getCredenciais(empresaId);

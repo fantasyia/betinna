@@ -96,7 +96,12 @@ describe('Oferta Relâmpago Shopee (31/10)', () => {
     it('normal: manda só o item e a descrição', async () => {
       const { svc, shopee } = montar();
       shopee.getShop.mockResolvedValue(item({ description_type: 'normal', description: 'velha' }));
-      await svc.atualizarDescricao(user as never, 99, { descricao: 'nova' });
+      const r = await svc.atualizarDescricao(user as never, 99, { descricao: 'nova' });
+      expect(r).toMatchObject({
+        antes: { descricao: 'velha' },
+        depois: { descricao: 'velha' },
+        conferido: false,
+      });
       expect(shopee.postShop).toHaveBeenCalledWith('emp1', '/api/v2/product/update_item', {
         item_id: 99,
         description: 'nova',
@@ -250,6 +255,92 @@ describe('Oferta Relâmpago Shopee (31/10)', () => {
         status: 1,
       },
     );
+  });
+});
+
+describe('Ficha e tabela de medidas Shopee (05/11)', () => {
+  const base = (campos: object) => ({ response: { item_list: [campos] } });
+  const cor = {
+    attribute_id: 1,
+    attribute_value_list: [{ value_id: 10 }],
+    original_attribute_name: 'Cor',
+  };
+  const tecido = { attribute_id: 2, attribute_value_list: [{ value_id: 20 }] };
+  const corpoEnviado = (shopee: ReturnType<typeof montar>['shopee']) =>
+    shopee.postShop.mock.calls[0][2] as Record<string, unknown>;
+
+  it('ficha: troca o pedido, reenvia o resto e não leva mais campo nenhum', async () => {
+    const { svc, shopee } = montar();
+    const novo = { attribute_id: 2, attribute_value_list: [{ value_id: 21 }] };
+    shopee.getShop
+      .mockResolvedValueOnce(base({ attribute_list: [cor, tecido] }))
+      .mockResolvedValueOnce(base({ attribute_list: [cor, novo] }));
+    const r = await svc.atualizarFicha(user as never, 99, [novo]);
+    expect(corpoEnviado(shopee)).toEqual({
+      item_id: 99,
+      attribute_list: [{ attribute_id: 1, attribute_value_list: [{ value_id: 10 }] }, novo],
+    });
+    expect(r.conferido).toBe(true);
+    expect(r.antes).toEqual([cor, tecido]);
+    expect(r.depois).toEqual([cor, novo]);
+  });
+
+  it('ficha: conferido falso se a leitura não mostrar o valor novo', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValue(base({ attribute_list: [cor, tecido] }));
+    const r = await svc.atualizarFicha(user as never, 99, [
+      { attribute_id: 2, attribute_value_list: [{ value_id: 21 }] },
+    ]);
+    expect(r.conferido).toBe(false);
+  });
+
+  it('ficha: atributo repetido nem chega na Shopee', async () => {
+    const { svc, shopee } = montar();
+    await expect(svc.atualizarFicha(user as never, 99, [tecido, tecido])).rejects.toThrow(
+      /repetido/,
+    );
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('tabela: imagem em anúncio com modelo zera o modelo e leva só a tabela', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ category_id: 7, size_chart_id: 55 }))
+      .mockResolvedValueOnce({
+        response: { size_chart_limit: { support_image_size_chart: true } },
+      })
+      .mockResolvedValueOnce(base({ size_chart: 'https://cf/nova.jpg' }));
+    const r = await svc.atualizarTabelaMedidas(user as never, 99, { imagemId: 'abc' });
+    expect(corpoEnviado(shopee)).toEqual({
+      item_id: 99,
+      size_chart_info: { size_chart: 'abc', size_chart_id: 0 },
+    });
+    expect(r).toMatchObject({
+      antes: { imagem: null, modelo_id: 55 },
+      depois: { imagem: 'https://cf/nova.jpg', modelo_id: null },
+      conferido: true,
+    });
+  });
+
+  it('tabela: categoria que não aceita imagem é recusada antes de gravar', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValueOnce(base({ category_id: 7 })).mockResolvedValueOnce({
+      response: { size_chart_limit: { support_image_size_chart: false } },
+    });
+    await expect(
+      svc.atualizarTabelaMedidas(user as never, 99, { imagemId: 'abc' }),
+    ).rejects.toThrow(/não aceita tabela em imagem/);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('tabela: modelo fechado não derruba a leitura', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ category_id: 7, size_chart_id: 55 }))
+      .mockRejectedValueOnce(new Error('sem permissão'))
+      .mockResolvedValueOnce({ response: {} });
+    const r = await svc.tabelaMedidas(user as never, 99);
+    expect(r).toMatchObject({ modelo_id: 55, modelo: null, modelo_erro: 'sem permissão' });
   });
 });
 

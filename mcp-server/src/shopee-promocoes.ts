@@ -15,6 +15,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { api } from "./api.js";
+import { lerPermitido } from "./arquivos.js";
 import type { Ajudantes } from "./vitrine.js";
 
 const id = z.number().int().positive();
@@ -202,7 +203,7 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
       description:
         "MEXE NA LOJA — só com o \"pode subir\" do Léo pro texto exato. Troca SÓ a descrição; preço, estoque e título não mudam. " +
         "Leia antes com shopee_anuncio_descricao. Normal: mande descricao. Estendida sem imagem: descricao vira um bloco de texto. " +
-        "Estendida com imagem: mande campos com TODOS os blocos, senão a rota recusa. Devolve a descrição lida de volta; erro da Shopee volta como erro.",
+        "Estendida com imagem: mande campos com TODOS os blocos, senão a rota recusa. Devolve antes, depois e conferido; erro da Shopee volta como erro.",
       inputSchema: {
         itemId: id,
         descricao: z.string().min(1).max(5000).optional(),
@@ -222,6 +223,125 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
     },
     seguro(async ({ itemId, ...corpo }: { itemId: number; descricao?: string; campos?: unknown[] }) =>
       ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/descricao`, corpo)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_anuncio_ficha",
+    {
+      description:
+        "Ficha técnica de um anúncio Shopee: categoria, atributos atuais e, em opcoes, os atributos da categoria com os value_id aceitos. Somente leitura.",
+      inputSchema: { itemId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ itemId }: { itemId: number }) =>
+      ok(await api.get(`/shopee-promocoes/anuncios/${itemId}/ficha`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_ficha_atualizar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pro valor exato. Troca SÓ os atributos mandados; o resto da ficha é lido na hora e reenviado igual. " +
+        "Preço, estoque, SKU, variação e status não vão. Valor livre: value_id 0 + original_value_name. Devolve antes, depois e conferido.",
+      inputSchema: {
+        itemId: id,
+        atributos: z
+          .array(
+            z.object({
+              attribute_id: id,
+              attribute_value_list: z
+                .array(
+                  z.object({
+                    value_id: z.number().int().min(0),
+                    original_value_name: z.string().min(1).max(200).optional(),
+                    value_unit: z.string().min(1).max(20).optional(),
+                  }),
+                )
+                .min(1)
+                .max(50),
+            }),
+          )
+          .min(1)
+          .max(50),
+      },
+      annotations: mexe,
+    },
+    seguro(async ({ itemId, atributos }: { itemId: number; atributos: unknown[] }) =>
+      ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/ficha`, { atributos })),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_anuncio_tabela_medidas",
+    {
+      description:
+        "Tabela de medidas de um anúncio Shopee: URL da imagem, modelo ligado com o conteúdo (modelo_erro diz por que não abriu) e se a categoria aceita imagem ou modelo. Somente leitura.",
+      inputSchema: { itemId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ itemId }: { itemId: number }) =>
+      ok(await api.get(`/shopee-promocoes/anuncios/${itemId}/tabela-medidas`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_tabelas_listar",
+    {
+      description: "Modelos de tabela de medidas da loja numa categoria. Somente leitura.",
+      inputSchema: { categoriaId: id, cursor: z.string().min(1).max(100).optional() },
+      annotations: leitura,
+    },
+    seguro(async ({ categoriaId, cursor }: { categoriaId: number; cursor?: string }) => {
+      const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+      return ok(await api.get(`/shopee-promocoes/categorias/${categoriaId}/tabelas-medidas${q}`));
+    }),
+  );
+
+  server.registerTool(
+    "shopee_imagem_subir",
+    {
+      description:
+        "Sobe um JPG ou PNG de até 10 MB no media space da Shopee e devolve imagemId. Nenhum anúncio muda. cena desc (padrão) não mexe na imagem; normal deixa quadrada.",
+      inputSchema: {
+        caminho: z.string().min(1).describe("Caminho absoluto do arquivo"),
+        cena: z.enum(["desc", "normal"]).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    seguro(async ({ caminho, cena }: { caminho: string; cena?: string }) => {
+      const minusculo = caminho.toLowerCase();
+      const tipo = minusculo.endsWith(".png")
+        ? "image/png"
+        : /\.jpe?g$/.test(minusculo)
+          ? "image/jpeg"
+          : null;
+      if (!tipo) throw new Error("A Shopee só aceita JPG ou PNG");
+      const lido = await lerPermitido(caminho, 10 * 1024 * 1024);
+      if (!lido.ok) throw new Error(lido.motivo);
+      const form = new FormData();
+      form.append("imagem", new Blob([Uint8Array.from(lido.buf)], { type: tipo }), tipo === "image/png" ? "tabela.png" : "tabela.jpg");
+      if (cena) form.append("cena", cena);
+      return ok(await api.postForm("/shopee-promocoes/imagens", form));
+    }),
+  );
+
+  server.registerTool(
+    "shopee_tabela_medidas_atualizar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pra arte exata. Troca SÓ a tabela de medidas. Mande imagemId (de shopee_imagem_subir) OU modeloId. " +
+        "A rota recusa o que a categoria não aceita. Devolve antes, depois e conferido.",
+      inputSchema: {
+        itemId: id,
+        imagemId: z.string().min(1).max(100).optional(),
+        modeloId: id.optional(),
+      },
+      annotations: mexe,
+    },
+    seguro(async ({ itemId, ...corpo }: { itemId: number; imagemId?: string; modeloId?: number }) =>
+      ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/tabela-medidas`, corpo)),
     ),
   );
 

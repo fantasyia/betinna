@@ -1,7 +1,19 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
+import { BusinessRuleException } from '@shared/errors/app-exception';
 import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -61,6 +73,37 @@ const descricaoSchema = z
       .optional(),
   })
   .refine((d) => !d.descricao !== !d.campos, { message: 'Mande descricao OU campos' });
+const fichaSchema = z.object({
+  atributos: z
+    .array(
+      z.object({
+        attribute_id: z.number().int().positive(),
+        attribute_value_list: z
+          .array(
+            z
+              .object({
+                value_id: z.number().int().min(0),
+                original_value_name: z.string().trim().min(1).max(200).optional(),
+                value_unit: z.string().trim().min(1).max(20).optional(),
+              })
+              .refine((v) => v.value_id > 0 || !!v.original_value_name, {
+                message: 'value_id 0 exige original_value_name',
+              }),
+          )
+          .min(1)
+          .max(50),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+const tabelaSchema = z
+  .object({
+    imagemId: z.string().trim().min(1).max(100).optional(),
+    modeloId: z.number().int().positive().optional(),
+  })
+  .refine((d) => !d.imagemId !== !d.modeloId, { message: 'Mande imagemId OU modeloId' });
+const TIPOS_IMAGEM = ['image/jpeg', 'image/png'];
 const precoSchema = z.object({
   models: z
     .array(
@@ -183,6 +226,71 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(descricaoSchema)) dto: z.infer<typeof descricaoSchema>,
   ) {
     return this.svc.atualizarDescricao(user, itemId, dto);
+  }
+
+  @Get('anuncios/:itemId/ficha')
+  @ApiOperation({ summary: 'Atributos da ficha e os valores aceitos pela categoria' })
+  ficha(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
+    return this.svc.ficha(user, itemId);
+  }
+
+  @Post('anuncios/:itemId/ficha')
+  @ApiOperation({ summary: 'Troca só os atributos pedidos — MEXE NA LOJA' })
+  atualizarFicha(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(fichaSchema)) dto: z.infer<typeof fichaSchema>,
+  ) {
+    return this.svc.atualizarFicha(user, itemId, dto.atributos);
+  }
+
+  @Get('anuncios/:itemId/tabela-medidas')
+  @ApiOperation({ summary: 'Tabela de medidas ligada e o que a categoria aceita' })
+  tabelaMedidas(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+  ) {
+    return this.svc.tabelaMedidas(user, itemId);
+  }
+
+  @Post('anuncios/:itemId/tabela-medidas')
+  @ApiOperation({ summary: 'Troca só a tabela de medidas — MEXE NA LOJA' })
+  atualizarTabelaMedidas(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(tabelaSchema)) dto: z.infer<typeof tabelaSchema>,
+  ) {
+    return this.svc.atualizarTabelaMedidas(user, itemId, dto);
+  }
+
+  @Get('categorias/:categoriaId/tabelas-medidas')
+  @ApiOperation({ summary: 'Modelos de tabela da loja na categoria' })
+  tabelasDaCategoria(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('categoriaId', ParseIntPipe) categoriaId: number,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.svc.tabelasDaCategoria(user, categoriaId, cursor);
+  }
+
+  @Post('imagens')
+  @ApiOperation({ summary: 'Sobe imagem no media space; nenhum anúncio muda' })
+  @UseInterceptors(FileInterceptor('imagem', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  async subirImagem(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() imagem: { buffer: Buffer; originalname: string; mimetype: string } | undefined,
+    @Body('cena') cena?: string,
+  ) {
+    if (!imagem) throw new BusinessRuleException('Nenhuma imagem enviada');
+    if (!TIPOS_IMAGEM.includes(imagem.mimetype)) {
+      throw new BusinessRuleException('A Shopee só aceita JPG ou PNG');
+    }
+    const imagemId = await this.svc.subirImagem(
+      user,
+      { buffer: imagem.buffer, nome: imagem.originalname, tipo: imagem.mimetype },
+      cena === 'normal' ? 'normal' : 'desc',
+    );
+    return { imagemId };
   }
 
   @Get('anuncios/:itemId/modelos')
