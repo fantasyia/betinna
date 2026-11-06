@@ -103,6 +103,7 @@ const tabelaSchema = z
     modeloId: z.number().int().positive().optional(),
   })
   .refine((d) => !d.imagemId !== !d.modeloId, { message: 'Mande imagemId OU modeloId' });
+const tituloSchema = z.object({ titulo: z.string().trim().min(1).max(255) });
 const marcaSchema = z.object({
   brand_id: z.number().int().min(0),
   original_brand_name: z.string().trim().min(1).max(200).optional(),
@@ -250,6 +251,22 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(fichaSchema)) dto: z.infer<typeof fichaSchema>,
   ) {
     return this.svc.atualizarFicha(user, itemId, dto.atributos);
+  }
+
+  @Get('anuncios/:itemId/titulo')
+  @ApiOperation({ summary: 'Título atual do anúncio' })
+  titulo(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
+    return this.svc.titulo(user, itemId);
+  }
+
+  @Post('anuncios/:itemId/titulo')
+  @ApiOperation({ summary: 'Troca só o título — MEXE NA LOJA' })
+  atualizarTitulo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(tituloSchema)) dto: z.infer<typeof tituloSchema>,
+  ) {
+    return this.svc.atualizarTitulo(user, itemId, dto.titulo);
   }
 
   @Get('anuncios/:itemId/marca')

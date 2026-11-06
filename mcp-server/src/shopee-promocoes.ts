@@ -274,6 +274,31 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
   );
 
   server.registerTool(
+    "shopee_anuncio_titulo",
+    {
+      description: "Título atual de um anúncio Shopee. Somente leitura.",
+      inputSchema: { itemId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ itemId }: { itemId: number }) =>
+      ok(await api.get(`/shopee-promocoes/anuncios/${itemId}/titulo`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_titulo_atualizar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pro título exato. Troca SÓ o título. Devolve antes, depois e conferido.",
+      inputSchema: { itemId: id, titulo: z.string().min(1).max(255) },
+      annotations: mexe,
+    },
+    seguro(async ({ itemId, titulo }: { itemId: number; titulo: string }) =>
+      ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/titulo`, { titulo })),
+    ),
+  );
+
+  server.registerTool(
     "shopee_anuncio_marca",
     {
       description: "Marca atual de um anúncio Shopee e a categoria dele. Somente leitura.",

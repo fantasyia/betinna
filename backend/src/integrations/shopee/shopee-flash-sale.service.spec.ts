@@ -269,6 +269,29 @@ describe('Ficha e tabela de medidas Shopee (05/11)', () => {
   const corpoEnviado = (shopee: ReturnType<typeof montar>['shopee']) =>
     shopee.postShop.mock.calls[0][2] as Record<string, unknown>;
 
+  it('título: manda só o item_name e confere pela leitura', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ item_name: 'velho' }))
+      .mockResolvedValueOnce(base({ item_name: 'novo' }));
+    shopee.postShop.mockResolvedValue({ warning: '' });
+    const r = await svc.atualizarTitulo(user as never, 99, 'novo');
+    expect(corpoEnviado(shopee)).toEqual({ item_id: 99, item_name: 'novo' });
+    expect(r).toMatchObject({
+      antes: { titulo: 'velho' },
+      depois: { titulo: 'novo' },
+      conferido: true,
+    });
+  });
+
+  it('título: conferido falso se a leitura não mostrar o novo', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop.mockResolvedValue(base({ item_name: 'velho' }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.atualizarTitulo(user as never, 99, 'novo');
+    expect(r.conferido).toBe(false);
+  });
+
   it('marca: manda só a marca e confere pela leitura', async () => {
     const { svc, shopee } = montar();
     shopee.getShop

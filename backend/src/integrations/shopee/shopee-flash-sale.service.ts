@@ -64,6 +64,7 @@ export interface MarcaAnuncio {
 }
 
 interface ItemBase {
+  item_name?: string;
   category_id?: number;
   description?: string;
   description_type?: string;
@@ -260,6 +261,18 @@ export class ShopeeFlashSaleService {
       ? iguais(depois.campos, blocos)
       : depois.descricao === dto.descricao;
     return { antes, depois, conferido, aviso };
+  }
+
+  async titulo(user: AuthenticatedUser, itemId: number) {
+    return { titulo: (await this.itemBase(user, itemId)).item_name ?? null };
+  }
+
+  /** Troca SÓ o título (Léo, 06/11). MEXE NA LOJA. */
+  async atualizarTitulo(user: AuthenticatedUser, itemId: number, titulo: string) {
+    const antes = await this.titulo(user, itemId);
+    const aviso = await this.gravarItem(user, itemId, { item_name: titulo });
+    const depois = await this.titulo(user, itemId);
+    return { antes, depois, conferido: depois.titulo === titulo, aviso };
   }
 
   /** Marca atual do anúncio e a categoria, pra buscar as aceitas. */
