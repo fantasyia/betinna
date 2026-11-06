@@ -105,6 +105,44 @@ interface ItemBase {
 
 const iguais = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
+/** Só o que está aqui passa. Excluir promoção ou item fora de promoção não existe. */
+const PROMO_LEITURA: Record<string, string> = {
+  'desconto/lista': '/api/v2/discount/get_discount_list',
+  'desconto/ver': '/api/v2/discount/get_discount',
+  'combo/lista': '/api/v2/bundle_deal/get_bundle_deal_list',
+  'combo/ver': '/api/v2/bundle_deal/get_bundle_deal',
+  'combo/itens': '/api/v2/bundle_deal/get_bundle_deal_item',
+  'oferta/lista': '/api/v2/add_on_deal/get_add_on_deal_list',
+  'oferta/ver': '/api/v2/add_on_deal/get_add_on_deal',
+  'oferta/principais': '/api/v2/add_on_deal/get_add_on_deal_main_item',
+  'oferta/adicionais': '/api/v2/add_on_deal/get_add_on_deal_sub_item',
+};
+const PROMO_ESCRITA: Record<string, string> = {
+  'desconto/criar': '/api/v2/discount/add_discount',
+  'desconto/editar': '/api/v2/discount/update_discount',
+  'desconto/encerrar': '/api/v2/discount/end_discount',
+  'desconto/itens-adicionar': '/api/v2/discount/add_discount_item',
+  'desconto/itens-editar': '/api/v2/discount/update_discount_item',
+  'desconto/itens-remover': '/api/v2/discount/delete_discount_item',
+  'combo/criar': '/api/v2/bundle_deal/add_bundle_deal',
+  'combo/editar': '/api/v2/bundle_deal/update_bundle_deal',
+  'combo/encerrar': '/api/v2/bundle_deal/end_bundle_deal',
+  'combo/itens-adicionar': '/api/v2/bundle_deal/add_bundle_deal_item',
+  'combo/itens-editar': '/api/v2/bundle_deal/update_bundle_deal_item',
+  'oferta/criar': '/api/v2/add_on_deal/add_add_on_deal',
+  'oferta/editar': '/api/v2/add_on_deal/update_add_on_deal',
+  'oferta/encerrar': '/api/v2/add_on_deal/end_add_on_deal',
+  'oferta/principais-adicionar': '/api/v2/add_on_deal/add_add_on_deal_main_item',
+  'oferta/adicionais-adicionar': '/api/v2/add_on_deal/add_add_on_deal_sub_item',
+};
+
+/** Promoção não escreve estoque: chave de estoque em qualquer nível recusa. */
+function temEstoque(valor: unknown): boolean {
+  if (Array.isArray(valor)) return valor.some(temEstoque);
+  if (valor === null || typeof valor !== 'object') return false;
+  return Object.entries(valor).some(([k, v]) => /stock/i.test(k) || temEstoque(v));
+}
+
 function somarEstoque(lista?: Array<{ stock?: number }>): number | null {
   return lista ? lista.reduce((soma, l) => soma + (l.stock ?? 0), 0) : null;
 }
@@ -296,6 +334,75 @@ export class ShopeeFlashSaleService {
     const aviso = await this.gravarItem(user, itemId, { item_name: titulo });
     const depois = await this.titulo(user, itemId);
     return { antes, depois, conferido: depois.titulo === titulo, aviso };
+  }
+
+  /** Leitura de promoção, pela lista fechada de caminhos. */
+  async promocaoLer(user: AuthenticatedUser, acao: string, query: Record<string, unknown>) {
+    const caminho = PROMO_LEITURA[acao];
+    if (!caminho) throw new BusinessRuleException(`Leitura desconhecida: ${acao}`);
+    const r = await this.shopee.getShop<{ response?: unknown }>(
+      this.empresa(user),
+      caminho,
+      query as never,
+    );
+    return r.response ?? null;
+  }
+
+  /** Escrita de promoção. MEXE NA LOJA. Nunca leva estoque. */
+  async promocaoEscrever(user: AuthenticatedUser, acao: string, corpo: Record<string, unknown>) {
+    const caminho = PROMO_ESCRITA[acao];
+    if (!caminho) throw new BusinessRuleException(`Ação desconhecida: ${acao}`);
+    if (temEstoque(corpo)) throw new BusinessRuleException('Promoção não escreve estoque');
+    const r = await this.shopee.postShop<{ response?: unknown; warning?: string }>(
+      this.empresa(user),
+      caminho,
+      corpo,
+    );
+    return { resposta: r.response ?? null, aviso: r.warning || null };
+  }
+
+  /** Estrutura das variações, com o índice de cada model. */
+  async variacoes(user: AuthenticatedUser, itemId: number) {
+    const r = await this.shopee.getShop<{
+      response?: {
+        tier_variation?: unknown[];
+        standardise_tier_variation?: unknown[];
+        model?: Array<{ model_id: number; model_sku?: string; tier_index?: number[] }>;
+      };
+    }>(this.empresa(user), '/api/v2/product/get_model_list', { item_id: itemId });
+    return {
+      variacoes: r.response?.tier_variation ?? [],
+      padronizadas: r.response?.standardise_tier_variation ?? [],
+      modelos: (r.response?.model ?? []).map((m) => ({
+        model_id: m.model_id,
+        sku: m.model_sku ?? null,
+        indice: m.tier_index ?? [],
+      })),
+    };
+  }
+
+  subirVideo(user: AuthenticatedUser, video: Buffer) {
+    return this.shopee.subirVideo(this.empresa(user), video);
+  }
+
+  /** Processamento do vídeo: só depois de SUCCEEDED ele entra em anúncio. */
+  async videoResultado(user: AuthenticatedUser, videoId: string) {
+    const r = await this.shopee.postShop<{ response?: unknown }>(
+      this.empresa(user),
+      '/api/v2/media_space/get_video_upload_result',
+      { video_upload_id: videoId },
+    );
+    return r.response ?? null;
+  }
+
+  /** Troca ou tira o vídeo do anúncio. MEXE NA LOJA. */
+  async atualizarVideo(user: AuthenticatedUser, itemId: number, videoId: string | null) {
+    const antes = (await this.itemBase(user, itemId)).video_info ?? [];
+    const aviso = await this.gravarItem(user, itemId, {
+      video_upload_id: videoId ? [videoId] : [],
+    });
+    const depois = (await this.itemBase(user, itemId)).video_info ?? [];
+    return { antes, depois, conferido: videoId ? depois.length > 0 : depois.length === 0, aviso };
   }
 
   /** Tudo que as rotas de anúncio trocam, num GET só. */

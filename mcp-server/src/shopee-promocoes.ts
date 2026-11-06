@@ -274,6 +274,91 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
   );
 
   server.registerTool(
+    "shopee_promocao_ler",
+    {
+      description:
+        "Lê promoções Shopee. tipo: desconto, combo (leve mais pague menos) ou oferta (add-on). acao: lista, ver, itens (combo), principais ou adicionais (oferta). query leva os parâmetros da Shopee, como discount_status, time_status, promotion_status, page_no, page_size e o id. Somente leitura.",
+      inputSchema: {
+        tipo: z.enum(["desconto", "combo", "oferta"]),
+        acao: z.enum(["lista", "ver", "itens", "principais", "adicionais"]),
+        query: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+      },
+      annotations: leitura,
+    },
+    seguro(
+      async ({
+        tipo,
+        acao,
+        query,
+      }: {
+        tipo: string;
+        acao: string;
+        query?: Record<string, string | number>;
+      }) => {
+        const q = new URLSearchParams(
+          Object.entries(query ?? {}).map(([k, v]) => [k, String(v)]),
+        ).toString();
+        return ok(await api.get(`/shopee-promocoes/promocoes/${tipo}/${acao}${q ? `?${q}` : ""}`));
+      },
+    ),
+  );
+
+  server.registerTool(
+    "shopee_promocao_escrever",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pra promoção exata. tipo/acao: desconto (criar, editar, encerrar, itens-adicionar, itens-editar, itens-remover), combo (criar, editar, encerrar, itens-adicionar, itens-editar), oferta (criar, editar, encerrar, principais-adicionar, adicionais-adicionar). corpo vai com os campos da Shopee. Campo de estoque é recusado; excluir promoção não existe.",
+      inputSchema: {
+        tipo: z.enum(["desconto", "combo", "oferta"]),
+        acao: z.string().min(1).max(40),
+        corpo: z.record(z.string(), z.unknown()),
+      },
+      annotations: mexe,
+    },
+    seguro(async ({ tipo, acao, corpo }: { tipo: string; acao: string; corpo: object }) =>
+      ok(await api.post(`/shopee-promocoes/promocoes/${tipo}/${acao}`, corpo)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_anuncio_variacoes",
+    {
+      description:
+        "Estrutura das variações de um anúncio Shopee e o índice de cada model. Somente leitura.",
+      inputSchema: { itemId: id },
+      annotations: leitura,
+    },
+    seguro(async ({ itemId }: { itemId: number }) =>
+      ok(await api.get(`/shopee-promocoes/anuncios/${itemId}/variacoes`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_video_situacao",
+    {
+      description: "Situação do processamento de um vídeo subido na Shopee. Somente leitura.",
+      inputSchema: { videoId: z.string().min(1).max(100) },
+      annotations: leitura,
+    },
+    seguro(async ({ videoId }: { videoId: string }) =>
+      ok(await api.get(`/shopee-promocoes/videos/${encodeURIComponent(videoId)}`)),
+    ),
+  );
+
+  server.registerTool(
+    "shopee_video_atualizar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pro vídeo exato. Troca o vídeo do anúncio; videoId null tira. O vídeo já precisa estar SUCCEEDED. Devolve antes, depois e conferido.",
+      inputSchema: { itemId: id, videoId: z.string().min(1).max(100).nullable() },
+      annotations: mexe,
+    },
+    seguro(async ({ itemId, videoId }: { itemId: number; videoId: string | null }) =>
+      ok(await api.post(`/shopee-promocoes/anuncios/${itemId}/video`, { videoId })),
+    ),
+  );
+
+  server.registerTool(
     "shopee_anuncio_resumo",
     {
       description:

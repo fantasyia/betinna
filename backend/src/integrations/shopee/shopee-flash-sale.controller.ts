@@ -104,6 +104,8 @@ const tabelaSchema = z
   })
   .refine((d) => !d.imagemId !== !d.modeloId, { message: 'Mande imagemId OU modeloId' });
 const tituloSchema = z.object({ titulo: z.string().trim().min(1).max(255) });
+const videoSchema = z.object({ videoId: z.string().trim().min(1).max(100).nullable() });
+const promocaoSchema = z.record(z.string(), z.unknown());
 const imagensSchema = z.object({
   imagens: z.array(z.string().trim().min(1).max(100)).min(1).max(12),
 });
@@ -293,6 +295,62 @@ export class ShopeeFlashSaleController {
     @Body(new ZodValidationPipe(fichaSchema)) dto: z.infer<typeof fichaSchema>,
   ) {
     return this.svc.atualizarFicha(user, itemId, dto.atributos);
+  }
+
+  @Get('promocoes/:tipo/:acao')
+  @ApiOperation({ summary: 'Lê desconto, combo ou oferta' })
+  promocaoLer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tipo') tipo: string,
+    @Param('acao') acao: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.svc.promocaoLer(user, `${tipo}/${acao}`, query);
+  }
+
+  @Post('promocoes/:tipo/:acao')
+  @ApiOperation({ summary: 'Cria, edita ou encerra promoção, sem estoque — MEXE NA LOJA' })
+  promocaoEscrever(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tipo') tipo: string,
+    @Param('acao') acao: string,
+    @Body(new ZodValidationPipe(promocaoSchema)) corpo: z.infer<typeof promocaoSchema>,
+  ) {
+    return this.svc.promocaoEscrever(user, `${tipo}/${acao}`, corpo);
+  }
+
+  @Get('anuncios/:itemId/variacoes')
+  @ApiOperation({ summary: 'Estrutura das variações e índice de cada model' })
+  variacoes(@CurrentUser() user: AuthenticatedUser, @Param('itemId', ParseIntPipe) itemId: number) {
+    return this.svc.variacoes(user, itemId);
+  }
+
+  @Post('videos')
+  @ApiOperation({ summary: 'Sobe vídeo no media space; nenhum anúncio muda' })
+  @UseInterceptors(FileInterceptor('video', { limits: { fileSize: 30 * 1024 * 1024, files: 1 } }))
+  async subirVideo(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() video: { buffer: Buffer; mimetype: string } | undefined,
+  ) {
+    if (!video) throw new BusinessRuleException('Nenhum vídeo enviado');
+    if (video.mimetype !== 'video/mp4') throw new BusinessRuleException('A Shopee pede MP4');
+    return { videoId: await this.svc.subirVideo(user, video.buffer) };
+  }
+
+  @Get('videos/:videoId')
+  @ApiOperation({ summary: 'Situação do processamento do vídeo' })
+  videoResultado(@CurrentUser() user: AuthenticatedUser, @Param('videoId') videoId: string) {
+    return this.svc.videoResultado(user, videoId);
+  }
+
+  @Post('anuncios/:itemId/video')
+  @ApiOperation({ summary: 'Troca o vídeo; videoId null tira — MEXE NA LOJA' })
+  atualizarVideo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body(new ZodValidationPipe(videoSchema)) dto: z.infer<typeof videoSchema>,
+  ) {
+    return this.svc.atualizarVideo(user, itemId, dto.videoId);
   }
 
   @Get('logistica/canais')

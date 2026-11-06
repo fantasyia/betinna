@@ -269,6 +269,44 @@ describe('Ficha e tabela de medidas Shopee (05/11)', () => {
   const corpoEnviado = (shopee: ReturnType<typeof montar>['shopee']) =>
     shopee.postShop.mock.calls[0][2] as Record<string, unknown>;
 
+  it('promoção: caminho fora da lista não chega na Shopee', async () => {
+    const { svc, shopee } = montar();
+    await expect(svc.promocaoEscrever(user as never, 'desconto/apagar', {})).rejects.toThrow(
+      /desconhecida/,
+    );
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('promoção: estoque em qualquer nível é recusado', async () => {
+    const { svc, shopee } = montar();
+    await expect(
+      svc.promocaoEscrever(user as never, 'desconto/itens-adicionar', {
+        discount_id: 1,
+        item_list: [{ item_id: 2, model_list: [{ model_id: 3, model_promotion_stock: 5 }] }],
+      }),
+    ).rejects.toThrow(/estoque/);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('promoção: escrita aceita usa o caminho da lista', async () => {
+    const { svc, shopee } = montar();
+    shopee.postShop.mockResolvedValue({ response: { discount_id: 9 } });
+    const r = await svc.promocaoEscrever(user as never, 'desconto/encerrar', { discount_id: 9 });
+    expect(shopee.postShop.mock.calls[0][1]).toBe('/api/v2/discount/end_discount');
+    expect(r.resposta).toEqual({ discount_id: 9 });
+  });
+
+  it('vídeo: null tira o vídeo do anúncio', async () => {
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ video_info: [{ video_url: 'x' }] }))
+      .mockResolvedValueOnce(base({ video_info: [] }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.atualizarVideo(user as never, 99, null);
+    expect(corpoEnviado(shopee)).toEqual({ item_id: 99, video_upload_id: [] });
+    expect(r.conferido).toBe(true);
+  });
+
   it('imagens: manda a lista na ordem pedida', async () => {
     const { svc, shopee } = montar();
     shopee.getShop

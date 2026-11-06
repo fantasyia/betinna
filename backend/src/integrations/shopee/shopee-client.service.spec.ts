@@ -144,3 +144,28 @@ describe('ShopeeClientService.subirImagem (05/11)', () => {
     await expect(montar().subirImagem(arquivo, 'desc')).rejects.toThrow(/imagem ruim/);
   });
 });
+
+describe('ShopeeClientService.subirVideo (06/11)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('parte em 4 MB, completa e devolve o id', async () => {
+    const svc = new ShopeeClientService(
+      {} as never,
+      { get: (k: string) => (k === 'SHOPEE_PARTNER_ID' ? '123' : 'chave') } as never,
+      { baseUrl: () => 'https://shopee.test' } as never,
+    );
+    vi.spyOn(svc, 'postShop').mockResolvedValue({ response: { video_upload_id: 'v1' } });
+    const f = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}')));
+    vi.stubGlobal('fetch', f);
+    const video = Buffer.alloc(4 * 1024 * 1024 + 10);
+    await expect(svc.subirVideo('e1', video)).resolves.toBe('v1');
+    const urls = f.mock.calls.map((c) => c[0] as string);
+    expect(urls.filter((u) => u.includes('upload_video_part'))).toHaveLength(2);
+    const ultimo = f.mock.calls[2] as [string, { body: string }];
+    expect(ultimo[0]).toContain('complete_video_upload');
+    expect(JSON.parse(ultimo[1].body)).toMatchObject({
+      video_upload_id: 'v1',
+      part_seq_list: [0, 1],
+    });
+  });
+});
