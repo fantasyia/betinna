@@ -4,12 +4,15 @@ import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
 const API = 'https://api.sellercenter.com.br';
+const TENTATIVAS_429 = 2;
+/** Milissegundos por segundo de espera; o teste zera. */
+export const ESPERA_429 = { ms: 1000 };
 
 /**
  * Cliente da API do Seller Center da Dafiti (v2, OAuth client-credentials).
  * A empresa cola o ID e o Segredo do "Aplicativo OAuth" em Integrações. O
  * token vale 1 h e não tem refresh: pede outro (vários sistemas podem usar o
- * mesmo app ao mesmo tempo). Só leitura por enquanto.
+ * mesmo app ao mesmo tempo). Escrita só pelas rotas de anúncio (07/11).
  */
 @Injectable()
 export class DafitiClientService {
@@ -64,22 +67,52 @@ export class DafitiClientService {
       if (Array.isArray(v)) v.forEach((x) => qs.append(k, x));
       else qs.append(k, String(v));
     }
-    const url = `${API}${path}${qs.toString() ? `?${qs}` : ''}`;
-    const r = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${await this.token(empresaId)}`,
-        Accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (r.status === 401) this.tokens.delete(empresaId);
-    if (!r.ok) {
-      const corpo = (await r.text().catch(() => '')).slice(0, 300);
-      throw new IntegrationException(
-        `Dafiti GET ${path} HTTP ${r.status}: ${corpo}`,
-        ErrorCode.INTEGRATION_ERROR,
-      );
+    return this.chamar<T>(empresaId, 'GET', `${path}${qs.toString() ? `?${qs}` : ''}`);
+  }
+
+  /** Escrita no Seller Center. MEXE NA LOJA. */
+  enviar<T = unknown>(
+    empresaId: string,
+    metodo: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+    path: string,
+    corpo?: unknown,
+  ): Promise<T> {
+    return this.chamar<T>(empresaId, metodo, path, corpo);
+  }
+
+  /** Limite de taxa (HTTP 429): espera o Retry-After (ou 2 s, 4 s) e tenta de novo. */
+  private async chamar<T>(
+    empresaId: string,
+    metodo: string,
+    caminho: string,
+    corpo?: unknown,
+  ): Promise<T> {
+    for (let tentativa = 0; ; tentativa++) {
+      const r = await fetch(`${API}${caminho}`, {
+        method: metodo,
+        headers: {
+          Authorization: `Bearer ${await this.token(empresaId)}`,
+          Accept: 'application/json',
+          ...(corpo === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
+        body: corpo === undefined ? undefined : JSON.stringify(corpo),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (r.status === 429 && tentativa < TENTATIVAS_429) {
+        const segundos = Number(r.headers.get('retry-after')) || 2 ** (tentativa + 1);
+        await new Promise((ok) => setTimeout(ok, Math.min(segundos, 30) * ESPERA_429.ms));
+        continue;
+      }
+      if (r.status === 401) this.tokens.delete(empresaId);
+      if (!r.ok) {
+        const texto = (await r.text().catch(() => '')).slice(0, 300);
+        throw new IntegrationException(
+          `Dafiti ${metodo} ${caminho.split('?')[0]} HTTP ${r.status}: ${texto}`,
+          ErrorCode.INTEGRATION_ERROR,
+        );
+      }
+      const texto = await r.text();
+      return (texto ? JSON.parse(texto) : null) as T;
     }
-    return (await r.json()) as T;
   }
 }
