@@ -88,6 +88,107 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
   );
 
   server.registerTool(
+    "shein_anuncio_ficha",
+    {
+      description:
+        "Ficha de um anúncio da Shein (spuName) no formato das rotas de edição: título, descrição, atributos do " +
+        "produto (sem cor e tamanho), tabela de medidas, fotos do anúncio e fotos por cor (skcName). Somente leitura.",
+      inputSchema: { spuName: z.string().min(1) },
+      annotations: leitura,
+    },
+    seguro(async (a: { spuName: string }) =>
+      ok(await api.get(`/marketplace/anuncios/shein/${seg(a.spuName)}/ficha`)),
+    ),
+  );
+
+  server.registerTool(
+    "shein_revisao_ver",
+    {
+      description:
+        "Situação da revisão da Shein de um anúncio (documentState: 1 pendente, 2 aprovado, 3 recusado, " +
+        "-1 aceitação falhou, 4 retirado, 5 apelação) com failedReason. versao = a devolvida pela edição. Somente leitura.",
+      inputSchema: { spuName: z.string().min(1), versao: z.string().min(1).max(60).optional() },
+      annotations: leitura,
+    },
+    seguro(async (a: { spuName: string; versao?: string }) =>
+      ok(
+        await api.get(
+          `/marketplace/anuncios/shein/${seg(a.spuName)}/revisao${a.versao ? `?versao=${encodeURIComponent(a.versao)}` : ""}`,
+        ),
+      ),
+    ),
+  );
+
+  const editar = (nome: string, rota: string, description: string, inputSchema: object) =>
+    server.registerTool(
+      nome,
+      {
+        description:
+          `MEXE NA LOJA — só com o "pode subir" do Léo pro valor exato. ${description} Estoque e preço são recusados. ` +
+          "A Shein revisa: devolve antes, depois, conferido, enviado, versao e bloqueios; o depois só muda depois da " +
+          "aprovação — acompanhe com shein_revisao_ver.",
+        inputSchema: { spuName: z.string().min(1), ...inputSchema },
+        annotations: mexe,
+      },
+      seguro(async ({ spuName, ...corpo }: { spuName: string }) =>
+        ok(await api.post(`/marketplace/anuncios/shein/${seg(spuName)}/${rota}`, corpo)),
+      ),
+    );
+
+  editar("shein_titulo_atualizar", "titulo", "Troca só o título (pt-br).", {
+    titulo: z.string().min(1).max(1000),
+  });
+  editar("shein_descricao_atualizar", "descricao", "Troca só a descrição (pt-br, sem emoji).", {
+    descricao: z.string().min(1).max(5000),
+  });
+  editar(
+    "shein_atributos_atualizar",
+    "atributos",
+    "Troca valores de atributos do produto e remove atributos; o resto da ficha vai igual. Atributo trocado " +
+      "entra só com os valores mandados (multisseleção: um item por valor). IDs em shein_anuncio_ficha e " +
+      "shein_consultar query-attribute-template.",
+    {
+      trocar: z
+        .array(
+          z.object({
+            attribute_id: z.number().int().positive(),
+            attribute_value_id: z.number().int().positive().optional(),
+            attribute_extra_value: z.string().min(1).max(200).optional(),
+          }),
+        )
+        .max(100)
+        .optional(),
+      remover: z.array(z.number().int().positive()).max(100).optional(),
+    },
+  );
+  editar(
+    "shein_tabela_atualizar",
+    "tabela",
+    "Troca a tabela de medidas INTEIRA: tabela = size_attribute_list da Shein (attribute_id, attribute_extra_value, " +
+      "relate_sale_attribute_id, relate_sale_attribute_value_id).",
+    { tabela: z.array(z.record(z.string(), z.unknown())).min(1).max(2000) },
+  );
+  editar(
+    "shein_fotos_atualizar",
+    "fotos",
+    "Troca as fotos do anúncio ou, com cor = skcName, as de uma cor; a lista vai inteira. Link de fora é " +
+      "convertido pela Shein antes (transform-pic). tipo: 1 principal, 2 detalhe, 5 quadrada, 6 bloco de cor, 7 página.",
+    {
+      cor: z.string().min(1).max(60).optional(),
+      imagens: z
+        .array(
+          z.object({
+            url: z.string().url(),
+            tipo: z.union([z.literal(1), z.literal(2), z.literal(5), z.literal(6), z.literal(7)]),
+            ordem: z.number().int().min(1).max(50),
+          }),
+        )
+        .min(1)
+        .max(50),
+    },
+  );
+
+  server.registerTool(
     "shein_anuncio_editar",
     {
       description:

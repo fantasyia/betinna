@@ -148,3 +148,137 @@ describe('preço Shein BR (02/11): só o preço de venda', () => {
     });
   });
 });
+
+describe('edição de anúncio Shein (07/11)', () => {
+  const spu = (titulo: string, extra: object = {}) => ({
+    spuName: 'm1',
+    productMultiNameList: [{ language: 'pt-br', productName: titulo }],
+    productAttributeInfoList: [
+      { attributeId: 27, attributeValueId: 100 },
+      { attributeId: 87, attributeValueId: 19 },
+      { attributeId: 62, attributeValueId: 212, attributeValue: 50 },
+      { attributeId: 62, attributeValueId: 526, attributeValue: 50 },
+      { attributeId: 109, attributeValueId: 107 },
+    ],
+    skcInfoList: [
+      {
+        skcName: 's1',
+        attributeId: 27,
+        skuInfoList: [{ saleAttributeList: [{ attributeId: 87 }] }],
+        skcImageInfoList: [],
+      },
+    ],
+    ...extra,
+  });
+  const montar = (respostas: unknown[]) => {
+    const post = vi.fn();
+    for (const r of respostas) post.mockResolvedValueOnce(r);
+    return { post, ctrl: new SheinAnunciosController({ post } as never) };
+  };
+  const user = { empresaIdAtiva: 'e1' } as never;
+
+  it('atributos de venda (cor e tamanho) não entram na lista do produto', async () => {
+    const { atributosProduto } = await import('./shein-anuncios');
+    expect(atributosProduto(spu('x') as never)).toEqual([
+      { attribute_id: 62, attribute_value_id: 212, attribute_extra_value: '50' },
+      { attribute_id: 62, attribute_value_id: 526, attribute_extra_value: '50' },
+      { attribute_id: 109, attribute_value_id: 107 },
+    ]);
+  });
+
+  it('título manda só o nome e confere pela releitura', async () => {
+    const { post, ctrl } = montar([spu('velho'), { success: true, version: 'V1' }, spu('novo')]);
+    const r = await ctrl.titulo(user, 'm1', { titulo: 'novo' });
+    expect(post.mock.calls[1][1]).toBe('/open-api/goods/product/partialEdit');
+    expect(post.mock.calls[1][2]).toEqual({
+      spu_name: 'm1',
+      multi_language_name_list: [{ language: 'pt-br', name: 'novo' }],
+    });
+    expect(r).toMatchObject({ antes: 'velho', depois: 'novo', conferido: true, versao: 'V1' });
+  });
+
+  it('pré-validação da Shein volta como bloqueio, não como enviado', async () => {
+    const { ctrl } = montar([
+      spu('velho'),
+      { success: false, pre_valid_result: [{ form_name: 'Título', messages: ['curto'] }] },
+      spu('velho'),
+    ]);
+    const r = await ctrl.titulo(user, 'm1', { titulo: 'novo' });
+    expect(r).toMatchObject({ enviado: false, bloqueios: ['Título: curto'], conferido: false });
+  });
+
+  it('trocar atributo leva a lista inteira, sem os de venda e sem os valores antigos dele', async () => {
+    const { post, ctrl } = montar([spu('x'), spu('x'), { success: true }, spu('x')]);
+    await ctrl.atributos(user, 'm1', {
+      trocar: [{ attribute_id: 62, attribute_value_id: 212, attribute_extra_value: '100' }],
+      remover: [109],
+    });
+    expect(post.mock.calls[2][2]).toEqual({
+      spu_name: 'm1',
+      product_attribute_list: [
+        { attribute_id: 62, attribute_value_id: 212, attribute_extra_value: '100' },
+      ],
+    });
+  });
+
+  it('remover atributo que não está no anúncio nem chega na Shein', async () => {
+    const { post, ctrl } = montar([spu('x')]);
+    await expect(ctrl.atributos(user, 'm1', { trocar: [], remover: [999] })).rejects.toThrow(
+      /fora do anúncio/,
+    );
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('tabela com campo de estoque ou preço é recusada antes de ler', async () => {
+    const { post, ctrl } = montar([]);
+    await expect(
+      ctrl.tabela(user, 'm1', { tabela: [{ attribute_id: 1, stock: 5 }] }),
+    ).rejects.toThrow(/estoque nem preço/);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('foto de fora é convertida antes; foto da Shein vai direto', async () => {
+    const { post, ctrl } = montar([
+      { transformed: 'https://img.ltwebstatic.com/a.jpg' },
+      spu('x'),
+      { success: true },
+      spu('x'),
+    ]);
+    await ctrl.fotos(user, 'm1', {
+      cor: 's1',
+      imagens: [
+        { url: 'https://cdn.ribelt.com.br/a.jpg', tipo: 1, ordem: 1 },
+        { url: 'https://img.ltwebstatic.com/b.jpg', tipo: 2, ordem: 2 },
+      ],
+    });
+    expect(post.mock.calls[0]).toEqual([
+      'e1',
+      '/open-api/goods/transform-pic',
+      { image_type: 1, original_url: 'https://cdn.ribelt.com.br/a.jpg' },
+    ]);
+    expect(post.mock.calls[2][2]).toEqual({
+      spu_name: 'm1',
+      skc_list: [
+        {
+          skc_name: 's1',
+          image_info: {
+            image_info_list: [
+              { image_url: 'https://img.ltwebstatic.com/a.jpg', image_type: 1, image_sort: 1 },
+              { image_url: 'https://img.ltwebstatic.com/b.jpg', image_type: 2, image_sort: 2 },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it('foto que a Shein não converte para tudo, sem editar', async () => {
+    const { post, ctrl } = montar([{ transformed: '', failure_reason: 'download' }]);
+    await expect(
+      ctrl.fotos(user, 'm1', {
+        imagens: [{ url: 'https://cdn.ribelt.com.br/a.jpg', tipo: 1, ordem: 1 }],
+      }),
+    ).rejects.toThrow(/download/);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+});

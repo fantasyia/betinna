@@ -9,11 +9,17 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { horaShein } from './shein-assinatura';
 import {
+  atributosProduto,
   consultaPermitida,
   corpoPreco,
   escritaPermitida,
+  fichaSpu,
+  fotoDaShein,
+  mesclarAtributos,
+  resultadoEdicao,
   resultadoPreco,
   resumoSpu,
+  temEstoqueOuPreco,
   type SheinSpuInfo,
 } from './shein-anuncios';
 import { SheinClientService } from './shein.client';
@@ -54,6 +60,41 @@ const precoSchema = z.object({
     )
     .min(1)
     .max(100),
+});
+
+const IDIOMA = 'pt-br';
+const tituloSchema = z.object({ titulo: z.string().trim().min(1).max(1000) });
+const descricaoSchema = z.object({ descricao: z.string().trim().min(1).max(5000) });
+const atributoSchema = z
+  .object({
+    attribute_id: z.number().int().positive(),
+    attribute_value_id: z.number().int().positive().optional(),
+    attribute_extra_value: z.string().trim().min(1).max(200).optional(),
+  })
+  .refine((a) => a.attribute_value_id !== undefined || a.attribute_extra_value !== undefined, {
+    message: 'Mande attribute_value_id ou attribute_extra_value',
+  });
+const atributosSchema = z
+  .object({
+    trocar: z.array(atributoSchema).max(100).default([]),
+    remover: z.array(z.number().int().positive()).max(100).default([]),
+  })
+  .refine((d) => d.trocar.length + d.remover.length > 0, { message: 'Nada pra trocar' });
+const tabelaSchema = z.object({
+  tabela: z.array(z.record(z.unknown())).min(1).max(2000),
+});
+const fotosSchema = z.object({
+  cor: z.string().trim().min(1).max(60).optional(),
+  imagens: z
+    .array(
+      z.object({
+        url: z.string().trim().url().max(1000),
+        tipo: z.union([z.literal(1), z.literal(2), z.literal(5), z.literal(6), z.literal(7)]),
+        ordem: z.number().int().min(1).max(50),
+      }),
+    )
+    .min(1)
+    .max(50),
 });
 
 const editarSchema = z.object({ spu_name: z.string().trim().min(1).max(60) }).passthrough();
@@ -137,6 +178,190 @@ export class SheinAnunciosController {
       },
     );
     return cru === '1' ? info : resumoSpu(info ?? {});
+  }
+
+  private async lerSpu(empresaId: string, spuName: string) {
+    return (
+      (await this.shein.post<SheinSpuInfo>(empresaId, '/open-api/goods/spu-info', {
+        languageList: [IDIOMA],
+        spuName,
+      })) ?? {}
+    );
+  }
+
+  /**
+   * Manda só o campo pedido pelo partialEdit e relê. A Shein REVISA: enquanto a
+   * revisão não aprova, a leitura pode seguir com o valor antigo — acompanhe em
+   * GET :spuName/revisao com a versão devolvida.
+   */
+  private async editarCampo<T>(
+    empresaId: string,
+    spuName: string,
+    campo: Record<string, unknown>,
+    ler: (s: SheinSpuInfo) => T,
+    confere: (depois: T) => boolean,
+  ) {
+    if (temEstoqueOuPreco(campo)) {
+      throw new BusinessRuleException(
+        'Edição de anúncio não leva estoque nem preço',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    const antes = ler(await this.lerSpu(empresaId, spuName));
+    const r = await this.shein.post<Parameters<typeof resultadoEdicao>[0]>(
+      empresaId,
+      '/open-api/goods/product/partialEdit',
+      { spu_name: spuName, ...campo },
+    );
+    const envio = resultadoEdicao(r);
+    const depois = ler(await this.lerSpu(empresaId, spuName));
+    return { antes, depois, conferido: confere(depois), ...envio };
+  }
+
+  @Get(':spuName/ficha')
+  @ApiOperation({ summary: 'Título, descrição, atributos do produto, tabela e fotos' })
+  async ficha(@CurrentUser() user: AuthenticatedUser, @Param('spuName') spuName: string) {
+    return fichaSpu(await this.lerSpu(this.empresa(user), spuName));
+  }
+
+  @Post(':spuName/titulo')
+  @ApiOperation({ summary: 'MEXE NA LOJA — troca só o título (a Shein revisa)' })
+  titulo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Body(new ZodValidationPipe(tituloSchema)) dto: z.infer<typeof tituloSchema>,
+  ) {
+    return this.editarCampo(
+      this.empresa(user),
+      spuName,
+      { multi_language_name_list: [{ language: IDIOMA, name: dto.titulo }] },
+      (s) => fichaSpu(s).titulo,
+      (d) => d === dto.titulo,
+    );
+  }
+
+  @Post(':spuName/descricao')
+  @ApiOperation({ summary: 'MEXE NA LOJA — troca só a descrição (a Shein revisa)' })
+  descricao(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Body(new ZodValidationPipe(descricaoSchema)) dto: z.infer<typeof descricaoSchema>,
+  ) {
+    return this.editarCampo(
+      this.empresa(user),
+      spuName,
+      { multi_language_desc_list: [{ language: IDIOMA, name: dto.descricao }] },
+      (s) => fichaSpu(s).descricao,
+      (d) => d === dto.descricao,
+    );
+  }
+
+  @Post(':spuName/atributos')
+  @ApiOperation({
+    summary: 'MEXE NA LOJA — troca ou remove atributos; o resto vai igual (a Shein revisa)',
+  })
+  async atributos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Body(new ZodValidationPipe(atributosSchema)) dto: z.infer<typeof atributosSchema>,
+  ) {
+    const empresaId = this.empresa(user);
+    let lista: ReturnType<typeof mesclarAtributos>;
+    try {
+      lista = mesclarAtributos(
+        atributosProduto(await this.lerSpu(empresaId, spuName)),
+        dto.trocar,
+        dto.remover,
+      );
+    } catch (err) {
+      throw new BusinessRuleException((err as Error).message, ErrorCode.BUSINESS_RULE_VIOLATION);
+    }
+    const chave = (a: { attribute_id: number; attribute_value_id?: number }) =>
+      `${a.attribute_id}:${a.attribute_value_id ?? ''}`;
+    return this.editarCampo(
+      empresaId,
+      spuName,
+      { product_attribute_list: lista },
+      atributosProduto,
+      (d) =>
+        !d.some((a) => dto.remover.includes(a.attribute_id)) &&
+        dto.trocar.every((t) => d.some((a) => chave(a) === chave(t))),
+    );
+  }
+
+  @Post(':spuName/tabela')
+  @ApiOperation({
+    summary: 'MEXE NA LOJA — troca a tabela de medidas inteira (size_attribute_list)',
+  })
+  tabela(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Body(new ZodValidationPipe(tabelaSchema)) dto: z.infer<typeof tabelaSchema>,
+  ) {
+    return this.editarCampo(
+      this.empresa(user),
+      spuName,
+      { size_attribute_list: dto.tabela },
+      (s) => s.dimensionAttributeInfoList ?? [],
+      (d) => d.length > 0,
+    );
+  }
+
+  @Post(':spuName/fotos')
+  @ApiOperation({
+    summary:
+      'MEXE NA LOJA — troca as fotos do anúncio ou de uma cor; converte link de fora antes (a Shein revisa)',
+  })
+  async fotos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Body(new ZodValidationPipe(fotosSchema)) dto: z.infer<typeof fotosSchema>,
+  ) {
+    const empresaId = this.empresa(user);
+    const lista: Array<{ image_url: string; image_type: number; image_sort: number }> = [];
+    for (const f of dto.imagens) {
+      let url = f.url;
+      if (!fotoDaShein(url)) {
+        const t = await this.shein.post<{ transformed?: string; failure_reason?: string }>(
+          empresaId,
+          '/open-api/goods/transform-pic',
+          { image_type: f.tipo, original_url: url },
+        );
+        if (!t?.transformed) {
+          throw new BusinessRuleException(
+            `Foto ${f.ordem} recusada pela Shein: ${t?.failure_reason || 'sem motivo'}`,
+            ErrorCode.BUSINESS_RULE_VIOLATION,
+          );
+        }
+        url = t.transformed;
+      }
+      lista.push({ image_url: url, image_type: f.tipo, image_sort: f.ordem });
+    }
+    const imagens = { image_info: { image_info_list: lista } };
+    return this.editarCampo(
+      empresaId,
+      spuName,
+      dto.cor ? { skc_list: [{ skc_name: dto.cor, ...imagens }] } : imagens,
+      (s) => {
+        const ficha = fichaSpu(s);
+        return dto.cor
+          ? (ficha.cores.find((c) => c.skcName === dto.cor)?.fotos ?? [])
+          : ficha.fotos;
+      },
+      (d) => d.length === lista.length,
+    );
+  }
+
+  @Get(':spuName/revisao')
+  @ApiOperation({ summary: 'Situação da revisão da Shein, com o motivo da recusa' })
+  revisao(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Query('versao') versao?: string,
+  ) {
+    return this.shein.post(this.empresa(user), '/open-api/goods/query-document-state', {
+      spuList: [{ spuName, ...(versao ? { version: versao } : {}) }],
+    });
   }
 
   @Post('preco')

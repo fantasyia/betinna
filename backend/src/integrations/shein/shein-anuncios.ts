@@ -3,13 +3,18 @@
  * SPU (modelo) → SKC (cor) → SKU (tamanho). Preço é por SKU e por site.
  */
 
-type Multi = Array<{ language?: string; attributeValueName?: string; productName?: string }>;
+type Multi = Array<{
+  language?: string;
+  attributeValueName?: string;
+  productName?: string;
+  productDesc?: string;
+}>;
 
 interface SheinSkuInfo {
   skuCode?: string;
   supplierSku?: string;
   mallState?: number;
-  saleAttributeList?: Array<{ attributeValueMultiList?: Multi }>;
+  saleAttributeList?: Array<{ attributeId?: number; attributeValueMultiList?: Multi }>;
   priceInfoList?: Array<{
     site?: string;
     basePrice?: number;
@@ -20,6 +25,7 @@ interface SheinSkuInfo {
 
 interface SheinSkcInfo {
   skcName?: string;
+  attributeId?: number;
   supplierCode?: string;
   attributeValueMultiList?: Multi;
   shelfStatusInfoList?: Array<{ siteAbbr?: string; shelfStatus?: number }>;
@@ -27,16 +33,31 @@ interface SheinSkcInfo {
   skuInfoList?: SheinSkuInfo[];
 }
 
+export interface SheinAtributoLido {
+  attributeId?: number;
+  attributeValueId?: number | null;
+  attributeValue?: string | number | null;
+  attributeMultiList?: Array<{ attributeName?: string }>;
+  attributeValueMultiList?: Multi;
+}
+
 export interface SheinSpuInfo {
   spuName?: string;
   categoryId?: number;
   supplierCode?: string;
   productMultiNameList?: Multi;
+  productMultiDescList?: Multi;
+  productAttributeInfoList?: SheinAtributoLido[];
+  dimensionAttributeInfoList?: unknown[];
+  spuImageInfoList?: unknown[] | null;
   skcInfoList?: SheinSkcInfo[];
 }
 
 /** Texto no idioma pedido; senão o primeiro que vier. */
-function texto(m: Multi | undefined, campo: 'attributeValueName' | 'productName'): string | null {
+function texto(
+  m: Multi | undefined,
+  campo: 'attributeValueName' | 'productName' | 'productDesc',
+): string | null {
   if (!m?.length) return null;
   return (m.find((x) => x.language === 'pt-br') ?? m[0])[campo] ?? null;
 }
@@ -179,4 +200,102 @@ export const ESCRITAS_SHEIN = [
 
 export function escritaPermitida(caminho: string): boolean {
   return (ESCRITAS_SHEIN as readonly string[]).includes(caminho);
+}
+
+// ── Edição de anúncio (Léo, 07/11) ─────────────────────────────────────────
+
+/** Atributo no formato do partialEdit (product_attribute_list). */
+export interface AtributoEnvio {
+  attribute_id: number;
+  attribute_value_id?: number;
+  attribute_extra_value?: string;
+}
+
+/**
+ * Atributos DO PRODUTO lidos do spu-info. A Shein mistura neles os atributos de
+ * venda (cor e tamanho), que o partialEdit recusa: saem pelo id usado nas cores e
+ * nos tamanhos do próprio anúncio.
+ */
+export function atributosProduto(s: SheinSpuInfo): AtributoEnvio[] {
+  const venda = new Set<number>();
+  for (const c of s.skcInfoList ?? []) {
+    if (c.attributeId) venda.add(c.attributeId);
+    for (const k of c.skuInfoList ?? []) {
+      for (const a of k.saleAttributeList ?? []) if (a.attributeId) venda.add(a.attributeId);
+    }
+  }
+  return (s.productAttributeInfoList ?? [])
+    .filter((a) => a.attributeId && !venda.has(a.attributeId))
+    .map((a) => ({
+      attribute_id: a.attributeId as number,
+      ...(a.attributeValueId ? { attribute_value_id: a.attributeValueId } : {}),
+      ...(a.attributeValue !== null && a.attributeValue !== undefined && a.attributeValue !== ''
+        ? { attribute_extra_value: String(a.attributeValue) }
+        : {}),
+    }));
+}
+
+/**
+ * Lista inteira pro partialEdit: o atributo trocado sai com todos os valores e
+ * entra só com os novos; o removido sai; o resto vai igual ao lido.
+ */
+export function mesclarAtributos(
+  atual: AtributoEnvio[],
+  trocar: AtributoEnvio[],
+  remover: number[],
+): AtributoEnvio[] {
+  const presentes = new Set(atual.map((a) => a.attribute_id));
+  const faltando = remover.filter((id) => !presentes.has(id));
+  if (faltando.length) throw new Error(`Atributo fora do anúncio: ${faltando.join(', ')}`);
+  const sai = new Set([...remover, ...trocar.map((t) => t.attribute_id)]);
+  return [...atual.filter((a) => !sai.has(a.attribute_id)), ...trocar];
+}
+
+/** Edição de anúncio não leva estoque nem preço: chave assim em qualquer nível recusa. */
+export function temEstoqueOuPreco(valor: unknown): boolean {
+  if (Array.isArray(valor)) return valor.some(temEstoqueOuPreco);
+  if (valor === null || typeof valor !== 'object') return false;
+  return Object.entries(valor).some(
+    ([k, v]) => /stock|price|quantity|inventory/i.test(k) || temEstoqueOuPreco(v),
+  );
+}
+
+/** Ficha do anúncio pro que as rotas de edição trocam. */
+export function fichaSpu(s: SheinSpuInfo) {
+  return {
+    spuName: s.spuName ?? null,
+    titulo: texto(s.productMultiNameList, 'productName'),
+    descricao: texto(s.productMultiDescList, 'productDesc'),
+    atributos: atributosProduto(s),
+    tabela: s.dimensionAttributeInfoList ?? [],
+    fotos: s.spuImageInfoList ?? [],
+    cores: (s.skcInfoList ?? []).map((c) => ({
+      skcName: c.skcName ?? null,
+      cor: texto(c.attributeValueMultiList, 'attributeValueName'),
+      fotos: c.skcImageInfoList ?? [],
+    })),
+  };
+}
+
+/** Resposta do partialEdit: a Shein aceita pra revisão ou barra na pré-validação. */
+export function resultadoEdicao(
+  info: {
+    success?: boolean;
+    version?: string;
+    pre_valid_result?: Array<{ form_name?: string; messages?: string[] }> | null;
+  } | null,
+) {
+  const bloqueios = (info?.pre_valid_result ?? []).flatMap((p) =>
+    (p.messages ?? []).map((m) => (p.form_name ? `${p.form_name}: ${m}` : m)),
+  );
+  return {
+    enviado: info?.success !== false && bloqueios.length === 0,
+    versao: info?.version ?? null,
+    bloqueios,
+  };
+}
+
+/** Foto já hospedada na Shein não precisa de conversão. */
+export function fotoDaShein(url: string): boolean {
+  return /^https?:\/\/[^/]*(ltwebstatic\.com|shein\.com|sheincorp\.cn)\//i.test(url);
 }
