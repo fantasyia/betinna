@@ -83,6 +83,26 @@ const atributosSchema = z
 const tabelaSchema = z.object({
   tabela: z.array(z.record(z.unknown())).min(1).max(2000),
 });
+const planoSchema = z
+  .object({
+    titulo: z.string().trim().min(1).max(1000).optional(),
+    descricao: z.string().trim().min(1).max(5000).optional(),
+    atributos: z
+      .object({
+        trocar: z.array(atributoSchema).max(100).default([]),
+        remover: z.array(z.number().int().positive()).max(100).default([]),
+      })
+      .optional(),
+    tabela: z.array(z.record(z.unknown())).min(1).max(2000).optional(),
+  })
+  .refine(
+    (d) =>
+      d.titulo !== undefined ||
+      d.descricao !== undefined ||
+      d.tabela !== undefined ||
+      (d.atributos && d.atributos.trocar.length + d.atributos.remover.length > 0),
+    { message: 'Nada pra trocar' },
+  );
 const fotosSchema = z.object({
   cor: z.string().trim().min(1).max(60).optional(),
   imagens: z
@@ -207,6 +227,7 @@ export class SheinAnunciosController {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
+    await this.exigirSemRevisao(empresaId, spuName);
     const antes = ler(await this.lerSpu(empresaId, spuName));
     const r = await this.shein.post<Parameters<typeof resultadoEdicao>[0]>(
       empresaId,
@@ -216,6 +237,79 @@ export class SheinAnunciosController {
     const envio = resultadoEdicao(r);
     const depois = ler(await this.lerSpu(empresaId, spuName));
     return { antes, depois, conferido: confere(depois), ...envio };
+  }
+
+  /**
+   * Enquanto uma edição está em revisão, a Shein trava o SPU (erro 20100, que
+   * chegava como 502 — #02, 08/11). Lê a revisão antes e recusa com o motivo.
+   */
+  private async exigirSemRevisao(empresaId: string, spuName: string) {
+    const r = await this.shein.post<{
+      data?: Array<{ version?: string; skcList?: Array<{ documentState?: number }> }>;
+    }>(empresaId, '/open-api/goods/query-document-state', { spuList: [{ spuName }] });
+    const doc = r?.data?.[0];
+    if (doc?.skcList?.some((s) => s.documentState === 1)) {
+      throw new BusinessRuleException(
+        `Anúncio ${spuName} em revisão na Shein (versão ${doc.version ?? '?'}): espere aprovar antes de editar de novo`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+  }
+
+  @Post(':spuName/plano')
+  @ApiOperation({
+    summary:
+      'MEXE NA LOJA — título, descrição, atributos e tabela numa edição só (uma revisão da Shein)',
+  })
+  async plano(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Body(new ZodValidationPipe(planoSchema)) dto: z.infer<typeof planoSchema>,
+  ) {
+    const empresaId = this.empresa(user);
+    const campo: Record<string, unknown> = {};
+    if (dto.titulo !== undefined) {
+      campo.multi_language_name_list = [{ language: IDIOMA, name: dto.titulo }];
+    }
+    if (dto.descricao !== undefined) {
+      campo.multi_language_desc_list = [{ language: IDIOMA, name: dto.descricao }];
+    }
+    const trocar = dto.atributos?.trocar ?? [];
+    const remover = dto.atributos?.remover ?? [];
+    if (trocar.length + remover.length > 0) {
+      try {
+        campo.product_attribute_list = mesclarAtributos(
+          atributosProduto(await this.lerSpu(empresaId, spuName)),
+          trocar,
+          remover,
+        );
+      } catch (err) {
+        throw new BusinessRuleException((err as Error).message, ErrorCode.BUSINESS_RULE_VIOLATION);
+      }
+    }
+    if (dto.tabela !== undefined) campo.size_attribute_list = dto.tabela;
+    const chave = (a: { attribute_id: number; attribute_value_id?: number }) =>
+      `${a.attribute_id}:${a.attribute_value_id ?? ''}`;
+    return this.editarCampo(
+      empresaId,
+      spuName,
+      campo,
+      (s) => {
+        const f = fichaSpu(s);
+        return {
+          titulo: f.titulo,
+          descricao: f.descricao,
+          atributos: f.atributos,
+          tabela: f.tabela,
+        };
+      },
+      (d) =>
+        (dto.titulo === undefined || d.titulo === dto.titulo) &&
+        (dto.descricao === undefined || d.descricao === dto.descricao) &&
+        !d.atributos.some((a) => remover.includes(a.attribute_id)) &&
+        trocar.every((t) => d.atributos.some((a) => chave(a) === chave(t))) &&
+        (dto.tabela === undefined || d.tabela.length > 0),
+    );
   }
 
   @Get(':spuName/ficha')

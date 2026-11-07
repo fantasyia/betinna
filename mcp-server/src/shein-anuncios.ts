@@ -135,6 +135,31 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
       ),
     );
 
+  editar(
+    "shein_plano_atualizar",
+    "plano",
+    "Título, descrição, atributos ({trocar, remover}) e tabela numa EDIÇÃO SÓ: a Shein trava o anúncio enquanto uma revisão está aberta, então mande tudo junto. Mande só o que muda. Recusa se o anúncio já estiver em revisão.",
+    {
+      titulo: z.string().min(1).max(1000).optional(),
+      descricao: z.string().min(1).max(5000).optional(),
+      atributos: z
+        .object({
+          trocar: z
+            .array(
+              z.object({
+                attribute_id: z.number().int().positive(),
+                attribute_value_id: z.number().int().positive().optional(),
+                attribute_extra_value: z.string().min(1).max(200).optional(),
+              }),
+            )
+            .max(100)
+            .optional(),
+          remover: z.array(z.number().int().positive()).max(100).optional(),
+        })
+        .optional(),
+      tabela: z.array(z.record(z.string(), z.unknown())).min(1).max(2000).optional(),
+    },
+  );
   editar("shein_titulo_atualizar", "titulo", "Troca só o título (pt-br).", {
     titulo: z.string().min(1).max(1000),
   });

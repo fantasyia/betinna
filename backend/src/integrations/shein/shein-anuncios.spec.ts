@@ -170,6 +170,8 @@ describe('edição de anúncio Shein (07/11)', () => {
     ],
     ...extra,
   });
+  const livre = { data: [{ version: 'V0', skcList: [{ documentState: 2 }] }] };
+  /** A edição lê a revisão antes: `livre` entra na ordem em que ela é chamada. */
   const montar = (respostas: unknown[]) => {
     const post = vi.fn();
     for (const r of respostas) post.mockResolvedValueOnce(r);
@@ -187,10 +189,15 @@ describe('edição de anúncio Shein (07/11)', () => {
   });
 
   it('título manda só o nome e confere pela releitura', async () => {
-    const { post, ctrl } = montar([spu('velho'), { success: true, version: 'V1' }, spu('novo')]);
+    const { post, ctrl } = montar([
+      livre,
+      spu('velho'),
+      { success: true, version: 'V1' },
+      spu('novo'),
+    ]);
     const r = await ctrl.titulo(user, 'm1', { titulo: 'novo' });
-    expect(post.mock.calls[1][1]).toBe('/open-api/goods/product/partialEdit');
-    expect(post.mock.calls[1][2]).toEqual({
+    expect(post.mock.calls[2][1]).toBe('/open-api/goods/product/partialEdit');
+    expect(post.mock.calls[2][2]).toEqual({
       spu_name: 'm1',
       multi_language_name_list: [{ language: 'pt-br', name: 'novo' }],
     });
@@ -199,6 +206,7 @@ describe('edição de anúncio Shein (07/11)', () => {
 
   it('pré-validação da Shein volta como bloqueio, não como enviado', async () => {
     const { ctrl } = montar([
+      livre,
       spu('velho'),
       { success: false, pre_valid_result: [{ form_name: 'Título', messages: ['curto'] }] },
       spu('velho'),
@@ -208,12 +216,12 @@ describe('edição de anúncio Shein (07/11)', () => {
   });
 
   it('trocar atributo leva a lista inteira, sem os de venda e sem os valores antigos dele', async () => {
-    const { post, ctrl } = montar([spu('x'), spu('x'), { success: true }, spu('x')]);
+    const { post, ctrl } = montar([spu('x'), livre, spu('x'), { success: true }, spu('x')]);
     await ctrl.atributos(user, 'm1', {
       trocar: [{ attribute_id: 62, attribute_value_id: 212, attribute_extra_value: '100' }],
       remover: [109],
     });
-    expect(post.mock.calls[2][2]).toEqual({
+    expect(post.mock.calls[3][2]).toEqual({
       spu_name: 'm1',
       product_attribute_list: [
         { attribute_id: 62, attribute_value_id: 212, attribute_extra_value: '100' },
@@ -240,6 +248,7 @@ describe('edição de anúncio Shein (07/11)', () => {
   it('foto de fora é convertida antes; foto da Shein vai direto', async () => {
     const { post, ctrl } = montar([
       { transformed: 'https://img.ltwebstatic.com/a.jpg' },
+      livre,
       spu('x'),
       { success: true },
       spu('x'),
@@ -256,7 +265,7 @@ describe('edição de anúncio Shein (07/11)', () => {
       '/open-api/goods/transform-pic',
       { image_type: 1, original_url: 'https://cdn.ribelt.com.br/a.jpg' },
     ]);
-    expect(post.mock.calls[2][2]).toEqual({
+    expect(post.mock.calls[3][2]).toEqual({
       spu_name: 'm1',
       skc_list: [
         {
@@ -280,5 +289,54 @@ describe('edição de anúncio Shein (07/11)', () => {
       }),
     ).rejects.toThrow(/download/);
     expect(post).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Shein: plano numa edição só e revisão em andamento (08/11)', () => {
+  const spu = (titulo: string) => ({
+    spuName: 'm1',
+    productMultiNameList: [{ language: 'pt-br', productName: titulo }],
+    productMultiDescList: [{ language: 'pt-br', productDesc: 'desc' }],
+    productAttributeInfoList: [{ attributeId: 109, attributeValueId: 107 }],
+    dimensionAttributeInfoList: [{ x: 1 }],
+    skcInfoList: [],
+  });
+  const user = { empresaIdAtiva: 'e1' } as never;
+  const livre = { data: [{ version: 'V0', skcList: [{ documentState: 2 }] }] };
+
+  it('manda título, descrição, atributos e tabela num partialEdit só', async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce(spu('velho'))
+      .mockResolvedValueOnce(livre)
+      .mockResolvedValueOnce(spu('velho'))
+      .mockResolvedValueOnce({ success: true, version: 'V9' })
+      .mockResolvedValueOnce(spu('novo'));
+    const ctrl = new SheinAnunciosController({ post } as never);
+    const r = await ctrl.plano(user, 'm1', {
+      titulo: 'novo',
+      descricao: 'd2',
+      atributos: { trocar: [{ attribute_id: 109, attribute_value_id: 200 }], remover: [] },
+      tabela: [{ attribute_id: 1, attribute_extra_value: '50' }],
+    });
+    const edicoes = post.mock.calls.filter((c) => c[1] === '/open-api/goods/product/partialEdit');
+    expect(edicoes).toHaveLength(1);
+    expect(edicoes[0][2]).toEqual({
+      spu_name: 'm1',
+      multi_language_name_list: [{ language: 'pt-br', name: 'novo' }],
+      multi_language_desc_list: [{ language: 'pt-br', name: 'd2' }],
+      product_attribute_list: [{ attribute_id: 109, attribute_value_id: 200 }],
+      size_attribute_list: [{ attribute_id: 1, attribute_extra_value: '50' }],
+    });
+    expect(r).toMatchObject({ enviado: true, versao: 'V9' });
+  });
+
+  it('SPU em revisão: recusa com o motivo e nem tenta editar', async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ data: [{ version: 'V7', skcList: [{ documentState: 1 }] }] });
+    const ctrl = new SheinAnunciosController({ post } as never);
+    await expect(ctrl.titulo(user, 'm1', { titulo: 'novo' })).rejects.toThrow(/em revisão.*V7/);
+    expect(post.mock.calls.some((c) => c[1] === '/open-api/goods/product/partialEdit')).toBe(false);
   });
 });
