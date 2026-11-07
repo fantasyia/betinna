@@ -129,6 +129,8 @@ function Titulos({
     contas.refetch();
   };
   const [confirmar, ConfirmDialog] = useConfirm();
+  const toast = useToast();
+  const role = useRole();
   const excluir = useAcao(pronto, 'Lançamento excluído');
   async function excluirTitulo(t: Titulo) {
     const ok = await confirmar({
@@ -137,7 +139,34 @@ function Titulos({
       confirmLabel: 'Excluir',
       variant: 'danger',
     });
-    if (ok) await excluir.rodar(() => api.delete(`/financeiro/titulos/${t.id}`));
+    if (!ok) return;
+    // ADMIN com lançamento de TESTE que só tem baixa estornada (Léo, 07/11):
+    // a 1ª tentativa recusa; perguntamos se leva o histórico da baixa junto.
+    if (role === 'ADMIN') {
+      try {
+        await api.delete(`/financeiro/titulos/${t.id}`);
+        toast.success('Lançamento excluído');
+        pronto();
+        return;
+      } catch (e) {
+        if (!/mesmo estornada/.test(apiErrorMessage(e))) {
+          toast.error('Não foi possível', apiErrorMessage(e));
+          return;
+        }
+      }
+      const levar = await confirmar({
+        title: 'Levar junto as baixas estornadas?',
+        message:
+          'Este lançamento tem baixa estornada. Excluir apaga também esse histórico — use só pra lançamento de teste.',
+        confirmLabel: 'Excluir com o histórico',
+        variant: 'danger',
+      });
+      if (levar) {
+        await excluir.rodar(() => api.delete(`/financeiro/titulos/${t.id}?levarEstornadas=1`));
+      }
+      return;
+    }
+    await excluir.rodar(() => api.delete(`/financeiro/titulos/${t.id}`));
   }
 
   return (

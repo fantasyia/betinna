@@ -86,9 +86,16 @@ export class FinanceiroController {
   }
 
   @Delete('titulos/:id')
-  @ApiOperation({ summary: 'Exclui de vez lançamento cancelado e sem baixa' })
-  excluir(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.svc.excluir(user, id);
+  @ApiOperation({
+    summary:
+      'Exclui de vez lançamento cancelado e sem baixa. ADMIN com ?levarEstornadas=1: também o que só tem baixa estornada (teste)',
+  })
+  excluir(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('levarEstornadas') levarEstornadas?: string,
+  ) {
+    return this.svc.excluir(user, id, new Date(), levarEstornadas === '1');
   }
 
   @Post('titulos/:id/baixas')

@@ -275,6 +275,41 @@ describe('FinanceiroService', () => {
       expect(prisma.finTitulo.delete).not.toHaveBeenCalled();
     });
 
+    // Teste com baixa só estornada (Léo, 07/11): 1ª contagem = todas, 2ª = ativas.
+    function soEstornada() {
+      const m = comExcluir(titulo({}));
+      m.prisma.finBaixa.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+      return m;
+    }
+
+    it('só baixa estornada, ADMIN com levarEstornadas: apaga', async () => {
+      const { svc, prisma } = soEstornada();
+      const admin = { ...user, role: 'ADMIN' };
+      expect(await svc.excluir(admin as never, 't-1', agora, true)).toEqual({ ok: true });
+      expect(prisma.finTitulo.delete).toHaveBeenCalledWith({ where: { id: 't-1' } });
+    });
+
+    it('só baixa estornada, sem levarEstornadas ou sem ser ADMIN: recusa', async () => {
+      const a = soEstornada();
+      await expect(
+        a.svc.excluir({ ...user, role: 'ADMIN' } as never, 't-1', agora),
+      ).rejects.toThrow(/mesmo estornada/);
+      const d = soEstornada();
+      await expect(d.svc.excluir(user as never, 't-1', agora, true)).rejects.toThrow(
+        /mesmo estornada/,
+      );
+      expect(a.prisma.finTitulo.delete).not.toHaveBeenCalled();
+      expect(d.prisma.finTitulo.delete).not.toHaveBeenCalled();
+    });
+
+    it('baixa ATIVA: recusa mesmo pro ADMIN com levarEstornadas', async () => {
+      const { svc, prisma } = comExcluir(titulo({}), null, 1);
+      await expect(
+        svc.excluir({ ...user, role: 'ADMIN' } as never, 't-1', agora, true),
+      ).rejects.toThrow(/baixa ativa/);
+      expect(prisma.finTitulo.delete).not.toHaveBeenCalled();
+    });
+
     it('recorrente que o job geraria de novo: recusa', async () => {
       const { svc, prisma } = comExcluir(titulo({ recorrenciaId: 'r1' }), rec(null));
       await expect(svc.excluir(user as never, 't-1', agora)).rejects.toThrow(/começa em/);

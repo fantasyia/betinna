@@ -334,13 +334,24 @@ export class FinanceiroService {
    * nem estornada, que a exclusão levaria junto (cascade) e o histórico some.
    * Recorrente que o job diário geraria de novo é recusado: ajuste o
    * "começa em" da recorrência antes, senão o lançamento volta no dia seguinte.
+   *
+   * `levarEstornadas` (Léo, 07/11): lançamento de TESTE com baixa já estornada
+   * (Pix de teste, PED-0009/0011) ficava preso pra sempre. Só ADMIN, só com
+   * TODAS as baixas estornadas — o histórico delas vai junto, de propósito.
+   * Baixa ativa continua barrando: dinheiro recebido não some por exclusão.
    */
-  async excluir(user: AuthenticatedUser, id: string, agora = new Date()) {
+  async excluir(user: AuthenticatedUser, id: string, agora = new Date(), levarEstornadas = false) {
     const empresaId = await this.empresaLigada(user);
     const t = await this.tituloDaEmpresa(empresaId, id);
     if (t.status !== 'CANCELADO') throw regra('Cancele o lançamento antes de excluir');
-    const baixas = await this.prisma.finBaixa.count({ where: { tituloId: id } });
-    if (baixas > 0) throw regra('Lançamento com baixa (mesmo estornada) não se exclui');
+    const [baixas, ativas] = await Promise.all([
+      this.prisma.finBaixa.count({ where: { tituloId: id } }),
+      this.prisma.finBaixa.count({ where: { tituloId: id, estornadaEm: null } }),
+    ]);
+    if (ativas > 0) throw regra('Lançamento com baixa ativa — estorne a baixa antes de excluir');
+    if (baixas > 0 && !(levarEstornadas && user.role === 'ADMIN')) {
+      throw regra('Lançamento com baixa (mesmo estornada) não se exclui');
+    }
     if (t.recorrenciaId) {
       const r = await this.prisma.finRecorrencia.findFirst({
         where: { id: t.recorrenciaId, empresaId, ativo: true },
