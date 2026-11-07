@@ -70,6 +70,41 @@ describe('SupressaoService', () => {
     expect(SupressaoService.numeroSistemaMeta('')).toBe(false);
   });
 
+  it('conta oficial (ML, Amazon, Mercado Pago, TikTok) suprime sem tag nenhuma, e só EXATO', async () => {
+    for (const tel of ['5511978832287', '5511920135389', '5511945507928', '551131644800']) {
+      await expect(svc.suprimido('emp-1', { telefone: tel })).resolves.toBe(true);
+    }
+    expect(SupressaoService.numeroContaOficial('447710173736')).toBe(true);
+    // Mesmo final do ML Segurança: cliente comum NÃO cala.
+    expect(SupressaoService.numeroContaOficial('5521978832287')).toBe(false);
+    expect(prisma.tag.findMany).not.toHaveBeenCalled();
+  });
+
+  it('tag nao-e-cliente cala o envio mesmo sem a tag LGPD na empresa', async () => {
+    prisma.tag.findMany.mockImplementation(({ where }: { where: { nome: { contains: string } } }) =>
+      Promise.resolve(
+        where.nome.contains === 'cliente' ? [{ id: 'tn', nome: 'nao-e-cliente' }] : [],
+      ),
+    );
+    prisma.leadTag.count.mockResolvedValue(1);
+    await expect(svc.suprimido('emp-1', { leadId: 'l1' })).resolves.toBe(true);
+    expect(prisma.leadTag.count).toHaveBeenCalledWith({
+      where: { leadId: 'l1', tagId: { in: ['tn'] } },
+    });
+  });
+
+  it('outra tag com "cliente" no nome não é a nao-e-cliente', async () => {
+    prisma.tag.findMany.mockResolvedValue([{ id: 'tx', nome: 'cliente-vip' }]);
+    prisma.leadTag.count.mockResolvedValue(1);
+    await expect(svc.suprimido('emp-1', { leadId: 'l1' })).resolves.toBe(false);
+  });
+
+  it('naoECliente: na dúvida (erro de banco) trata como cliente', async () => {
+    prisma.tag.findMany.mockRejectedValue(new Error('db down'));
+    await expect(svc.naoECliente('emp-1', { telefone: '11999990000' })).resolves.toBe(false);
+    await expect(svc.naoECliente('emp-1', { telefone: '551131644800' })).resolves.toBe(true);
+  });
+
   it('sem match em nada → false (envio liberado)', async () => {
     prisma.tag.findMany.mockResolvedValue([{ id: 't1', nome: 'Não Reabordar - LGPD ⛔' }]);
     await expect(

@@ -65,6 +65,30 @@ export class SupressaoService {
   }
 
   /**
+   * Contas OFICIAIS de empresa que escrevem no WhatsApp da loja (Léo, 07/11):
+   * ML Segurança com código de login, Amazon, Mercado Pago, TikTok Shop. O F01
+   * criava lead, o robô entrava em loop com a Amazon e o ML recebia a régua da
+   * camiseta UV. Agora: a conversa fica na caixa de entrada; não vira lead, não
+   * entra em fluxo, nada responde. Mesma comparação EXATA da Meta.
+   */
+  static readonly NUMEROS_CONTA_OFICIAL: ReadonlySet<string> = new Set([
+    ...SupressaoService.NUMEROS_SISTEMA_META,
+    '5511978832287', // Mercado Livre Segurança
+    '5511920135389', // Amazon Brasil
+    '5511945507928', // Mercado Pago
+    '551131644800', // TikTok Shop
+  ]);
+
+  /** Etiqueta de contato que não é cliente: fora de todo envio e de todo fluxo. */
+  static readonly TAG_NAO_CLIENTE = 'nao-e-cliente';
+
+  /** O telefone é de conta oficial de empresa (Meta incluída)? Exato, nunca por sufixo. */
+  static numeroContaOficial(telefone: string | null | undefined): boolean {
+    const d = (telefone ?? '').split('@')[0].replace(/\D/g, '');
+    return d.length > 0 && SupressaoService.NUMEROS_CONTA_OFICIAL.has(d);
+  }
+
+  /**
    * ⚠️ O barramento vem por `ModuleRef`, não por injeção normal — e isso é
    * deliberado.
    *
@@ -148,32 +172,81 @@ export class SupressaoService {
   ): Promise<boolean> {
     // ANTES da tag LGPD: empresa sem a tag deixa a supressão inerte (return false
     // logo abaixo) — e foi justamente numa assim que o 401 aconteceu.
-    if (SupressaoService.numeroSistemaMeta(alvo.telefone)) {
+    if (SupressaoService.numeroContaOficial(alvo.telefone)) {
       this.logger.log(
-        `[supressao] ${alvo.telefone} é número de sistema da Meta — sem envio automático (empresa ${empresaId})`,
+        `[supressao] ${alvo.telefone} é conta oficial de empresa — sem envio automático (empresa ${empresaId})`,
       );
       return true;
     }
     try {
-      const tag = await this.acharTagLgpd(empresaId);
-      if (!tag) {
+      const [lgpd, naoCliente] = await Promise.all([
+        this.acharTagLgpd(empresaId),
+        this.acharTagNaoCliente(empresaId),
+      ]);
+      if (!lgpd) {
         // Tag ausente ≠ erro: é estado de configuração (nunca criada ou renomeada
         // além do reconhecível). WARN alto pra não virar supressão inerte silenciosa.
         this.logger.warn(
           `Tag de supressão LGPD não encontrada na empresa ${empresaId} — supressão INERTE (tag renomeada/apagada?)`,
         );
-        return false;
       }
+      const ids = [lgpd?.id, naoCliente?.id].filter((x): x is string => !!x);
+      if (ids.length === 0) return false;
+      return await this.temAlgumaTag(empresaId, ids, alvo);
+    } catch (err) {
+      // FAIL-CLOSED: não decide "pode enviar" sem conseguir checar — propaga e
+      // deixa o retry do BullMQ resolver (antes: fail-open → suprimido RECEBIA).
+      this.logger.error(
+        `Falha ao checar supressão LGPD — bloqueando o envio até a re-tentativa: ${String(err)}`,
+      );
+      throw err;
+    }
+  }
 
+  /**
+   * A mensagem que chegou é de quem NÃO é cliente? Conta oficial pelo número,
+   * ou contato com a tag `nao-e-cliente`. Aí ela fica só na caixa de entrada:
+   * não vira lead, não dispara fluxo. Best-effort AO CONTRÁRIO do envio: na
+   * dúvida (erro de banco), trata como cliente — perder um cliente de verdade
+   * custa mais que um lead a mais.
+   */
+  async naoECliente(
+    empresaId: string,
+    alvo: { leadId?: string | null; clienteId?: string | null; telefone?: string | null },
+  ): Promise<boolean> {
+    if (SupressaoService.numeroContaOficial(alvo.telefone)) return true;
+    try {
+      const tag = await this.acharTagNaoCliente(empresaId);
+      return tag ? await this.temAlgumaTag(empresaId, [tag.id], alvo) : false;
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao checar contato não-cliente (empresa ${empresaId}): ${String(err)}`,
+      );
+      return false;
+    }
+  }
+
+  /** Lead/cliente (por id, sufixo de telefone D18 ou e-mail) com alguma destas tags. */
+  private async temAlgumaTag(
+    empresaId: string,
+    ids: string[],
+    alvo: {
+      leadId?: string | null;
+      clienteId?: string | null;
+      telefone?: string | null;
+      email?: string | null;
+    },
+  ): Promise<boolean> {
+    {
       if (alvo.leadId) {
         const n = await this.prisma.leadTag.count({
-          where: { leadId: alvo.leadId, tagId: tag.id },
+          where: { leadId: alvo.leadId, tagId: { in: ids } },
         });
         if (n > 0) return true;
       }
       if (alvo.clienteId) {
         const n = await this.prisma.clienteTag.count({
-          where: { clienteId: alvo.clienteId, tagId: tag.id },
+          where: { clienteId: alvo.clienteId, tagId: { in: ids } },
         });
         if (n > 0) return true;
       }
@@ -184,11 +257,11 @@ export class SupressaoService {
         const rows = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
           SELECT (
             (SELECT COUNT(*) FROM "LeadTag" lt JOIN "Lead" l ON l.id = lt."leadId"
-              WHERE lt."tagId" = ${tag.id} AND l."empresaId" = ${empresaId}
+              WHERE lt."tagId" = ANY(${ids}::text[]) AND l."empresaId" = ${empresaId}
                 AND RIGHT(REGEXP_REPLACE(COALESCE(l."contatoTelefone",''),'[^0-9]','','g'), 8) = ${suf})
             +
             (SELECT COUNT(*) FROM "ClienteTag" ct JOIN "Cliente" c ON c.id = ct."clienteId"
-              WHERE ct."tagId" = ${tag.id} AND c."empresaId" = ${empresaId}
+              WHERE ct."tagId" = ANY(${ids}::text[]) AND c."empresaId" = ${empresaId}
                 AND RIGHT(REGEXP_REPLACE(COALESCE(c.telefone,''),'[^0-9]','','g'), 8) = ${suf})
           ) AS n`;
         if ((rows[0]?.n ?? 0n) > 0n) return true;
@@ -202,24 +275,17 @@ export class SupressaoService {
         const rows = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
           SELECT (
             (SELECT COUNT(*) FROM "LeadTag" lt JOIN "Lead" l ON l.id = lt."leadId"
-              WHERE lt."tagId" = ${tag.id} AND l."empresaId" = ${empresaId}
+              WHERE lt."tagId" = ANY(${ids}::text[]) AND l."empresaId" = ${empresaId}
                 AND LOWER(COALESCE(l."contatoEmail",'')) = ${email})
             +
             (SELECT COUNT(*) FROM "ClienteTag" ct JOIN "Cliente" c ON c.id = ct."clienteId"
-              WHERE ct."tagId" = ${tag.id} AND c."empresaId" = ${empresaId}
+              WHERE ct."tagId" = ANY(${ids}::text[]) AND c."empresaId" = ${empresaId}
                 AND LOWER(COALESCE(c.email,'')) = ${email})
           ) AS n`;
         if ((rows[0]?.n ?? 0n) > 0n) return true;
       }
 
       return false;
-    } catch (err) {
-      // FAIL-CLOSED: não decide "pode enviar" sem conseguir checar — propaga e
-      // deixa o retry do BullMQ resolver (antes: fail-open → suprimido RECEBIA).
-      this.logger.error(
-        `Falha ao checar supressão LGPD — bloqueando o envio até a re-tentativa: ${String(err)}`,
-      );
-      throw err;
     }
   }
 
@@ -513,6 +579,15 @@ export class SupressaoService {
    * extra) — renomear "Não Reabordar - LGPD ⛔" pra "nao reabordar lgpd" continua
    * casando. Match exato por string quebrava silenciosamente a supressão.
    */
+  /** Tag `nao-e-cliente`, por nome normalizado ("Não é cliente" também casa). */
+  private async acharTagNaoCliente(empresaId: string): Promise<{ id: string } | null> {
+    const candidatas = await this.prisma.tag.findMany({
+      where: { empresaId, nome: { contains: 'cliente', mode: 'insensitive' } },
+      select: { id: true, nome: true },
+    });
+    return candidatas.find((t) => this.normalizar(t.nome) === 'nao e cliente') ?? null;
+  }
+
   private async acharTagLgpd(empresaId: string): Promise<{ id: string } | null> {
     const alvoNorm = this.normalizar(SupressaoService.TAG_LGPD);
     const candidatas = await this.prisma.tag.findMany({

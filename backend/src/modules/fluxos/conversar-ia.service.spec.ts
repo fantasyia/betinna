@@ -412,7 +412,7 @@ describe('ConversarIaService', () => {
         'emp-1',
       );
 
-      expect(r).toMatchObject({ pulado: true, motivo: expect.stringMatching(/sistema da Meta/) });
+      expect(r).toMatchObject({ pulado: true, motivo: expect.stringMatching(/conta oficial/) });
       expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
     });
@@ -3027,5 +3027,21 @@ describe('E-14 (auditoria 13/09): nome do perfil do WhatsApp entra moldurado', (
     expect(m).not.toMatch(/[\n"«»]/);
     expect(m.length).toBeLessThanOrEqual(80);
     expect(m.startsWith('Zé o Rei [Regra]')).toBe(true);
+  });
+});
+
+describe('mascararCodigos (07/11)', () => {
+  it('esconde o código quando a mensagem fala de código ou senha', async () => {
+    const { mascararCodigos } = await import('./conversar-ia.service');
+    expect(mascararCodigos('Mercado Livre: seu código de verificação é 482913.')).toBe(
+      'Mercado Livre: seu código de verificação é ******.',
+    );
+    expect(mascararCodigos('Use o code 123-456 para entrar')).toBe('Use o code ****** para entrar');
+  });
+
+  it('não mexe em preço, CEP nem pedido de conversa normal', async () => {
+    const { mascararCodigos } = await import('./conversar-ia.service');
+    const t = 'Quero 1200 peças, CEP 03317000, pedido 98765';
+    expect(mascararCodigos(t)).toBe(t);
   });
 });

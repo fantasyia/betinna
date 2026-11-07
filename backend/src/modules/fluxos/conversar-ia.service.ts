@@ -580,6 +580,18 @@ export function pediuOLinkDeNovo(textoLead: string): boolean {
   );
 }
 
+/**
+ * Código de verificação não entra em texto aberto no que a IA lê (Léo, 07/11):
+ * o ML Segurança mandava código de login pro WhatsApp da loja. Só mascara número
+ * de 4 a 8 dígitos em mensagem que fala de código/senha/verificação — preço, CEP
+ * e pedido em conversa normal seguem iguais.
+ */
+const FALA_DE_CODIGO = /c[oó]digo|\bcode\b|verifica|\btoken\b|\bsenha\b|\botp\b|\bpin\b/i;
+export function mascararCodigos(texto: string): string {
+  if (!texto || !FALA_DE_CODIGO.test(texto)) return texto;
+  return texto.replace(/\b\d{3}[- ]\d{3}\b|\b\d{4,8}\b/g, '******');
+}
+
 export function mesclarHistorico(
   daConversa: HistoricoMsg[],
   doContexto: HistoricoMsg[],
@@ -587,6 +599,7 @@ export function mesclarHistorico(
 ): HistoricoMsg[] {
   const todos = [...daConversa, ...doContexto]
     .filter((m) => m && typeof m.content === 'string' && m.content.trim().length > 0)
+    .map((m) => ({ ...m, content: mascararCodigos(m.content) }))
     .sort((x, y) => (x.at ?? 0) - (y.at ?? 0));
   // Eco das duas fontes tem timestamps quase idênticos; 'oi'/'oi' de verdade do lead vem com
   // segundos de diferença. Só colapsa quando role+conteúdo batem E os timestamps estão próximos
@@ -1172,14 +1185,14 @@ export class ConversarIaService implements OnModuleDestroy {
     });
     // Número de sistema da Meta (código do Facebook…): a conversa fica na caixa de
     // entrada, a IA não responde. Motivo PRÓPRIO na execução — não é LGPD.
-    if (SupressaoService.numeroSistemaMeta(leadTel?.contatoTelefone)) {
+    if (SupressaoService.numeroContaOficial(leadTel?.contatoTelefone)) {
       this.logger.log(
-        `CONVERSAR_IA: lead ${leadId} é número de sistema da Meta — sem resposta automática (exec ${execucaoId})`,
+        `CONVERSAR_IA: lead ${leadId} é conta oficial de empresa — sem resposta automática (exec ${execucaoId})`,
       );
       return {
         aguardando: false,
         pulado: true,
-        motivo: 'número de sistema da Meta (código de confirmação) — sem resposta automática',
+        motivo: 'conta oficial de empresa (Meta, ML, Amazon…) — sem resposta automática',
       };
     }
     if (await this.supressao.suprimido(empresaId, { leadId, telefone: leadTel?.contatoTelefone })) {
@@ -4435,7 +4448,7 @@ export class ConversarIaService implements OnModuleDestroy {
     });
     return msgs.reverse().map((m) => ({
       role: m.direction === MessageDirection.INBOUND ? ('user' as const) : ('assistant' as const),
-      content: m.conteudo,
+      content: mascararCodigos(m.conteudo ?? ''),
       at: m.criadoEm.getTime(),
     }));
   }

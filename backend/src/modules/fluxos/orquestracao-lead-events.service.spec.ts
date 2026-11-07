@@ -498,3 +498,51 @@ describe('OrquestracaoLeadEventsService — lead garantido na conversa de anúnc
     expect(m.ordem).toContain('MENSAGEM_CANAL');
   });
 });
+
+describe('OrquestracaoLeadEventsService: conta oficial e não-cliente (07/11)', () => {
+  const montar = (naoECliente: boolean) => {
+    const prisma = makePrisma();
+    const bus = makeBus();
+    const conversarIa = makeConversarIa();
+    const supressao = { naoECliente: vi.fn().mockResolvedValue(naoECliente) };
+    const svc = new OrquestracaoLeadEventsService(
+      prisma as never,
+      bus as never,
+      makeInbox() as never,
+      conversarIa as never,
+      makeRedis() as never,
+      undefined,
+      supressao as never,
+    );
+    return { prisma, bus, conversarIa, supressao, svc };
+  };
+
+  it('mensagem de conta oficial não dispara fluxo nem retoma o robô', async () => {
+    const { prisma, bus, conversarIa, supressao, svc } = montar(true);
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-9' }]);
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '5511978832287',
+        conteudo: 'Seu código é 123456',
+      } as never,
+      resultado(),
+    );
+    expect(supressao.naoECliente).toHaveBeenCalledWith('emp-1', {
+      leadId: 'lead-9',
+      telefone: '5511978832287',
+    });
+    expect(bus.disparar).not.toHaveBeenCalled();
+    expect(conversarIa.aguardandoPorLead).not.toHaveBeenCalled();
+    expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('cliente de verdade segue o caminho normal', async () => {
+    const { bus, svc } = montar(false);
+    await svc.aoReceberMensagem(
+      { empresaId: 'emp-1', peerTelefone: '11999990000', conteudo: 'oi' } as never,
+      resultado(),
+    );
+    expect(bus.disparar).toHaveBeenCalledWith('emp-1', 'MENSAGEM_CANAL', expect.anything());
+  });
+});

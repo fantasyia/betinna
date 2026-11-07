@@ -9,6 +9,7 @@ import {
   atribuicaoDeReferral,
 } from '@integrations/evolution/ctwa-referral.util';
 import { registrarToqueNoLead } from '@modules/leads/atribuicao-toque';
+import { SupressaoService } from '@shared/supressao/supressao.service';
 import { etapaDeEntradaAnuncio } from '@modules/leads/entrada-anuncios';
 import { FluxoExecutorService } from './fluxo-executor.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
@@ -36,6 +37,7 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     private readonly redis: RedisService,
     // Opcional só pra spec antiga montar sem ele; no app o Nest sempre injeta.
     @Optional() private readonly executor?: FluxoExecutorService,
+    @Optional() private readonly supressao?: SupressaoService,
   ) {}
 
   onModuleInit(): void {
@@ -125,6 +127,21 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     try {
       if (resultado.duplicada) return;
       const lead = await this.resolverLead(params.empresaId, params.peerTelefone, params.peerEmail);
+
+      // Conta oficial de empresa ou contato `nao-e-cliente` (Léo, 07/11): a
+      // mensagem fica na caixa de entrada e para aqui — sem F01, sem lead, sem
+      // retomar o robô. Antes, o ML Segurança virava lead e recebia régua.
+      if (
+        await this.supressao?.naoECliente(params.empresaId, {
+          leadId: lead?.id ?? null,
+          telefone: params.peerTelefone ?? null,
+        })
+      ) {
+        this.logger.log(
+          `Mensagem de conta oficial / não-cliente na conversa ${resultado.conversationId} — fica só na caixa de entrada`,
+        );
+        return;
+      }
 
       // Gatilho MENSAGEM_CANAL (Fase C) — toda mensagem entrante, com ou sem lead
       // (roteamento por canal: SAC/marketplace/redes). Filtre por {{canal}}/palavra-chave no fluxo.
