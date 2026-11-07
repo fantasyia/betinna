@@ -1311,10 +1311,21 @@ export class ConversarIaService implements OnModuleDestroy {
     // nada rodar à toa que já não rodasse. `obterConfigBot` é a exceção: ele só
     // era usado no ramo `reativo`, e agora roda sempre — uma leitura de config
     // barata contra a soma de três esperas no caminho comum.
-    const [promptOpener, custoOpener, cfgBotOpener] = await Promise.all([
+    // O 1º turno também consulta a base (Léo, 07/11). Só o turno de RESPOSTA
+    // montava o RAG: quem chegava já perguntando o preço recebia resposta às
+    // cegas, e o robô chamava o Léo com o preço na base. Busca pela fala que
+    // chegou no contexto (o caso do MENSAGEM_CANAL), junto com o resto.
+    const textoRagAbertura =
+      reativo && typeof (ctx as Record<string, unknown>)['texto'] === 'string'
+        ? ((ctx as Record<string, unknown>)['texto'] as string).trim()
+        : '';
+    const [promptOpener, custoOpener, cfgBotOpener, blocoRagAbertura] = await Promise.all([
       this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId),
       this.custo.verificarTeto(empresaId),
       this.persona.obterConfigBot(empresaId).catch(() => null),
+      textoRagAbertura
+        ? this.montarBlocoRag(empresaId, textoRagAbertura, cfg).catch(() => '')
+        : Promise.resolve(''),
     ]);
 
     const systemPrompt = interpolate(promptOpener, ctx);
@@ -1504,7 +1515,7 @@ export class ConversarIaService implements OnModuleDestroy {
       abertura = await this.chamarIa(
         ctx,
         empresaId,
-        systemPrompt + opener,
+        systemPrompt + blocoRagAbertura + opener,
         mensagemDoTurno,
         historicoInicial,
         undefined,
@@ -1571,7 +1582,7 @@ export class ConversarIaService implements OnModuleDestroy {
       const nova = await this.chamarIa(
         ctx,
         empresaId,
-        systemPrompt + opener,
+        systemPrompt + blocoRagAbertura + opener,
         mensagemDoTurno,
         historicoInicial,
         undefined,

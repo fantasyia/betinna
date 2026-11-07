@@ -1279,6 +1279,63 @@ describe('ConversarIaService', () => {
       expect(systemPrompt).not.toContain('PRIMEIRA mensagem de abordagem');
     });
 
+    it('REATIVO: o 1º turno também leva a base de conhecimento pra IA (07/11)', async () => {
+      // Quem chegava já perguntando o preço recebia resposta sem a base: só o
+      // turno de resposta montava o RAG, e o robô chamava o Léo com o preço lá.
+      const conhecimento = {
+        buscar: vi.fn(async () => [
+          {
+            id: 'f1',
+            titulo: 'Produto · Bermuda de Moletom',
+            conteudo: 'Linha Plus Size: R$ 24,99 por peça',
+            categoria: 'produtos',
+            score: 1,
+          },
+        ]),
+      };
+      const svcRag = new ConversarIaService(
+        prisma as never,
+        persona as never,
+        muller as never,
+        { buscar: vi.fn(async () => []) } as never,
+        conhecimento as never,
+        custo as never,
+        whatsapp as never,
+        bus as never,
+        { aguardarSlot: vi.fn() } as never,
+        { suprimido: vi.fn(async () => false), aplicarLgpd: vi.fn(async () => 0) } as never,
+        { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+        redis as never,
+        queue as never,
+      );
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      // Documentos que o bot pode enviar (parte do mesmo bloco de contexto).
+      (prisma as unknown as Record<string, unknown>).knowledgeDocumento = {
+        findMany: vi.fn(async () => []),
+      };
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'R$ 24,99', modelo: 'gpt' });
+
+      await svcRag.iniciar(
+        'exec-1',
+        no({ promptId: 'p1', consultarConhecimento: true }) as never,
+        {
+          leadId: 'lead-1',
+          texto: 'qual o preço da bermuda de moletom no plus size?',
+          conversationId: 'conv-1',
+        },
+        'emp-1',
+        true,
+      );
+
+      expect(conhecimento.buscar).toHaveBeenCalledWith(
+        'emp-1',
+        'qual o preço da bermuda de moletom no plus size?',
+        4,
+      );
+      const [, systemPrompt] = muller.gerarRespostaIa.mock.calls[0];
+      expect(systemPrompt).toContain('Linha Plus Size: R$ 24,99 por peça');
+    });
+
     it('REATIVO + usarNomeDoLead=false: o motor NÃO injeta exemplo de saudação', async () => {
       // O `"Oi! Tudo bem?"` estava escrito NO CÓDIGO — era literalmente o que o
       // cliente recebia depois de descrever o problema.

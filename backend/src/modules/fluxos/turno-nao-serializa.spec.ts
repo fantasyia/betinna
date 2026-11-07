@@ -70,12 +70,17 @@ describe('o turno não serializa o que pode ser paralelo', () => {
     }
   });
 
-  it('o OPENER tem as três no mesmo Promise.all', () => {
-    const i = FONTE.indexOf('const [promptOpener, custoOpener, cfgBotOpener] =');
+  it('o OPENER tem as quatro no mesmo Promise.all (base de conhecimento junto, 07/11)', () => {
+    const i = FONTE.indexOf('const [promptOpener, custoOpener, cfgBotOpener, blocoRagAbertura] =');
     expect(i, 'o Promise.all do opener sumiu').toBeGreaterThan(-1);
 
     const bloco = FONTE.slice(i, FONTE.indexOf(']);', i));
-    for (const chamada of ['compilarSystemPromptConversa(', 'verificarTeto(', 'obterConfigBot(']) {
+    for (const chamada of [
+      'compilarSystemPromptConversa(',
+      'verificarTeto(',
+      'obterConfigBot(',
+      'montarBlocoRag(',
+    ]) {
       expect(bloco, `${chamada} saiu do lote do opener`).toContain(chamada);
     }
   });
