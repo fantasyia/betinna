@@ -33,6 +33,15 @@ describe('anúncios da Dafiti (07/11)', () => {
     });
   });
 
+  it('atributos: id de opção mandado como número confere com o texto que a Dafiti devolve', async () => {
+    const { ctrl } = montar([
+      { attributes: { '19': '10', '101': ['1'] } },
+      { attributes: { '19': '11', '101': ['3513', '3514'] } },
+    ]);
+    const r = await ctrl.atributos(user, 7, { atributos: { '19': 11, '101': [3513, 3514] } });
+    expect(r.conferido).toBe(true);
+  });
+
   it('atributos: conferido falso se a Dafiti descartou a troca', async () => {
     const { ctrl } = montar([{ attributes: { '10': 'a' } }, { attributes: { '10': 'a' } }]);
     const r = await ctrl.atributos(user, 7, { atributos: { '10': 'b' } });

@@ -63,7 +63,10 @@ const qcSchema = z.object({
   ids: z.string().regex(/^\d+(,\d+){0,99}$/, 'até 100 ids separados por vírgula'),
 });
 
-const iguais = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** A Dafiti devolve id de opção como texto ("11"): compara tudo como texto. */
+const texto = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(String) : v === null || v === undefined ? null : String(v);
+const iguais = (a: unknown, b: unknown) => JSON.stringify(texto(a)) === JSON.stringify(texto(b));
 
 /**
  * Anúncios da Dafiti (Seller Center v2), Léo 07/11. Product set = o anúncio
