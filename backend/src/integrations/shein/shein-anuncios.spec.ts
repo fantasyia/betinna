@@ -128,15 +128,47 @@ describe('campanhas e preço sugerido (02/11, #02)', () => {
   });
 
   it('escrever recusa caminho fora da lista sem chamar a Shein', async () => {
-    const post = vi.fn();
-    const ctrl = new SheinAnunciosController({ post } as never);
-    expect(() =>
+    const postRastreado = vi.fn();
+    const ctrl = new SheinAnunciosController({ postRastreado } as never);
+    await expect(
       ctrl.escrever({ empresaIdAtiva: 'e1' } as never, {
         caminho: '/open-api/order/order-list',
         corpo: {},
       }),
-    ).toThrow(/não liberado/);
-    expect(post).not.toHaveBeenCalled();
+    ).rejects.toThrow(/não liberado/);
+    expect(postRastreado).not.toHaveBeenCalled();
+  });
+
+  it('escrever devolve a resposta da Shein com o rastreio junto', async () => {
+    const postRastreado = vi.fn().mockResolvedValue({
+      info: { failedList: [{ skc: 's1', code: '3011' }] },
+      rastreio: { traceId: 't-123' },
+    });
+    const ctrl = new SheinAnunciosController({ postRastreado } as never);
+    const r = await ctrl.escrever({ empresaIdAtiva: 'e1' } as never, {
+      caminho: '/open-api/campaigns/register-campaign',
+      corpo: { activityId: '1' },
+    });
+    expect(postRastreado).toHaveBeenCalledWith('e1', '/open-api/campaigns/register-campaign', {
+      activityId: '1',
+    });
+    expect(r).toEqual({
+      failedList: [{ skc: 's1', code: '3011' }],
+      rastreio: { traceId: 't-123' },
+    });
+  });
+
+  it('rastreioShein: campos extras do envelope e cabeçalhos de id, sem code/msg/info', async () => {
+    const { rastreioShein } = await import('./shein.client');
+    const h = new Headers({ 'x-request-id': 'r1', traceparent: 'tp', 'content-type': 'x' });
+    expect(
+      rastreioShein({ code: '0', msg: 'ok', info: {}, traceId: 't1', bbl: { a: 1 } }, h),
+    ).toEqual({
+      traceId: 't1',
+      bbl: '{"a":1}',
+      'header:x-request-id': 'r1',
+      'header:traceparent': 'tp',
+    });
   });
 });
 

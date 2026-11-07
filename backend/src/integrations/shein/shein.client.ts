@@ -39,6 +39,27 @@ interface Envelope<T> {
   code?: string | number;
   msg?: string;
   info?: T;
+  [extra: string]: unknown;
+}
+
+/**
+ * Identificadores que a Shein devolve pra achar a chamada no suporte (#02,
+ * 07/11: inscrição com 3011 e nada pra levar ao chamado). Pega do envelope
+ * tudo que não é code/msg/info e os cabeçalhos com cara de id de rastreio.
+ */
+export function rastreioShein(
+  envelope: Record<string, unknown> | null,
+  cabecalhos: Headers,
+): Record<string, string> {
+  const r: Record<string, string> = {};
+  for (const [k, v] of Object.entries(envelope ?? {})) {
+    if (['code', 'msg', 'info'].includes(k) || v === null || v === undefined) continue;
+    r[k] = typeof v === 'string' ? v : JSON.stringify(v);
+  }
+  cabecalhos.forEach((v, k) => {
+    if (/trace|request-?id/i.test(k)) r[`header:${k}`] = v;
+  });
+  return r;
 }
 
 /** Cliente da Open API da Shein. Só leitura por enquanto (pedidos). */
@@ -91,6 +112,54 @@ export class SheinClientService {
       'x-lt-timestamp': timestamp,
       'x-lt-signature': assinatura,
     });
+  }
+
+  /**
+   * ESCRITA assinada com as chaves da loja, devolvendo o rastreio da Shein
+   * junto da resposta. Sem nova tentativa de propósito: repetir uma inscrição
+   * ou um preço que a Shein pode ter gravado é pior que falhar.
+   */
+  async postRastreado<T>(
+    empresaId: string,
+    path: string,
+    body: unknown,
+  ): Promise<{ info: T; rastreio: Record<string, string> }> {
+    const c = await this.credenciais(empresaId);
+    if (!c.openKeyId || !c.secretKey) {
+      throw new IntegrationException(
+        'Loja da Shein ainda não autorizada — clique em "Autorizar a loja" em Integrações',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    const { timestamp, assinatura } = assinarShein(c.openKeyId, c.secretKey, path);
+    const r = await fetch(`${SHEIN_API}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json;charset=UTF-8',
+        language: 'pt-br',
+        'x-lt-openKeyId': c.openKeyId,
+        'x-lt-timestamp': timestamp,
+        'x-lt-signature': assinatura,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const texto = await r.text();
+    let j: Envelope<T> | null = null;
+    try {
+      j = JSON.parse(texto) as Envelope<T>;
+    } catch {
+      /* corpo não-JSON cai no erro abaixo */
+    }
+    const rastreio = rastreioShein(j, r.headers);
+    if (!r.ok || !j || String(j.code) !== '0') {
+      throw new IntegrationException(
+        `Shein ${path} HTTP ${r.status}: ${j ? `${j.code} ${j.msg ?? ''}` : texto.slice(0, 200)}` +
+          ` · rastreio ${JSON.stringify(rastreio)}`,
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    return { info: j.info as T, rastreio };
   }
 
   /** POST assinado com o par do APLICATIVO (só a troca do token temporário). */

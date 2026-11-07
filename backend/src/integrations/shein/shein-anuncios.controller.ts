@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -135,6 +135,8 @@ const consultarSchema = z.object({
 @Roles('ADMIN', 'DIRECTOR')
 @Controller('marketplace/anuncios/shein')
 export class SheinAnunciosController {
+  private readonly logger = new Logger(SheinAnunciosController.name);
+
   constructor(private readonly shein: SheinClientService) {}
 
   private empresa(user: AuthenticatedUser): string {
@@ -497,7 +499,7 @@ export class SheinAnunciosController {
     summary:
       'MEXE NA LOJA — inscrever/cancelar em campanha e enviar preço de varejo sugerido (só os caminhos liberados)',
   })
-  escrever(
+  async escrever(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(consultarSchema)) dto: z.infer<typeof consultarSchema>,
   ) {
@@ -507,7 +509,15 @@ export class SheinAnunciosController {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
-    return this.shein.post(this.empresa(user), dto.caminho, dto.corpo);
+    // O rastreio vai na resposta e no log: é o que o suporte da Shein pede
+    // quando ela recusa com corpo certo (3011 da 60614, 07/11).
+    const { info, rastreio } = await this.shein.postRastreado<Record<string, unknown>>(
+      this.empresa(user),
+      dto.caminho,
+      dto.corpo,
+    );
+    this.logger.log(`Shein escrita ${dto.caminho}: rastreio ${JSON.stringify(rastreio)}`);
+    return { ...(info ?? {}), rastreio };
   }
 
   @Post('consultar')
