@@ -133,6 +133,45 @@ export class CheckoutService {
   }
 
   /**
+   * Saldo e extrato da conta Asaas da empresa, SÓ LEITURA (#01, 07/11): a
+   * chave fica no servidor; quem consulta nunca a vê. Pra conferir se entrou
+   * dinheiro de verdade (saldo do app × conta).
+   */
+  async contaAsaas(
+    user: AuthenticatedUser,
+    q: { inicio: string; fim: string; pagina: number; porPagina: number },
+  ) {
+    const empresaId = this.empresaDo(user);
+    const cred = await this.credenciais(empresaId);
+    if (!cred?.apiKey) throw regra('Conta do Asaas não conectada em Integrações');
+    const asaas = this.cliente(cred.apiKey);
+    const [saldo, extrato] = await Promise.all([
+      asaas.saldo(),
+      asaas.extrato({
+        inicio: q.inicio,
+        fim: q.fim,
+        offset: (q.pagina - 1) * q.porPagina,
+        limite: q.porPagina,
+      }),
+    ]);
+    return {
+      ambiente: asaas.ambiente,
+      saldo: saldo.balance,
+      periodo: { inicio: q.inicio, fim: q.fim },
+      total: extrato.totalCount,
+      temMais: extrato.hasMore,
+      lancamentos: (extrato.data ?? []).map((t) => ({
+        data: t.date,
+        valor: t.value,
+        saldoDepois: t.balance,
+        tipo: t.type,
+        descricao: t.description ?? null,
+        cobranca: t.paymentId ?? null,
+      })),
+    };
+  }
+
+  /**
    * Ativa: confere a chave, lê as taxas e cadastra (ou atualiza) o aviso de
    * pagamento no Asaas. Pode rodar de novo a qualquer hora — renova as taxas
    * e corrige o aviso (ex.: fila pausada, endereço mudou).

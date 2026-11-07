@@ -88,3 +88,20 @@ describe('AsaasClient', () => {
     expect(antes.pix).toEqual({ percentual: 0.99, fixa: null, minima: 0.29, maxima: 1.99 });
   });
 });
+
+describe('AsaasClient.extrato (#01, 07/11)', () => {
+  it('GET /financialTransactions com período e página, só leitura', async () => {
+    const f = vi.fn().mockResolvedValue(resposta(200, { data: [], hasMore: false, totalCount: 0 }));
+    await new AsaasClient('$aact_prod_x', f).extrato({
+      inicio: '2026-10-01',
+      fim: '2026-11-07',
+      offset: 100,
+      limite: 100,
+    });
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe(
+      'https://api.asaas.com/v3/financialTransactions?startDate=2026-10-01&finishDate=2026-11-07&offset=100&limit=100&order=asc',
+    );
+    expect(init.method).toBe('GET');
+  });
+});

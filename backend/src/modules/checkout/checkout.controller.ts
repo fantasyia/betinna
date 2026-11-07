@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { z } from 'zod';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
@@ -22,6 +23,16 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CheckoutPublicoService } from './checkout-publico.service';
 import { CheckoutService } from './checkout.service';
 
+const dataIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data AAAA-MM-DD');
+const contaAsaasSchema = z
+  .object({
+    inicio: dataIso,
+    fim: dataIso,
+    pagina: z.coerce.number().int().min(1).default(1),
+    porPagina: z.coerce.number().int().min(1).max(100).default(100),
+  })
+  .refine((d) => d.inicio <= d.fim, { message: 'inicio depois do fim' });
+
 /** Pagamento online da vitrine — ligar/desligar a conta Asaas da empresa. */
 @ApiTags('checkout')
 @ApiBearerAuth()
@@ -34,6 +45,17 @@ export class CheckoutController {
   @ApiOperation({ summary: 'Conta Asaas conectada? Pagamento online ativo? Taxas lidas.' })
   status(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.status(user);
+  }
+
+  @Get('conta-asaas')
+  @ApiOperation({
+    summary: 'SÓ LEITURA — saldo e extrato da conta Asaas da empresa (a chave não sai do servidor)',
+  })
+  contaAsaas(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(contaAsaasSchema)) q: z.infer<typeof contaAsaasSchema>,
+  ) {
+    return this.svc.contaAsaas(user, q);
   }
 
   @Post('ativar')

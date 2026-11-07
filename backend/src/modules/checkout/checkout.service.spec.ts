@@ -178,3 +178,66 @@ describe('CheckoutService — aviso de pagamento (webhook)', () => {
     await expect(svc.registrarAviso('emp-1', TOKEN, evento)).resolves.toEqual({ novo: false });
   });
 });
+
+describe('CheckoutService — saldo e extrato da conta Asaas (#01, 07/11)', () => {
+  it('lê saldo e extrato com a chave do servidor e devolve sem a chave', async () => {
+    const { svc, asaas } = montar({ cred: { apiKey: '$aact_prod_segredo' } });
+    Object.assign(asaas, {
+      ambiente: 'producao',
+      saldo: vi.fn().mockResolvedValue({ balance: 12.5 }),
+      extrato: vi.fn().mockResolvedValue({
+        hasMore: false,
+        totalCount: 1,
+        limit: 100,
+        offset: 0,
+        data: [
+          {
+            id: 'ft1',
+            value: 10,
+            balance: 12.5,
+            type: 'PAYMENT_RECEIVED',
+            date: '2026-10-15',
+            description: 'Pix',
+            paymentId: 'pay_1',
+          },
+        ],
+      }),
+    });
+    const r = await svc.contaAsaas(user as never, {
+      inicio: '2026-10-01',
+      fim: '2026-11-07',
+      pagina: 2,
+      porPagina: 50,
+    });
+    expect(
+      (asaas as unknown as { extrato: ReturnType<typeof vi.fn> }).extrato,
+    ).toHaveBeenCalledWith({
+      inicio: '2026-10-01',
+      fim: '2026-11-07',
+      offset: 50,
+      limite: 50,
+    });
+    expect(r).toMatchObject({ ambiente: 'producao', saldo: 12.5, total: 1, temMais: false });
+    expect(r.lancamentos[0]).toEqual({
+      data: '2026-10-15',
+      valor: 10,
+      saldoDepois: 12.5,
+      tipo: 'PAYMENT_RECEIVED',
+      descricao: 'Pix',
+      cobranca: 'pay_1',
+    });
+    expect(JSON.stringify(r)).not.toContain('segredo');
+  });
+
+  it('sem conta conectada: recusa com o motivo', async () => {
+    const { svc } = montar({ cred: null });
+    await expect(
+      svc.contaAsaas(user as never, {
+        inicio: '2026-10-01',
+        fim: '2026-10-02',
+        pagina: 1,
+        porPagina: 10,
+      }),
+    ).rejects.toThrow(/não conectada/);
+  });
+});

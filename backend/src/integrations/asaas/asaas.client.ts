@@ -183,6 +183,21 @@ export class AsaasClient {
     return this.req<{ balance: number }>('GET', '/finance/balance');
   }
 
+  /**
+   * Extrato da conta (`GET /financialTransactions`, até 100 por página): cada
+   * entrada e saída com o saldo depois dela. Só leitura (#01, 07/11).
+   */
+  extrato(q: { inicio: string; fim: string; offset: number; limite: number }) {
+    const p = new URLSearchParams({
+      startDate: q.inicio,
+      finishDate: q.fim,
+      offset: String(q.offset),
+      limit: String(q.limite),
+      order: 'asc',
+    });
+    return this.req<ExtratoAsaas>('GET', `/financialTransactions?${p.toString()}`);
+  }
+
   async taxas(agora = new Date()): Promise<TaxasAsaas> {
     return lerTaxas(await this.req<FeesResposta>('GET', '/myAccount/fees/'), agora);
   }
@@ -311,6 +326,22 @@ export interface CobrancaAsaas {
   invoiceUrl: string;
   installment?: string | null;
   externalReference?: string | null;
+}
+
+export interface ExtratoAsaas {
+  hasMore: boolean;
+  totalCount: number;
+  limit: number;
+  offset: number;
+  data: Array<{
+    id: string;
+    value: number;
+    balance: number;
+    type: string;
+    date: string;
+    description?: string | null;
+    paymentId?: string | null;
+  }>;
 }
 
 export interface PixAsaas {

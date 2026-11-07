@@ -29,6 +29,28 @@ export function registrarFinanceiroTotal(server: McpServer, { ok, seguro }: Ajud
   const mexe = { readOnlyHint: false, destructiveHint: true, idempotentHint: false } as const;
 
   server.registerTool(
+    "asaas_conta_ver",
+    {
+      description:
+        "SÓ LEITURA — saldo atual e extrato (entradas e saídas, com o saldo depois de cada uma) da conta Asaas " +
+        "da empresa, no período. A chave fica no servidor. Até 100 lançamentos por página (temMais=true → próxima página).",
+      inputSchema: {
+        inicio: data.describe("Extrato a partir de (AAAA-MM-DD)"),
+        fim: data.describe("Extrato até (AAAA-MM-DD)"),
+        pagina: z.number().int().min(1).optional(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+    },
+    seguro(async (a: { inicio: string; fim: string; pagina?: number }) =>
+      ok(
+        await api.get(
+          `/checkout/conta-asaas?inicio=${a.inicio}&fim=${a.fim}&pagina=${a.pagina ?? 1}`,
+        ),
+      ),
+    ),
+  );
+
+  server.registerTool(
     "financeiro_titulo_criar",
     {
       description:
