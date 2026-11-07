@@ -23,6 +23,7 @@ const BONUS_TEXTO = 0.05;
 // entravam no prompt por mais irrelevantes que fossem (ex.: política de devolução numa pergunta de
 // produto) — poluía a resposta e gastava tokens. ~0.3 é um floor conservador (irrelevante ~0.0-0.2).
 const SCORE_MINIMO_SEMANTICO = 0.3;
+const PREFIXO_FICHA = 'Produto · ';
 
 // Stopwords pt-BR (≥3 chars — as <3 já caem no filtro de tamanho). Removidas da tokenização do
 // keyword fallback pra não casar quase todo chunk por palavra vazia. Lista enxuta das mais comuns.
@@ -90,6 +91,16 @@ const STOPWORDS_PT = new Set([
   'tambem',
 ]);
 
+/** Palavras de conteúdo, sem acento e minúsculas (≥3 letras, fora a stoplist). */
+function palavrasDe(texto: string): string[] {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3 && !STOPWORDS_PT.has(t));
+}
+
 /**
  * Busca semântica sobre a base de conhecimento (KnowledgeChunk) com fallback por
  * keyword (ILIKE) — mesma lógica do ProdutoSearchService. Alimenta o bot com FAQ /
@@ -106,9 +117,43 @@ export class KnowledgeSearchService {
   ) {}
 
   async buscar(empresaId: string, consulta: string, limit = 4): Promise<ConhecimentoRelevante[]> {
-    const semantico = await this.buscarSemantico(empresaId, consulta, limit);
-    if (semantico !== null) return semantico;
-    return this.buscarKeyword(empresaId, consulta, limit);
+    const [fichas, semantico] = await Promise.all([
+      this.fichasCitadas(empresaId, consulta).catch(() => [] as ConhecimentoRelevante[]),
+      this.buscarSemantico(empresaId, consulta, limit),
+    ]);
+    const outros = semantico ?? (await this.buscarKeyword(empresaId, consulta, limit));
+    if (fichas.length === 0) return outros;
+    const ja = new Set(fichas.map((f) => f.id));
+    return [...fichas, ...outros.filter((c) => !ja.has(c.id))].slice(
+      0,
+      Math.max(limit, fichas.length),
+    );
+  }
+
+  /**
+   * Ficha do produto que a pergunta CITA pelo nome entra sempre (Léo, 07/11).
+   * "qual o preço da bermuda de moletom no plus size?" perdia a ficha
+   * "Produto · Bermuda de Moletom" pra trechos parecidos (medidas, tabelas
+   * gerais): a ficha é longa, cheia de medida, e o vetor dela fica diluído. O
+   * robô respondia "vou chamar o Léo" com o preço na base. Casa quando todas as
+   * palavras do nome do produto aparecem na pergunta; no máximo 2 fichas.
+   */
+  private async fichasCitadas(
+    empresaId: string,
+    consulta: string,
+  ): Promise<ConhecimentoRelevante[]> {
+    const pergunta = new Set(palavrasDe(consulta));
+    if (pergunta.size === 0) return [];
+    const fichas = await this.prisma.knowledgeChunk.findMany({
+      where: { empresaId, ativo: true, fonte: 'CONFIG', titulo: { startsWith: PREFIXO_FICHA } },
+      select: { id: true, titulo: true, conteudo: true, categoria: true, fonte: true },
+    });
+    return fichas
+      .map((f) => ({ f, nome: palavrasDe(f.titulo.slice(PREFIXO_FICHA.length)) }))
+      .filter(({ nome }) => nome.length > 0 && nome.every((p) => pergunta.has(p)))
+      .sort((a, b) => b.nome.length - a.nome.length)
+      .slice(0, 2)
+      .map(({ f }) => ({ ...f, score: 1 }));
   }
 
   private async buscarSemantico(

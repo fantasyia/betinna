@@ -805,6 +805,11 @@ export class ConversarIaService implements OnModuleDestroy {
     }
 
     if (cfg.consultarConhecimento) {
+      // Quais trechos entraram: sem isto, "o robô não achou o preço" não tinha como
+      // ser separado de "achou e não usou" (07/11).
+      this.logger.log(
+        `CONVERSAR_IA: conhecimento usado (${chunks.length}): ${chunks.map((c) => c.titulo).join(' | ') || '-'}`,
+      );
       if (chunks.length > 0) {
         const linhas = chunks.map((c) => `- ${c.titulo}: ${c.conteudo}`);
         partes.push(`INFORMAÇÕES DA EMPRESA:\n${linhas.join('\n')}`);
