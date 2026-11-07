@@ -1,7 +1,7 @@
 import { Reflector } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
 import { ShopeeFlashSaleController } from './shopee-flash-sale.controller';
-import { ShopeeFlashSaleService } from './shopee-flash-sale.service';
+import { ESPERA_RELEITURA_MS, ShopeeFlashSaleService } from './shopee-flash-sale.service';
 
 const user = { id: 'u1', role: 'DIRECTOR', empresaIdAtiva: 'emp1' };
 const MODELS = {
@@ -648,6 +648,42 @@ describe('Ficha e tabela de medidas Shopee (05/11)', () => {
       depois: { imagem: 'https://cf/nova.jpg', modelo_id: null },
       conferido: true,
     });
+  });
+
+  it('tabela: leitura atrasada da Shopee não vira falso negativo', async () => {
+    ESPERA_RELEITURA_MS.valor = 0;
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ category_id: 7, size_chart: 'https://cf/velha.jpg' }))
+      .mockResolvedValueOnce({
+        response: { size_chart_limit: { support_image_size_chart: true } },
+      })
+      .mockResolvedValueOnce(base({ size_chart: 'https://cf/velha.jpg' }))
+      .mockResolvedValueOnce(base({ size_chart: 'https://cf/nova.jpg' }));
+    shopee.postShop.mockResolvedValue({ warning: 'The gtin is a mandatory field' });
+    const r = await svc.atualizarTabelaMedidas(user as never, 99, { imagemId: 'abc' });
+    expect(r).toMatchObject({
+      depois: { imagem: 'https://cf/nova.jpg' },
+      conferido: true,
+      aviso: 'The gtin is a mandatory field',
+    });
+    ESPERA_RELEITURA_MS.valor = 2000;
+  });
+
+  it('tabela: se nunca mudar, para depois das releituras e diz que não conferiu', async () => {
+    ESPERA_RELEITURA_MS.valor = 0;
+    const { svc, shopee } = montar();
+    shopee.getShop
+      .mockResolvedValueOnce(base({ category_id: 7, size_chart: 'https://cf/velha.jpg' }))
+      .mockResolvedValueOnce({
+        response: { size_chart_limit: { support_image_size_chart: true } },
+      })
+      .mockResolvedValue(base({ size_chart: 'https://cf/velha.jpg' }));
+    shopee.postShop.mockResolvedValue({});
+    const r = await svc.atualizarTabelaMedidas(user as never, 99, { imagemId: 'abc' });
+    expect(r.conferido).toBe(false);
+    expect(shopee.getShop).toHaveBeenCalledTimes(6);
+    ESPERA_RELEITURA_MS.valor = 2000;
   });
 
   it('tabela: categoria que não aceita imagem é recusada antes de gravar', async () => {

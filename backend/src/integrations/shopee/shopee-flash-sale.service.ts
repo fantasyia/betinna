@@ -118,6 +118,10 @@ interface ItemBase {
 
 const iguais = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
+const RELEITURAS = 3;
+export const ESPERA_RELEITURA_MS = { valor: 2000 };
+const esperar = (o: { valor: number }) => new Promise((r) => setTimeout(r, o.valor));
+
 /** Só o que está aqui passa. Excluir promoção ou item fora de promoção não existe. */
 const PROMO_LEITURA: Record<string, string> = {
   'desconto/lista': '/api/v2/discount/get_discount_list',
@@ -833,11 +837,17 @@ export class ShopeeFlashSaleService {
       ? { size_chart_id: dto.modeloId }
       : { size_chart: dto.imagemId, ...(antes.modelo_id ? { size_chart_id: 0 } : {}) };
     const aviso = await this.gravarItem(user, itemId, { size_chart_info });
-    const depois = this.estadoTabela(await this.itemBase(user, itemId));
-    const conferido = dto.modeloId
-      ? depois.modelo_id === dto.modeloId
-      : !depois.modelo_id && !!depois.imagem && depois.imagem !== antes.imagem;
-    return { antes, depois, conferido, aviso };
+    const confere = (d: ReturnType<typeof this.estadoTabela>) =>
+      dto.modeloId
+        ? d.modelo_id === dto.modeloId
+        : !d.modelo_id && !!d.imagem && d.imagem !== antes.imagem;
+    // A leitura logo após gravar ainda vem com o valor antigo (#02, 07/11): relê com folga.
+    let depois = this.estadoTabela(await this.itemBase(user, itemId));
+    for (let i = 0; i < RELEITURAS && !confere(depois); i++) {
+      await esperar(ESPERA_RELEITURA_MS);
+      depois = this.estadoTabela(await this.itemBase(user, itemId));
+    }
+    return { antes, depois, conferido: confere(depois), aviso };
   }
 
   async adicionarItens(user: AuthenticatedUser, flashSaleId: number, itens: ItemOferta[]) {
