@@ -1,10 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import { IntegrationException } from '@shared/errors/app-exception';
+import { AppException, IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { assinarShein } from './shein-assinatura';
 
 export const SHEIN_API = 'https://openapi.sheincorp.com';
+
+/**
+ * Limite de taxa da Shein (HTTP 429 / openapi00006). Espera e tenta de novo;
+ * a assinatura leva o timestamp, então cada tentativa assina de novo.
+ * Sentry 07/11: 10 consultas desistiam na 1ª recusa e viravam erro 502.
+ */
+export const ESPERAS_LIMITE_SHEIN_MS = [2_000, 4_000, 8_000];
 
 /**
  * Credenciais da Shein na conexão da empresa. A empresa cola o ID e o segredo
@@ -106,11 +113,14 @@ export class SheinClientService {
         ErrorCode.INTEGRATION_ERROR,
       );
     }
-    const { timestamp, assinatura } = assinarShein(c.openKeyId, c.secretKey, path);
-    return this.chamar<T>(path, body, {
-      'x-lt-openKeyId': c.openKeyId,
-      'x-lt-timestamp': timestamp,
-      'x-lt-signature': assinatura,
+    const { openKeyId, secretKey } = c;
+    return this.chamar<T>(path, body, () => {
+      const { timestamp, assinatura } = assinarShein(openKeyId, secretKey, path);
+      return {
+        'x-lt-openKeyId': openKeyId,
+        'x-lt-timestamp': timestamp,
+        'x-lt-signature': assinatura,
+      };
     });
   }
 
@@ -164,28 +174,49 @@ export class SheinClientService {
 
   /** POST assinado com o par do APLICATIVO (só a troca do token temporário). */
   async postApp<T>(appId: string, appSecret: string, path: string, body: unknown): Promise<T> {
-    const { timestamp, assinatura } = assinarShein(appId, appSecret, path);
-    return this.chamar<T>(path, body, {
-      'x-lt-appid': appId,
-      'x-lt-timestamp': timestamp,
-      'x-lt-signature': assinatura,
+    return this.chamar<T>(path, body, () => {
+      const { timestamp, assinatura } = assinarShein(appId, appSecret, path);
+      return { 'x-lt-appid': appId, 'x-lt-timestamp': timestamp, 'x-lt-signature': assinatura };
     });
   }
 
-  private async chamar<T>(path: string, body: unknown, cab: Record<string, string>): Promise<T> {
-    const r = await fetch(`${SHEIN_API}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json;charset=UTF-8', language: 'pt-br', ...cab },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
-    });
-    const texto = await r.text();
-    let j: Envelope<T> | null = null;
-    try {
-      j = JSON.parse(texto) as Envelope<T>;
-    } catch {
-      /* corpo não-JSON cai no erro abaixo */
+  private async chamar<T>(
+    path: string,
+    body: unknown,
+    cab: () => Record<string, string>,
+    esperas: readonly number[] = ESPERAS_LIMITE_SHEIN_MS,
+  ): Promise<T> {
+    for (let tentativa = 0; ; tentativa++) {
+      const r = await fetch(`${SHEIN_API}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json;charset=UTF-8', language: 'pt-br', ...cab() },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const texto = await r.text();
+      let j: Envelope<T> | null = null;
+      try {
+        j = JSON.parse(texto) as Envelope<T>;
+      } catch {
+        /* corpo não-JSON cai no erro abaixo */
+      }
+      if (r.status === 429 || String(j?.code) === 'openapi00006') {
+        if (tentativa < esperas.length) {
+          await new Promise((ok) => setTimeout(ok, esperas[tentativa]));
+          continue;
+        }
+        // 429 não é bug nosso: vai pro chamador como 429 (aviso), não 502 no Sentry.
+        throw new AppException(
+          ErrorCode.RATE_LIMIT_EXCEEDED,
+          'Limite de consultas da Shein — tente de novo em alguns minutos',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      return this.envelope<T>(path, r, j, texto);
     }
+  }
+
+  private envelope<T>(path: string, r: Response, j: Envelope<T> | null, texto: string): T {
     // Sucesso da Shein é code "0"; qualquer outro código é erro, mesmo com HTTP 200.
     if (!r.ok || !j || String(j.code) !== '0') {
       throw new IntegrationException(
