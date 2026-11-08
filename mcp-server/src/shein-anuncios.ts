@@ -135,6 +135,43 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
       ),
     );
 
+  server.registerTool(
+    "shein_video_converter",
+    {
+      description:
+        "Passo 1 do vídeo na Shein: manda um MP4 (link público que termina em .mp4, até 100 MB, sem marca d'água) " +
+        "pra Shein converter. NÃO mexe no anúncio. Devolve a tarefa; se o mesmo link já foi convertido na semana, já vem a url.",
+      inputSchema: { url: z.string().url().max(1000) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    seguro(async (a: { url: string }) =>
+      ok(await api.post("/marketplace/anuncios/shein/video/converter", { url: a.url })),
+    ),
+  );
+
+  server.registerTool(
+    "shein_video_situacao",
+    {
+      description:
+        "Passo 2 do vídeo na Shein: situação da conversão (pendente, pronto com a url convertida, ou falhou com o motivo). Somente leitura.",
+      inputSchema: { tarefa: z.string().min(6).max(80) },
+      annotations: leitura,
+    },
+    seguro(async (a: { tarefa: string }) =>
+      ok(await api.get(`/marketplace/anuncios/shein/video/tarefa/${seg(a.tarefa)}`)),
+    ),
+  );
+
+  editar(
+    "shein_video_atualizar",
+    "video",
+    "Passo 3 do vídeo: grava no anúncio a url JÁ CONVERTIDA (shein_video_situacao → url). Um vídeo por site (padrão shein-br).",
+    {
+      url: z.string().url().max(1000),
+      sites: z.array(z.string().min(1).max(30)).min(1).max(10).optional(),
+    },
+  );
+
   editar(
     "shein_plano_atualizar",
     "plano",

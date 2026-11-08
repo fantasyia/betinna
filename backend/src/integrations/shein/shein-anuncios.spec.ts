@@ -372,3 +372,63 @@ describe('Shein: plano numa edição só e revisão em andamento (08/11)', () =>
     expect(post.mock.calls.some((c) => c[1] === '/open-api/goods/product/partialEdit')).toBe(false);
   });
 });
+
+describe('Shein: vídeo do anúncio (07/11)', () => {
+  const user = { empresaIdAtiva: 'e1' } as never;
+  const livre = { data: [{ version: 'V0', skcList: [{ documentState: 2 }] }] };
+  const URL_SHEIN = 'https://svideo.ltwebstatic.com/spmp/2026/11/07/x.mp4';
+
+  it('converter: manda o link e devolve a tarefa', async () => {
+    const post = vi.fn().mockResolvedValue({ task_id: 'abc123', transformed_url: null });
+    const ctrl = new SheinAnunciosController({ post } as never);
+    const r = await ctrl.videoConverter(user, { url: 'https://x.com/v.mp4' });
+    expect(post).toHaveBeenCalledWith('e1', '/open-api/goods/product/create-video-transform-task', {
+      video_url: 'https://x.com/v.mp4',
+    });
+    expect(r).toEqual({ tarefa: 'abc123', url: null });
+  });
+
+  it('tarefa: 1 = pronto com a url; 2 = falhou com motivo; status novo estoura', async () => {
+    const montar = (data: unknown) =>
+      new SheinAnunciosController({ post: vi.fn().mockResolvedValue({ data }) } as never);
+    expect(
+      await montar([{ task_status: 1, transformed_url: URL_SHEIN }]).videoTarefa(user, 'abc123'),
+    ).toMatchObject({ situacao: 'pronto', url: URL_SHEIN });
+    expect(
+      await montar([{ task_status: 2, fail_reason: { msg: 'grande' } }]).videoTarefa(
+        user,
+        'abc123',
+      ),
+    ).toMatchObject({ situacao: 'falhou', motivo: '{"msg":"grande"}' });
+    await expect(montar([{ task_status: 9 }]).videoTarefa(user, 'abc123')).rejects.toThrow(
+      /desconhecida/,
+    );
+  });
+
+  it('gravar: recusa link que não foi convertido pela Shein', () => {
+    const post = vi.fn();
+    const ctrl = new SheinAnunciosController({ post } as never);
+    expect(() =>
+      ctrl.video(user, 'm1', { url: 'https://x.com/v.mp4', sites: ['shein-br'] }),
+    ).toThrow(/convertida/);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('gravar: partialEdit com product_video_list e confere pela releitura', async () => {
+    const spu = (extra: object) => ({ spuName: 'm1', skcInfoList: [], ...extra });
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce(livre)
+      .mockResolvedValueOnce(spu({}))
+      .mockResolvedValueOnce({ success: true, version: 'V2' })
+      .mockResolvedValueOnce(spu({ videoList: [{ url: URL_SHEIN }] }));
+    const ctrl = new SheinAnunciosController({ post } as never);
+    const r = await ctrl.video(user, 'm1', { url: URL_SHEIN, sites: ['shein-br'] });
+    const edicao = post.mock.calls.find((c) => c[1] === '/open-api/goods/product/partialEdit');
+    expect(edicao?.[2]).toEqual({
+      spu_name: 'm1',
+      product_video_list: [{ sites: ['shein-br'], video_url: URL_SHEIN }],
+    });
+    expect(r).toMatchObject({ antes: false, depois: true, conferido: true });
+  });
+});

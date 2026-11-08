@@ -117,6 +117,33 @@ const fotosSchema = z.object({
     .max(50),
 });
 
+// Vídeo (07/11): só MP4 de link público e baixável, até 100 MB (regra da Shein).
+const videoConverterSchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .url()
+    .max(1000)
+    .regex(/\.mp4(\?.*)?$/i, 'O link tem que terminar em .mp4 (arquivo, não página de vídeo)'),
+});
+const videoSchema = z.object({
+  url: z.string().trim().url().max(1000),
+  sites: z.array(z.string().trim().min(1).max(30)).min(1).max(10).default(['shein-br']),
+});
+/** Vídeo já convertido pela Shein (o partialEdit só aceita esse). */
+export const videoDaShein = (url: string) => {
+  try {
+    return /(^|\.)ltwebstatic\.com$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+};
+const SITUACAO_VIDEO: Record<number, 'pendente' | 'pronto' | 'falhou'> = {
+  0: 'pendente',
+  1: 'pronto',
+  2: 'falhou',
+};
+
 const editarSchema = z.object({ spu_name: z.string().trim().min(1).max(60) }).passthrough();
 
 const consultarSchema = z.object({
@@ -400,6 +427,87 @@ export class SheinAnunciosController {
       { size_attribute_list: dto.tabela },
       (s) => s.dimensionAttributeInfoList ?? [],
       (d) => d.length > 0,
+    );
+  }
+
+  // ─── Vídeo (Léo, 07/11) ──────────────────────────────────────────────
+  // Ordem da Shein: converter → esperar a conversão → gravar a URL convertida.
+
+  @Post('video/converter')
+  @ApiOperation({
+    summary:
+      'Manda um MP4 (link público) pra Shein converter. Não mexe no anúncio. Devolve a tarefa (e a URL, se já convertido na semana)',
+  })
+  async videoConverter(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(videoConverterSchema)) dto: z.infer<typeof videoConverterSchema>,
+  ) {
+    const r = await this.shein.post<{ task_id?: string; transformed_url?: string | null }>(
+      this.empresa(user),
+      '/open-api/goods/product/create-video-transform-task',
+      { video_url: dto.url },
+    );
+    return { tarefa: r?.task_id ?? null, url: r?.transformed_url ?? null };
+  }
+
+  @Get('video/tarefa/:tarefa')
+  @ApiOperation({
+    summary: 'Situação da conversão do vídeo: pendente, pronto (com a URL) ou falhou',
+  })
+  async videoTarefa(@CurrentUser() user: AuthenticatedUser, @Param('tarefa') tarefa: string) {
+    if (!/^[A-Za-z0-9_-]{6,80}$/.test(tarefa)) {
+      throw new BusinessRuleException('Tarefa inválida', ErrorCode.BUSINESS_RULE_VIOLATION);
+    }
+    const r = await this.shein.post<{
+      data?: Array<{
+        task_status?: number;
+        transformed_url?: string | null;
+        fail_reason?: unknown;
+      }>;
+    }>(this.empresa(user), '/open-api/goods/product/query-video-transform-task', {
+      task_ids: [tarefa],
+    });
+    const t = r?.data?.[0];
+    if (!t) return { tarefa, situacao: 'desconhecida', url: null, motivo: null };
+    const situacao = SITUACAO_VIDEO[t.task_status ?? -1];
+    if (!situacao) {
+      // Situação nova da Shein: não chutar "pronto" nem "falhou".
+      throw new BusinessRuleException(
+        `Situação de vídeo desconhecida da Shein: ${String(t.task_status)}`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    return {
+      tarefa,
+      situacao,
+      url: t.transformed_url ?? null,
+      motivo: t.fail_reason ? JSON.stringify(t.fail_reason) : null,
+    };
+  }
+
+  @Post(':spuName/video')
+  @ApiOperation({
+    summary:
+      'MEXE NA LOJA — grava o vídeo JÁ CONVERTIDO no anúncio (um vídeo por site; a Shein revisa)',
+  })
+  video(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('spuName') spuName: string,
+    @Body(new ZodValidationPipe(videoSchema)) dto: z.infer<typeof videoSchema>,
+  ) {
+    if (!videoDaShein(dto.url)) {
+      throw new BusinessRuleException(
+        'Use a URL convertida pela Shein (video/converter → video/tarefa), não o link original',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    return this.editarCampo(
+      this.empresa(user),
+      spuName,
+      { product_video_list: [{ sites: dto.sites, video_url: dto.url }] },
+      // A leitura não tem campo documentado pro vídeo: confere se a URL aparece no anúncio.
+      (s) => JSON.stringify(s).includes(dto.url),
+      (tem) => tem,
     );
   }
 
