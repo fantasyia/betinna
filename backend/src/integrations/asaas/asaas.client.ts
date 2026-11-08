@@ -145,6 +145,7 @@ export class AsaasClient {
     metodo: 'GET' | 'POST' | 'PUT' | 'DELETE',
     caminho: string,
     corpo?: unknown,
+    opts: { nadaEm404?: boolean } = {},
   ): Promise<T> {
     const r = await this.fetchFn(`${BASE[this.ambiente]}${caminho}`, {
       method: metodo,
@@ -164,6 +165,7 @@ export class AsaasClient {
     } catch {
       json = null;
     }
+    if (r.status === 404 && opts.nadaEm404) return null as T;
     if (!r.ok) {
       const erros = (json as { errors?: Array<{ description?: string }> } | null)?.errors ?? [];
       const msg =
@@ -262,6 +264,13 @@ export class AsaasClient {
     return this.req<CobrancaAsaas>('GET', `/payments/${encodeURIComponent(id)}`);
   }
 
+  /** A cobrança, ou null se ela não existe NESTA conta/ambiente (404). */
+  cobrancaSeExistir(id: string): Promise<CobrancaAsaas | null> {
+    return this.req<CobrancaAsaas | null>('GET', `/payments/${encodeURIComponent(id)}`, undefined, {
+      nadaEm404: true,
+    });
+  }
+
   pixQrCode(id: string): Promise<PixAsaas> {
     return this.req<PixAsaas>('GET', `/payments/${encodeURIComponent(id)}/pixQrCode`);
   }
@@ -326,6 +335,7 @@ export interface CobrancaAsaas {
   invoiceUrl: string;
   installment?: string | null;
   externalReference?: string | null;
+  deleted?: boolean;
 }
 
 export interface ExtratoAsaas {

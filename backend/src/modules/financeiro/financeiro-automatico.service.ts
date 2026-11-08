@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AsaasClient } from '@integrations/asaas/asaas.client';
+import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { Prisma, type FinTipo } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { FinanceiroService } from './financeiro.service';
@@ -7,6 +9,15 @@ import { hojePuro } from './financeiro.regras';
 type Tx = Prisma.TransactionClient;
 const D = (v: number) => new Prisma.Decimal(v.toFixed(2));
 const isoDe = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * Situação da cobrança no Asaas no cancelamento do pedido (Léo, 07/11, opção b).
+ * Dinheiro na conta → gente decide a devolução. Sem dinheiro → estorna sozinho.
+ * Qualquer outra (chargeback, estorno em andamento, nova do Asaas) cai em
+ * "gente decide": na dúvida, nunca esconder recebimento.
+ */
+const ASAAS_COM_DINHEIRO = new Set(['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']);
+const ASAAS_SEM_DINHEIRO = new Set(['PENDING', 'OVERDUE', 'REFUNDED']);
 
 /**
  * Divide um valor em N parcelas em centavos: a sobra da divisão vai nas
@@ -54,7 +65,52 @@ export class FinanceiroAutomaticoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fin: FinanceiroService,
+    @Optional() private readonly integracoes?: IntegracoesService,
   ) {}
+
+  /** Injetável nos testes. */
+  protected clienteAsaas(chave: string): AsaasClient {
+    return new AsaasClient(chave);
+  }
+
+  /**
+   * O recebimento do pedido NÃO é dinheiro real? (Léo, 07/11, opção b.) Só
+   * quando TODAS as baixas vieram sozinhas do aviso do Asaas e o Asaas de hoje
+   * diz que a cobrança não existe nesta conta (era sandbox — os Pix de teste
+   * de 15/10), foi apagada, estornada ou nunca foi paga. Baixa lançada por
+   * gente, erro ao consultar ou situação desconhecida = recebimento real
+   * (quem cancela decide, como em 03/11).
+   */
+  private async recebimentoSemDinheiro(
+    empresaId: string,
+    pedidoId: string,
+    baixas: Array<{ usuarioId: string | null; conta: { nome: string } }>,
+  ): Promise<boolean> {
+    if (!baixas.length || !this.integracoes) return false;
+    if (baixas.some((b) => b.usuarioId !== null || b.conta.nome !== 'Asaas')) return false;
+    const pags = await this.prisma.pedidoPagamento.findMany({
+      where: { pedidoId, status: 'PAGO' },
+      select: { asaasCobrancaId: true },
+    });
+    if (!pags.length) return false;
+    try {
+      const cred = await this.integracoes.obterCredenciaisInternas(empresaId, 'asaas');
+      const chave = (cred.credenciais as { apiKey?: string }).apiKey;
+      if (!chave) return false;
+      const asaas = this.clienteAsaas(chave);
+      for (const p of pags) {
+        const c = await asaas.cobrancaSeExistir(p.asaasCobrancaId);
+        if (!c || c.deleted) continue;
+        if (ASAAS_COM_DINHEIRO.has(c.status) || !ASAAS_SEM_DINHEIRO.has(c.status)) return false;
+      }
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `[financeiro] pedido ${pedidoId}: não deu pra conferir no Asaas (${String(err)}) — fica pra gente decidir`,
+      );
+      return false;
+    }
+  }
 
   /** true = financeiro ligado e com os padrões criados. false = não faz nada. */
   async preparar(empresaId: string): Promise<boolean> {
@@ -327,12 +383,35 @@ export class FinanceiroAutomaticoService {
         where: { pedidoId, tipo: 'RECEBER' },
         select: {
           id: true,
+          empresaId: true,
           status: true,
-          baixas: { where: { estornadaEm: null }, select: { id: true, valor: true } },
+          baixas: {
+            where: { estornadaEm: null },
+            select: { id: true, valor: true, usuarioId: true, conta: { select: { nome: true } } },
+          },
         },
       });
-      for (const t of ts) {
-        if (t.status === 'CANCELADO') continue;
+      const abertos = ts.filter((t) => t.status !== 'CANCELADO');
+      const comBaixa = abertos.flatMap((t) => t.baixas);
+      const semDinheiro =
+        comBaixa.length > 0 &&
+        (await this.recebimentoSemDinheiro(abertos[0].empresaId, pedidoId, comBaixa));
+      for (const t of abertos) {
+        if (t.baixas.length > 0 && semDinheiro) {
+          // Opção b (07/11): recebimento que o Asaas não confirma — estorna sozinho.
+          const agora = new Date();
+          await this.prisma.$transaction([
+            this.prisma.finBaixa.updateMany({
+              where: { tituloId: t.id, estornadaEm: null },
+              data: { estornadaEm: agora },
+            }),
+            this.prisma.finTitulo.update({ where: { id: t.id }, data: { status: 'CANCELADO' } }),
+          ]);
+          this.logger.log(
+            `[financeiro] pedido ${pedidoId} cancelado: recebimento do título ${t.id} estornado sozinho (o Asaas não confirma o dinheiro)`,
+          );
+          continue;
+        }
         if (t.baixas.length > 0) {
           // Quem cancelou decide (03/11): o pedido avisa e oferece "estornar recebimento".
           recebidoC += t.baixas.reduce((s, b) => s + Math.round(Number(b.valor) * 100), 0);
