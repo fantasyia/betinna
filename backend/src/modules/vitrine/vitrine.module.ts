@@ -23,6 +23,7 @@ import { ContatoService } from './contato.service';
 import { CarrinhoRecuperadorService } from './carrinho-recuperador.service';
 import { CarrinhoRecuperadorJob } from './carrinho-recuperador.job';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
+import { RagModule } from '@modules/rag/rag.module';
 
 /**
  * Vitrine de atacado (Fase 1 — Ribelt Distribuidora Têxtil, 05/10/2026).
@@ -40,6 +41,7 @@ import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
     FinanceiroModule,
     CheckoutModule,
     IntegracoesModule,
+    RagModule,
   ],
   controllers: [
     VitrineAdminController,

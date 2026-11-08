@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { IndexacaoService } from '@modules/rag/indexacao.service';
 import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
@@ -13,6 +14,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { VitrineFotosService } from './vitrine-fotos.service';
 import { eanUsadosAte, prefixoGs1, proximosEans, skuNumerico } from './codigos-produto';
 import { configClarity, type ClarityConfigDto } from './clarity';
+import { configSeloRa, type SeloRaConfigDto } from './selo-reclame-aqui';
 import { slugDoNome, slugLivre } from './slug-modelo';
 import { configGeo, type GeoConfigDto } from './geo';
 import { limparFiscal } from './fiscal';
@@ -127,6 +129,7 @@ export class VitrineAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fotos: VitrineFotosService,
+    @Optional() private readonly indexacao?: IndexacaoService,
   ) {}
 
   /** Modelo pra tela: fotos e vídeos com a URL pública pronta. */
@@ -686,8 +689,10 @@ export class VitrineAdminService {
   /**
    * Regrava o trecho "Produto · <nome>" da base de conhecimento a partir do
    * cadastro (preços, cores, tamanhos, medidas, link). Modelo inativo ou
-   * apagado: o trecho fica inativo e some da busca. O reconciliador do RAG
-   * reindexa sozinho. Nunca derruba a gravação do modelo.
+   * apagado: o trecho fica inativo e some da busca. A ficha nova entra na
+   * fila de indexação NA HORA (Léo, 07/11): esperar o reconciliador deixava o
+   * robô respondendo com o preço antigo por um tempo. O reconciliador segue
+   * como rede. Nunca derruba a gravação do modelo.
    */
   async sincronizarConhecimento(empresaId: string, modeloId: string): Promise<void> {
     try {
@@ -736,7 +741,7 @@ export class VitrineAdminService {
         vitrine ?? { minimoEntrada: null, minimoVolume: null, minimoAtacadao: null },
         dominio,
       );
-      await this.prisma.knowledgeChunk.upsert({
+      const chunk = await this.prisma.knowledgeChunk.upsert({
         where: { empresaId_fonte_refId: { empresaId, fonte: 'CONFIG', refId } },
         create: {
           empresaId,
@@ -748,7 +753,9 @@ export class VitrineAdminService {
           ativo: true,
         },
         update: { titulo: ficha.titulo, conteudo: ficha.conteudo, ativo: true },
+        select: { id: true },
       });
+      await this.indexacao?.enfileirarChunk(chunk.id, empresaId);
     } catch (err) {
       this.logger.warn(`[conhecimento] ficha do modelo ${modeloId} não gravou: ${String(err)}`);
     }
@@ -935,6 +942,25 @@ export class VitrineAdminService {
       SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{clarity}', ${JSON.stringify(parte)}::jsonb, true)
       WHERE "id" = ${empresaId}`;
     return this.clarityStatus(user);
+  }
+
+  async seloRaStatus(user: AuthenticatedUser) {
+    const empresaId = await this.empresaComVitrine(user);
+    const e = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    return { config: configSeloRa(e?.config) };
+  }
+
+  async seloRaSalvar(user: AuthenticatedUser, dto: SeloRaConfigDto) {
+    const empresaId = await this.empresaComVitrine(user);
+    const parte = { ativo: dto.ativo, dataId: dto.dataId ?? null, modelo: dto.modelo };
+    await this.prisma.$executeRaw`
+      UPDATE "Empresa"
+      SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{seloReclameAqui}', ${JSON.stringify(parte)}::jsonb, true)
+      WHERE "id" = ${empresaId}`;
+    return this.seloRaStatus(user);
   }
 
   /**
