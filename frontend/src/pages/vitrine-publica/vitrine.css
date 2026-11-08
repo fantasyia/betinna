@@ -507,3 +507,6 @@
 .vt-av-estrelas { color: #e0a100; letter-spacing: 1px; font-size: 14px; }
 .vt-av-fotos { display: flex; gap: 8px; overflow-x: auto; }
 .vt-av-fotos img { width: 104px; height: 138px; object-fit: cover; border-radius: 10px; flex: none; }
+
+/* Selo do Reclame Aqui no resumo do pedido (07/11). */
+.vt-selo-ra { display: flex; justify-content: center; padding: 12px 0 4px; }

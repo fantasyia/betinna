@@ -120,6 +120,8 @@ export interface VitrinePub {
   googleTag?: import('./google-tag').GoogleTag | null;
   /** Microsoft Clarity (22/10). null = desligado. */
   clarity?: { projetoId: string } | null;
+  /** Selo do Reclame Aqui no resumo do pedido (07/11). null = desligado. */
+  seloReclameAqui?: { dataId: string; modelo: string } | null;
   /** `selo`: aviso da linha (Plus Size de verdade…); null = sem selo. */
   linhas: Array<{ id: string; nome: string; selo?: string | null }>;
   modelos: ModeloPub[];

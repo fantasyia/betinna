@@ -78,6 +78,7 @@ import { carrinhoDosItens, guardarRef, lerRef, paramsDoLink, semToken } from './
 import './vitrine.css';
 import { useCarregarVitrine } from './carregar-vitrine';
 import { EsqueletoVitrine } from './Esqueleto';
+import { SeloReclameAqui } from './SeloReclameAqui';
 
 /**
  * Vitrine pública de atacado (Fase 1) — o link que o cliente abre no celular:
@@ -2094,6 +2095,9 @@ function SeuPedido({
               </span>
             )}
           </div>
+        )}
+        {v.seloReclameAqui && (
+          <SeloReclameAqui dataId={v.seloReclameAqui.dataId} modelo={v.seloReclameAqui.modelo} />
         )}
       </div>
       <footer>

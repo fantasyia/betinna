@@ -12,6 +12,7 @@ import { pixelLigado } from './meta-pixel.service';
 import { googleTagLigada } from './google-tag.service';
 import { whatsappDaVitrine } from './contato.service';
 import { clarityLigado } from './clarity';
+import { seloRaLigado } from './selo-reclame-aqui';
 import { slugDoNome } from './slug-modelo';
 import { configGeo } from './geo';
 
@@ -345,6 +346,8 @@ export class VitrinePublicaService {
       googleTag: googleTagLigada(vitrine.empresa.config),
       // Clarity (22/10): só o ID; a página não carrega na visita da equipe.
       clarity: clarityLigado(vitrine.empresa.config),
+      // Selo do Reclame Aqui no rodapé (07/11): data-id público + modelo.
+      seloReclameAqui: seloRaLigado(vitrine.empresa.config),
       // Conteúdo pros robôs das IAs/Google (título, quem somos, FAQ, redes), 23/10.
       geo: configGeo(vitrine.empresa.config),
       linhas,

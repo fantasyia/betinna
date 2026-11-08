@@ -59,6 +59,7 @@ import { GoogleTagService } from './google-tag.service';
 import { ModoInternoService } from './modo-interno.service';
 import { ContatoService } from './contato.service';
 import { clarityConfigSchema, type ClarityConfigDto } from './clarity';
+import { seloRaConfigSchema, type SeloRaConfigDto } from './selo-reclame-aqui';
 import { geoConfigSchema, type GeoConfigDto } from './geo';
 import { campanhasMetaSchema, type CampanhasMetaDto } from '@integrations/meta/origem-meta';
 
@@ -175,6 +176,22 @@ export class VitrineAdminController {
     @Body(new ZodValidationPipe(clarityConfigSchema)) dto: ClarityConfigDto,
   ) {
     return this.svc.claritySalvar(user, dto);
+  }
+
+  // ─── Selo do Reclame Aqui no rodapé (07/11) ─────────────────────────────
+  @Get('selo-reclame-aqui')
+  @ApiOperation({ summary: 'Selo do Reclame Aqui: data-id, modelo e se está ligado' })
+  seloRaStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.seloRaStatus(user);
+  }
+
+  @Put('selo-reclame-aqui')
+  @ApiOperation({ summary: 'Salva o data-id e o modelo do selo e liga/desliga' })
+  seloRaSalvar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(seloRaConfigSchema)) dto: SeloRaConfigDto,
+  ) {
+    return this.svc.seloRaSalvar(user, dto);
   }
 
   // ─── Modo interno (visita da equipe não conta) ──────────────────────────
