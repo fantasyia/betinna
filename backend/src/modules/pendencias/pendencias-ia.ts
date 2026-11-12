@@ -12,7 +12,8 @@
 
 import { chaveModelo, modeloDoAnuncio } from '@modules/avaliacoes/avaliacoes';
 
-export type AcaoIa = 'responder' | 'humano';
+/** silencio = não manda nada (anti-loop do "ok", Léo 12/11). */
+export type AcaoIa = 'responder' | 'humano' | 'silencio';
 
 export interface DecisaoIa {
   acao: AcaoIa;
@@ -38,7 +39,7 @@ O QUE VOCÊ RECEBE: a conversa, os ANÚNCIOS que o cliente mandou ou comprou (t�
 COMO RESPONDER:
 - Responda de verdade, com os dados que você tem. Pergunta de tamanho: olhe a tabela de medidas do produto (na descrição do anúncio ou na base) e diga as medidas do tamanho perguntado; se o cliente der peso, altura ou medida, indique o tamanho. Pergunta de pedido: diga a situação e o rastreio, se houver.
 - Se o cliente só mandou o card do produto ou do pedido, sem pergunta, cumprimente citando o produto ou o pedido e pergunte como pode ajudar (ex.: "Oi! Vi que você mandou a Bermuda de Moletom. Quer saber alguma medida ou tamanho?").
-- Agradecimento, "ok", emoji ou figurinha: resposta curta e simpática ("Nós que agradecemos! Qualquer coisa, é só chamar."). A loja sempre fala por último.
+- Agradecimento, "ok", emoji ou figurinha: responda só "Estamos à disposição!", e mais nada.
 - A BASE é do site de ATACADO: NUNCA fale de preço de atacado, pedido mínimo, revenda, lucro, link ou site. Use a base pra produto (medidas, tamanhos, composição, cores, características) e pras REGRAS DE ATENDIMENTO da loja (tom, endereço errado, prazo de envio): siga-as sempre.
 - Pra escolher a cor (ou o tamanho) de cada peça, o caminho é o anúncio da peça unitária. Se os ANÚNCIOS trazem "Anúncio da peça unitária deste kit", diga que vai mandar o anúncio aqui e marque card_unitario = true: o card do anúncio vai logo depois do seu texto. Se não trazem, não prometa mandar nada. Em qualquer outro caso, card_unitario = false.
 - Quando a descrição do anúncio e a BASE disserem coisas diferentes (composição, medida, gramatura, FPS, quantidade de peças do kit), vale a BASE: é a informação conferida pela loja.
@@ -62,7 +63,7 @@ JEITO DE ESCREVER (vale pra toda mensagem)
 Exceção: os textos fixos aprovados (troca, defeito, peça errada, atraso, reposição, kit sortido) continuam com o fecho "Desde já agradecemos a preferência!".
 
 - NUNCA peça desculpas ("desculpa a demora", "lamentamos", "sentimos muito"): vá direto à solução. ÚNICA exceção: em DEFEITO e em PEÇA ERRADA (cor, tamanho ou peça diferente do pedido), comece como a BASE manda ("Sentimos muito por isso." / "Sentimos muito pelo engano.").
-- PALAVRAS PROIBIDAS (o marketplace bloqueia a mensagem): nunca escreva "cancelamento", "cancelar", "cancelado", "devolução", "devolver" nem "devolvido", em nenhuma forma, nem se o cliente usar. Fale em "resolver pela aba de compras".
+- PALAVRAS PROIBIDAS (o marketplace bloqueia a mensagem): nunca escreva "cancelamento", "cancelar", "cancelado", "devolução", "devolver", "devolvido", "reembolso" nem "reembolsar", em nenhuma forma, nem se o cliente usar. Fale em "resolver pela aba de compras".
 - Cupom: só o que a BASE manda e só no canal que ela diz (o DEBEVOLTE é SÓ na Shopee e SÓ em peça errada).
 - Nunca peça nem passe telefone, e-mail, WhatsApp, link ou rede social (o marketplace proíbe).
 
@@ -111,8 +112,8 @@ export function lerDecisao(bruto: string): DecisaoIa {
   return { acao: 'humano', resposta: ESPERA_PADRAO, motivo: 'resposta da IA ilegível' };
 }
 
-/** Palavras que o marketplace bloqueia no chat (Léo, 31/10): cancelar/devolver em qualquer forma. */
-const PROIBIDAS = /\b(cancel|devol)[a-zçãõáéíóú]*/i;
+/** Palavras que o marketplace bloqueia no chat (Léo, 31/10 e 12/11): cancelar/devolver/reembolsar em qualquer forma. */
+const PROIBIDAS = /\b(cancel|devol|reembols)[a-zçãõáéíóú]*/i;
 /** Prazo de reposição/volta ao estoque ("pode voltar em até 10 dias úteis"). */
 const PRAZO_REPOSICAO =
   /\b(volt\w*|repo[sr]\w*|estoque)\b[^.!?\n]{0,60}?\b(\d+|um|uma|dois|duas|tr[eê]s|quatro|cinco)\s*(dias?|semanas?|m[eê]s(es)?)\b/i;
@@ -286,4 +287,45 @@ export function clienteTerminou(ultimaDoCliente: Date, agora = new Date()): bool
 /** Última mensagem é do cliente? (só aí a IA entra — a loja nunca fala duas vezes seguidas sem motivo) */
 export function clienteFalouPorUltimo(h: MensagemHistorico[]): boolean {
   return h.length > 0 && !h[h.length - 1].daLoja;
+}
+
+/** Resposta fixa a quem só confirmou (Léo, 12/11). */
+export const DISPOSICAO = 'Estamos à disposição!';
+
+/** Palavras de quem só confirma ou agradece: nenhuma pede resposta. */
+const SO_CONFIRMA = new Set(
+  (
+    'ok okay okey oks okk okok ta bom certo beleza blz show perfeito entendi entendido combinado ' +
+    'obrigado obrigada obrigados obrigadas obg obgd brigado brigada valeu vlw muito mt mto ' +
+    'agradeco joia top otimo e isso entao tudo certinho'
+  ).split(' '),
+);
+
+/** A fala do cliente não pede resposta: "ok", "obrigado", emoji ou figurinha. */
+export function soConfirmacao(texto: string): boolean {
+  const t = texto.trim();
+  if (/^\[(sticker|figurinha)\]$/i.test(t)) return true;
+  const palavras = t
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  // Só emoji/pontuação também conta. Mais de 6 palavras já é outra conversa.
+  return palavras.length <= 6 && palavras.every((p) => SO_CONFIRMA.has(p));
+}
+
+/**
+ * Cliente só confirmou (Léo, 12/11): "responder" com DISPOSICAO; "calar" se a
+ * loja já mandou DISPOSICAO por último (trava do loop ok ↔ disposição); null
+ * se tem pergunta de verdade e quem decide é a IA.
+ */
+export function fechoDoCliente(h: MensagemHistorico[]): 'responder' | 'calar' | null {
+  let i = h.length;
+  while (i > 0 && !h[i - 1].daLoja) i--;
+  const doCliente = h.slice(i);
+  if (!doCliente.length || !doCliente.every((m) => soConfirmacao(m.texto))) return null;
+  const daLoja = i > 0 ? h[i - 1].texto.trim() : '';
+  return daLoja === DISPOSICAO ? 'calar' : 'responder';
 }

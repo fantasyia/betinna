@@ -8,7 +8,9 @@ import { KnowledgeSearchService } from '@modules/rag/knowledge-search.service';
 import { TAG_HUMANO } from '@integrations/mercadolivre/ml-resposta-ia.service';
 import { ShopeeClientService } from '@integrations/shopee/shopee-client.service';
 import {
+  DISPOSICAO,
   ESPERA_PADRAO,
+  fechoDoCliente,
   PROMPT_PENDENCIA,
   SCHEMA_PENDENCIA,
   baseParaConversa,
@@ -21,6 +23,7 @@ import {
   respostaBarrada,
   textoLegivel,
   type AnuncioContexto,
+  type DecisaoIa,
   unitarioDoAnuncio,
   type MensagemHistorico,
   type TipoPendenciaIa,
@@ -241,6 +244,13 @@ export class PendenciasIaService implements OnModuleInit {
 
     const { decisao, modelo, anuncios } = await this.decidirFiltrado(empresaId, p, tipo, historico);
 
+    // Anti-loop do "ok" (Léo, 12/11): já mandamos DISPOSICAO e ele só confirmou de novo.
+    if (decisao.acao === 'silencio') {
+      await this.registrar(empresaId, p.id, conv.id, decisao, false, null, modelo);
+      await this.marcar(p.id, 'RESPONDIDA_IA');
+      return 'respondida';
+    }
+
     // Envia SEMPRE (resposta ou espera): a loja tem a última palavra.
     let erro: string | null = null;
     try {
@@ -396,6 +406,25 @@ export class PendenciasIaService implements OnModuleInit {
     tipo: TipoPendenciaIa,
     historico: MensagemHistorico[],
   ) {
+    // "ok", obrigado, emoji ou figurinha: resposta fixa, sem gastar IA (Léo, 12/11).
+    const fecho = fechoDoCliente(historico);
+    if (fecho)
+      return {
+        decisao: (fecho === 'calar'
+          ? {
+              acao: 'silencio',
+              resposta: '',
+              motivo: 'cliente só confirmou de novo depois do "Estamos à disposição!"',
+            }
+          : {
+              acao: 'responder',
+              resposta: DISPOSICAO,
+              motivo: 'cliente só confirmou ou agradeceu',
+            }) as DecisaoIa,
+        modelo: null as string | null,
+        anuncios: [] as AnuncioContexto[],
+        barrada: null as string | null,
+      };
     let r = await this.decidir(empresaId, p, tipo, historico);
     const primeira = respostaBarrada(r.decisao.resposta, p.canal);
     if (primeira) {

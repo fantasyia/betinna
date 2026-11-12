@@ -46,7 +46,7 @@ interface Pendencia {
   status: Status;
   /** Última coisa que a IA fez nesta pendência (fase 2, 25/10). */
   ia: {
-    acao: 'responder' | 'humano';
+    acao: 'responder' | 'humano' | 'silencio';
     resposta: string;
     motivo: string | null;
     enviada: boolean;
@@ -92,6 +92,10 @@ const COR_STATUS: Record<Status, string> = {
 };
 
 /** "há 3 h" / "vence em 18 h" — a cor sai do prazo. */
+/** Rótulo do que a IA fez (silencio = anti-loop do "ok", 12/11). */
+const ROTULO_IA = { humano: 'IA passou pra você', silencio: 'IA não respondeu' };
+const ROTULO_TESTE = { humano: 'Passaria pra você', silencio: 'Não responderia' };
+
 function tempo(p: Pendencia): { texto: string; cor: string } {
   if (p.status === 'ENCERRADA' || p.status === 'RESPONDIDA_IA') {
     return p.resolvidaEm
@@ -337,7 +341,7 @@ export default function PendenciasPage() {
                       className="basis-full text-xs rounded-[10px] bg-surface-hover border border-border px-3 py-2 text-text break-words"
                       data-testid="pendencia-ia"
                     >
-                      <b>{p.ia.acao === 'humano' ? 'IA passou pra você' : 'IA respondeu'}</b>
+                      <b>{(ROTULO_IA as Record<string, string>)[p.ia.acao] ?? 'IA respondeu'}</b>
                       {p.ia.motivo ? ` (${p.ia.motivo})` : ''}
                       {p.ia.resposta ? `: "${p.ia.resposta}"` : ''}
                       {!p.ia.enviada && p.ia.resposta && (
@@ -391,7 +395,7 @@ export default function PendenciasPage() {
                 </span>
               ))}
               <span className="rounded-[10px] bg-surface-hover px-3 py-2 text-text break-words">
-                <b>{t.acao === 'humano' ? 'Passaria pra você' : 'Responderia'}:</b> "{t.resposta}"
+                <b>{(ROTULO_TESTE as Record<string, string>)[t.acao] ?? 'Responderia'}:</b> "{t.resposta}"
                 <span className="text-muted"> ({t.motivo})</span>
               </span>
             </li>

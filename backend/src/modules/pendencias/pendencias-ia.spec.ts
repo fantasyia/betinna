@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DISPOSICAO,
+  fechoDoCliente,
+  soConfirmacao,
   respostaBarrada,
   PROMPT_PENDENCIA,
   ESPERA_PADRAO,
@@ -213,5 +216,44 @@ describe('jeito de escrever (#04, 02/11)', () => {
     expect(PROMPT_PENDENCIA).toMatch(/Cumprimente só na primeira mensagem/);
     expect(PROMPT_PENDENCIA).toMatch(/Não repita uma frase que você já mandou/);
     expect(ESPERA_PADRAO).not.toMatch(/^(Oi|Olá)/);
+  });
+});
+
+describe('cliente só confirmou (Léo, 12/11)', () => {
+  const loja = (texto: string) => ({ daLoja: true, texto });
+  const cli = (texto: string) => ({ daLoja: false, texto });
+
+  it('ok, obrigado, emoji ou figurinha não pedem resposta', () => {
+    for (const t of [
+      'Okay',
+      'ok!',
+      'Tá bom',
+      'certo',
+      'Muito obrigada!',
+      'obg',
+      '❤️',
+      '👍🏻',
+      '[sticker]',
+      'Valeu',
+    ])
+      expect(soConfirmacao(t)).toBe(true);
+    for (const t of ['ok, e o rastreio?', 'tem no G1?', 'sim', 'obrigado, mas veio errado'])
+      expect(soConfirmacao(t)).toBe(false);
+  });
+
+  it('responde "Estamos à disposição!" e cala no segundo ok', () => {
+    expect(fechoDoCliente([loja('Seu pedido saiu hoje.'), cli('Okay'), cli('👍')])).toBe(
+      'responder',
+    );
+    expect(fechoDoCliente([loja(DISPOSICAO), cli('Okay')])).toBe('calar');
+    expect(fechoDoCliente([loja(DISPOSICAO), cli('ok'), cli('e o rastreio?')])).toBeNull();
+    expect(fechoDoCliente([loja('Oi')])).toBeNull();
+  });
+
+  it('reembolso entra nas palavras proibidas', () => {
+    expect(
+      respostaBarrada('Vamos fazer o reembolso pela aba de compras.', 'MARKETPLACE_SHOPEE'),
+    ).toMatch(/reembols/);
+    expect(respostaBarrada('Pode cancelar o pedido.', 'MARKETPLACE_ML')).toMatch(/cancel/);
   });
 });

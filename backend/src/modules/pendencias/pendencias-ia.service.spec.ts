@@ -176,12 +176,40 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
     expect(t.bot.gerarRespostaIa).not.toHaveBeenCalled();
   });
 
-  it('cliente falou por último ("obg"): a IA responde, envia, registra e marca RESPONDIDA_IA', async () => {
+  it('cliente só agradeceu ("obg"): "Estamos à disposição!" sem chamar a IA (Léo, 12/11)', async () => {
     const t = montar({
       pendencias: [SHOPEE],
       mensagens: [
         { direction: 'OUTBOUND', conteudo: 'Seu pedido saiu hoje.' },
         { direction: 'INBOUND', conteudo: 'Obg' },
+      ],
+    });
+    expect(await t.svc.processar('e1')).toEqual({ respondidas: 1, humano: 0 });
+    expect(t.enviados).toEqual(['Estamos à disposição!']);
+    expect(t.bot.gerarRespostaIa).not.toHaveBeenCalled();
+    expect(t.estados.p1).toBe('RESPONDIDA_IA');
+  });
+
+  it('"ok" de novo depois do "Estamos à disposição!": não manda nada (anti-loop)', async () => {
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [
+        { direction: 'OUTBOUND', conteudo: 'Estamos à disposição!' },
+        { direction: 'INBOUND', conteudo: 'Okay' },
+      ],
+    });
+    expect(await t.svc.processar('e1')).toEqual({ respondidas: 1, humano: 0 });
+    expect(t.enviados).toEqual([]);
+    expect(t.estados.p1).toBe('RESPONDIDA_IA');
+    expect(t.registros[0]).toMatchObject({ acao: 'silencio', enviada: false });
+  });
+
+  it('cliente falou por último (pergunta): a IA responde, envia, registra e marca RESPONDIDA_IA', async () => {
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [
+        { direction: 'OUTBOUND', conteudo: 'Seu pedido saiu hoje.' },
+        { direction: 'INBOUND', conteudo: 'Qual o rastreio?' },
       ],
     });
     expect(await t.svc.processar('e1')).toEqual({ respondidas: 1, humano: 0 });
