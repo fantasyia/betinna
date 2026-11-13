@@ -197,4 +197,55 @@ export function registrarDafiti(server: McpServer, { ok, seguro }: Ajudantes) {
         ),
     ),
   );
+
+  // API crua do Seller Center (13/11): ler qualquer /v2; escrever só anúncio.
+  server.registerTool(
+    "dafiti_api",
+    {
+      description:
+        "Chama o Seller Center da Dafiti (v2) com a chave do app; devolve a resposta crua. metodo GET lê QUALQUER " +
+        "/v2 (categorias, marcas, attribute-sets, product-set, products, preços...). POST/PUT/PATCH/DELETE MEXEM NA " +
+        "LOJA — só com o \"pode subir\" do Léo pro plano exato. Travas no servidor: escrita só em /v2/product-set... " +
+        "e /v2/products...; estoque (stock/quantity/inventory) e fulfillment recusados no caminho e no corpo " +
+        "(estoque vem do Magis5); POST que cria product-set ou variação (/v2/product-set/{id}/products) nasce " +
+        "status inactive e shipmentTypeId 2 (fora do Full; shipmentTypeId 1 = Full é recusado); DELETE só de foto. " +
+        "Mapa (doc api.sellercenter.com.br/doc): criar anúncio POST /v2/product-set {name, price, sellerSku, brandId, " +
+        "primaryCategoryId, attributes, variation, productIdentifier(EAN)} (cria junto a 1ª variação); modelo da categoria " +
+        "GET /v2/product-sets/sample-payload/{categoriaId} e GET /v2/category/{id}/attributes; nova variação POST " +
+        "/v2/product-set/{id}/products {sellerSku, variation, productIdentifier}; preço por variação PUT " +
+        "/v2/product/{productId}/prices/BR {price, salePrice}; ativar/desativar PUT /v2/product-set/{id}/products/{productId}/status " +
+        "com query {status:'active'|'inactive'}. Resposta da escrita: { resposta, ajustes }.",
+      inputSchema: {
+        metodo: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+        caminho: z.string().regex(/^\/v2\/[A-Za-z0-9\-_/]+$/),
+        query: z
+          .record(z.string(), z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]))
+          .optional()
+          .describe("GET: parâmetros da URL (lista vira parâmetro repetido). Escrita: só {status}"),
+        corpo: z
+          .union([z.record(z.string(), z.unknown()), z.array(z.unknown())])
+          .optional()
+          .describe("Só escrita: JSON da Dafiti"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+    },
+    seguro(
+      async ({
+        metodo,
+        caminho,
+        query,
+        corpo,
+      }: {
+        metodo: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+        caminho: string;
+        query?: Record<string, unknown>;
+        corpo?: unknown;
+      }) =>
+        ok(
+          metodo === "GET"
+            ? await api.post("/marketplace/dafiti/api/ler", { caminho, query })
+            : await api.post("/marketplace/dafiti/api/escrever", { metodo, caminho, corpo, query }),
+        ),
+    ),
+  );
 }
