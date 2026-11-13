@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ShopeeApiController } from './shopee-api.controller';
+import { ShopeeApiService } from './shopee-api.service';
 import { ShopeeChatService } from './shopee-chat.service';
 import { ShopeeClientService } from './shopee-client.service';
 import { ShopeeFlashSaleController } from './shopee-flash-sale.controller';
@@ -30,9 +32,11 @@ import { ShopeeWebhookController } from './shopee-webhook.controller';
     ShopeeWebhookController,
     ShopeeFlashSaleController,
     ShopeeVoucherController,
+    ShopeeApiController,
   ],
   providers: [
     ShopeeClientService,
+    ShopeeApiService,
     ShopeeFlashSaleService,
     ShopeeVoucherService,
     ShopeeOAuthService,

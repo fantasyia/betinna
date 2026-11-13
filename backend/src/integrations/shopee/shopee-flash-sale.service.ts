@@ -503,6 +503,11 @@ export class ShopeeFlashSaleService {
     return r.response?.logistics_channel_list ?? [];
   }
 
+  /** Pro passthrough (shopee_api): recusa escrita em anúncio com Full. */
+  async garantirSemFull(user: AuthenticatedUser, itemId: number) {
+    await this.exigirSemFull(user, itemId, await this.itemBase(user, itemId));
+  }
+
   /** Mudança no nível do item alcança todos os models: com Full, não entra. */
   private async exigirSemFull(user: AuthenticatedUser, itemId: number, item: ItemBase) {
     const modelos = await this.modelos(user, itemId);

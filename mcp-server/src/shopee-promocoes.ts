@@ -11,6 +11,9 @@
  *
  * Preço (shopee_preco_atualizar, 01/11): muda o preço do anúncio por model —
  * só com o "pode subir" do Léo pro plano exato.
+ *
+ * API crua (shopee_api, 13/11): qualquer rota /api/v2, assinada pelo Betinna.
+ * GET livre; POST só com o "pode subir" do Léo. Estoque e Full travados no servidor.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -729,6 +732,45 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
     },
     seguro(async ({ voucherId }: { voucherId: number }) =>
       ok(await api.post(`/shopee-promocoes/cupons/${voucherId}/apagar`, {})),
+    ),
+  );
+
+  const valorQuery = z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.array(z.union([z.string(), z.number()])),
+  ]);
+  server.registerTool(
+    "shopee_api",
+    {
+      description:
+        "Chama QUALQUER rota da Open API v2 da Shopee na loja da empresa do token, assinada pelo Betinna; devolve a resposta crua. caminho: /api/v2/<modulo>/<acao> (ex.: /api/v2/product/get_item_list). query: parâmetros sem partner_id/timestamp/access_token/shop_id/sign (lista vira vírgula). GET é leitura livre. POST MEXE NA LOJA — só com o \"pode subir\" do Léo pro plano exato. Travas no servidor: estoque vem do Magis5 (rota de estoque recusada; em add_item/add_model/init_tier_variation o estoque vai 0; em outras escritas campo de estoque recusa); add_item nasce UNLIST; escrita em anúncio com Full recusada (add_item/add_model passam); auth/public/push/fbs não escrevem. Resposta do POST: { resposta, ajustes }.",
+      inputSchema: {
+        metodo: z.enum(["GET", "POST"]),
+        caminho: z.string().regex(/^\/api\/v2\/[a-z0-9_]+\/[a-z0-9_]+$/),
+        query: z.record(z.string(), valorQuery).optional(),
+        corpo: z.record(z.string(), z.unknown()).optional().describe("Só POST: JSON da Shopee"),
+      },
+      annotations: mexe,
+    },
+    seguro(
+      async ({
+        metodo,
+        caminho,
+        query,
+        corpo,
+      }: {
+        metodo: "GET" | "POST";
+        caminho: string;
+        query?: Record<string, unknown>;
+        corpo?: Record<string, unknown>;
+      }) =>
+        ok(
+          metodo === "GET"
+            ? await api.post("/shopee-promocoes/api/ler", { caminho, query })
+            : await api.post("/shopee-promocoes/api/escrever", { caminho, query, corpo }),
+        ),
     ),
   );
 }

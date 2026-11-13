@@ -44,14 +44,18 @@ export class ShopeeClientService {
     return this.call<T>('GET', empresaId, path, extraQuery);
   }
 
-  /** POST shop-scoped — body vai como JSON; query params idem GET. */
+  /**
+   * POST shop-scoped — body vai como JSON; query params idem GET.
+   * `semRepetir`: criação (add_item) não pode ir duas vezes num timeout.
+   */
   async postShop<T>(
     empresaId: string,
     path: string,
     body: unknown,
     extraQuery: Record<string, string | number | boolean | undefined> = {},
+    opcoes: { semRepetir?: boolean } = {},
   ): Promise<T> {
-    return this.call<T>('POST', empresaId, path, extraQuery, body);
+    return this.call<T>('POST', empresaId, path, extraQuery, body, opcoes.semRepetir ? 0 : 1);
   }
 
   private async call<T>(
@@ -60,6 +64,7 @@ export class ShopeeClientService {
     path: string,
     extraQuery: Record<string, string | number | boolean | undefined>,
     body?: unknown,
+    retries = 1,
   ): Promise<T> {
     const creds = await this.oauth.getCredenciais(empresaId);
     const partnerId = this.env.get('SHOPEE_PARTNER_ID');
@@ -85,7 +90,7 @@ export class ShopeeClientService {
         body,
         integration: 'shopee',
         redactKeys: ['access_token', 'partner_id', 'sign'],
-        retries: 1,
+        retries,
         timeoutMs: 30_000,
       });
       // Shopee usa HTTP 200 mesmo com erro no payload
