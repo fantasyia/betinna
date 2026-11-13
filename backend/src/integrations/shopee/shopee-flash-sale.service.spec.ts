@@ -1,7 +1,11 @@
 import { Reflector } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
 import { ShopeeFlashSaleController } from './shopee-flash-sale.controller';
-import { ESPERA_RELEITURA_MS, ShopeeFlashSaleService } from './shopee-flash-sale.service';
+import {
+  ESPERA_RELEITURA_MS,
+  ShopeeFlashSaleService,
+  itemRecemCriado,
+} from './shopee-flash-sale.service';
 
 const user = { id: 'u1', role: 'DIRECTOR', empresaIdAtiva: 'emp1' };
 const MODELS = {
@@ -743,5 +747,58 @@ describe('Preço de anúncio Shopee (01/11)', () => {
       svc.atualizarPreco({ ...user, role: 'REP' } as never, 99, [{ preco: 10 }]),
     ).rejects.toThrow(/diretor ou admin/);
     expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+});
+
+describe('Full desconhecido em anúncio recém-criado (13/11)', () => {
+  const agora = Math.floor(Date.now() / 1000);
+  function servico(item: object) {
+    const shopee = {
+      getShop: vi.fn(async (_e: string, caminho: string) =>
+        caminho.endsWith('get_item_base_info')
+          ? { response: { item_list: [item] } }
+          : { response: { model: [] } },
+      ),
+    };
+    return new ShopeeFlashSaleService(shopee as never);
+  }
+
+  it('recém-criado = UNLIST, sem variação e com menos de 24 h', () => {
+    expect(
+      itemRecemCriado({ item_status: 'UNLIST', has_model: false, create_time: agora - 60 }),
+    ).toBe(true);
+    expect(
+      itemRecemCriado({ item_status: 'NORMAL', has_model: false, create_time: agora - 60 }),
+    ).toBe(false);
+    expect(
+      itemRecemCriado({ item_status: 'UNLIST', has_model: true, create_time: agora - 60 }),
+    ).toBe(false);
+    expect(
+      itemRecemCriado({ item_status: 'UNLIST', has_model: false, create_time: agora - 90_000 }),
+    ).toBe(false);
+  });
+
+  it('novo: desconhecido passa; anúncio antigo com desconhecido segue barrado', async () => {
+    const novo = { item_status: 'UNLIST', has_model: false, create_time: agora - 60 };
+    await expect(
+      servico(novo).garantirSemFull(user as never, 1, { novo: true }),
+    ).resolves.toBeUndefined();
+    await expect(servico(novo).garantirSemFull(user as never, 1)).rejects.toThrow(/Full/);
+    const antigo = { item_status: 'UNLIST', has_model: false, create_time: agora - 90_000 };
+    await expect(servico(antigo).garantirSemFull(user as never, 1, { novo: true })).rejects.toThrow(
+      /Full/,
+    );
+  });
+
+  it('novo com estoque Full de verdade continua barrado', async () => {
+    const comFull = {
+      item_status: 'UNLIST',
+      has_model: false,
+      create_time: agora - 60,
+      stock_info_v2: { shopee_stock: [{ stock: 3 }] },
+    };
+    await expect(
+      servico(comFull).garantirSemFull(user as never, 1, { novo: true }),
+    ).rejects.toThrow(/Full/);
   });
 });

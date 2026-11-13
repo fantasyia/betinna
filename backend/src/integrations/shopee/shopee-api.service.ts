@@ -148,7 +148,9 @@ export class ShopeeApiService {
       if (itens.length > MAX_ITENS_CHECADOS) {
         throw new BusinessRuleException(`No máximo ${MAX_ITENS_CHECADOS} anúncios por chamada`);
       }
-      for (const itemId of itens) await this.anuncios.garantirSemFull(user, itemId);
+      // init_tier_variation logo após o add_item: Full "desconhecido" de anúncio novo conta como 0.
+      const novo = caminho === '/api/v2/product/init_tier_variation';
+      for (const itemId of itens) await this.anuncios.garantirSemFull(user, itemId, { novo });
     }
 
     this.logger.log(

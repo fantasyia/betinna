@@ -126,7 +126,7 @@ describe('shopee_api — passthrough com travas (13/11)', () => {
     await expect(
       svc.escrever(user as never, '/api/v2/product/update_item', { item_id: 5, item_name: 'x' }),
     ).rejects.toThrow(/Full/);
-    expect(anuncios.garantirSemFull).toHaveBeenCalledWith(user, 5);
+    expect(anuncios.garantirSemFull).toHaveBeenCalledWith(user, 5, { novo: false });
     expect(shopee.postShop).not.toHaveBeenCalled();
   });
 
@@ -151,5 +151,15 @@ describe('shopee_api — passthrough com travas (13/11)', () => {
       a: { normal_stock: 0 },
       b: [1],
     });
+  });
+
+  it('init_tier_variation pede a checagem de Full no modo "anúncio novo"', async () => {
+    const { svc, anuncios } = montar(false);
+    await svc.escrever(user as never, '/api/v2/product/init_tier_variation', {
+      item_id: 8,
+      tier_variation: [],
+      model: [],
+    });
+    expect(anuncios.garantirSemFull).toHaveBeenCalledWith(user, 8, { novo: true });
   });
 });

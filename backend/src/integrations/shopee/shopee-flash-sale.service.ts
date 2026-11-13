@@ -93,6 +93,8 @@ interface ItemBase {
   item_name?: string;
   item_status?: string;
   has_model?: boolean;
+  /** Segundos Unix. */
+  create_time?: number;
   /** A Shopee devolve o peso como texto, em kg. */
   weight?: string | number;
   dimension?: Pacote;
@@ -158,6 +160,16 @@ function temEstoque(valor: unknown): boolean {
   if (Array.isArray(valor)) return valor.some(temEstoque);
   if (valor === null || typeof valor !== 'object') return false;
   return Object.entries(valor).some(([k, v]) => /stock/i.test(k) || temEstoque(v));
+}
+
+/** Criado nas últimas 24 h, deslistado e sem variação: não pode ter Full ainda. */
+export function itemRecemCriado(item: {
+  item_status?: string;
+  has_model?: boolean;
+  create_time?: number;
+}): boolean {
+  const idade = Date.now() / 1000 - (item.create_time ?? 0);
+  return item.item_status === 'UNLIST' && item.has_model !== true && idade >= 0 && idade < 86_400;
 }
 
 function somarEstoque(lista?: Array<{ stock?: number }>): number | null {
@@ -504,17 +516,28 @@ export class ShopeeFlashSaleService {
   }
 
   /** Pro passthrough (shopee_api): recusa escrita em anúncio com Full. */
-  async garantirSemFull(user: AuthenticatedUser, itemId: number) {
-    await this.exigirSemFull(user, itemId, await this.itemBase(user, itemId));
+  async garantirSemFull(user: AuthenticatedUser, itemId: number, opcoes: { novo?: boolean } = {}) {
+    const item = await this.itemBase(user, itemId);
+    await this.exigirSemFull(user, itemId, item, opcoes.novo === true && itemRecemCriado(item));
   }
 
-  /** Mudança no nível do item alcança todos os models: com Full, não entra. */
-  private async exigirSemFull(user: AuthenticatedUser, itemId: number, item: ItemBase) {
+  /**
+   * Mudança no nível do item alcança todos os models: com Full, não entra.
+   * `desconhecidoEhZero`: anúncio recém-criado, deslistado e sem variação
+   * ainda não tem a lista do Full (a Shopee demora a preencher) e não pode ter
+   * estoque Full — aí "desconhecido" conta como 0 (13/11, ~35 de 210 travavam).
+   */
+  private async exigirSemFull(
+    user: AuthenticatedUser,
+    itemId: number,
+    item: ItemBase,
+    desconhecidoEhZero = false,
+  ) {
     const modelos = await this.modelos(user, itemId);
     const fulls = modelos.length
       ? modelos.map((m) => m.estoque_full)
       : [somarEstoque(item.stock_info_v2?.shopee_stock)];
-    if (fulls.some((f) => f === null || f > 0)) {
+    if (fulls.some((f) => (f === null && !desconhecidoEhZero) || (f ?? 0) > 0)) {
       throw new BusinessRuleException('Anúncio com Full ou estoque Full desconhecido: não mexi');
     }
   }
