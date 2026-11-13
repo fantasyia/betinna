@@ -745,7 +745,7 @@ export function registrarShopeePromocoes(server: McpServer, { ok, seguro }: Ajud
     "shopee_api",
     {
       description:
-        "Chama QUALQUER rota da Open API v2 da Shopee na loja da empresa do token, assinada pelo Betinna; devolve a resposta crua. caminho: /api/v2/<modulo>/<acao> (ex.: /api/v2/product/get_item_list). query: parâmetros sem partner_id/timestamp/access_token/shop_id/sign (lista vira vírgula). GET é leitura livre. POST MEXE NA LOJA — só com o \"pode subir\" do Léo pro plano exato. Travas no servidor: estoque vem do Magis5 (rota de estoque recusada; em add_item/add_model/init_tier_variation o estoque vai 0; em outras escritas campo de estoque recusa); add_item nasce UNLIST; escrita em anúncio com Full recusada (add_item/add_model passam); auth/public/push/fbs não escrevem. Resposta do POST: { resposta, ajustes }.",
+        "Chama QUALQUER rota da Open API v2 da Shopee na loja da empresa do token, assinada pelo Betinna; devolve a resposta crua. caminho: /api/v2/<modulo>/<acao> (ex.: /api/v2/product/get_item_list). query: parâmetros sem partner_id/timestamp/access_token/shop_id/sign (lista vira parâmetro repetido, ex. item_status; item_id_list vai como string 1,2). GET é leitura livre. POST MEXE NA LOJA — só com o \"pode subir\" do Léo pro plano exato. Travas no servidor: estoque vem do Magis5 (rota de estoque recusada; em add_item/add_model/init_tier_variation o estoque vai 0; em outras escritas campo de estoque recusa); add_item nasce UNLIST; escrita em anúncio com Full recusada (add_item/add_model passam); auth/public/push/fbs não escrevem. Resposta do POST: { resposta, ajustes }.",
       inputSchema: {
         metodo: z.enum(["GET", "POST"]),
         caminho: z.string().regex(/^\/api\/v2\/[a-z0-9_]+\/[a-z0-9_]+$/),

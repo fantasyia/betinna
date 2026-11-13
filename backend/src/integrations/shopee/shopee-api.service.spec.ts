@@ -35,7 +35,7 @@ describe('shopee_api — passthrough com travas (13/11)', () => {
     expect(shopee.getShop).not.toHaveBeenCalled();
   });
 
-  it('GET item_list passa, com lista virando vírgula e chave reservada caindo', async () => {
+  it('GET item_list passa, lista vai repetida e chave reservada cai', async () => {
     const { svc, shopee } = montar();
     const r = await svc.ler(user as never, '/api/v2/product/get_item_list', {
       offset: 0,
@@ -47,7 +47,7 @@ describe('shopee_api — passthrough com travas (13/11)', () => {
     expect(shopee.getShop).toHaveBeenCalledWith('emp1', '/api/v2/product/get_item_list', {
       offset: 0,
       page_size: 50,
-      item_status: 'NORMAL,UNLIST',
+      item_status: ['NORMAL', 'UNLIST'],
     });
   });
 

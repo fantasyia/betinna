@@ -98,11 +98,11 @@ export class ShopeeApiService {
     return modulo;
   }
 
+  /** Lista vira parâmetro repetido; quem quer vírgula (item_id_list) manda string. */
   private query(q: Record<string, Valor> = {}) {
-    const out: Record<string, string | number | boolean> = {};
+    const out: Record<string, Valor> = {};
     for (const [k, v] of Object.entries(q)) {
-      if (RESERVADOS.has(k)) continue;
-      out[k] = Array.isArray(v) ? v.join(',') : v;
+      if (!RESERVADOS.has(k)) out[k] = v;
     }
     return out;
   }

@@ -48,6 +48,24 @@ describe('ShopeeClientService', () => {
       expect(url).toContain('page_size=50');
     });
 
+    it('lista na query vira parâmetro repetido (get_item_list recusa vírgula)', async () => {
+      http.request.mockResolvedValue({ data: { response: {} } });
+
+      await service.getShop('emp-1', '/api/v2/product/get_item_list', {
+        item_status: ['NORMAL', 'UNLIST'],
+      });
+
+      expect(http.request.mock.calls[0][1]).toContain('item_status=NORMAL&item_status=UNLIST');
+    });
+
+    it('postShop com semRepetir não repete no timeout', async () => {
+      http.request.mockResolvedValue({ data: {} });
+
+      await service.postShop('emp-1', '/api/v2/product/add_item', {}, {}, { semRepetir: true });
+
+      expect(http.request.mock.calls[0][2].retries).toBe(0);
+    });
+
     it('postShop envia body como JSON', async () => {
       http.request.mockResolvedValue({ data: {} });
 

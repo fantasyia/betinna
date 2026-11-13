@@ -19,6 +19,8 @@ import { ShopeeSigner } from './shopee-signer';
  * Shopee retorna erros como `{ error: "...", message: "...", request_id }` com
  * HTTP 200 — então a gente trata error no payload, não só no status.
  */
+/** Valor de query: lista vira parâmetro repetido. */
+export type ConsultaShopee = string | number | boolean | Array<string | number> | undefined;
 const PARTE_VIDEO = 4 * 1024 * 1024;
 
 @Injectable()
@@ -39,7 +41,7 @@ export class ShopeeClientService {
   async getShop<T>(
     empresaId: string,
     path: string,
-    extraQuery: Record<string, string | number | boolean | undefined> = {},
+    extraQuery: Record<string, ConsultaShopee> = {},
   ): Promise<T> {
     return this.call<T>('GET', empresaId, path, extraQuery);
   }
@@ -52,7 +54,7 @@ export class ShopeeClientService {
     empresaId: string,
     path: string,
     body: unknown,
-    extraQuery: Record<string, string | number | boolean | undefined> = {},
+    extraQuery: Record<string, ConsultaShopee> = {},
     opcoes: { semRepetir?: boolean } = {},
   ): Promise<T> {
     return this.call<T>('POST', empresaId, path, extraQuery, body, opcoes.semRepetir ? 0 : 1);
@@ -62,7 +64,7 @@ export class ShopeeClientService {
     method: 'GET' | 'POST',
     empresaId: string,
     path: string,
-    extraQuery: Record<string, string | number | boolean | undefined>,
+    extraQuery: Record<string, ConsultaShopee>,
     body?: unknown,
     retries = 1,
   ): Promise<T> {
@@ -81,7 +83,9 @@ export class ShopeeClientService {
       sign,
     });
     for (const [k, v] of Object.entries(extraQuery)) {
-      if (v !== undefined) params.append(k, String(v));
+      // Lista vira parâmetro repetido (item_status=NORMAL&item_status=UNLIST)
+      if (Array.isArray(v)) for (const x of v) params.append(k, String(x));
+      else if (v !== undefined) params.append(k, String(v));
     }
     const url = `${baseUrl}${path}?${params}`;
 
