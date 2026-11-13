@@ -278,6 +278,33 @@ export function registrarSheinAnuncios(server: McpServer, { ok, seguro }: Ajudan
   );
 
   server.registerTool(
+    "shein_anuncio_publicar",
+    {
+      description:
+        "MEXE NA LOJA — só com o \"pode subir\" do Léo pro anúncio exato. Cria SPU NOVO na Shein " +
+        "(/goods/product/publishOrEdit), corpo no formato da Shein (snake_case) SEM spu_name/skc_name/sku_code: " +
+        "category_id, product_type_id, brand_code, product_attribute_list, multi_language_name_list/desc, " +
+        "site_list[{main_site, sub_site_list:['shein-br']}] (confira em shein_consultar query-site-list), " +
+        "skc_list[{sale_attribute, image_info, shelf_way, sku_list[{sale_attribute_list, supplier_sku, " +
+        "price_info_list[{sub_site:'shein-br', currency:'BRL', base_price}], peso/medidas}]}], size_attribute_list. " +
+        "O servidor FORÇA todo SKU fora de venda (mall_state 2) e estoque 0 (inventory_num 0) — ir à venda é " +
+        "outro passo, com o OK do Léo. Uma tentativa só (criar duas vezes duplica). Devolve criado, spu_name, " +
+        "skcs/skus, versao (pra query-document-state), pre_valid_result/mcc_valid_result quando a Shein barra, " +
+        "ajustes e rastreio. Desfazer enquanto está em revisão: shein_escrever /open-api/goods/revoke-product.",
+      inputSchema: {
+        corpo: z
+          .object({ skc_list: z.array(z.record(z.string(), z.unknown())).min(1) })
+          .passthrough()
+          .describe("Corpo do publishOrEdit pra criar, no formato da documentação da Shein"),
+      },
+      annotations: mexe,
+    },
+    seguro(async (a: { corpo: Record<string, unknown> }) =>
+      ok(await api.post("/marketplace/anuncios/shein/publicar", a.corpo)),
+    ),
+  );
+
+  server.registerTool(
     "shein_escrever",
     {
       description:

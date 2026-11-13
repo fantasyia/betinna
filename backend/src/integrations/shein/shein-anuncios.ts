@@ -196,7 +196,85 @@ export const ESCRITAS_SHEIN = [
   '/open-api/campaigns/register-campaign',
   '/open-api/campaigns/cancel-registration',
   '/open-api/goods-recommend-retail-price/batch-save',
+  // Recolhe pro rascunho o anúncio que ainda está em revisão (13/11): é o
+  // jeito de desfazer um publicar (a API não tem apagar nem salvar rascunho).
+  '/open-api/goods/revoke-product',
 ] as const;
+
+// ── Publicação de SPU novo (13/11) ─────────────────────────────────────────
+
+type Obj = Record<string, unknown>;
+const ehObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Corpo do publishOrEdit SÓ pra criar. Nada vai à venda sem o "pode subir" do
+ * Léo e o estoque vem do Magis5: todo SKU sai com `mall_state` 2 (fora de
+ * venda) e `inventory_num` 0 — a doc da Shein aceita 0 e, fora de venda,
+ * nem guarda o estoque. Com `spu_name`/`skc_name`/`sku_code` seria edição: recusa.
+ */
+export function corpoPublicacao(corpo: Obj): { corpo: Obj; ajustes: string[] } {
+  if (corpo.spu_name !== undefined) {
+    throw new Error('Com spu_name é edição — use shein_anuncio_editar');
+  }
+  const skcs = corpo.skc_list;
+  if (!Array.isArray(skcs) || skcs.length === 0) throw new Error('skc_list vazio');
+  const ajustes = new Set<string>();
+  const skcList = skcs.map((skc) => {
+    if (!ehObj(skc)) throw new Error('skc_list com item inválido');
+    if (skc.skc_name !== undefined) throw new Error('Com skc_name é edição — use partialEdit');
+    const skus = skc.sku_list;
+    if (!Array.isArray(skus) || skus.length === 0) throw new Error('sku_list vazio');
+    const skuList = skus.map((sku) => {
+      if (!ehObj(sku)) throw new Error('sku_list com item inválido');
+      if (sku.sku_code !== undefined) throw new Error('Com sku_code é edição — use partialEdit');
+      if (sku.mall_state !== 2) ajustes.add('mall_state = 2 (fora de venda)');
+      const estoque = Array.isArray(sku.stock_info_list) ? sku.stock_info_list : [{}];
+      if (estoque.some((e) => !ehObj(e) || e.inventory_num !== 0)) {
+        ajustes.add('estoque zerado (vem do Magis5)');
+      }
+      return {
+        ...sku,
+        mall_state: 2,
+        stock_info_list: estoque.map((e) => ({ ...(ehObj(e) ? e : {}), inventory_num: 0 })),
+      };
+    });
+    return { ...skc, sku_list: skuList };
+  });
+  return { corpo: { ...corpo, skc_list: skcList }, ajustes: [...ajustes] };
+}
+
+interface InfoPublicacao {
+  success?: boolean;
+  spu_name?: string;
+  version?: string;
+  skc_list?: Array<{
+    skc_name?: string;
+    sku_list?: Array<{ sku_code?: string; supplier_sku?: string }>;
+  }>;
+  pre_valid_result?: unknown;
+  mcc_valid_result?: unknown;
+  filtered_result?: unknown;
+}
+
+/** O que a Shein criou, ou por que barrou (success false com code 0). */
+export function resultadoPublicacao(info: InfoPublicacao | null | undefined) {
+  const i = info ?? {};
+  return {
+    criado: i.success === true,
+    spu_name: i.spu_name ?? null,
+    versao: i.version ?? null,
+    skcs: (i.skc_list ?? []).map((s) => ({
+      skc_name: s.skc_name ?? null,
+      skus: (s.sku_list ?? []).map((k) => ({
+        sku_code: k.sku_code ?? null,
+        supplier_sku: k.supplier_sku ?? null,
+      })),
+    })),
+    pre_valid_result: i.pre_valid_result ?? null,
+    mcc_valid_result: i.mcc_valid_result ?? null,
+    filtered_result: i.filtered_result ?? null,
+  };
+}
 
 export function escritaPermitida(caminho: string): boolean {
   return (ESCRITAS_SHEIN as readonly string[]).includes(caminho);

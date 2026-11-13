@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Logger, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
 import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-exception';
@@ -12,12 +13,14 @@ import {
   atributosProduto,
   consultaPermitida,
   corpoPreco,
+  corpoPublicacao,
   escritaPermitida,
   fichaSpu,
   fotoDaShein,
   mesclarAtributos,
   resultadoEdicao,
   resultadoPreco,
+  resultadoPublicacao,
   resumoSpu,
   temEstoqueOuPreco,
   type SheinSpuInfo,
@@ -145,6 +148,9 @@ const SITUACAO_VIDEO: Record<number, 'pendente' | 'pronto' | 'falhou'> = {
 };
 
 const editarSchema = z.object({ spu_name: z.string().trim().min(1).max(60) }).passthrough();
+const publicarSchema = z
+  .object({ skc_list: z.array(z.record(z.unknown())).min(1).max(50) })
+  .passthrough();
 
 const consultarSchema = z.object({
   caminho: z.string().trim().min(1).max(120),
@@ -588,6 +594,35 @@ export class SheinAnunciosController {
       corpo,
     );
     return resultadoPreco(r?.data ?? []);
+  }
+
+  @Post('publicar')
+  @Audit({ action: 'PUBLICAR', resource: 'shein_anuncio' })
+  @ApiOperation({
+    summary:
+      'MEXE NA LOJA — cria SPU novo (/goods/product/publishOrEdit) sempre FORA DE VENDA e com estoque 0. A Shein revisa.',
+  })
+  async publicar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(publicarSchema)) dto: z.infer<typeof publicarSchema>,
+  ) {
+    let pronto: { corpo: Record<string, unknown>; ajustes: string[] };
+    try {
+      pronto = corpoPublicacao(dto);
+    } catch (e) {
+      throw new BusinessRuleException((e as Error).message, ErrorCode.BUSINESS_RULE_VIOLATION);
+    }
+    // Sem repetir: postRastreado faz uma tentativa só — criar duas vezes dá SPU duplicado.
+    const { info, rastreio } = await this.shein.postRastreado<Record<string, unknown>>(
+      this.empresa(user),
+      '/open-api/goods/product/publishOrEdit',
+      pronto.corpo,
+    );
+    const r = resultadoPublicacao(info);
+    this.logger.log(
+      `Shein publicar: criado=${r.criado} spu=${r.spu_name ?? '-'} versao=${r.versao ?? '-'} rastreio ${JSON.stringify(rastreio)}`,
+    );
+    return { ...r, ajustes: pronto.ajustes, rastreio };
   }
 
   @Post('editar')

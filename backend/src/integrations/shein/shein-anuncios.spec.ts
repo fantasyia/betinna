@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SheinAnunciosController } from './shein-anuncios.controller';
-import { consultaPermitida, corpoPreco, resultadoPreco, resumoSpu } from './shein-anuncios';
+import {
+  consultaPermitida,
+  corpoPreco,
+  corpoPublicacao,
+  escritaPermitida,
+  resultadoPreco,
+  resultadoPublicacao,
+  resumoSpu,
+} from './shein-anuncios';
 
 /** Anúncios da Shein (#05, Léo 01/11). */
 describe('anúncios da Shein', () => {
@@ -430,5 +438,89 @@ describe('Shein: vídeo do anúncio (07/11)', () => {
       product_video_list: [{ sites: ['shein-br'], video_url: URL_SHEIN }],
     });
     expect(r).toMatchObject({ antes: false, depois: true, conferido: true });
+  });
+
+  describe('publicar SPU novo (13/11)', () => {
+    const corpo = {
+      category_id: 1,
+      site_list: [{ main_site: 'shein', sub_site_list: ['shein-br'] }],
+      skc_list: [
+        {
+          sale_attribute: { attribute_id: 27 },
+          sku_list: [
+            { supplier_sku: 'A-P', mall_state: 1, stock_info_list: [{ inventory_num: 30 }] },
+            { supplier_sku: 'A-M' },
+          ],
+        },
+      ],
+    };
+
+    it('força fora de venda e estoque 0 em todo SKU', () => {
+      const { corpo: c, ajustes } = corpoPublicacao(corpo);
+      const skus = (c.skc_list as Array<{ sku_list: unknown[] }>)[0].sku_list;
+      expect(skus).toEqual([
+        { supplier_sku: 'A-P', mall_state: 2, stock_info_list: [{ inventory_num: 0 }] },
+        { supplier_sku: 'A-M', mall_state: 2, stock_info_list: [{ inventory_num: 0 }] },
+      ]);
+      expect(ajustes).toEqual(['mall_state = 2 (fora de venda)', 'estoque zerado (vem do Magis5)']);
+    });
+
+    it('com spu_name, skc_name ou sku_code é edição: recusa', () => {
+      expect(() => corpoPublicacao({ ...corpo, spu_name: 'X' })).toThrow(/edição/);
+      expect(() => corpoPublicacao({ skc_list: [{ skc_name: 's', sku_list: [{}] }] })).toThrow(
+        /edição/,
+      );
+      expect(() => corpoPublicacao({ skc_list: [{ sku_list: [{ sku_code: 'I1' }] }] })).toThrow(
+        /edição/,
+      );
+    });
+
+    it('rota: manda o corpo já travado, devolve o criado e o rastreio', async () => {
+      const postRastreado = vi.fn().mockResolvedValue({
+        info: {
+          success: true,
+          spu_name: 'MM1',
+          version: 'SPMP1',
+          skc_list: [{ skc_name: 's1', sku_list: [{ sku_code: 'I1', supplier_sku: 'A-P' }] }],
+        },
+        rastreio: { traceId: 't-1' },
+      });
+      const ctrl = new SheinAnunciosController({ postRastreado } as never);
+      const r = await ctrl.publicar({ empresaIdAtiva: 'e1' } as never, corpo as never);
+      const enviado = postRastreado.mock.calls[0][2] as {
+        skc_list: Array<{ sku_list: Array<{ mall_state: number }> }>;
+      };
+      expect(postRastreado.mock.calls[0][1]).toBe('/open-api/goods/product/publishOrEdit');
+      expect(enviado.skc_list[0].sku_list.every((k) => k.mall_state === 2)).toBe(true);
+      expect(r).toMatchObject({
+        criado: true,
+        spu_name: 'MM1',
+        versao: 'SPMP1',
+        skcs: [{ skc_name: 's1', skus: [{ sku_code: 'I1', supplier_sku: 'A-P' }] }],
+        rastreio: { traceId: 't-1' },
+      });
+    });
+
+    it('rota: corpo de edição não chega na Shein', async () => {
+      const postRastreado = vi.fn();
+      const ctrl = new SheinAnunciosController({ postRastreado } as never);
+      await expect(
+        ctrl.publicar({ empresaIdAtiva: 'e1' } as never, { ...corpo, spu_name: 'X' } as never),
+      ).rejects.toThrow(/edição/);
+      expect(postRastreado).not.toHaveBeenCalled();
+    });
+
+    it('barrado pela Shein: devolve o pre_valid_result', () => {
+      const r = resultadoPublicacao({
+        success: false,
+        pre_valid_result: [{ form: 'f', messages: ['falta foto'], module: 'm' }],
+      });
+      expect(r).toMatchObject({ criado: false, spu_name: null });
+      expect(r.pre_valid_result).toEqual([{ form: 'f', messages: ['falta foto'], module: 'm' }]);
+    });
+
+    it('revoke-product liberado pra desfazer o teste', () => {
+      expect(escritaPermitida('/open-api/goods/revoke-product')).toBe(true);
+    });
   });
 });
