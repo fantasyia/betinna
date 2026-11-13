@@ -17,12 +17,14 @@ import {
   escritaPermitida,
   fichaSpu,
   fotoDaShein,
+  fotosParaConverter,
   mesclarAtributos,
   resultadoEdicao,
   resultadoPreco,
   resultadoPublicacao,
   resumoSpu,
   temEstoqueOuPreco,
+  trocarFotos,
   type SheinSpuInfo,
 } from './shein-anuncios';
 import { SheinClientService } from './shein.client';
@@ -148,6 +150,8 @@ const SITUACAO_VIDEO: Record<number, 'pendente' | 'pronto' | 'falhou'> = {
 };
 
 const editarSchema = z.object({ spu_name: z.string().trim().min(1).max(60) }).passthrough();
+/** Cache do transform-pic por "tipo|url" (vale enquanto a api está de pé). */
+const FOTOS_CONVERTIDAS = new Map<string, string>();
 const publicarSchema = z
   .object({ skc_list: z.array(z.record(z.unknown())).min(1).max(50) })
   .passthrough();
@@ -596,6 +600,48 @@ export class SheinAnunciosController {
     return resultadoPreco(r?.data ?? []);
   }
 
+  /**
+   * transform-pic de cada foto de fora, 4 por vez, com cache por tipo+URL
+   * (a mesma foto se repete entre anúncios). Qualquer recusa barra a
+   * publicação inteira, antes de mandar nada pra loja.
+   */
+  private async converterFotos(empresaId: string, fotos: Array<{ url: string; tipo: number }>) {
+    const convertidas = new Map<string, string>();
+    const recusadas: string[] = [];
+    let i = 0;
+    const trabalhador = async () => {
+      while (i < fotos.length) {
+        const f = fotos[i++];
+        const chave = `${f.tipo}|${f.url}`;
+        const guardada = FOTOS_CONVERTIDAS.get(chave);
+        if (guardada) {
+          convertidas.set(chave, guardada);
+          continue;
+        }
+        const t = await this.shein.post<{ transformed?: string; failure_reason?: string }>(
+          empresaId,
+          '/open-api/goods/transform-pic',
+          { image_type: f.tipo, original_url: f.url },
+        );
+        if (t?.transformed) {
+          convertidas.set(chave, t.transformed);
+          if (FOTOS_CONVERTIDAS.size >= 20_000) FOTOS_CONVERTIDAS.clear();
+          FOTOS_CONVERTIDAS.set(chave, t.transformed);
+        } else {
+          recusadas.push(`tipo ${f.tipo} ${f.url}: ${t?.failure_reason || 'sem motivo'}`);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 4 }, trabalhador));
+    if (recusadas.length) {
+      throw new BusinessRuleException(
+        `Shein recusou ${recusadas.length} foto(s), nada foi publicado: ${recusadas.slice(0, 5).join(' · ')}`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    return convertidas;
+  }
+
   @Post('publicar')
   @Audit({ action: 'PUBLICAR', resource: 'shein_anuncio' })
   @ApiOperation({
@@ -612,11 +658,16 @@ export class SheinAnunciosController {
     } catch (e) {
       throw new BusinessRuleException((e as Error).message, ErrorCode.BUSINESS_RULE_VIOLATION);
     }
+    const empresaId = this.empresa(user);
+    // Foto de fora vira link da Shein antes (a Shein recusa com 20100).
+    const convertidas = await this.converterFotos(empresaId, fotosParaConverter(pronto.corpo));
+    if (convertidas.size)
+      pronto.ajustes.push(`${convertidas.size} foto(s) convertida(s) pra Shein`);
     // Sem repetir: postRastreado faz uma tentativa só — criar duas vezes dá SPU duplicado.
     const { info, rastreio } = await this.shein.postRastreado<Record<string, unknown>>(
-      this.empresa(user),
+      empresaId,
       '/open-api/goods/product/publishOrEdit',
-      pronto.corpo,
+      trocarFotos(pronto.corpo, convertidas),
     );
     const r = resultadoPublicacao(info);
     this.logger.log(

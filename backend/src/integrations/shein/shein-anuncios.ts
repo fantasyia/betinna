@@ -373,6 +373,45 @@ export function resultadoEdicao(
   };
 }
 
+/**
+ * Fotos do corpo de publicação que precisam passar pelo transform-pic:
+ * todo `{image_url, image_type}` com link de fora. O Centro de Materiais da
+ * Shein (ssmp-spmp…aliyuncs) já é dela e vai como veio (13/11).
+ */
+export function fotosParaConverter(corpo: unknown): Array<{ url: string; tipo: number }> {
+  const achadas = new Map<string, { url: string; tipo: number }>();
+  const andar = (v: unknown) => {
+    if (Array.isArray(v)) return v.forEach(andar);
+    if (!ehObj(v)) return;
+    if (typeof v.image_url === 'string' && typeof v.image_type === 'number') {
+      const url = v.image_url;
+      if (!fotoDaShein(url) && !fotoDoCentroDeMateriais(url)) {
+        achadas.set(`${v.image_type}|${url}`, { url, tipo: v.image_type });
+      }
+    }
+    Object.values(v).forEach(andar);
+  };
+  andar(corpo);
+  return [...achadas.values()];
+}
+
+export function fotoDoCentroDeMateriais(url: string): boolean {
+  return /^https?:\/\/ssmp-spmp[^/]*\.aliyuncs\.com\//i.test(url);
+}
+
+/** Troca no corpo cada image_url convertido (chave "tipo|url"). */
+export function trocarFotos(corpo: unknown, convertidas: Map<string, string>): unknown {
+  if (Array.isArray(corpo)) return corpo.map((v) => trocarFotos(v, convertidas));
+  if (!ehObj(corpo)) return corpo;
+  const out: Obj = {};
+  for (const [k, v] of Object.entries(corpo)) out[k] = trocarFotos(v, convertidas);
+  if (typeof corpo.image_url === 'string' && typeof corpo.image_type === 'number') {
+    const nova = convertidas.get(`${corpo.image_type}|${corpo.image_url}`);
+    if (nova) out.image_url = nova;
+  }
+  return out;
+}
+
 /** Foto já hospedada na Shein não precisa de conversão. */
 export function fotoDaShein(url: string): boolean {
   return /^https?:\/\/[^/]*(ltwebstatic\.com|shein\.com|sheincorp\.cn)\//i.test(url);

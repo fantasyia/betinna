@@ -519,6 +519,68 @@ describe('Shein: vídeo do anúncio (07/11)', () => {
       expect(r.pre_valid_result).toEqual([{ form: 'f', messages: ['falta foto'], module: 'm' }]);
     });
 
+    it('converte foto de fora pelo transform-pic e troca no corpo; Shein e Centro de Materiais vão como vieram', async () => {
+      const post = vi.fn().mockResolvedValue({ transformed: 'https://img.ltwebstatic.com/x.jpg' });
+      const postRastreado = vi.fn().mockResolvedValue({ info: { success: true }, rastreio: {} });
+      const ctrl = new SheinAnunciosController({ post, postRastreado } as never);
+      const fora = 'https://http2.mlstatic.com/foto-unica-teste.jpg';
+      const r = await ctrl.publicar(
+        { empresaIdAtiva: 'e1' } as never,
+        {
+          skc_list: [
+            {
+              image_info: {
+                image_info_list: [
+                  { image_url: fora, image_type: 1, image_sort: 1 },
+                  { image_url: fora, image_type: 1, image_sort: 2 },
+                  { image_url: 'https://img.ltwebstatic.com/ja.jpg', image_type: 2, image_sort: 3 },
+                  {
+                    image_url: 'https://ssmp-spmp.oss-cn-shenzhen.aliyuncs.com/p.jpg',
+                    image_type: 6,
+                    image_sort: 4,
+                  },
+                ],
+              },
+              sku_list: [{ supplier_sku: 'A' }],
+            },
+          ],
+        } as never,
+      );
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(post).toHaveBeenCalledWith('e1', '/open-api/goods/transform-pic', {
+        image_type: 1,
+        original_url: fora,
+      });
+      const enviado = JSON.stringify(postRastreado.mock.calls[0][2]);
+      expect(enviado).not.toContain('mlstatic');
+      expect(enviado).toContain('ssmp-spmp');
+      expect(r.ajustes).toContain('1 foto(s) convertida(s) pra Shein');
+    });
+
+    it('foto recusada no transform-pic barra antes de publicar', async () => {
+      const post = vi.fn().mockResolvedValue({ failure_reason: 'tamanho' });
+      const postRastreado = vi.fn();
+      const ctrl = new SheinAnunciosController({ post, postRastreado } as never);
+      await expect(
+        ctrl.publicar(
+          { empresaIdAtiva: 'e1' } as never,
+          {
+            skc_list: [
+              {
+                image_info: {
+                  image_info_list: [
+                    { image_url: 'https://x.com/recusada.jpg', image_type: 6, image_sort: 1 },
+                  ],
+                },
+                sku_list: [{}],
+              },
+            ],
+          } as never,
+        ),
+      ).rejects.toThrow(/nada foi publicado/);
+      expect(postRastreado).not.toHaveBeenCalled();
+    });
+
     it('revoke-product liberado pra desfazer o teste', () => {
       expect(escritaPermitida('/open-api/goods/revoke-product')).toBe(true);
     });
