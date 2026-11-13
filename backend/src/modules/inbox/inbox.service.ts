@@ -1571,6 +1571,29 @@ export class InboxService {
 
   // ─── Entrante (chamado pelos adapters) ───────────────────────────────
 
+  /**
+   * Quais destes externalIds já estão gravados — mesmo escopo da idempotência de
+   * `processarMensagemEntrante` (empresa + canal + proprietário). Adapter que relê a
+   * conversa inteira a cada aviso (Shopee) pergunta UMA vez em vez de uma por
+   * mensagem (Sentry BETINNA-BACKEND-15, N+1 no webhook da Shopee).
+   */
+  async externalIdsGravados(
+    empresaId: string,
+    canal: MessageChannel,
+    externalIds: string[],
+    proprietarioId: string | null = null,
+  ): Promise<Set<string>> {
+    if (externalIds.length === 0) return new Set();
+    const rows = await this.prisma.message.findMany({
+      where: {
+        externalId: { in: externalIds },
+        conversation: { empresaId, canal, proprietarioId },
+      },
+      select: { externalId: true },
+    });
+    return new Set(rows.map((r) => r.externalId).filter((x): x is string => !!x));
+  }
+
   async processarMensagemEntrante(
     params: MensagemEntranteParams,
   ): Promise<{ conversationId: string; messageId: string; duplicada: boolean }> {

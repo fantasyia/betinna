@@ -41,8 +41,17 @@ export class ShopeeChatService {
     const creds = await this.shopee.getCredenciais(empresaId);
     const shopIdNum = Number(creds.shopId);
     const msgs = await this.listarMensagens(empresaId, conversationId);
+    // A Shopee devolve as últimas 50 da conversa a cada aviso; quase todas já estão
+    // gravadas. Uma consulta só diz quais pular — antes era uma por mensagem
+    // (Sentry BETINNA-BACKEND-15).
+    const jaGravadas = await this.inbox.externalIdsGravados(
+      empresaId,
+      'MARKETPLACE_SHOPEE',
+      msgs.map((m) => String(m.message_id)),
+    );
     let processadas = 0;
     for (const m of msgs) {
+      if (jaGravadas.has(String(m.message_id))) continue;
       // Nossas mensagens (from_shop_id = nosso shop) entram como OUTBOUND (25/10): a
       // conversa no app mostra os dois lados, inclusive o que foi respondido pelo
       // painel da Shopee — e a IA vê quem falou por último.

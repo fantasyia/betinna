@@ -9,6 +9,7 @@ const makeShopeeMock = () => ({
 
 const makeInboxMock = () => ({
   processarMensagemEntrante: vi.fn().mockResolvedValue({ conversationId: 'conv-1' }),
+  externalIdsGravados: vi.fn().mockResolvedValue(new Set<string>()),
 });
 
 const fakeMessage = (overrides: Record<string, unknown> = {}) => ({
@@ -120,6 +121,31 @@ describe('ShopeeChatService', () => {
       const arg = inbox.processarMensagemEntrante.mock.calls[0][0];
       expect(arg.tipo).toBe('CONTACT');
       expect(arg.conteudo).toContain('ORD-X');
+    });
+
+    it('pula as já gravadas com UMA consulta só (Sentry BETINNA-BACKEND-15, N+1)', async () => {
+      shopee.getShop.mockResolvedValue({
+        response: {
+          messages: [
+            fakeMessage({ message_id: 'velha-1' }),
+            fakeMessage({ message_id: 'velha-2' }),
+            fakeMessage({ message_id: 'nova' }),
+          ],
+        },
+      });
+      inbox.externalIdsGravados.mockResolvedValue(new Set(['velha-1', 'velha-2']));
+
+      const r = await service.processarConversation('emp-1', 'conv-abc');
+
+      expect(inbox.externalIdsGravados).toHaveBeenCalledTimes(1);
+      expect(inbox.externalIdsGravados).toHaveBeenCalledWith('emp-1', 'MARKETPLACE_SHOPEE', [
+        'velha-1',
+        'velha-2',
+        'nova',
+      ]);
+      expect(r.processadas).toBe(1);
+      expect(inbox.processarMensagemEntrante).toHaveBeenCalledTimes(1);
+      expect(inbox.processarMensagemEntrante.mock.calls[0][0].externalId).toBe('nova');
     });
 
     it('ignora mensagem de texto vazia', async () => {
