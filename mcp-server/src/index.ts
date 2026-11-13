@@ -122,7 +122,8 @@ interface CardCompleto {
 function ok(payload: unknown) {
   return {
     content: [
-      { type: "text" as const, text: JSON.stringify(payload, null, 2) },
+      // Resposta vazia (undefined) virava text undefined e o MCP recusava o retorno (13/11).
+      { type: "text" as const, text: JSON.stringify(payload ?? null, null, 2) },
     ],
   };
 }

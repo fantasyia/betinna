@@ -585,4 +585,27 @@ describe('Shein: vídeo do anúncio (07/11)', () => {
       expect(escritaPermitida('/open-api/goods/revoke-product')).toBe(true);
     });
   });
+
+  it('editar devolve a versão e o rastreio mesmo com info vazio', async () => {
+    const postRastreado = vi
+      .fn()
+      .mockResolvedValueOnce({
+        info: { version: 'SPMP9', pre_valid_result: null },
+        rastreio: { traceId: 't' },
+      })
+      .mockResolvedValueOnce({ info: undefined, rastreio: { traceId: 'u' } });
+    const ctrl = new SheinAnunciosController({ postRastreado } as never);
+    expect(
+      await ctrl.editar({ empresaIdAtiva: 'e1' } as never, { spu_name: 'S1' } as never),
+    ).toEqual({
+      version: 'SPMP9',
+      pre_valid_result: null,
+      rastreio: { traceId: 't' },
+    });
+    expect(
+      await ctrl.editar({ empresaIdAtiva: 'e1' } as never, { spu_name: 'S1' } as never),
+    ).toEqual({
+      rastreio: { traceId: 'u' },
+    });
+  });
 });

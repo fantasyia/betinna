@@ -681,11 +681,19 @@ export class SheinAnunciosController {
     summary:
       'MEXE NA LOJA — edição parcial (/goods/product/partialEdit): criar cor/tamanho, SKU do vendedor, fotos. A Shein revisa.',
   })
-  editar(
+  async editar(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(editarSchema)) dto: z.infer<typeof editarSchema>,
   ) {
-    return this.shein.post(this.empresa(user), '/open-api/goods/product/partialEdit', dto);
+    // Sempre devolve algo: a versão, o pre_valid_result e o rastreio (13/11 —
+    // resposta vazia chegava ao MCP como "undefined" e a sessão ficava sem retorno).
+    const { info, rastreio } = await this.shein.postRastreado<Record<string, unknown> | null>(
+      this.empresa(user),
+      '/open-api/goods/product/partialEdit',
+      dto,
+    );
+    this.logger.log(`Shein partialEdit ${dto.spu_name}: rastreio ${JSON.stringify(rastreio)}`);
+    return { ...(info ?? {}), rastreio };
   }
 
   @Post('escrever')
