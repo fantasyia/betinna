@@ -29,6 +29,8 @@ import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
 import { addBreadcrumb } from '@shared/observability/sentry';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
 import { MetaAppService } from './meta-app.service';
+import { extrairComentarios } from './meta-comentarios';
+import { MetaComentariosService } from './meta-comentarios.service';
 import { MetaLeadgenService } from './meta-leadgen.service';
 import type { MetaLeadgenChangeValue } from './meta-leadgen.types';
 import { MetaMediaService } from './meta-media.service';
@@ -57,6 +59,9 @@ import type { MetaMessagingEvent, MetaWebhookEntry, MetaWebhookEnvelope } from '
  *   - `entry.changes[].field = 'leadgen'` (Lead Ads) NÃO é mensagem: vai pra
  *     fila, porque o payload traz só o `leadgen_id` e os dados exigem uma ida à
  *     Graph API que não cabe no tempo de resposta do webhook.
+ *   - `changes[].field = 'comments'` (IG) / `'feed'` com item=comment (FB):
+ *     comentário em post/anúncio → conversa de comentário no inbox (13/11).
+ *     Comentário da própria conta é eco da nossa resposta e é ignorado.
  *   - Pra cada messaging event, descarta ecos (is_echo) e gera msg entrante
  *     no InboxService.
  *
@@ -79,6 +84,7 @@ export class MetaWebhookController {
     private readonly antiReplay: WebhookAntiReplayService,
     private readonly media: MetaMediaService,
     private readonly leadgen: MetaLeadgenService,
+    private readonly comentarios: MetaComentariosService,
   ) {}
 
   // ─── Verificação (GET handshake) ─────────────────────────────────────
@@ -229,6 +235,18 @@ export class MetaWebhookController {
         `Webhook Meta ${canal}: conta ${accountId} é de outra empresa, não de ${empresaId} — ignorado`,
       );
       return;
+    }
+
+    // Comentários (13/11): entram ANTES das DMs e com o mesmo dono já conferido.
+    // Idempotência pelo id do comentário (externalId) cobre a reentrega do Meta.
+    const object = canal === 'FACEBOOK' ? 'page' : 'instagram';
+    for (const c of extrairComentarios(object, accountId, entry.changes)) {
+      // Falha num comentário não pode derrubar as DMs da mesma entrega.
+      try {
+        await this.comentarios.receber(resolved.empresaId, c, accountId);
+      } catch (err) {
+        this.logger.error(`Comentário ${c.comentarioId} não entrou no inbox: ${String(err)}`);
+      }
     }
 
     const events: MetaMessagingEvent[] = entry.messaging ?? [];

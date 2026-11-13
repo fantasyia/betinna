@@ -34,6 +34,12 @@ const DEFAULT_SCOPE = [
   'leads_retrieval',
   'pages_manage_ads',
   'ads_read',
+  // Comentários (13/11): ler o comentário do cliente na Página
+  // (`pages_read_user_content`), responder nele (`pages_manage_engagement`) e,
+  // no IG, receber e responder (`instagram_manage_comments`).
+  'pages_read_user_content',
+  'pages_manage_engagement',
+  'instagram_manage_comments',
 ].join(',');
 
 /**
@@ -47,6 +53,8 @@ export const CAMPOS_ASSINATURA_PAGINA = [
   'message_deliveries',
   'message_reads',
   'leadgen',
+  // Comentários de post/anúncio na Página (13/11): chegam em `feed`.
+  'feed',
 ];
 
 export interface ConectarPagesResult {

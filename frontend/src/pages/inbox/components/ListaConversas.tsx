@@ -85,6 +85,8 @@ export function ListaConversas({
             { value: 'wa', label: 'WA' },
             { value: 'ig', label: 'IG' },
             { value: 'fb', label: 'FB' },
+            { value: 'cmt_ig', label: 'IG 💬' },
+            { value: 'cmt_fb', label: 'FB 💬' },
             { value: 'em', label: 'EM' },
           ]}
           value={canalTab}

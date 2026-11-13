@@ -10,6 +10,7 @@ import {
   cardsDoHistorico,
   clienteFalouPorUltimo,
   clienteTerminou,
+  AVISO_COMENTARIO,
   contextoDaPendencia,
   lerDecisao,
   unitarioDoAnuncio,
@@ -255,5 +256,30 @@ describe('cliente só confirmou (Léo, 12/11)', () => {
       respostaBarrada('Vamos fazer o reembolso pela aba de compras.', 'MARKETPLACE_SHOPEE'),
     ).toMatch(/reembols/);
     expect(respostaBarrada('Pode cancelar o pedido.', 'MARKETPLACE_ML')).toMatch(/cancel/);
+  });
+});
+
+describe('comentário de FB/IG no contexto da IA (13/11)', () => {
+  const base = {
+    tipo: 'MENSAGEM' as const,
+    titulo: 'Comentário de ana sem resposta',
+    conhecimento: [],
+    historico: [{ daLoja: false, texto: 'tem no G?' }],
+  };
+
+  it('avisa que a resposta é pública e nomeia o canal', () => {
+    const c = contextoDaPendencia({ ...base, canal: 'INSTAGRAM_COMENTARIO' });
+    expect(c).toContain('CANAL: comentário no Instagram');
+    expect(c).toContain(AVISO_COMENTARIO);
+  });
+
+  it('chat de marketplace não leva o aviso de comentário', () => {
+    const c = contextoDaPendencia({ ...base, canal: 'MARKETPLACE_SHOPEE' });
+    expect(c).toContain('CANAL: Shopee');
+    expect(c).not.toContain(AVISO_COMENTARIO);
+  });
+
+  it('palavras proibidas valem no comentário também', () => {
+    expect(respostaBarrada('Pode pedir o reembolso', 'FACEBOOK_COMENTARIO')).toMatch(/proibida/);
   });
 });

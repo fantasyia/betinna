@@ -48,7 +48,7 @@ export class VerificadoresService {
       where: {
         empresaId,
         ativo: true,
-        servico: { in: ['mercadolivre', 'shopee', 'dafiti', 'shein'] },
+        servico: { in: ['mercadolivre', 'shopee', 'dafiti', 'shein', 'facebook', 'instagram'] },
       },
       select: { servico: true },
     });
@@ -72,6 +72,24 @@ export class VerificadoresService {
     // Shein (01/11): sem chat na API — as pendências são o pós-venda, que o
     // sincronismo grava em Incidentes (entram logo abaixo).
     if (tem.has('shein')) out.set('MARKETPLACE_SHEIN', []);
+    // Comentários de FB/IG (13/11): vêm do inbox (o webhook é a única entrada),
+    // não de uma API — comentário cuja última fala é do cliente espera a loja.
+    if (tem.has('facebook')) {
+      out.set(
+        'FACEBOOK_COMENTARIO',
+        await this.tentar('comentários FB', () =>
+          this.comentarios(empresaId, 'FACEBOOK_COMENTARIO'),
+        ),
+      );
+    }
+    if (tem.has('instagram')) {
+      out.set(
+        'INSTAGRAM_COMENTARIO',
+        await this.tentar('comentários IG', () =>
+          this.comentarios(empresaId, 'INSTAGRAM_COMENTARIO'),
+        ),
+      );
+    }
     // Incidentes (todos os canais conectados): o que está esperando a loja.
     const inc = await this.tentar('incidentes', () => this.incidentes(empresaId));
     for (const [canal, lista] of out) {
@@ -275,6 +293,52 @@ export class VerificadoresService {
       comprador: o.comprador,
       pedido: o.numeroExterno,
     }));
+  }
+
+  // ─── Comentários de FB/IG (13/11) ────────────────────────────────────────
+
+  /**
+   * Conversa de comentário dos últimos 7 dias (prazo da resposta privada da
+   * Meta) cuja última fala é do cliente. Envio que FALHOU não conta como fala
+   * da loja — mesmo critério da IA.
+   */
+  private async comentarios(
+    empresaId: string,
+    canal: 'FACEBOOK_COMENTARIO' | 'INSTAGRAM_COMENTARIO',
+  ): Promise<PendenciaAchada[]> {
+    const convs = await this.prisma.conversation.findMany({
+      where: { empresaId, canal, ultimaMsgEm: { gte: new Date(Date.now() - SETE_DIAS) } },
+      select: {
+        id: true,
+        peerId: true,
+        peerNome: true,
+        mensagens: {
+          where: { status: { not: 'FAILED' } },
+          orderBy: { criadoEm: 'desc' },
+          take: 1,
+          select: { direction: true, conteudo: true, criadoEm: true },
+        },
+      },
+      orderBy: { ultimaMsgEm: 'desc' },
+      take: 200,
+    });
+    const achados: PendenciaAchada[] = [];
+    for (const c of convs) {
+      const ultima = c.mensagens[0];
+      if (!ultima || ultima.direction !== 'INBOUND') continue;
+      const nome = c.peerNome || 'cliente';
+      achados.push({
+        canal,
+        tipo: 'MENSAGEM',
+        chave: c.peerId,
+        titulo: `Comentário de ${nome} sem resposta`,
+        detalhe: (ultima.conteudo ?? '').slice(0, 480) || null,
+        link: `/inbox?conv=${c.id}`,
+        desde: ultima.criadoEm,
+        comprador: c.peerNome,
+      });
+    }
+    return achados;
   }
 
   // ─── Incidentes (todos os canais) ────────────────────────────────────────

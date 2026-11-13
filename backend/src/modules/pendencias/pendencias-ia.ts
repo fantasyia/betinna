@@ -219,6 +219,22 @@ export function baseParaConversa<T extends { titulo: string; categoria: string |
 const MAX_DESCRICAO = 3000;
 
 /** Monta o que a IA lê: conversa, anúncios, pedido e a base INTEIRA (Léo, 26/10). */
+/** Nome do canal que a IA lê no contexto. */
+const NOME_CANAL_IA: Record<string, string> = {
+  MARKETPLACE_ML: 'Mercado Livre',
+  MARKETPLACE_SHOPEE: 'Shopee',
+  FACEBOOK_COMENTARIO: 'comentário no Facebook',
+  INSTAGRAM_COMENTARIO: 'comentário no Instagram',
+};
+
+/**
+ * Comentário de FB/IG (13/11): a resposta fica PÚBLICA embaixo do post e quem
+ * pergunta pode nem ter comprado. Mesmas regras (palavras proibidas, sem prazo
+ * de reposição), mais curto, e assunto de pedido vai pro privado.
+ */
+export const AVISO_COMENTARIO =
+  'ATENÇÃO: é um COMENTÁRIO PÚBLICO num post ou anúncio, não um chat. A resposta aparece pra todo mundo embaixo da publicação: 1 ou 2 frases, sem dado pessoal, sem número de pedido e sem rastreio. Pergunta de produto (tamanho, medida, cor, tecido) responda ali mesmo. Se for sobre um pedido, reclamação ou algo pessoal, diga que vai chamar no privado (Direct/Messenger) e marque acao = "humano". Não peça telefone nem e-mail.';
+
 export function contextoDaPendencia(p: {
   canal: string;
   tipo: TipoPendenciaIa;
@@ -228,12 +244,7 @@ export function contextoDaPendencia(p: {
   anuncios?: AnuncioContexto[];
   historico: MensagemHistorico[];
 }): string {
-  const canal =
-    p.canal === 'MARKETPLACE_ML'
-      ? 'Mercado Livre'
-      : p.canal === 'MARKETPLACE_SHOPEE'
-        ? 'Shopee'
-        : p.canal;
+  const canal = NOME_CANAL_IA[p.canal] ?? p.canal;
   const tipo: Record<TipoPendenciaIa, string> = {
     PERGUNTA: 'pergunta de pré-venda',
     MENSAGEM: 'mensagem no chat',
@@ -252,6 +263,7 @@ export function contextoDaPendencia(p: {
     .join('\n');
   const partes = [
     `CANAL: ${canal} · TIPO: ${tipo[p.tipo]}`,
+    p.canal.endsWith('_COMENTARIO') ? AVISO_COMENTARIO : null,
     `CONVERSA (mais antiga primeiro):\n${conversa}`,
     anuncios.length
       ? `ANÚNCIOS (do marketplace):\n${anuncios

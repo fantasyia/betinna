@@ -1156,6 +1156,67 @@ export class InboxService {
     }
   }
 
+  /**
+   * Resposta PRIVADA a um comentário de FB/IG (13/11): vira DM pra quem
+   * comentou. A Meta deixa UMA por comentário, até 7 dias depois dele — por
+   * isso a falha volta como erro de negócio com a mensagem da Meta, e a linha
+   * fica FAILED no histórico (sem tentar de novo sozinha).
+   */
+  async responderNoPrivado(
+    user: AuthenticatedUser,
+    conversationId: string,
+    texto: string,
+  ): Promise<Message> {
+    const conv = await this.findById(user, conversationId);
+    const adapter = this.registry.obter(conv.canal);
+    if (!adapter?.responderNoPrivado) {
+      throw new BusinessRuleException('Resposta privada só existe em comentário de FB/IG');
+    }
+    if (!(await adapter.estaDisponivel(conv.empresaId, conv.proprietarioId))) {
+      throw new BusinessRuleException(`Canal ${conv.canal} não está conectado`);
+    }
+    const meta = { privado: true };
+    const msg = await this.prisma.message.create({
+      data: {
+        conversationId,
+        direction: MessageDirection.OUTBOUND,
+        tipo: 'TEXT',
+        conteudo: texto,
+        status: MessageStatus.PENDING,
+        autorUsuarioId: user.id,
+        meta,
+      },
+    });
+    this.emitirEvento(conv, 'mensagem');
+    try {
+      const r = await adapter.responderNoPrivado(conv.empresaId, conv.peerId, texto, {
+        proprietarioId: conv.proprietarioId,
+        metadata: conv.metadata as Record<string, unknown> | null,
+      });
+      const atualizada = await this.prisma.message.update({
+        where: { id: msg.id },
+        data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
+      });
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          ultimaMsgEm: atualizada.criadoEm,
+          ultimaMsgPreview: this.preview(`(no privado) ${texto}`),
+          status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
+          naoLidas: 0,
+        },
+      });
+      return atualizada;
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      await this.prisma.message.update({
+        where: { id: msg.id },
+        data: { status: MessageStatus.FAILED, meta: { ...meta, erro: m } },
+      });
+      throw new BusinessRuleException(`Falha na resposta privada: ${m}`);
+    }
+  }
+
   // ─── Fase 2 — Bot ────────────────────────────────────────────────────
 
   /**
@@ -1792,7 +1853,10 @@ export class InboxService {
       }
     }
 
-    if (this.chatMarketplaceHook && isInbound && params.canal.startsWith('MARKETPLACE_')) {
+    // Comentário de FB/IG (13/11) também passa pela IA de pendências.
+    const viaIaPendencias =
+      params.canal.startsWith('MARKETPLACE_') || params.canal.endsWith('_COMENTARIO');
+    if (this.chatMarketplaceHook && isInbound && viaIaPendencias) {
       try {
         this.chatMarketplaceHook(params, resultado);
       } catch (err) {
@@ -1869,7 +1933,17 @@ export class InboxService {
     // Chaves que os adapters de ENVIO leem do Conversation.metadata (ML pack /
     // Shopee conv). Vêm em params.meta mas até aqui só iam pra Message.meta —
     // resultado: responder chat pós-venda ML/Shopee pela Inbox falhava sempre.
-    const CHAVES_ADAPTER = ['ml_seller_id', 'ml_buyer_id', 'shopee_from_id'] as const;
+    // Comentários da Meta (13/11): onde a resposta pública/privada entra.
+    const CHAVES_ADAPTER = [
+      'ml_seller_id',
+      'ml_buyer_id',
+      'shopee_from_id',
+      'comentario_alvo_id',
+      'comentario_id',
+      'comentario_post_id',
+      'comentario_autor_id',
+      'comentario_anuncio',
+    ] as const;
     for (const k of CHAVES_ADAPTER) {
       if (p.meta?.[k] !== undefined && p.meta[k] !== null) metaPatch[k] = p.meta[k];
     }

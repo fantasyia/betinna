@@ -85,7 +85,8 @@ export class PendenciasIaService implements OnModuleInit {
    * A rodada de 15 min continua como rede (aviso perdido, deploy no meio).
    */
   agendarChat(empresaId: string, canal: string, peerId: string, conversationId: string): void {
-    if (!/^(conv|pack):/.test(peerId)) return;
+    // conv/pack = chat de marketplace; cmt = comentário de FB/IG (13/11).
+    if (!/^(conv|pack|cmt):/.test(peerId)) return;
     const marca = Date.now();
     this.ultimaFala.set(conversationId, marca);
     setTimeout(
@@ -116,10 +117,11 @@ export class PendenciasIaService implements OnModuleInit {
         select: { peerNome: true },
       });
       const nome = conv?.peerNome?.replace(/^Comprador Shopee #/, '') || 'comprador';
+      const oQue = peerId.startsWith('cmt:') ? 'Comentário' : 'Mensagem';
       p = await this.prisma.pendenciaMarketplace.create({
         data: {
           ...chave,
-          titulo: `Mensagem de ${nome} sem resposta`.slice(0, 200),
+          titulo: `${oQue} de ${nome} sem resposta`.slice(0, 200),
           link: '/inbox',
           comprador: conv?.peerNome?.slice(0, 120) ?? null,
           desde: new Date(),
@@ -482,7 +484,12 @@ export class PendenciasIaService implements OnModuleInit {
 
   /** Conversa no app que corresponde à pendência. */
   private peerDa(canal: string, chave: string): string | null {
-    if (chave.startsWith('conv:') || chave.startsWith('pack:') || chave.startsWith('q:'))
+    if (
+      chave.startsWith('conv:') ||
+      chave.startsWith('pack:') ||
+      chave.startsWith('q:') ||
+      chave.startsWith('cmt:')
+    )
       return chave;
     if (chave.startsWith('inc:')) {
       const id = chave.slice(4);

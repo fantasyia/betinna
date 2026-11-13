@@ -36,6 +36,7 @@ import {
   type NotaDto,
   type ReagirDto,
   type ResponderDto,
+  type ResponderPrivadoDto,
   type ResponderMidiaDto,
   type SetBotConversaDto,
   alterarStatusSchema,
@@ -50,6 +51,7 @@ import {
   reagirSchema,
   responderMidiaSchema,
   responderSchema,
+  responderPrivadoSchema,
   setBotConversaSchema,
 } from './inbox.dto';
 import { ConversationNotasService } from './conversation-notas.service';
@@ -340,6 +342,19 @@ export class InboxController {
     @Req() req: { apiToken?: { nome: string } },
   ) {
     return this.svc.responder(user, id, dto, req.apiToken?.nome);
+  }
+
+  @Post(':id/responder-privado')
+  @Audit({ action: 'responder_privado', resource: 'conversation', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary: 'Comentário de FB/IG: responde em DM (resposta privada, 1 por comentário)',
+  })
+  responderPrivado(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(responderPrivadoSchema)) dto: ResponderPrivadoDto,
+  ) {
+    return this.svc.responderNoPrivado(user, id, dto.texto);
   }
 
   @Patch(':id/atribuir')

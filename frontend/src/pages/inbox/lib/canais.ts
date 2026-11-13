@@ -33,6 +33,8 @@ export const CANAL_LABEL: Record<Canal, string> = {
   WHATSAPP: 'WhatsApp',
   INSTAGRAM: 'Instagram',
   FACEBOOK: 'Facebook',
+  FACEBOOK_COMENTARIO: 'Comentário no Facebook',
+  INSTAGRAM_COMENTARIO: 'Comentário no Instagram',
   EMAIL: 'E-mail',
   MARKETPLACE_ML: 'Mercado Livre',
   MARKETPLACE_SHOPEE: 'Shopee',

@@ -183,6 +183,16 @@ export function MessageBubble({
               🤖 {nomeExibido} ·
             </span>
           )}
+          {/* Comentário de FB/IG (13/11): esta foi por DM, não no comentário público. */}
+          {outbound && msg.meta?.privado === true && (
+            <span
+              className="text-[10px] font-semibold text-muted"
+              data-testid={`msg-privado-${msg.id}`}
+              title="Enviada como mensagem direta (resposta privada ao comentário)"
+            >
+              🔒 no privado ·
+            </span>
+          )}
           {/* Auditoria 13/09/2026 (G-1): a linha FAILED (Evolution recusou, instância
               fora) vinha do backend com status e aparecia IGUAL às enviadas — o
               operador via "respondido" e o cliente nunca recebeu. */}

@@ -4,6 +4,7 @@ import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
+import { rotaRespostaPublica, type CanalComentario } from './meta-comentarios';
 import type { MetaAnuncio, MetaLeadgenDados } from './meta-leadgen.types';
 import type { DadosOrigem } from './origem-meta';
 import type {
@@ -182,6 +183,46 @@ export class MetaGraphClientService {
       'POST',
       `/${encodeURIComponent(params.senderEndpointId)}/messages?${qs}`,
       body,
+    );
+  }
+
+  // ─── Comentários (13/11) ─────────────────────────────────────────────
+
+  /**
+   * Resposta PÚBLICA a um comentário. IG: `POST /{comment}/replies` (exige
+   * `instagram_manage_comments`); FB: `POST /{comment}/comments` (exige
+   * `pages_manage_engagement`). Os dois com o Page Access Token.
+   */
+  async responderComentario(params: {
+    canal: CanalComentario;
+    alvoId: string;
+    pageAccessToken: string;
+    texto: string;
+  }): Promise<{ id: string }> {
+    const qs = new URLSearchParams({ access_token: params.pageAccessToken });
+    return this.callExpect<{ id: string }>(
+      'POST',
+      `${rotaRespostaPublica(params.canal, params.alvoId)}?${qs}`,
+      { message: params.texto },
+    );
+  }
+
+  /**
+   * Resposta PRIVADA (DM) a quem comentou: `POST /{page|ig-user}/messages` com
+   * `recipient.comment_id`. A Meta deixa UMA por comentário, até 7 dias depois
+   * dele; a conversa só segue se a pessoa responder.
+   */
+  async responderComentarioNoPrivado(params: {
+    senderEndpointId: string;
+    pageAccessToken: string;
+    comentarioId: string;
+    texto: string;
+  }): Promise<MetaSendTextResult> {
+    const qs = new URLSearchParams({ access_token: params.pageAccessToken });
+    return this.callExpect<MetaSendTextResult>(
+      'POST',
+      `/${encodeURIComponent(params.senderEndpointId)}/messages?${qs}`,
+      { recipient: { comment_id: params.comentarioId }, message: { text: params.texto } },
     );
   }
 

@@ -51,6 +51,8 @@ export const NOME_CANAL: Record<string, string> = {
   MARKETPLACE_DAFITI: 'Dafiti',
   MARKETPLACE_AMAZON: 'Amazon',
   MARKETPLACE_TIKTOK: 'TikTok',
+  FACEBOOK_COMENTARIO: 'Facebook (comentários)',
+  INSTAGRAM_COMENTARIO: 'Instagram (comentários)',
 };
 
 const ROTULO: Record<TipoPendencia, [string, string]> = {

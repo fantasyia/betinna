@@ -17,6 +17,7 @@ import type { Conversation, ConversationStatus } from '../lib/types';
 import { CANAL_LABEL, STATUS_LABEL } from '../lib/canais';
 import { fmtPeer } from '../lib/format';
 import { EtapaDoLead } from './EtapaDoLead';
+import { RespostaPrivada } from './RespostaPrivada';
 
 /**
  * Header de ações da thread aberta — extraído do ConversationThread (refactor
@@ -135,6 +136,10 @@ export function ThreadHeader({
             >
               Pedido
             </Button>
+          )}
+          {/* Comentário de FB/IG (13/11): a pública vai pelo composer; esta é a DM. */}
+          {(c.canal === 'FACEBOOK_COMENTARIO' || c.canal === 'INSTAGRAM_COMENTARIO') && (
+            <RespostaPrivada conversationId={c.id} />
           )}
           {/* Item #25 — notas internas (só a equipe vê) */}
           <Button

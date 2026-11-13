@@ -63,6 +63,10 @@ export const responderSchema = z.object({
 });
 export type ResponderDto = z.infer<typeof responderSchema>;
 
+// Resposta privada a comentário de FB/IG (13/11). Texto do Messenger/Direct: até 1000.
+export const responderPrivadoSchema = z.object({ texto: z.string().trim().min(1).max(1000) });
+export type ResponderPrivadoDto = z.infer<typeof responderPrivadoSchema>;
+
 // Reação (emoji) numa mensagem. Vazio = remove a reação.
 export const reagirSchema = z.object({
   emoji: z.string().max(16),

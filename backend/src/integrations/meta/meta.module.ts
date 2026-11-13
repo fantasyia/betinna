@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { FacebookService } from './facebook.service';
 import { InstagramService } from './instagram.service';
+import { MetaComentariosService } from './meta-comentarios.service';
 import { MetaGraphModule } from './meta-graph.module';
 import { MetaLeadgenProcessor } from './meta-leadgen.processor';
 import { MetaLeadgenService } from './meta-leadgen.service';
@@ -20,6 +21,8 @@ import { MetaWebhookController } from './meta-webhook.controller';
  * - `MetaOAuthService` + `MetaOAuthController`: Facebook Login + onboarding
  * - `MetaWebhookController`: receiver público (verify GET + receive POST com HMAC)
  * - `FacebookService` / `InstagramService`: adapters que pluguam na Inbox
+ * - `MetaComentariosService`: comentários de post/anúncio (FB e IG) no inbox,
+ *   com resposta pública e privada (13/11)
  * - `MetaLeadgenService` + processor: Lead Ads (formulário nativo) — o webhook
  *   só enfileira, a fila busca os dados na Graph API com retry
  *
@@ -34,6 +37,7 @@ import { MetaWebhookController } from './meta-webhook.controller';
     MetaTokenRefreshJob,
     FacebookService,
     InstagramService,
+    MetaComentariosService,
     MetaLeadgenService,
     MetaLeadgenProcessor,
   ],

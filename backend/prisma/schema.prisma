@@ -244,6 +244,9 @@ enum MessageChannel {
   WHATSAPP
   INSTAGRAM
   FACEBOOK
+  // Comentários públicos (post/anúncio) — resposta sai como comentário, não DM
+  FACEBOOK_COMENTARIO
+  INSTAGRAM_COMENTARIO
   EMAIL
   // Marketplaces (perguntas/mensagens diretas em ML/Shopee/Amazon/TikTok)
   MARKETPLACE_ML

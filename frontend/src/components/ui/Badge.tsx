@@ -61,6 +61,8 @@ const CHANNEL_CLASSES: Record<
   | 'WHATSAPP'
   | 'INSTAGRAM'
   | 'FACEBOOK'
+  | 'FACEBOOK_COMENTARIO'
+  | 'INSTAGRAM_COMENTARIO'
   | 'EMAIL'
   | 'MARKETPLACE_ML'
   | 'MARKETPLACE_SHOPEE'
@@ -71,6 +73,11 @@ const CHANNEL_CLASSES: Record<
   WHATSAPP: 'bg-channel-whatsapp/15 text-channel-whatsapp border-channel-whatsapp/30',
   INSTAGRAM: 'bg-channel-instagram/15 text-channel-instagram border-channel-instagram/30',
   FACEBOOK: 'bg-channel-facebook/15 text-channel-facebook border-channel-facebook/30',
+  // Comentário: mesma cor do canal, contorno tracejado pra não confundir com DM.
+  FACEBOOK_COMENTARIO:
+    'bg-channel-facebook/10 text-channel-facebook border-dashed border-channel-facebook/40',
+  INSTAGRAM_COMENTARIO:
+    'bg-channel-instagram/10 text-channel-instagram border-dashed border-channel-instagram/40',
   EMAIL: 'bg-channel-email/15 text-channel-email border-channel-email/30',
   MARKETPLACE_ML: 'bg-channel-ml/15 text-channel-ml border-channel-ml/30',
   MARKETPLACE_SHOPEE: 'bg-channel-shopee/15 text-channel-shopee border-channel-shopee/30',
@@ -82,6 +89,8 @@ const CHANNEL_LABEL: Record<keyof typeof CHANNEL_CLASSES, string> = {
   WHATSAPP: 'WA',
   INSTAGRAM: 'IG',
   FACEBOOK: 'FB',
+  FACEBOOK_COMENTARIO: 'FB 💬',
+  INSTAGRAM_COMENTARIO: 'IG 💬',
   EMAIL: 'EM',
   MARKETPLACE_ML: 'ML',
   MARKETPLACE_SHOPEE: 'SHP',
@@ -105,6 +114,8 @@ export function ChannelBadge({
     WHATSAPP: 'WhatsApp',
     INSTAGRAM: 'Instagram',
     FACEBOOK: 'Facebook',
+    FACEBOOK_COMENTARIO: 'Comentário FB',
+    INSTAGRAM_COMENTARIO: 'Comentário IG',
     EMAIL: 'E-mail',
     MARKETPLACE_ML: 'Mercado Livre',
     MARKETPLACE_SHOPEE: 'Shopee',

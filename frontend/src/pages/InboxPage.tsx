@@ -65,6 +65,8 @@ export default function InboxPage() {
       wa: 'WHATSAPP',
       ig: 'INSTAGRAM',
       fb: 'FACEBOOK',
+      cmt_ig: 'INSTAGRAM_COMENTARIO',
+      cmt_fb: 'FACEBOOK_COMENTARIO',
       em: 'EMAIL',
       ml: 'MARKETPLACE_ML',
       shp: 'MARKETPLACE_SHOPEE',

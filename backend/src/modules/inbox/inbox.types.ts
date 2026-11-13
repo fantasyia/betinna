@@ -55,6 +55,18 @@ export interface CanalAdapter {
   estaDisponivel(empresaId: string, proprietarioId?: string | null): Promise<boolean>;
 
   /**
+   * Resposta PRIVADA a um comentário público (opcional — só os canais de
+   * comentário da Meta). Vira DM pra quem comentou; a Meta deixa UMA por
+   * comentário, até 7 dias depois dele.
+   */
+  responderNoPrivado?(
+    empresaId: string,
+    peerId: string,
+    texto: string,
+    ctx?: CanalAdapterContexto,
+  ): Promise<{ externalId?: string }>;
+
+  /**
    * Reage a uma mensagem com um emoji (opcional — só canais que suportam, ex:
    * WhatsApp). `emoji` vazio remove a reação. `fromMe` = a msg reagida é OUTBOUND.
    */

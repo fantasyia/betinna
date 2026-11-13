@@ -134,6 +134,19 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
     }
   });
 
+  it('comentário de FB/IG (cmt:) entra no relógio como chat (13/11)', () => {
+    vi.useFakeTimers();
+    try {
+      const t = montar({ pendencias: [] });
+      const responder = vi.spyOn(t.svc, 'responderChat').mockResolvedValue();
+      t.svc.agendarChat('e1', 'INSTAGRAM_COMENTARIO', 'cmt:m1:u1', 'c3');
+      vi.advanceTimersByTime(32_000);
+      expect(responder).toHaveBeenCalledWith('e1', 'INSTAGRAM_COMENTARIO', 'cmt:m1:u1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('cliente ainda escrevendo (card agora há pouco): espera, não responde no meio', async () => {
     const t = montar({
       pendencias: [SHOPEE],

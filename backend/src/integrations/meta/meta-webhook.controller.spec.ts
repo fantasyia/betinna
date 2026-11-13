@@ -44,6 +44,8 @@ const makeAntiReplay = () => ({
 
 const makeLeadgen = () => ({ enfileirar: vi.fn(async () => undefined) });
 
+const makeComentarios = () => ({ receber: vi.fn(async () => undefined) });
+
 /** Response do Express: o handshake responde em TEXTO PURO via @Res(). */
 const fakeRes = () => {
   const r = {
@@ -69,6 +71,7 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     const res = fakeRes();
     await ctrl.verify(EMP, 'subscribe', 'verify-123', 'desafio-xyz', res as never);
@@ -88,6 +91,7 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await expect(
       ctrl.verify(EMP, 'subscribe', 'errado', 'x', fakeRes() as never),
@@ -105,6 +109,7 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await expect(
       ctrl.verify(EMP, 'unsubscribe', 'verify-123', 'x', fakeRes() as never),
@@ -122,6 +127,7 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await expect(
       ctrl.verify(EMP, 'subscribe', 'qualquer', 'x', fakeRes() as never),
@@ -160,6 +166,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await expect(
       ctrl.receive(EMP, fakeReq(rawBody), 'sha256=deadbeef', envelope),
@@ -177,6 +184,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await expect(ctrl.receive(EMP, fakeReq(rawBody), undefined, envelope)).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -196,6 +204,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     const r = await ctrl.receive(EMP, fakeReq(rawBody), sign(rawBody), envelope);
     expect(r.ok).toBe(true);
@@ -224,6 +233,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     const r = await ctrl.receive(EMP, fakeReq(rawBody), sign(rawBody), envelope);
     expect(r.ok).toBe(true);
@@ -260,6 +270,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await ctrl.receive(EMP, fakeReq(raw), sign(raw), envelopeEcho);
     expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
@@ -296,6 +307,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await ctrl.receive(EMP7, fakeReq(raw), sign(raw), env);
     expect(oauth.resolverPorAccount).toHaveBeenCalledWith('instagram', 'ig-1');
@@ -337,6 +349,7 @@ describe('MetaWebhookController.receive (POST events)', () => {
         signedUrl: vi.fn(async () => null),
       } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     await ctrl.receive(EMP, fakeReq(raw), sign(raw), env);
     expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
@@ -369,6 +382,7 @@ describe('MetaWebhookController.receive (Lead Ads)', () => {
       makeAntiReplay() as never,
       { baixarEArmazenar: vi.fn(async () => null), signedUrl: vi.fn(async () => null) } as never,
       leadgen as never,
+      makeComentarios() as never,
     );
 
   it('enfileira o lead com os ponteiros do webhook (o payload não traz os dados)', async () => {
@@ -491,6 +505,7 @@ describe('MetaWebhookController — app por empresa (item 13)', () => {
       makeAntiReplay() as never,
       { baixarEArmazenar: vi.fn(async () => null), signedUrl: vi.fn(async () => null) } as never,
       makeLeadgen() as never,
+      makeComentarios() as never,
     );
     return { ctrl, inbox };
   };
@@ -534,5 +549,87 @@ describe('MetaWebhookController — app por empresa (item 13)', () => {
       ctrl.receive("x' OR 1=1", fakeReq(raw), assinar(raw, SEGREDO_A), envelope),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(apps.talvez).not.toHaveBeenCalled();
+  });
+});
+
+describe('MetaWebhookController — comentários (13/11)', () => {
+  const montar = () => {
+    const comentarios = makeComentarios();
+    const inbox = makeInbox();
+    const ctrl = new MetaWebhookController(
+      makeApps() as never,
+      inbox as never,
+      makeOAuth({ empresaId: EMP }) as never,
+      makeAntiReplay() as never,
+      { baixarEArmazenar: vi.fn(async () => null), signedUrl: vi.fn(async () => null) } as never,
+      makeLeadgen() as never,
+      comentarios as never,
+    );
+    return { ctrl, comentarios, inbox };
+  };
+
+  it('comentário no IG vai pro serviço de comentários (não vira DM)', async () => {
+    const env: MetaWebhookEnvelope = {
+      object: 'instagram',
+      entry: [
+        {
+          id: 'ig-1',
+          time: 1,
+          changes: [
+            {
+              field: 'comments',
+              value: {
+                from: { id: 'igsid-9', username: 'joao' },
+                comment_id: 'c-1',
+                text: 'tem no M?',
+                media: { id: 'media-1' },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const raw = JSON.stringify(env);
+    const { ctrl, comentarios, inbox } = montar();
+    await ctrl.receive(EMP, fakeReq(raw), sign(raw), env);
+    expect(comentarios.receber).toHaveBeenCalledWith(
+      EMP,
+      expect.objectContaining({
+        canal: 'INSTAGRAM_COMENTARIO',
+        comentarioId: 'c-1',
+        postId: 'media-1',
+      }),
+      'ig-1',
+    );
+    expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
+  });
+
+  it('comentário da própria Página (nossa resposta) é ignorado', async () => {
+    const env: MetaWebhookEnvelope = {
+      object: 'page',
+      entry: [
+        {
+          id: 'page-1',
+          time: 1,
+          changes: [
+            {
+              field: 'feed',
+              value: {
+                item: 'comment',
+                verb: 'add',
+                from: { id: 'page-1', name: 'Ribelt' },
+                comment_id: 'p_c2',
+                post_id: 'page-1_post',
+                message: 'Estamos à disposição!',
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const raw = JSON.stringify(env);
+    const { ctrl, comentarios } = montar();
+    await ctrl.receive(EMP, fakeReq(raw), sign(raw), env);
+    expect(comentarios.receber).not.toHaveBeenCalled();
   });
 });
