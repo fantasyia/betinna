@@ -13,7 +13,8 @@ export type Canal =
   | 'MARKETPLACE_ML'
   | 'MARKETPLACE_SHOPEE'
   | 'MARKETPLACE_AMAZON'
-  | 'MARKETPLACE_TIKTOK';
+  | 'MARKETPLACE_TIKTOK'
+  | 'MARKETPLACE_SHEIN';
 
 export type ConversationStatus = 'ABERTA' | 'PENDENTE' | 'RESOLVIDA' | 'ARQUIVADA';
 export type MessageDirection = 'INBOUND' | 'OUTBOUND';

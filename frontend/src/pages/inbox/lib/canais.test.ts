@@ -12,6 +12,13 @@ describe('canalSemTextoLivre', () => {
     expect(canalSemTextoLivre('MARKETPLACE_TIKTOK').bloqueado).toBe(true);
   });
 
+  it('Shein: sempre bloqueado (pós-venda só leitura, sem chat na API)', () => {
+    const r = canalSemTextoLivre('MARKETPLACE_SHEIN', 'DEVOLUCAO');
+    expect(r.bloqueado).toBe(true);
+    expect(r.motivo).toMatch(/painel da Shein/);
+    expect(canalSemTextoLivre('MARKETPLACE_SHEIN').bloqueado).toBe(true);
+  });
+
   it('Shopee: bloqueado só em devolução/disputa', () => {
     expect(canalSemTextoLivre('MARKETPLACE_SHOPEE', 'DEVOLUCAO').bloqueado).toBe(true);
     expect(canalSemTextoLivre('MARKETPLACE_SHOPEE', 'DISPUTA').bloqueado).toBe(true);

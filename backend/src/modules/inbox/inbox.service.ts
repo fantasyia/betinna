@@ -50,6 +50,8 @@ const CANAIS_MARKETPLACE = [
   'MARKETPLACE_SHOPEE',
   'MARKETPLACE_AMAZON',
   'MARKETPLACE_TIKTOK',
+  // Pós-venda da Shein (14/11): só leitura — sem adapter de envio.
+  'MARKETPLACE_SHEIN',
 ] as const;
 
 const conversationInclude = {

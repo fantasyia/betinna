@@ -2,7 +2,8 @@ import type { Canal, ConversationStatus, ConversationCategoria } from './types';
 
 /**
  * Sprint 2.3 — canais que NÃO aceitam resposta de texto livre.
- * Amazon e TikTok nunca; Shopee só em contexto de devolução/disputa.
+ * Amazon, TikTok e Shein (pós-venda só leitura) nunca; Shopee só em
+ * contexto de devolução/disputa.
  */
 export function canalSemTextoLivre(
   canal: Canal,
@@ -18,6 +19,12 @@ export function canalSemTextoLivre(
     return {
       bloqueado: true,
       motivo: 'O TikTok Shop não expõe chat livre — responda pelo Seller Center.',
+    };
+  }
+  if (canal === 'MARKETPLACE_SHEIN') {
+    return {
+      bloqueado: true,
+      motivo: 'A Shein não tem chat com o comprador — trate o pós-venda pelo painel da Shein.',
     };
   }
   if (canal === 'MARKETPLACE_SHOPEE' && (categoria === 'DEVOLUCAO' || categoria === 'DISPUTA')) {
@@ -40,6 +47,7 @@ export const CANAL_LABEL: Record<Canal, string> = {
   MARKETPLACE_SHOPEE: 'Shopee',
   MARKETPLACE_AMAZON: 'Amazon',
   MARKETPLACE_TIKTOK: 'TikTok Shop',
+  MARKETPLACE_SHEIN: 'Shein',
 };
 
 export const STATUS_LABEL: Record<ConversationStatus, string> = {

@@ -12,6 +12,10 @@ const channelEnum = z.enum([
   'MARKETPLACE_SHOPEE',
   'MARKETPLACE_AMAZON',
   'MARKETPLACE_TIKTOK',
+  'MARKETPLACE_SHEIN',
+  // Comentários de post/anúncio da Meta (13/11).
+  'FACEBOOK_COMENTARIO',
+  'INSTAGRAM_COMENTARIO',
 ]);
 
 const statusEnum = z.enum(['ABERTA', 'PENDENTE', 'RESOLVIDA', 'ARQUIVADA']);

@@ -72,6 +72,7 @@ export default function InboxPage() {
       shp: 'MARKETPLACE_SHOPEE',
       amz: 'MARKETPLACE_AMAZON',
       tt: 'MARKETPLACE_TIKTOK',
+      shn: 'MARKETPLACE_SHEIN',
     };
     return map[canalTab] ?? '';
   }, [canalTab]);

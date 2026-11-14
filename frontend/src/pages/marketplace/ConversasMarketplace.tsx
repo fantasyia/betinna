@@ -45,6 +45,7 @@ const CANAL_CURTO: Record<string, string> = {
   MARKETPLACE_SHOPEE: 'Shopee',
   MARKETPLACE_AMAZON: 'Amazon',
   MARKETPLACE_TIKTOK: 'TikTok Shop',
+  MARKETPLACE_SHEIN: 'Shein',
 };
 
 const VAZIO: Record<GrupoMarketplace, string> = {

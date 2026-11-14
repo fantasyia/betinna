@@ -42,7 +42,8 @@ type Canal =
   | 'MARKETPLACE_SHOPEE'
   | 'MARKETPLACE_AMAZON'
   | 'MARKETPLACE_TIKTOK'
-  | 'MARKETPLACE_SHEIN';
+  | 'MARKETPLACE_SHEIN'
+  | 'MARKETPLACE_MAGALU';
 
 type Tipo = 'RECLAMACAO' | 'DEVOLUCAO' | 'MEDIACAO' | 'DISPUTA' | 'CANCELAMENTO';
 
@@ -131,6 +132,7 @@ const CANAL_LABEL: Record<Canal, string> = {
   MARKETPLACE_AMAZON: 'Amazon',
   MARKETPLACE_TIKTOK: 'TikTok Shop',
   MARKETPLACE_SHEIN: 'Shein',
+  MARKETPLACE_MAGALU: 'Magalu',
 };
 const CANAL_COLOR: Record<Canal, string> = {
   MARKETPLACE_ML: '#facc15',
@@ -138,6 +140,7 @@ const CANAL_COLOR: Record<Canal, string> = {
   MARKETPLACE_AMAZON: '#ff9900',
   MARKETPLACE_TIKTOK: '#000',
   MARKETPLACE_SHEIN: '#222',
+  MARKETPLACE_MAGALU: '#0086ff',
 };
 
 const TIPO_LABEL: Record<Tipo, string> = {
@@ -600,7 +603,8 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
               {data.resolvidoEm && <Info label="Resolvido">{fmtDate(data.resolvidoEm)}</Info>}
             </dl>
 
-            {convId && (
+            {/* Shein não tem chat: o resumo do caso fica na conversa do Inbox. */}
+            {convId && data.canal !== 'MARKETPLACE_SHEIN' && (
               <MensagensReclamacao
                 conversationId={convId}
                 podeMandar={podeMandar && !encerrado}

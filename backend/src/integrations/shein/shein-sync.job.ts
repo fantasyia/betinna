@@ -47,6 +47,13 @@ export class SheinSyncJob {
         } catch (err) {
           this.logger.warn(`[Shein] pós-venda ${empresaId} falhou: ${String(err)}`);
         }
+        // Inbox (14/11): incidente antigo sem conversa ganha a dele (backfill).
+        try {
+          const n = await this.posVenda.garantirConversas(empresaId);
+          if (n) this.logger.log(`[Shein] ${empresaId}: ${n} pós-vendas levados ao Inbox`);
+        } catch (err) {
+          this.logger.warn(`[Shein] conversas do pós-venda ${empresaId}: ${String(err)}`);
+        }
       }
     } finally {
       await this.cronLock.release('shein-sync');

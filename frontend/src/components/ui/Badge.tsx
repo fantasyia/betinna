@@ -67,7 +67,8 @@ const CHANNEL_CLASSES: Record<
   | 'MARKETPLACE_ML'
   | 'MARKETPLACE_SHOPEE'
   | 'MARKETPLACE_AMAZON'
-  | 'MARKETPLACE_TIKTOK',
+  | 'MARKETPLACE_TIKTOK'
+  | 'MARKETPLACE_SHEIN',
   string
 > = {
   WHATSAPP: 'bg-channel-whatsapp/15 text-channel-whatsapp border-channel-whatsapp/30',
@@ -83,6 +84,8 @@ const CHANNEL_CLASSES: Record<
   MARKETPLACE_SHOPEE: 'bg-channel-shopee/15 text-channel-shopee border-channel-shopee/30',
   MARKETPLACE_AMAZON: 'bg-channel-amazon/15 text-channel-amazon border-channel-amazon/30',
   MARKETPLACE_TIKTOK: 'bg-channel-tiktok/15 text-channel-tiktok border-channel-tiktok/30',
+  // Shein sem token de canal próprio: neutro (a marca é preto e branco).
+  MARKETPLACE_SHEIN: 'bg-surface-hover text-text border-border',
 };
 
 const CHANNEL_LABEL: Record<keyof typeof CHANNEL_CLASSES, string> = {
@@ -96,6 +99,7 @@ const CHANNEL_LABEL: Record<keyof typeof CHANNEL_CLASSES, string> = {
   MARKETPLACE_SHOPEE: 'SHP',
   MARKETPLACE_AMAZON: 'AMZ',
   MARKETPLACE_TIKTOK: 'TT',
+  MARKETPLACE_SHEIN: 'SHN',
 };
 
 export function ChannelBadge({
@@ -121,6 +125,7 @@ export function ChannelBadge({
     MARKETPLACE_SHOPEE: 'Shopee',
     MARKETPLACE_AMAZON: 'Amazon',
     MARKETPLACE_TIKTOK: 'TikTok',
+    MARKETPLACE_SHEIN: 'Shein',
   };
   return (
     <Badge

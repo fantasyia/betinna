@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { MarketplaceIncidentStatus, MarketplaceIncidentTipo } from '@prisma/client';
 import { dataShein } from './shein-pedidos';
 
@@ -121,6 +122,16 @@ function prazo(p: SheinPosVenda, sub: number): Date | null {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+/** "SKU variação" de cada peça do caso. */
+function pecasDoCaso(p: SheinPosVenda): string[] {
+  return (p.goodsList ?? []).map((i) => {
+    const variacao =
+      i.goodsAttributes?.find((a) => a.language === 'PT')?.attrValueNames ??
+      i.goodsAttributes?.find((a) => a.language === 'US')?.attrValueNames;
+    return [i.skuSn || i.goodsSn || i.goodsTitle, variacao].filter(Boolean).join(' ');
+  });
+}
+
 export function incidenteShein(p: SheinPosVenda) {
   const sub = Number(p.aftersalesOrderSubStatus);
   const itens = p.goodsList ?? [];
@@ -131,12 +142,7 @@ export function incidenteShein(p: SheinPosVenda) {
       ),
     ),
   ] as string[];
-  const pecas = itens.map((i) => {
-    const variacao =
-      i.goodsAttributes?.find((a) => a.language === 'PT')?.attrValueNames ??
-      i.goodsAttributes?.find((a) => a.language === 'US')?.attrValueNames;
-    return [i.skuSn || i.goodsSn || i.goodsTitle, variacao].filter(Boolean).join(' ');
-  });
+  const pecas = pecasDoCaso(p);
   const valor =
     typeof p.costSummary?.totalGoodsSettlePrice === 'number'
       ? r2(p.costSummary.totalGoodsSettlePrice)
@@ -166,4 +172,79 @@ export function incidenteShein(p: SheinPosVenda) {
     prazoResposta: prazo(p, sub) ?? undefined,
     resumo: resumo.slice(0, 280),
   };
+}
+
+// ─── Pós-venda → conversa do Inbox (card SAC, 14/11) ───────────────────────
+
+const brl = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`;
+
+const fmtPrazo = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/**
+ * Situação do incidente → status da conversa. Só o que espera a LOJA fica
+ * PENDENTE (o contador do SAC); encerrado sai da lista; o resto fica ABERTA
+ * (à vista, mas sem cobrar resposta).
+ */
+export function statusConversaPosVenda(
+  s: MarketplaceIncidentStatus,
+): 'PENDENTE' | 'ABERTA' | 'RESOLVIDA' {
+  if (s === 'AGUARDANDO_VENDEDOR' || s === 'ABERTO') return 'PENDENTE';
+  if (s === 'RESOLVIDO' || s === 'CANCELADO' || s === 'EXPIRADO') return 'RESOLVIDA';
+  return 'ABERTA';
+}
+
+/**
+ * Caso de pós-venda → conversa do Inbox, no molde da "Reclamação ML #id". A
+ * Shein não tem chat com o comprador: a conversa é só leitura, e cada mudança
+ * do resumo vira uma mensagem nova (o `externalId` carrega um hash do texto —
+ * reprocessar o mesmo estado não duplica, mudar a situação acrescenta).
+ * PURO.
+ */
+export function conversaShein(p: SheinPosVenda) {
+  const inc = incidenteShein(p);
+  const sub = Number(p.aftersalesOrderSubStatus);
+  const pecas = pecasDoCaso(p);
+  const valores =
+    inc.valor !== undefined
+      ? [
+          `Valor: ${brl(inc.valor)}`,
+          inc.valorReembolso !== undefined && inc.valorReembolso !== inc.valor
+            ? `reembolso ${brl(inc.valorReembolso)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : null;
+  const conteudo = [
+    `Pós-venda Shein #${p.aftersalesOrderNo}`,
+    p.orderNo ? `Pedido: ${p.orderNo}` : null,
+    `Tipo: ${PLANO[p.aftersalesResolutionPlan ?? 0] ?? 'não informado'}`,
+    `Situação: ${SITUACAO[sub] ?? `código ${sub}`}`,
+    inc.motivo ? `Motivo: ${inc.motivo}` : null,
+    pecas.length ? `Peças: ${pecas.join(', ')}` : null,
+    valores,
+    inc.prazoResposta ? `Prazo: ${fmtPrazo.format(inc.prazoResposta)}` : null,
+    'Responda pelo painel da Shein — a API não tem chat com o comprador.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const categoria =
+    inc.tipo === 'DISPUTA' ? 'DISPUTA' : inc.tipo === 'RECLAMACAO' ? 'RECLAMACAO' : 'DEVOLUCAO';
+  const hash = createHash('sha1').update(conteudo).digest('hex').slice(0, 12);
+  return {
+    incidente: inc,
+    peerId: `posvenda:${p.aftersalesOrderNo}`,
+    peerNome: `Pós-venda Shein #${p.aftersalesOrderNo}`,
+    conteudo,
+    externalId: `posvenda:${p.aftersalesOrderNo}:${hash}`,
+    categoria,
+    statusConversa: statusConversaPosVenda(inc.status),
+  } as const;
 }
