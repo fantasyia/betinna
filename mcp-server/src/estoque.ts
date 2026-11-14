@@ -19,6 +19,8 @@ interface Saldo {
   tamanho: { nome: string };
   fisico: number;
   reservado: number;
+  /** Pedido de marketplace sem nota (Magis5). Só entra em `reservado`/`disponivel` com a chave ligada. */
+  reservadoMarketplace?: number;
   disponivel: number;
 }
 
@@ -46,7 +48,8 @@ export function registrarEstoque(server: McpServer, { ok, seguro }: Ajudantes) {
     {
       description:
         "Estoque de peça pronta por variação (físico, reservado, disponível) de UM modelo, por nome ou id. " +
-        "Somente leitura.",
+        "reservadoMarketplace = peças de pedido de marketplace (Magis5) ainda sem nota; só desconta do " +
+        "disponível quando a reserva até a NF está ligada (GET /magis5/estoque mostra a chave). Somente leitura.",
       inputSchema: { modelo: z.string().min(1) },
       annotations: { readOnlyHint: true, destructiveHint: false },
     },
@@ -61,6 +64,7 @@ export function registrarEstoque(server: McpServer, { ok, seguro }: Ajudantes) {
           tamanho: s.tamanho.nome,
           fisico: s.fisico,
           reservado: s.reservado,
+          reservadoMarketplace: s.reservadoMarketplace ?? 0,
           disponivel: s.disponivel,
           ativo: s.ativo,
         })),

@@ -43,6 +43,8 @@ export const SERVICOS_EMPRESA = [
   // Marketplaces com chave colada (25/10): pedidos de venda e devoluções no app.
   'dafiti',
   'shein',
+  // Magalu (14/11): OAuth do ID Magalu — anúncios, pedidos e SAC pela API.
+  'magalu',
   // Hub de marketplaces (Léo, 02/11): pedidos de todos os canais e o estoque
   // que o app manda. Só a chave por enquanto — a integração vem com a API.
   'magis5',
@@ -226,6 +228,13 @@ export const SERVICO_METADATA: Record<
   },
   shein: {
     nome: 'Shein',
+    tipo: 'marketplace',
+    escopo: 'empresa',
+    obrigatorio: false,
+    requerDirector: true,
+  },
+  magalu: {
+    nome: 'Magalu',
     tipo: 'marketplace',
     escopo: 'empresa',
     obrigatorio: false,

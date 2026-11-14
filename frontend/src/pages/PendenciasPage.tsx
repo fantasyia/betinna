@@ -64,6 +64,7 @@ const CANAL: Record<string, string> = {
   MARKETPLACE_SHOPEE: 'Shopee',
   MARKETPLACE_SHEIN: 'Shein',
   MARKETPLACE_DAFITI: 'Dafiti',
+  MARKETPLACE_MAGALU: 'Magalu',
   FACEBOOK_COMENTARIO: 'Comentário no Facebook',
   INSTAGRAM_COMENTARIO: 'Comentário no Instagram',
 };

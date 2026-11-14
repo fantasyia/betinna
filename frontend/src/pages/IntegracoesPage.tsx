@@ -38,6 +38,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'resend',
   'dafiti',
   'shein',
+  'magalu',
   'magis5',
 ]);
 
@@ -62,6 +63,7 @@ type ServicoEmpresa =
   | 'resend'
   | 'dafiti'
   | 'shein'
+  | 'magalu'
   | 'magis5';
 
 interface ServicoMeta {
@@ -314,6 +316,19 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     ],
     atalho: { rotulo: 'Ver os pedidos →', rota: '/pedidos-marketplace' },
   },
+  magalu: {
+    nome: 'Magalu',
+    tipo: 'marketplace',
+    obrigatorio: false,
+    color: '#0086ff',
+    icon: 'MG',
+    description:
+      'Anúncios (SKU e preço), pedidos e SAC do Magalu pela API. Conecte com a conta do seller ' +
+      'no ID Magalu e escolha a loja. Estoque segue vindo do Magis5.',
+    connectMode: 'oauth',
+    oauthStart: '/integracoes/magalu/oauth/start',
+    atalho: { rotulo: 'Ver os pedidos →', rota: '/pedidos-marketplace' },
+  },
   magis5: {
     nome: 'Magis5',
     tipo: 'marketplace',
@@ -385,6 +400,7 @@ const SERVICO_ORDER: ServicoEmpresa[] = [
   'resend',
   'dafiti',
   'shein',
+  'magalu',
   'magis5',
 ];
 

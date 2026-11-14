@@ -232,6 +232,7 @@ enum MarketplacePlatform {
   TIKTOK
   DAFITI
   SHEIN
+  MAGALU
 }
 
 enum MarketplaceMsgStatus {
@@ -254,6 +255,8 @@ enum MessageChannel {
   MARKETPLACE_AMAZON
   MARKETPLACE_TIKTOK
   MARKETPLACE_SHEIN
+  // Magalu (14/11): SAC (tickets) vira incidente
+  MARKETPLACE_MAGALU
 }
 
 enum MessageDirection {
@@ -410,6 +413,7 @@ model Empresa {
   marketplaceMsgs       MarketplaceMsg[]
   marketplaceOrders     MarketplaceOrder[]
   magis5Pedidos         Magis5Pedido[]
+  magis5SaldosEnviados  Magis5SaldoEnviado[]
   conversations         Conversation[]
   marketplaceIncidents  MarketplaceIncident[]
   notificacoes          Notificacao[]
@@ -844,6 +848,8 @@ model Produto {
   /// ERP próprio (Fase 2): saldo = soma dos movimentos; reservas do pedido.
   estoqueMovimentos EstoqueMovimento[]
   estoqueReservas   EstoqueReserva[]
+  /// Reserva até a NF dos pedidos do Magis5 (14/11).
+  reservasMarketplace EstoqueReservaMarketplace[]
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
   /// ERP próprio: linhas de OP (grade cor × linha × tamanho) desta variação.
@@ -4554,6 +4560,51 @@ model EstoqueReserva {
   @@index([empresaId, produtoId, status])
   @@index([pedidoId])
   @@index([status, expiraEm])
+}
+
+// ─── Reserva até a NF dos pedidos de marketplace (Léo, 25/10; reconfirmado 14/11) ───
+// Venda no marketplace (lida do Magis5) RESERVA as peças enquanto não tem nota;
+// a nota emitida vira a saída física (um movimento SAIDA_PEDIDO por pedido +
+// peça); cancelado antes da nota devolve ao disponível. Kit reserva as peças da
+// composição. Uma linha por pedido × peça: é a chave que deixa a rodada
+// idempotente. Status reaproveita o enum da vitrine: CONFIRMADA = segurando,
+// BAIXADA = virou saída, LIBERADA = devolvida (ou nota antes da chave ligar).
+// Só conta no disponível com `config.erpInterno.reservaMagis5.ativo`.
+model EstoqueReservaMarketplace {
+  id              String               @id @default(cuid())
+  empresaId       String
+  /// De onde veio o pedido: 'magis5'.
+  origem          String               @db.VarChar(20)
+  /// completeOrderNumber do Magis5.
+  pedidoNumero    String
+  produtoId       String
+  quantidade      Int
+  status          EstoqueReservaStatus @default(CONFIRMADA)
+  /// Movimento SAIDA_PEDIDO criado quando a nota saiu.
+  movimentoId     String?
+  motivoLiberacao String?
+  criadoEm        DateTime             @default(now())
+  atualizadoEm    DateTime             @updatedAt
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+
+  @@unique([empresaId, origem, pedidoNumero, produtoId])
+  @@index([empresaId, produtoId, status])
+  @@index([empresaId, status])
+}
+
+/// Último saldo enviado ao Magis5 por SKU (14/11): só vai o que mudou, e é o
+/// registro do envio (a API do Magis5 não mostra histórico).
+model Magis5SaldoEnviado {
+  id         String   @id @default(cuid())
+  empresaId  String
+  sku        String
+  quantidade Int
+  enviadoEm  DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, sku])
 }
 
 // ─── ERP próprio · Fase 2 · entrega 2 · matéria-prima (tecido e aviamento) ───

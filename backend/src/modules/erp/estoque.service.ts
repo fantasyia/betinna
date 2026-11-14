@@ -18,6 +18,7 @@ import type {
   MinimosDto,
   MovimentosQueryDto,
 } from './estoque.dto';
+import { type ConfigReservaMagis5, lerConfigReservaMagis5 } from './reserva-marketplace';
 
 /** Reserva do pedido da vitrine (Léo, 06/10: "20 minutos com relógio"). */
 export const RESERVA_MINUTOS = 20;
@@ -89,6 +90,36 @@ export class EstoqueService {
       throw new BusinessRuleException('O estoque (ERP) não está ligado nesta empresa');
     }
     return empresaId;
+  }
+
+  /** Chave da reserva até a NF dos pedidos do Magis5 (padrão desligada). */
+  async configReservaMagis5(
+    empresaId: string,
+    db: Tx | PrismaService = this.prisma,
+  ): Promise<ConfigReservaMagis5> {
+    const e = await db.empresa.findUnique({ where: { id: empresaId }, select: { config: true } });
+    return lerConfigReservaMagis5(e?.config ?? null);
+  }
+
+  /**
+   * Peças seguradas por pedido de marketplace sem nota (ledger), por produto.
+   * Lido sempre (é a prévia); só ENTRA no disponível com a chave ligada.
+   */
+  private async reservadoMarketplace(
+    empresaId: string,
+    produtoIds: string[] | null,
+    db: Tx | PrismaService = this.prisma,
+  ): Promise<Map<string, number>> {
+    const rs = await db.estoqueReservaMarketplace.groupBy({
+      by: ['produtoId'],
+      where: {
+        empresaId,
+        status: 'CONFIRMADA',
+        ...(produtoIds ? { produtoId: { in: produtoIds } } : {}),
+      },
+      _sum: { quantidade: true },
+    });
+    return new Map(rs.map((r) => [r.produtoId, r._sum.quantidade ?? 0]));
   }
 
   async status(user: AuthenticatedUser): Promise<{ ativo: boolean }> {
@@ -359,7 +390,7 @@ export class EstoqueService {
   async saldos(user: AuthenticatedUser) {
     const empresaId = await this.empresaLigada(user);
     const agora = new Date();
-    const [variacoes, fisico, reservado] = await Promise.all([
+    const [variacoes, fisico, reservado, mkt, cfg] = await Promise.all([
       this.prisma.catalogoVariacao.findMany({
         where: { empresaId },
         select: {
@@ -382,12 +413,17 @@ export class EstoqueService {
         where: { empresaId, ...reservaValida(agora) },
         _sum: { quantidade: true },
       }),
+      this.reservadoMarketplace(empresaId, null),
+      this.configReservaMagis5(empresaId),
     ]);
     const fis = new Map(fisico.map((f) => [f.produtoId, f._sum.quantidade ?? 0]));
     const res = new Map(reservado.map((r) => [r.produtoId, r._sum.quantidade ?? 0]));
     return variacoes.map((v) => {
       const f = fis.get(v.produtoId) ?? 0;
-      const r = res.get(v.produtoId) ?? 0;
+      const m = mkt.get(v.produtoId) ?? 0;
+      // Pedido de marketplace sem nota só segura peça com a chave ligada;
+      // desligada, `reservadoMarketplace` aparece só como prévia.
+      const r = (res.get(v.produtoId) ?? 0) + (cfg.ligada ? m : 0);
       return {
         produtoId: v.produtoId,
         ativo: v.ativo,
@@ -397,6 +433,7 @@ export class EstoqueService {
         tamanho: v.modeloTamanho.tamanho,
         fisico: f,
         reservado: r,
+        reservadoMarketplace: m,
         disponivel: f - r,
         minimo: v.estoqueMinimo,
       };
@@ -484,15 +521,20 @@ export class EstoqueService {
     return v?.respeitaEstoque === true && (await this.ativoNaEmpresa(empresaId));
   }
 
-  /** Disponível (físico − reservado válido) por produto. */
+  /**
+   * Disponível (físico − reservado válido) por produto. Com a reserva do Magis5
+   * ligada, desconta também o pedido de marketplace sem nota.
+   */
   async disponiveis(
     empresaId: string,
     produtoIds: string[],
     db: Tx | PrismaService = this.prisma,
+    /** Conta o pedido de marketplace mesmo com a chave desligada (prévia do envio). */
+    sempreMarketplace = false,
   ): Promise<Map<string, number>> {
     if (!produtoIds.length) return new Map();
     const agora = new Date();
-    const [fis, res] = await Promise.all([
+    const [fis, res, cfg] = await Promise.all([
       db.estoqueMovimento.groupBy({
         by: ['produtoId'],
         where: { empresaId, produtoId: { in: produtoIds } },
@@ -503,10 +545,17 @@ export class EstoqueService {
         where: { empresaId, produtoId: { in: produtoIds }, ...reservaValida(agora) },
         _sum: { quantidade: true },
       }),
+      this.configReservaMagis5(empresaId, db),
     ]);
+    const mkt =
+      cfg.ligada || sempreMarketplace
+        ? await this.reservadoMarketplace(empresaId, produtoIds, db)
+        : new Map<string, number>();
     const f = new Map(fis.map((x) => [x.produtoId, x._sum.quantidade ?? 0]));
     const r = new Map(res.map((x) => [x.produtoId, x._sum.quantidade ?? 0]));
-    return new Map(produtoIds.map((id) => [id, (f.get(id) ?? 0) - (r.get(id) ?? 0)]));
+    return new Map(
+      produtoIds.map((id) => [id, (f.get(id) ?? 0) - (r.get(id) ?? 0) - (mkt.get(id) ?? 0)]),
+    );
   }
 
   /**

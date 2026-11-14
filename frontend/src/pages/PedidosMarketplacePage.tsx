@@ -61,6 +61,7 @@ const CANAL: Record<string, string> = {
   SHOPEE: 'Shopee',
   DAFITI: 'Dafiti',
   SHEIN: 'Shein',
+  MAGALU: 'Magalu',
   AMAZON: 'Amazon',
   TIKTOK: 'TikTok',
 };
@@ -118,6 +119,7 @@ export default function PedidosMarketplacePage() {
             <option value="SHOPEE">Shopee</option>
             <option value="DAFITI">Dafiti</option>
             <option value="SHEIN">Shein</option>
+            <option value="MAGALU">Magalu</option>
           </Select>
         )}
       </div>

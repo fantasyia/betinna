@@ -7,8 +7,16 @@ import { EstoqueService, MOTIVO_EXPIRADA } from './estoque.service';
 
 const user = { id: 'u-1', role: 'DIRECTOR', empresaIdAtiva: 'emp-1', empresaIds: ['emp-1'] };
 
-function montar(opts: { ativo?: boolean } = {}) {
-  const cfg = opts.ativo === false ? {} : { erpInterno: { ativo: true } };
+function montar(opts: { ativo?: boolean; reservaMagis5?: Record<string, unknown> } = {}) {
+  const cfg =
+    opts.ativo === false
+      ? {}
+      : {
+          erpInterno: {
+            ativo: true,
+            ...(opts.reservaMagis5 ? { reservaMagis5: opts.reservaMagis5 } : {}),
+          },
+        };
   const prisma = {
     empresa: { findUnique: vi.fn().mockResolvedValue({ config: cfg }) },
     estoqueReserva: {
@@ -18,6 +26,7 @@ function montar(opts: { ativo?: boolean } = {}) {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       groupBy: vi.fn().mockResolvedValue([]),
     },
+    estoqueReservaMarketplace: { groupBy: vi.fn().mockResolvedValue([]) },
     estoqueMovimento: {
       create: vi.fn().mockResolvedValue({ id: 'mov-1' }),
       groupBy: vi.fn().mockResolvedValue([]),
@@ -218,6 +227,60 @@ describe('saldo e ajuste', () => {
       { status: 'CONFIRMADA' },
       { status: 'ATIVA', expiraEm: { gt: expect.any(Date) } },
     ]);
+  });
+
+  describe('pedido de marketplace sem nota (reserva até a NF, 14/11)', () => {
+    const variacao = {
+      produtoId: 'p1',
+      ativo: true,
+      modelo: { id: 'm1', nome: 'Bermuda', ordem: 0 },
+      modeloCor: { ordem: 0, cor: { nome: 'Preto', hex: '#000000' } },
+      modeloLinha: { linha: { nome: 'Regular', ordem: 0 } },
+      modeloTamanho: { tamanho: { nome: 'M', ordem: 1 } },
+    };
+    const preparar = (reservaMagis5?: Record<string, unknown>) => {
+      const m = montar({ reservaMagis5 });
+      m.prisma.catalogoVariacao.findMany.mockResolvedValue([variacao]);
+      m.prisma.estoqueMovimento.groupBy.mockResolvedValue([
+        { produtoId: 'p1', _sum: { quantidade: 10 } },
+      ]);
+      m.prisma.estoqueReserva.groupBy.mockResolvedValue([
+        { produtoId: 'p1', _sum: { quantidade: 1 } },
+      ]);
+      m.prisma.estoqueReservaMarketplace.groupBy.mockResolvedValue([
+        { produtoId: 'p1', _sum: { quantidade: 4 } },
+      ]);
+      return m;
+    };
+
+    it('chave DESLIGADA: aparece como prévia e não mexe no disponível', async () => {
+      const { svc } = preparar();
+      const [v] = await svc.saldos(user as never);
+      expect(v).toMatchObject({ fisico: 10, reservado: 1, reservadoMarketplace: 4, disponivel: 9 });
+      expect((await svc.disponiveis('emp-1', ['p1'])).get('p1')).toBe(9);
+    });
+
+    it('chave LIGADA: desconta do disponível (tela, vitrine e envio)', async () => {
+      const { svc, prisma } = preparar({ ativo: true, desde: '2026-11-15T00:00:00-03:00' });
+      const [v] = await svc.saldos(user as never);
+      expect(v).toMatchObject({ reservado: 5, reservadoMarketplace: 4, disponivel: 5 });
+      expect((await svc.disponiveis('emp-1', ['p1'])).get('p1')).toBe(5);
+      // só segura a linha CONFIRMADA (BAIXADA já virou movimento; LIBERADA voltou)
+      expect(prisma.estoqueReservaMarketplace.groupBy.mock.calls[0][0].where.status).toBe(
+        'CONFIRMADA',
+      );
+    });
+
+    it('ligada SEM "desde" não vale (config incompleta = desligada)', async () => {
+      const { svc } = preparar({ ativo: true });
+      expect((await svc.disponiveis('emp-1', ['p1'])).get('p1')).toBe(9);
+      expect(await svc.configReservaMagis5('emp-1')).toMatchObject({ ligada: false });
+    });
+
+    it('prévia do envio conta o marketplace mesmo desligada', async () => {
+      const { svc } = preparar();
+      expect((await svc.disponiveis('emp-1', ['p1'], undefined, true)).get('p1')).toBe(5);
+    });
   });
 
   it('ajuste vira MOVIMENTO com motivo e autor (saldo nunca é editado)', async () => {

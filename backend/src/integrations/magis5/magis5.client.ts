@@ -9,7 +9,8 @@ const LIMITE = 100;
 const MAX_PAGINAS = 200;
 
 /**
- * Cliente da API do Magis5: lê, e a única escrita é criar o pedido da vitrine.
+ * Cliente da API do Magis5: lê, e escreve só o pedido da vitrine e o saldo das
+ * peças (`PUT /callbacks/stocks`, atrás da chave `erpInterno.reservaMagis5`).
  * 600 req/min por chave + IP; passou, 429 e espera crescente.
  */
 @Injectable()
@@ -57,8 +58,21 @@ export class Magis5ClientService {
   }
 
   async post(empresaId: string, path: string, corpo: unknown): Promise<unknown> {
+    return this.escrever('POST', empresaId, path, corpo);
+  }
+
+  async put(empresaId: string, path: string, corpo: unknown): Promise<unknown> {
+    return this.escrever('PUT', empresaId, path, corpo);
+  }
+
+  private async escrever(
+    metodo: 'POST' | 'PUT',
+    empresaId: string,
+    path: string,
+    corpo: unknown,
+  ): Promise<unknown> {
     const r = await fetch(`${API}${path}`, {
-      method: 'POST',
+      method: metodo,
       headers: {
         'X-MAGIS5-APIKEY': await this.chave(empresaId),
         'Content-Type': 'application/json',
@@ -70,7 +84,7 @@ export class Magis5ClientService {
     if (!r.ok) {
       const resposta = (await r.text().catch(() => '')).slice(0, 300);
       throw new IntegrationException(
-        `Magis5 POST ${path} HTTP ${r.status}: ${resposta}`,
+        `Magis5 ${metodo} ${path} HTTP ${r.status}: ${resposta}`,
         ErrorCode.INTEGRATION_ERROR,
       );
     }
