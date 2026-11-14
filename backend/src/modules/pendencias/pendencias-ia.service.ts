@@ -56,6 +56,10 @@ const MAX_HISTORICO = 15;
  * ser desligado em `desligados`. Pergunta de anúncio do ML fica com o robô
  * próprio do ML (já ligado) — aqui só se acompanha o "humano" dele.
  */
+/** Comentário de post/anúncio (FB/IG): fora da resposta automática. */
+export const ehComentario = (canal: string, chave: string): boolean =>
+  canal.endsWith('_COMENTARIO') || chave.startsWith('cmt:');
+
 @Injectable()
 export class PendenciasIaService implements OnModuleInit {
   private readonly logger = new Logger(PendenciasIaService.name);
@@ -105,6 +109,10 @@ export class PendenciasIaService implements OnModuleInit {
 
   /** Garante a pendência do chat e passa a IA nela (se a empresa ligou). */
   async responderChat(empresaId: string, canal: string, peerId: string): Promise<void> {
+    // Léo (13/11, via #04 SAC): comentário de post/anúncio NÃO tem resposta
+    // automática — entra no inbox e a equipe responde; automação por campanha
+    // vem depois. Só DM/chat seguem com a IA.
+    if (ehComentario(canal, peerId)) return;
     const cfg = await this.config(empresaId);
     if (!cfg.ativo || cfg.desligados.includes('MENSAGEM')) return;
     const chave = { empresaId, canal, tipo: 'MENSAGEM', chave: peerId };
@@ -187,6 +195,7 @@ export class PendenciasIaService implements OnModuleInit {
       pedido: string | null;
     },
   ): Promise<'respondida' | 'humano' | 'pulada'> {
+    if (ehComentario(p.canal, p.chave)) return 'pulada';
     const tipo = p.tipo as TipoPendenciaIa;
     const peerId = this.peerDa(p.canal, p.chave);
 

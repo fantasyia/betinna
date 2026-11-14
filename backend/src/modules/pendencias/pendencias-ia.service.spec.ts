@@ -549,4 +549,24 @@ describe('simularCasos (#04 SAC, 02/11): casos de teste no corpo', () => {
     expect(t.inbox.responderComoBot).not.toHaveBeenCalled();
     expect(t.registros).toEqual([]);
   });
+
+  it('comentário de FB/IG não tem resposta automática (Léo, 13/11)', async () => {
+    const t = montar({
+      pendencias: [
+        {
+          id: 'pc',
+          canal: 'INSTAGRAM_COMENTARIO',
+          tipo: 'MENSAGEM',
+          chave: 'cmt:m1:u1',
+          titulo: 'Comentário de fulano sem resposta',
+          pedido: null,
+        },
+      ],
+      mensagens: [{ direction: 'INBOUND', conteudo: 'quanto custa?' }],
+    });
+    await t.svc.responderChat('e1', 'FACEBOOK_COMENTARIO', 'cmt:p1:u1');
+    await t.svc.processar('e1');
+    expect(t.bot.gerarRespostaIa).not.toHaveBeenCalled();
+    expect(t.enviados).toEqual([]);
+  });
 });
