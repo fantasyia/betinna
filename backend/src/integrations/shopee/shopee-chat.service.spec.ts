@@ -181,4 +181,22 @@ describe('ShopeeChatService', () => {
       expect(r.externalId).toBe('sent-1');
     });
   });
+
+  describe('enviarFigurinha (14/11)', () => {
+    it('POST send_message com message_type sticker e content {sticker_id, sticker_package_id}', async () => {
+      shopee.postShop.mockResolvedValue({ response: { message_id: 'st-1' } });
+
+      const r = await service.enviarFigurinha('emp-1', '222', {
+        stickerPackageId: 'br_shoppito',
+        stickerId: '0002',
+      });
+
+      expect(shopee.postShop).toHaveBeenCalledWith('emp-1', '/api/v2/sellerchat/send_message', {
+        to_id: 222,
+        message_type: 'sticker',
+        content: { sticker_id: '0002', sticker_package_id: 'br_shoppito' },
+      });
+      expect(r.externalId).toBe('st-1');
+    });
+  });
 });

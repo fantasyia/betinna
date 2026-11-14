@@ -21,6 +21,8 @@ export interface DecisaoIa {
   motivo: string;
   /** A resposta indica o anúncio da peça unitária: o card dele vai logo depois (Léo, 29/10). */
   cardUnitario?: boolean;
+  /** Cliente só confirmou: na Shopee, a figurinha de agradecimento vai depois do texto (14/11). */
+  figurinha?: boolean;
 }
 
 /** Tipo da pendência → o que a IA pode fazer nele. */
@@ -326,6 +328,28 @@ export function soConfirmacao(texto: string): boolean {
     .filter(Boolean);
   // Só emoji/pontuação também conta. Mais de 6 palavras já é outra conversa.
   return palavras.length <= 6 && palavras.every((p) => SO_CONFIRMA.has(p));
+}
+
+/** Figurinha de agradecimento da Shopee, por empresa (14/11). */
+export interface FigurinhaAgradecimento {
+  stickerPackageId: string;
+  stickerId: string;
+}
+
+const ID_FIGURINHA = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/**
+ * `Empresa.config.shopeeFigurinhaAgradecimento` → figurinha, ou null se não
+ * configurada (ou torta): sem config, a figurinha não vai e o texto vai igual.
+ */
+export function figurinhaDaConfig(config: unknown): FigurinhaAgradecimento | null {
+  const f = (config as { shopeeFigurinhaAgradecimento?: Record<string, unknown> } | null)
+    ?.shopeeFigurinhaAgradecimento;
+  const pacote = f?.stickerPackageId;
+  const id = f?.stickerId;
+  if (typeof pacote !== 'string' || typeof id !== 'string') return null;
+  if (!ID_FIGURINHA.test(pacote) || !ID_FIGURINHA.test(id)) return null;
+  return { stickerPackageId: pacote, stickerId: id };
 }
 
 /**

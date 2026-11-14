@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DISPOSICAO,
   fechoDoCliente,
+  figurinhaDaConfig,
   soConfirmacao,
   respostaBarrada,
   PROMPT_PENDENCIA,
@@ -281,5 +282,34 @@ describe('comentário de FB/IG no contexto da IA (13/11)', () => {
 
   it('palavras proibidas valem no comentário também', () => {
     expect(respostaBarrada('Pode pedir o reembolso', 'FACEBOOK_COMENTARIO')).toMatch(/proibida/);
+  });
+});
+
+describe('figurinhaDaConfig (14/11)', () => {
+  it('lê pacote e id da config da empresa', () => {
+    expect(
+      figurinhaDaConfig({
+        shopeeFigurinhaAgradecimento: { stickerPackageId: 'br_shoppito', stickerId: '0002' },
+      }),
+    ).toEqual({ stickerPackageId: 'br_shoppito', stickerId: '0002' });
+  });
+
+  it('sem config, ou config torta, é null (a figurinha não vai, o texto vai igual)', () => {
+    expect(figurinhaDaConfig(null)).toBeNull();
+    expect(figurinhaDaConfig({})).toBeNull();
+    expect(figurinhaDaConfig({ shopeeFigurinhaAgradecimento: { stickerId: '0002' } })).toBeNull();
+    expect(
+      figurinhaDaConfig({ shopeeFigurinhaAgradecimento: { stickerPackageId: 'x', stickerId: 2 } }),
+    ).toBeNull();
+    expect(
+      figurinhaDaConfig({
+        shopeeFigurinhaAgradecimento: { stickerPackageId: 'a b', stickerId: '0002' },
+      }),
+    ).toBeNull();
+  });
+
+  it('reembolsar/reembolsado também são barradas (card, item 4)', () => {
+    expect(respostaBarrada('Vamos reembolsar pela aba.', 'MARKETPLACE_SHOPEE')).toMatch(/reembols/);
+    expect(respostaBarrada('Já foi reembolsado.', 'MARKETPLACE_ML')).toMatch(/reembols/);
   });
 });

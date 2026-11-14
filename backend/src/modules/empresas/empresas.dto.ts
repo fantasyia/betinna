@@ -663,6 +663,14 @@ export const tenantConfigPatchSchema = z
     entradaAnuncios: entradaAnunciosSchema.nullable(),
     respostasProntas: respostasProntasSchema.nullable().optional(),
     mercadoLivre: mercadoLivreSchema.nullable().optional(),
+    /** Figurinha que a IA das pendências manda na Shopee depois do "Estamos à disposição!" (14/11). */
+    shopeeFigurinhaAgradecimento: z
+      .object({
+        stickerPackageId: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/),
+        stickerId: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/),
+      })
+      .nullable()
+      .optional(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

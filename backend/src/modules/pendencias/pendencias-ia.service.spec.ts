@@ -26,6 +26,7 @@ function montar(o: {
   iaTexto?: string;
   envioFalha?: boolean;
   shopee?: unknown;
+  figurinha?: { stickerPackageId: string; stickerId: string };
 }) {
   const estados: Record<string, string> = {};
   const registros: Array<Record<string, unknown>> = [];
@@ -33,7 +34,10 @@ function montar(o: {
   const prisma = {
     empresa: {
       findUnique: vi.fn(async () => ({
-        config: { pendenciasIa: { ativo: o.ativo ?? true, desligados: o.desligados ?? [] } },
+        config: {
+          pendenciasIa: { ativo: o.ativo ?? true, desligados: o.desligados ?? [] },
+          ...(o.figurinha ? { shopeeFigurinhaAgradecimento: o.figurinha } : {}),
+        },
       })),
     },
     pendenciaMarketplace: {
@@ -399,6 +403,118 @@ describe('PendenciasIaService (fase 2, 25/10)', () => {
     });
     await t.svc.processar('e1');
     expect(t.bot.gerarRespostaIa).not.toHaveBeenCalled();
+  });
+});
+
+describe('figurinha de agradecimento na Shopee (14/11)', () => {
+  const FIG = { stickerPackageId: 'br_shoppito', stickerId: '0002' };
+  const shopeeMock = () => ({
+    getShop: vi.fn(async () => ({})),
+    postShop: vi.fn(async (..._a: unknown[]) => ({})),
+  });
+  const OBG = [
+    { direction: 'OUTBOUND' as const, conteudo: 'Seu pedido saiu hoje.' },
+    { direction: 'INBOUND' as const, conteudo: 'Obrigada!' },
+  ];
+
+  it('cliente só agradeceu: texto e, DEPOIS dele, a figurinha configurada', async () => {
+    const shopee = shopeeMock();
+    const t = montar({ pendencias: [SHOPEE], mensagens: OBG, shopee, figurinha: FIG });
+    let textoAntes: string[] = [];
+    shopee.postShop.mockImplementation(async () => {
+      textoAntes = [...t.enviados];
+      return {};
+    });
+    await t.svc.processar('e1');
+    expect(textoAntes).toEqual(['Estamos à disposição!']); // o texto foi primeiro
+    expect(shopee.postShop).toHaveBeenCalledTimes(1);
+    expect(shopee.postShop).toHaveBeenCalledWith('e1', '/api/v2/sellerchat/send_message', {
+      to_id: 848307855,
+      message_type: 'sticker',
+      content: { sticker_id: '0002', sticker_package_id: 'br_shoppito' },
+    });
+    expect(t.estados.p1).toBe('RESPONDIDA_IA');
+  });
+
+  it('empresa sem figurinha configurada: só o texto, nada de figurinha', async () => {
+    const shopee = shopeeMock();
+    const t = montar({ pendencias: [SHOPEE], mensagens: OBG, shopee });
+    await t.svc.processar('e1');
+    expect(t.enviados).toEqual(['Estamos à disposição!']);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('anti-loop: "ok" depois do "Estamos à disposição!" + figurinha não manda nada', async () => {
+    const shopee = shopeeMock();
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [
+        { direction: 'OUTBOUND', conteudo: 'Estamos à disposição!' },
+        { direction: 'OUTBOUND', conteudo: '[sticker]', tipo: 'STICKER' },
+        { direction: 'INBOUND', conteudo: 'ok' },
+      ],
+      shopee,
+      figurinha: FIG,
+    });
+    await t.svc.processar('e1');
+    expect(t.enviados).toEqual([]);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('a última da loja já foi figurinha: o texto vai, a figurinha não repete', async () => {
+    const shopee = shopeeMock();
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [
+        { direction: 'OUTBOUND', conteudo: 'Seu pedido saiu hoje.' },
+        { direction: 'OUTBOUND', conteudo: '[sticker]', tipo: 'STICKER' },
+        { direction: 'INBOUND', conteudo: 'valeu' },
+      ],
+      shopee,
+      figurinha: FIG,
+    });
+    await t.svc.processar('e1');
+    expect(t.enviados).toEqual(['Estamos à disposição!']);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('pergunta de verdade: a IA responde e a figurinha não vai', async () => {
+    const shopee = shopeeMock();
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: [{ direction: 'INBOUND', conteudo: 'Qual o rastreio?' }],
+      shopee,
+      figurinha: FIG,
+    });
+    await t.svc.processar('e1');
+    expect(t.enviados).toEqual(['Nós que agradecemos!']);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('Mercado Livre: só o texto (figurinha é só na Shopee)', async () => {
+    const shopee = shopeeMock();
+    const t = montar({
+      pendencias: [{ ...SHOPEE, canal: 'MARKETPLACE_ML', chave: 'pack:1' }],
+      mensagens: OBG,
+      shopee,
+      figurinha: FIG,
+    });
+    await t.svc.processar('e1');
+    expect(t.enviados).toEqual(['Estamos à disposição!']);
+    expect(shopee.postShop).not.toHaveBeenCalled();
+  });
+
+  it('envio do texto falhou: a figurinha não vai sozinha', async () => {
+    const shopee = shopeeMock();
+    const t = montar({
+      pendencias: [SHOPEE],
+      mensagens: OBG,
+      shopee,
+      figurinha: FIG,
+      envioFalha: true,
+    });
+    await t.svc.processar('e1');
+    expect(shopee.postShop).not.toHaveBeenCalled();
   });
 });
 

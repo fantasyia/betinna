@@ -12,6 +12,26 @@ import type { ShopeeChatGetMessageResponse, ShopeeChatMessage } from './shopee.t
  *
  * Peer ID na Inbox: `conv:<conversation_id>` — uma Conversation por thread.
  */
+
+/** Figurinha da Shopee: pacote + id, como vem no `content` de uma figurinha recebida. */
+export interface FigurinhaShopee {
+  stickerPackageId: string;
+  stickerId: string;
+}
+
+/**
+ * Corpo do send_message de figurinha (14/11). Mesmo formato que a Shopee devolve
+ * no get_message: `content: { sticker_id, sticker_package_id }`, ex. pacote
+ * "br_shoppito", id "0002" — strings, com os zeros à esquerda.
+ */
+export function corpoFigurinha(toBuyerId: string | number, f: FigurinhaShopee) {
+  return {
+    to_id: Number(toBuyerId),
+    message_type: 'sticker',
+    content: { sticker_id: f.stickerId, sticker_package_id: f.stickerPackageId },
+  };
+}
+
 @Injectable()
 export class ShopeeChatService {
   private readonly logger = new Logger(ShopeeChatService.name);
@@ -101,6 +121,18 @@ export class ShopeeChatService {
       // de outro tipo de conversa e ia como texto. to_id + conteúdo bastam.
     });
     void conversationId;
+    return { externalId: r.response?.message_id };
+  }
+
+  /** Manda uma figurinha (sem conversation_id, pelo mesmo motivo do texto). */
+  async enviarFigurinha(
+    empresaId: string,
+    toBuyerId: string | number,
+    figurinha: FigurinhaShopee,
+  ): Promise<{ externalId?: string }> {
+    const r = await this.shopee.postShop<{
+      response?: { message_id?: string };
+    }>(empresaId, '/api/v2/sellerchat/send_message', corpoFigurinha(toBuyerId, figurinha));
     return { externalId: r.response?.message_id };
   }
 

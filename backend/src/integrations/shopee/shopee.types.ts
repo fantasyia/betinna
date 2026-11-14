@@ -77,6 +77,7 @@ export interface ShopeeChatMessage {
     text?: string;
     url?: string;
     sticker_id?: string;
+    sticker_package_id?: string;
     file_name?: string;
     item_id?: number;
     order_sn?: string;

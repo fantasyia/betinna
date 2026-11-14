@@ -7,10 +7,12 @@ import { PushService } from '@modules/push/push.service';
 import { KnowledgeSearchService } from '@modules/rag/knowledge-search.service';
 import { TAG_HUMANO } from '@integrations/mercadolivre/ml-resposta-ia.service';
 import { ShopeeClientService } from '@integrations/shopee/shopee-client.service';
+import { corpoFigurinha } from '@integrations/shopee/shopee-chat.service';
 import {
   DISPOSICAO,
   ESPERA_PADRAO,
   fechoDoCliente,
+  figurinhaDaConfig,
   PROMPT_PENDENCIA,
   SCHEMA_PENDENCIA,
   baseParaConversa,
@@ -266,6 +268,7 @@ export class PendenciasIaService implements OnModuleInit {
     }
     if (!erro && decisao.cardUnitario)
       await this.mandarCardUnitario(empresaId, p.canal, conv.id, anuncios);
+    if (!erro && decisao.figurinha) await this.mandarFigurinha(empresaId, p.canal, conv.id, msgs);
     await this.registrar(empresaId, p.id, conv.id, decisao, !erro, erro, modelo);
     if (erro || decisao.acao === 'humano') {
       await this.marcar(p.id, 'AGUARDANDO_HUMANO');
@@ -422,6 +425,7 @@ export class PendenciasIaService implements OnModuleInit {
               acao: 'responder',
               resposta: DISPOSICAO,
               motivo: 'cliente só confirmou ou agradeceu',
+              figurinha: true,
             }) as DecisaoIa,
         modelo: null as string | null,
         anuncios: [] as AnuncioContexto[],
@@ -642,6 +646,39 @@ export class PendenciasIaService implements OnModuleInit {
       .catch((err) =>
         this.logger.warn(`[pendências IA] card do unitário ${itemId}: ${String(err)}`),
       );
+  }
+
+  /**
+   * Figurinha de agradecimento depois do "Estamos à disposição!" (14/11): só na
+   * Shopee e só se a empresa configurou `shopeeFigurinhaAgradecimento`. Não vai
+   * se a última coisa da loja já foi uma figurinha (anti-loop: o texto já trava
+   * pelo `fechoDoCliente`). Falha aqui não desfaz o texto: fica no log.
+   */
+  private async mandarFigurinha(
+    empresaId: string,
+    canal: string,
+    conversationId: string,
+    msgs: Array<{ direction: string; tipo: string }>,
+  ) {
+    if (canal !== 'MARKETPLACE_SHOPEE' || !this.shopee) return;
+    // msgs vem da mais nova pra mais antiga, de ANTES do texto que acabou de ir.
+    const ultimaDaLoja = msgs.find((m) => m.direction === 'OUTBOUND');
+    if (ultimaDaLoja?.tipo === 'STICKER') return;
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const figurinha = figurinhaDaConfig(empresa?.config);
+    if (!figurinha) return;
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { metadata: true },
+    });
+    const toId = Number((conv?.metadata as Record<string, unknown> | null)?.['shopee_from_id']);
+    if (!toId) return;
+    await this.shopee
+      .postShop(empresaId, '/api/v2/sellerchat/send_message', corpoFigurinha(toId, figurinha))
+      .catch((err) => this.logger.warn(`[pendências IA] figurinha: ${String(err)}`));
   }
 
   private async marcar(pendenciaId: string, estado: 'RESPONDIDA_IA' | 'AGUARDANDO_HUMANO') {
