@@ -99,6 +99,14 @@ export interface MLMessage {
     read?: string;
   };
   message_attachments?: Array<{ filename?: string; original_filename?: string }>;
+  /** A que a mensagem pertence: `{ id, name: 'packs' | 'orders' }`. */
+  message_resources?: Array<{ id?: string | number; name?: string }>;
+}
+
+/** GET /messages/unread?role=seller&tag=post_sale */
+export interface MLUnreadResponse {
+  user_id?: number;
+  results?: Array<{ resource?: string; count?: number }>;
 }
 
 export interface MLMessagesResponse {
@@ -145,6 +153,7 @@ export interface MLOrder {
   buyer: MLOrderBuyer;
   order_items: MLOrderItem[];
   pack_id?: number | null;
+  date_last_updated?: string;
   /** True quando faz parte de um pack (vários pedidos em um chat). */
   shipping?: { id: number; status?: string };
   feedback?: { sale?: { id: number }; purchase?: { id: number } };

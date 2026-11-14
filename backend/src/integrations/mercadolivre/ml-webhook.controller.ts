@@ -3,7 +3,7 @@ import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { EnvService } from '@config/env.service';
-import { ML_WEBHOOK_IPS_DEFAULT, normalizeIp } from '../../constants/providers';
+import { ML_WEBHOOK_IPS_DEFAULT, ipNaWhitelist, normalizeIp } from '../../constants/providers';
 import { Public } from '@shared/decorators/public.decorator';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
 import { MLOAuthService } from './ml-oauth.service';
@@ -115,6 +115,12 @@ export class MLWebhookController {
 
   private async despachar(empresaId: string, n: MLWebhookNotification): Promise<void> {
     const topic = n.topic as MLTopic;
+    // Mensagem pós-venda: o `resource` é o ID da mensagem (hash, sem número) —
+    // não passa pelo extrator de ID numérico, que a descartava (14/11).
+    if (topic === 'messages' || topic === 'marketplace_messages') {
+      await this.messages.processarNotificacao(empresaId, n.resource, String(n.user_id));
+      return;
+    }
     const id = this.extrairIdRecurso(n.resource);
     if (!id) {
       this.logger.warn(`Webhook ML resource sem ID: ${n.resource}`);
@@ -126,17 +132,6 @@ export class MLWebhookController {
       case 'marketplace_questions': {
         const q = await this.questions.obter(empresaId, id);
         await this.questions.processarQuestion(empresaId, q);
-        return;
-      }
-      case 'messages':
-      case 'marketplace_messages': {
-        // resource = `/messages/packs/{packId}/sellers/{sellerId}` ou similar
-        const m = n.resource.match(/\/packs\/(\d+)\/sellers\/(\d+)/);
-        if (m) {
-          await this.messages.processarPack(empresaId, m[1], m[2]);
-        } else {
-          this.logger.warn(`Webhook ML messages resource não-reconhecido: ${n.resource}`);
-        }
         return;
       }
       case 'orders_v2':
@@ -196,7 +191,7 @@ export class MLWebhookController {
     }
 
     const ip = this.extrairIp(req);
-    return whitelist.includes(ip);
+    return ipNaWhitelist(ip, whitelist);
   }
 
   /**

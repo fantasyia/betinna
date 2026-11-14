@@ -222,10 +222,13 @@ export const envSchema = z
     ML_CLIENT_ID: z.string().optional().default(''),
     ML_CLIENT_SECRET: z.string().optional().default(''),
     ML_REDIRECT_URI: z.string().optional().default(''),
-    /** Comma-separated. IPs do ML que enviam webhooks. Default: produção ML 2024. Vazio = aceita qualquer IP. */
+    /**
+     * Comma-separated. IPs (ou faixas CIDR) do ML que enviam webhooks. Default:
+     * produção ML 2024 + 152.233.30.0/24 (de onde o ML notifica desde nov/2026).
+     */
     ML_WEBHOOK_IP_WHITELIST: z
       .string()
-      .default('54.88.218.97,18.215.140.160,18.213.114.129,18.206.34.84'),
+      .default('54.88.218.97,18.215.140.160,18.213.114.129,18.206.34.84,152.233.30.0/24'),
     /** Site ID padrão (MLB = Brasil, MLA = Argentina, MLM = México, etc.). */
     ML_SITE_ID: z.string().default('MLB'),
 
@@ -247,6 +250,14 @@ export const envSchema = z
      * Vazio = sem aviso.
      */
     SHOPEE_PARTNER_KEY_EXPIRA_EM: z.string().optional().default(''),
+
+    // Magalu (ID Magalu, OAuth 2.0 — 14/11). Vazio = integração desligada.
+    MAGALU_CLIENT_ID: z.string().optional().default(''),
+    MAGALU_CLIENT_SECRET: z.string().optional().default(''),
+    /** Tem que ser IGUAL à cadastrada no cliente do ID Magalu. */
+    MAGALU_REDIRECT_URI: z.string().optional().default(''),
+    /** Escopos pedidos no consentimento (separados por espaço). Vazio = o padrão do código. */
+    MAGALU_SCOPES: z.string().optional().default(''),
     /** Web Push (24/10): par VAPID do app + contato. Vazio = push desligado. */
     VAPID_PUBLIC_KEY: z.string().optional().default(''),
     VAPID_PRIVATE_KEY: z.string().optional().default(''),

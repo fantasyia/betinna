@@ -6,8 +6,10 @@ import { CronLockService } from '@shared/utils/cron-lock.service';
 import { ehFalhaDeCredencial } from '../falha-credencial.util';
 import { MLClaimsService } from './ml-claims.service';
 import { MLClientService } from './ml-client.service';
+import { MLMessagesService } from './ml-messages.service';
 import { MLOrdersService } from './ml-orders.service';
 import { MLQuestionsService } from './ml-questions.service';
+import type { MLOrder } from './ml.types';
 
 /**
  * Cron de fallback do Mercado Livre.
@@ -17,6 +19,9 @@ import { MLQuestionsService } from './ml-questions.service';
  *  - Listar claims abertas e re-processar (status sync + chat messages)
  *  - Listar pedidos recentes (últimos 30 dias) e re-processar
  *  - Listar perguntas não respondidas e re-processar
+ *  - Reimportar o chat pós-venda dos packs com mensagem não lida e dos pedidos
+ *    movimentados nos últimos 2 dias (14/11: até então o pós-venda dependia SÓ
+ *    do webhook, e nenhuma mensagem tinha entrado)
  *
  * 10min é o intervalo escolhido pra garantir resposta dentro do prazo do
  * marketplace (ML penaliza resposta lenta no reputation) mesmo quando o bot
@@ -37,6 +42,7 @@ export class MLSyncJob {
     private readonly orders: MLOrdersService,
     private readonly claims: MLClaimsService,
     private readonly cronLock: CronLockService,
+    private readonly messages: MLMessagesService,
   ) {}
 
   @Cron('*/10 * * * *', { name: 'ml-sync-fallback', timeZone: 'UTC' })
@@ -71,6 +77,7 @@ export class MLSyncJob {
     claims: number;
     orders: number;
     questions: number;
+    mensagens: number;
   }> {
     return this.sincronizarEmpresa(empresaId);
   }
@@ -79,6 +86,7 @@ export class MLSyncJob {
     claims: number;
     orders: number;
     questions: number;
+    mensagens: number;
   }> {
     const creds = await this.client.getCredenciais(empresaId);
     const sellerId = creds.userId;
@@ -98,8 +106,10 @@ export class MLSyncJob {
 
     // Pedidos recentes
     let ordersCount = 0;
+    let pedidos: MLOrder[] = [];
     try {
       const list = await this.orders.listarRecentes(empresaId, sellerId);
+      pedidos = list;
       for (const o of list) {
         await this.orders.processarOrder(empresaId, o);
         ordersCount++;
@@ -129,6 +139,21 @@ export class MLSyncJob {
       this.logger.warn(`Questions fallback empresa=${empresaId}: ${m}`);
     }
 
-    return { claims: claimsCount, orders: ordersCount, questions: questionsCount };
+    // Chat pós-venda — rede de segurança do webhook `messages`
+    let mensagensCount = 0;
+    try {
+      const r = await this.messages.sincronizarRecentes(empresaId, sellerId, pedidos);
+      mensagensCount = r.mensagens;
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Mensagens fallback empresa=${empresaId}: ${m}`);
+    }
+
+    return {
+      claims: claimsCount,
+      orders: ordersCount,
+      questions: questionsCount,
+      mensagens: mensagensCount,
+    };
   }
 }
