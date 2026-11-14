@@ -265,10 +265,21 @@ describe('saldo e ajuste', () => {
       const [v] = await svc.saldos(user as never);
       expect(v).toMatchObject({ reservado: 5, reservadoMarketplace: 4, disponivel: 5 });
       expect((await svc.disponiveis('emp-1', ['p1'])).get('p1')).toBe(5);
-      // só segura a linha CONFIRMADA (BAIXADA já virou movimento; LIBERADA voltou)
-      expect(prisma.estoqueReservaMarketplace.groupBy.mock.calls[0][0].where.status).toBe(
-        'CONFIRMADA',
-      );
+      // só segura ATIVA/CONFIRMADA (BAIXADA já virou movimento; LIBERADA voltou)
+      expect(prisma.estoqueReservaMarketplace.groupBy.mock.calls[0][0].where.status).toEqual({
+        in: ['ATIVA', 'CONFIRMADA'],
+      });
+    });
+
+    it('pedido sem pagamento (ATIVA) segura com teto: boleto grande não zera', async () => {
+      const { svc, prisma } = preparar({ ativo: true, desde: '2026-11-15T00:00:00-03:00' });
+      // físico 10, vitrine 1, pago 0, boleto de 9 (tudo): conta só 50% de 9 = 4.
+      prisma.estoqueReservaMarketplace.groupBy.mockResolvedValue([
+        { produtoId: 'p1', status: 'ATIVA', _sum: { quantidade: 9 } },
+      ]);
+      const [v] = await svc.saldos(user as never);
+      expect(v).toMatchObject({ reservadoMarketplace: 4, aguardandoPagamento: 9, disponivel: 5 });
+      expect((await svc.disponiveis('emp-1', ['p1'])).get('p1')).toBe(5);
     });
 
     it('ligada SEM "desde" não vale (config incompleta = desligada)', async () => {

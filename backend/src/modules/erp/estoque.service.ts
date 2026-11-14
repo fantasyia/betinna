@@ -18,7 +18,11 @@ import type {
   MinimosDto,
   MovimentosQueryDto,
 } from './estoque.dto';
-import { type ConfigReservaMagis5, lerConfigReservaMagis5 } from './reserva-marketplace';
+import {
+  type ConfigReservaMagis5,
+  lerConfigReservaMagis5,
+  pendenteContado,
+} from './reserva-marketplace';
 
 /** Reserva do pedido da vitrine (Léo, 06/10: "20 minutos com relógio"). */
 export const RESERVA_MINUTOS = 20;
@@ -109,17 +113,34 @@ export class EstoqueService {
     empresaId: string,
     produtoIds: string[] | null,
     db: Tx | PrismaService = this.prisma,
-  ): Promise<Map<string, number>> {
+  ): Promise<{ pago: Map<string, number>; pendente: Map<string, number> }> {
+    // CONFIRMADA = pedido pago; ATIVA = sem pagamento (conta com teto).
     const rs = await db.estoqueReservaMarketplace.groupBy({
-      by: ['produtoId'],
+      by: ['produtoId', 'status'],
       where: {
         empresaId,
-        status: 'CONFIRMADA',
+        status: { in: ['ATIVA', 'CONFIRMADA'] },
         ...(produtoIds ? { produtoId: { in: produtoIds } } : {}),
       },
       _sum: { quantidade: true },
     });
-    return new Map(rs.map((r) => [r.produtoId, r._sum.quantidade ?? 0]));
+    const pago = new Map<string, number>();
+    const pendente = new Map<string, number>();
+    for (const r of rs) {
+      const alvo = r.status === 'ATIVA' ? pendente : pago;
+      alvo.set(r.produtoId, (alvo.get(r.produtoId) ?? 0) + (r._sum.quantidade ?? 0));
+    }
+    return { pago, pendente };
+  }
+
+  /** Pagos inteiros + pendentes com teto (nunca zeram o anúncio). */
+  private marketplaceContado(
+    fisicoMenosVitrine: number,
+    pago: number,
+    pendente: number,
+    pct: number,
+  ): number {
+    return pago + pendenteContado(fisicoMenosVitrine - pago, pendente, pct);
   }
 
   async status(user: AuthenticatedUser): Promise<{ ativo: boolean }> {
@@ -420,10 +441,17 @@ export class EstoqueService {
     const res = new Map(reservado.map((r) => [r.produtoId, r._sum.quantidade ?? 0]));
     return variacoes.map((v) => {
       const f = fis.get(v.produtoId) ?? 0;
-      const m = mkt.get(v.produtoId) ?? 0;
+      const vit = res.get(v.produtoId) ?? 0;
+      const pendente = mkt.pendente.get(v.produtoId) ?? 0;
+      const m = this.marketplaceContado(
+        f - vit,
+        mkt.pago.get(v.produtoId) ?? 0,
+        pendente,
+        cfg.limitePendentePct,
+      );
       // Pedido de marketplace sem nota só segura peça com a chave ligada;
       // desligada, `reservadoMarketplace` aparece só como prévia.
-      const r = (res.get(v.produtoId) ?? 0) + (cfg.ligada ? m : 0);
+      const r = vit + (cfg.ligada ? m : 0);
       return {
         produtoId: v.produtoId,
         ativo: v.ativo,
@@ -434,6 +462,7 @@ export class EstoqueService {
         fisico: f,
         reservado: r,
         reservadoMarketplace: m,
+        aguardandoPagamento: pendente,
         disponivel: f - r,
         minimo: v.estoqueMinimo,
       };
@@ -550,11 +579,20 @@ export class EstoqueService {
     const mkt =
       cfg.ligada || sempreMarketplace
         ? await this.reservadoMarketplace(empresaId, produtoIds, db)
-        : new Map<string, number>();
+        : { pago: new Map<string, number>(), pendente: new Map<string, number>() };
     const f = new Map(fis.map((x) => [x.produtoId, x._sum.quantidade ?? 0]));
     const r = new Map(res.map((x) => [x.produtoId, x._sum.quantidade ?? 0]));
     return new Map(
-      produtoIds.map((id) => [id, (f.get(id) ?? 0) - (r.get(id) ?? 0) - (mkt.get(id) ?? 0)]),
+      produtoIds.map((id) => {
+        const livre = (f.get(id) ?? 0) - (r.get(id) ?? 0);
+        const m = this.marketplaceContado(
+          livre,
+          mkt.pago.get(id) ?? 0,
+          mkt.pendente.get(id) ?? 0,
+          cfg.limitePendentePct,
+        );
+        return [id, livre - m];
+      }),
     );
   }
 

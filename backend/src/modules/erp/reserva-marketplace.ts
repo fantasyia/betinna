@@ -18,7 +18,10 @@ export type SituacaoPedido =
   /** Nota emitida (ou já despachado): sai do estoque. */
   | 'NF_EMITIDA'
   | 'CANCELADO'
-  /** Ainda sem pagamento aprovado: não mexe. */
+  /**
+   * Sem pagamento (boleto/Pix gerado): segura como PENDENTE (status ATIVA),
+   * contado com teto — ver `pendenteContado` (Léo, 14/11).
+   */
   | 'AGUARDANDO_PAGAMENTO'
   /** Fora do saldo do app (Full) ou já reservado por outro caminho (vitrine). */
   | 'IGNORAR'
@@ -36,11 +39,14 @@ export interface ConfigReservaMagis5 {
   skusEnvio: string[] | null;
   /** Mais SKUs que isto caindo de >0 pra 0 numa rodada: o envio para e avisa. */
   limiteQueda: number;
+  /** % do livre (depois dos pagos) que pedido sem pagamento pode segurar. */
+  limitePendentePct: number;
   /** Por que a chave está ligada mas não vale (config incompleta). */
   erro: string | null;
 }
 
 export const LIMITE_QUEDA_PADRAO = 30;
+export const LIMITE_PENDENTE_PCT_PADRAO = 50;
 
 /** Lê `Empresa.config.erpInterno.reservaMagis5`. Qualquer dúvida = desligada. */
 export function lerConfigReservaMagis5(config: unknown): ConfigReservaMagis5 {
@@ -63,6 +69,12 @@ export function lerConfigReservaMagis5(config: unknown): ConfigReservaMagis5 {
     typeof c.limiteQueda === 'number' && Number.isInteger(c.limiteQueda) && c.limiteQueda >= 0
       ? c.limiteQueda
       : LIMITE_QUEDA_PADRAO;
+  const pct =
+    typeof c.limitePendentePct === 'number' &&
+    c.limitePendentePct >= 0 &&
+    c.limitePendentePct <= 100
+      ? c.limitePendentePct
+      : LIMITE_PENDENTE_PCT_PADRAO;
   const pediu = c.ativo === true && erp?.ativo === true;
   const erro = !pediu
     ? null
@@ -75,6 +87,7 @@ export function lerConfigReservaMagis5(config: unknown): ConfigReservaMagis5 {
     deposito,
     skusEnvio: skus,
     limiteQueda: limite,
+    limitePendentePct: pct,
     erro,
   };
 }
@@ -88,10 +101,13 @@ export interface LinhaReserva {
 }
 
 export type Acao =
-  | { tipo: 'criar'; produtoId: string; quantidade: number }
+  /** `pendente`: pedido sem pagamento → linha ATIVA (conta com teto). */
+  | { tipo: 'criar'; produtoId: string; quantidade: number; pendente?: boolean }
+  /** Pagamento aprovado: ATIVA → CONFIRMADA (passa a contar inteira). */
+  | { tipo: 'confirmar'; id: string; quantidade: number }
   | { tipo: 'ajustar'; id: string; quantidade: number }
   /** LIBERADA volta a segurar (item voltou ao pedido). */
-  | { tipo: 'reabrir'; id: string; quantidade: number }
+  | { tipo: 'reabrir'; id: string; quantidade: number; pendente?: boolean }
   | { tipo: 'liberar'; id: string; motivo: string }
   /** CONFIRMADA → BAIXADA + movimento de saída. */
   | { tipo: 'baixar'; id: string; produtoId: string; quantidade: number }
@@ -126,11 +142,17 @@ export function planejarPedido(input: {
     return acoes;
   }
 
-  if (situacao === 'RESERVAR') {
+  if (situacao === 'RESERVAR' || situacao === 'AGUARDANDO_PAGAMENTO') {
+    const pendente = situacao === 'AGUARDANDO_PAGAMENTO';
     for (const [produtoId, q] of desejado) {
       const l = porProduto.get(produtoId);
-      if (!l) acoes.push({ tipo: 'criar', produtoId, quantidade: q });
-      else if (l.status === 'LIBERADA') acoes.push({ tipo: 'reabrir', id: l.id, quantidade: q });
+      const marca = pendente ? { pendente: true } : {};
+      if (!l) acoes.push({ tipo: 'criar', produtoId, quantidade: q, ...marca });
+      else if (l.status === 'LIBERADA')
+        acoes.push({ tipo: 'reabrir', id: l.id, quantidade: q, ...marca });
+      // Pagou: a reserva pendente vira inteira.
+      else if (!pendente && l.status === 'ATIVA')
+        acoes.push({ tipo: 'confirmar', id: l.id, quantidade: q });
       else if (l.status !== 'BAIXADA' && l.quantidade !== q)
         acoes.push({ tipo: 'ajustar', id: l.id, quantidade: q });
     }
@@ -165,10 +187,22 @@ export function planejarPedido(input: {
     return acoes;
   }
 
-  // AGUARDANDO_PAGAMENTO, IGNORAR, DESCONHECIDO: não mexe.
+  // IGNORAR, DESCONHECIDO: não mexe.
   return acoes;
 }
 
 /** Saldo que vai pro canal: disponível, nunca negativo. */
 export const saldoParaEnvio = (disponivel: number): number =>
   Number.isFinite(disponivel) ? Math.max(0, Math.trunc(disponivel)) : 0;
+
+/**
+ * Quanto do que pedido SEM pagamento segura entra no disponível (Léo, 14/11):
+ * reserva, mas com folga — um boleto gerado com o estoque inteiro não pode
+ * zerar o anúncio. Conta no máximo `pct`% do livre (depois dos pagos) e nunca
+ * a última peça. `livre` = físico − reservado pago.
+ */
+export function pendenteContado(livre: number, pendente: number, pct: number): number {
+  if (!(pendente > 0) || !(livre > 1)) return 0;
+  const teto = Math.min(Math.floor((livre * pct) / 100), livre - 1);
+  return Math.max(0, Math.min(Math.trunc(pendente), teto));
+}

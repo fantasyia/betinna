@@ -40,6 +40,8 @@ export const chaveReservaMagis5Schema = z
     /** Só estes SKUs sobem (teste com 3 produtos); null = todos. */
     skusEnvio: z.array(z.string().min(1).max(60)).max(5000).nullable().optional(),
     limiteQueda: z.number().int().min(0).max(100_000).optional(),
+    /** % do livre que pedido sem pagamento pode segurar (padrão 50). */
+    limitePendentePct: z.number().min(0).max(100).optional(),
   })
   .strict();
 export type ChaveReservaMagis5Dto = z.infer<typeof chaveReservaMagis5Schema>;
@@ -138,7 +140,7 @@ export class Magis5EstoqueService {
     });
     const dias = jaTem ? JANELA_DIAS : JANELA_PRIMEIRA_DIAS;
     const abertos = await this.prisma.estoqueReservaMarketplace.findMany({
-      where: { empresaId, origem: ORIGEM, status: 'CONFIRMADA' },
+      where: { empresaId, origem: ORIGEM, status: { in: ['ATIVA', 'CONFIRMADA'] } },
       select: { pedidoNumero: true },
       distinct: ['pedidoNumero'],
     });
@@ -170,7 +172,11 @@ export class Magis5EstoqueService {
       const { itens } = itensMagis5(dados);
       const { pecas, semVinculo, kitsSemComposicao } = desdobrar(itens, catalogo);
       // Só conta o que afeta estoque: pedido ignorado (Full, vitrine) não é pendência.
-      if (situacao === 'RESERVAR' || situacao === 'NF_EMITIDA') {
+      if (
+        situacao === 'RESERVAR' ||
+        situacao === 'AGUARDANDO_PAGAMENTO' ||
+        situacao === 'NF_EMITIDA'
+      ) {
         r.semVinculo.push(...semVinculo.map((s) => `${p.numero}:${s}`));
         r.kitsSemComposicao.push(...kitsSemComposicao.map((s) => `${p.numero}:${s}`));
       }
@@ -222,7 +228,7 @@ export class Magis5EstoqueService {
               pedidoNumero,
               produtoId: a.produtoId,
               quantidade: a.quantidade,
-              status: 'CONFIRMADA',
+              status: a.pendente ? 'ATIVA' : 'CONFIRMADA',
             },
           });
           return true;
@@ -230,9 +236,16 @@ export class Magis5EstoqueService {
           if (unico(err)) return false;
           throw err;
         }
+      case 'confirmar': {
+        const u = await this.prisma.estoqueReservaMarketplace.updateMany({
+          where: { id: a.id, status: 'ATIVA' },
+          data: { status: 'CONFIRMADA', quantidade: a.quantidade },
+        });
+        return u.count > 0;
+      }
       case 'ajustar': {
         const u = await this.prisma.estoqueReservaMarketplace.updateMany({
-          where: { id: a.id, status: 'CONFIRMADA' },
+          where: { id: a.id, status: { in: ['ATIVA', 'CONFIRMADA'] } },
           data: { quantidade: a.quantidade },
         });
         return u.count > 0;
@@ -240,13 +253,17 @@ export class Magis5EstoqueService {
       case 'reabrir': {
         const u = await this.prisma.estoqueReservaMarketplace.updateMany({
           where: { id: a.id, status: 'LIBERADA' },
-          data: { quantidade: a.quantidade, status: 'CONFIRMADA', motivoLiberacao: null },
+          data: {
+            quantidade: a.quantidade,
+            status: a.pendente ? 'ATIVA' : 'CONFIRMADA',
+            motivoLiberacao: null,
+          },
         });
         return u.count > 0;
       }
       case 'liberar': {
         const u = await this.prisma.estoqueReservaMarketplace.updateMany({
-          where: { id: a.id, status: 'CONFIRMADA' },
+          where: { id: a.id, status: { in: ['ATIVA', 'CONFIRMADA'] } },
           data: { status: 'LIBERADA', motivoLiberacao: a.motivo.slice(0, 300) },
         });
         return u.count > 0;
@@ -254,7 +271,7 @@ export class Magis5EstoqueService {
       case 'baixar':
         return this.prisma.$transaction(async (tx: Tx) => {
           const cas = await tx.estoqueReservaMarketplace.updateMany({
-            where: { id: a.id, status: 'CONFIRMADA' },
+            where: { id: a.id, status: { in: ['ATIVA', 'CONFIRMADA'] } },
             data: { status: 'BAIXADA', quantidade: a.quantidade },
           });
           if (cas.count === 0) return false;
@@ -445,6 +462,7 @@ export class Magis5EstoqueService {
         deposito: cfg.deposito,
         skusEnvio: cfg.skusEnvio,
         limiteQueda: cfg.limiteQueda,
+        limitePendentePct: cfg.limitePendentePct,
         erro: cfg.erro,
       },
       ledger: porStatus.map((s) => ({

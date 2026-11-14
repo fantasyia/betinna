@@ -6,6 +6,7 @@ import {
   MOTIVO_ITEM_SAIU,
   MOTIVO_NF_DESLIGADA,
   lerConfigReservaMagis5,
+  pendenteContado,
   planejarPedido,
   saldoParaEnvio,
 } from './reserva-marketplace';
@@ -159,8 +160,8 @@ describe('planejarPedido — ledger idempotente', () => {
     ).toEqual([{ tipo: 'liberar', id: 'r-p1', motivo: MOTIVO_CANCELADO }]);
   });
 
-  it('status desconhecido, sem pagamento ou ignorado: não mexe', () => {
-    for (const situacao of ['DESCONHECIDO', 'AGUARDANDO_PAGAMENTO', 'IGNORAR'] as const) {
+  it('status desconhecido ou ignorado: não mexe', () => {
+    for (const situacao of ['DESCONHECIDO', 'IGNORAR'] as const) {
       expect(
         planejarPedido({
           ...base,
@@ -190,5 +191,71 @@ describe('saldoParaEnvio', () => {
     expect(saldoParaEnvio(0)).toBe(0);
     expect(saldoParaEnvio(7)).toBe(7);
     expect(saldoParaEnvio(Number.NaN)).toBe(0);
+  });
+});
+
+describe('pedido sem pagamento reserva com folga (Léo, 14/11)', () => {
+  it('sem pagamento cria a reserva como pendente (ATIVA)', () => {
+    expect(
+      planejarPedido({ ...base, situacao: 'AGUARDANDO_PAGAMENTO', desejado: pecas({ p1: 2 }) }),
+    ).toEqual([{ tipo: 'criar', produtoId: 'p1', quantidade: 2, pendente: true }]);
+  });
+
+  it('pagou: a pendente vira inteira (confirmar)', () => {
+    expect(
+      planejarPedido({
+        ...base,
+        situacao: 'RESERVAR',
+        desejado: pecas({ p1: 2 }),
+        existentes: [linha('p1', 2, 'ATIVA')],
+      }),
+    ).toEqual([{ tipo: 'confirmar', id: 'r-p1', quantidade: 2 }]);
+  });
+
+  it('boleto vencido (cancelado) libera a pendente', () => {
+    expect(
+      planejarPedido({
+        ...base,
+        situacao: 'CANCELADO',
+        desejado: pecas({ p1: 2 }),
+        existentes: [linha('p1', 2, 'ATIVA')],
+      }),
+    ).toEqual([{ tipo: 'liberar', id: 'r-p1', motivo: MOTIVO_CANCELADO }]);
+  });
+
+  it('pendente repetido não muda nada', () => {
+    expect(
+      planejarPedido({
+        ...base,
+        situacao: 'AGUARDANDO_PAGAMENTO',
+        desejado: pecas({ p1: 2 }),
+        existentes: [linha('p1', 2, 'ATIVA')],
+      }),
+    ).toEqual([]);
+  });
+
+  it('teto: boleto com o estoque inteiro não zera o anúncio', () => {
+    // 10 livres, boleto de 10: conta só metade.
+    expect(pendenteContado(10, 10, 50)).toBe(5);
+    // pequeno pendente conta inteiro
+    expect(pendenteContado(10, 2, 50)).toBe(2);
+    // nunca a última peça
+    expect(pendenteContado(1, 1, 100)).toBe(0);
+    expect(pendenteContado(3, 3, 100)).toBe(2);
+    // sem livre não segura nada; nunca negativo
+    expect(pendenteContado(0, 5, 50)).toBe(0);
+    expect(pendenteContado(-2, 5, 50)).toBe(0);
+  });
+
+  it('config: limitePendentePct padrão 50, aceita 0–100', () => {
+    expect(lerConfigReservaMagis5(null).limitePendentePct).toBe(50);
+    expect(
+      lerConfigReservaMagis5({ erpInterno: { reservaMagis5: { limitePendentePct: 30 } } })
+        .limitePendentePct,
+    ).toBe(30);
+    expect(
+      lerConfigReservaMagis5({ erpInterno: { reservaMagis5: { limitePendentePct: 300 } } })
+        .limitePendentePct,
+    ).toBe(50);
   });
 });
