@@ -212,9 +212,9 @@ export function registrarDafiti(server: McpServer, { ok, seguro }: Ajudantes) {
         "Mapa (doc api.sellercenter.com.br/doc): criar anúncio POST /v2/product-set {name, price, sellerSku, brandId, " +
         "primaryCategoryId, attributes, variation, productIdentifier(EAN)} (cria junto a 1ª variação); modelo da categoria " +
         "GET /v2/product-sets/sample-payload/{categoriaId} e GET /v2/category/{id}/attributes; nova variação POST " +
-        "/v2/product-set/{id}/products {sellerSku, variation, productIdentifier}; preço por variação PUT " +
+        "/v2/product-set/{id}/products {sellerSku, variation, productIdentifier}; preço (a Dafiti aplica UM preço ao anúncio inteiro — Regular e Plus em anúncios separados) PUT " +
         "/v2/product/{productId}/prices/BR {price, salePrice}; ativar/desativar PUT /v2/product-set/{id}/products/{productId}/status " +
-        "com query {status:'active'|'inactive'}. Resposta da escrita: { resposta, ajustes }.",
+        "com query {status:'active'|'inactive'|'deleted'} (deleted = remover a variação). Resposta da escrita: { resposta, ajustes }.",
       inputSchema: {
         metodo: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
         caminho: z.string().regex(/^\/v2\/[A-Za-z0-9\-_/]+$/),
